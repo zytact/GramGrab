@@ -1,16 +1,9 @@
-import { OPERATIONS, IG_HEADERS } from "./config";
-import type { ParsedUrl } from "./router";
-import type { MediaItem } from "./normalizer";
+import { OPERATIONS, IG_HEADERS } from './config';
+import type { MediaItem } from './normalizer';
 
-export async function fetchMediaByShortcode(
-  shortcode: string
-): Promise<MediaItem[]> {
+export async function fetchMediaByShortcode(shortcode: string): Promise<MediaItem[]> {
   const variables = { shortcode };
-  return fetchGraphQL(
-    OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
-    "doc_id",
-    variables
-  );
+  return fetchGraphQL(OPERATIONS.MEDIA_BY_SHORTCODE.doc_id, 'doc_id', variables);
 }
 
 export async function fetchReelsMedia(params: {
@@ -23,16 +16,12 @@ export async function fetchReelsMedia(params: {
     location_ids: [],
     precomposed_overlay: false,
   };
-  return fetchGraphQL(
-    OPERATIONS.REELS_MEDIA.query_hash,
-    "query_hash",
-    variables
-  );
+  return fetchGraphQL(OPERATIONS.REELS_MEDIA.query_hash, 'query_hash', variables);
 }
 
 async function fetchGraphQL(
   operationId: string,
-  operationKey: "doc_id" | "query_hash",
+  operationKey: 'doc_id' | 'query_hash',
   variables: Record<string, unknown>
 ): Promise<MediaItem[]> {
   const qs = new URLSearchParams({
@@ -42,10 +31,10 @@ async function fetchGraphQL(
 
   const url = `${OPERATIONS.MEDIA_BY_SHORTCODE.url}?${qs}`;
   const res = await fetch(url, {
-    credentials: "include",
+    credentials: 'include',
     headers: {
       ...IG_HEADERS,
-      "Origin": "https://www.instagram.com",
+      Origin: 'https://www.instagram.com',
     },
   });
 
@@ -53,6 +42,6 @@ async function fetchGraphQL(
     throw new Error(`GraphQL request failed: ${res.status} ${res.statusText}`);
   }
 
-  const data = await res.json() as Record<string, unknown>;
+  const data = (await res.json()) as Record<string, unknown>;
   return data as unknown as MediaItem[];
 }

@@ -19,13 +19,6 @@
   "background": {
     "page": "background.html"
   },
-  "permissions": [
-    "downloads",
-    "storage",
-    "activeTab",
-    "tabs"
-  ],
-  "host_permissions": [
-    "https://*.instagram.com/*"
-  ]
+  "permissions": ["downloads", "storage", "activeTab", "tabs", "scripting"],
+  "host_permissions": ["https://*.instagram.com/*", "https://*.fbcdn.net/*"]
 }

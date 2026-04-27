@@ -5,7 +5,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   background: #111;
   color: #e0e0e0;
@@ -129,7 +129,7 @@ button:disabled {
   background: #2a2a2a;
 }
 
-.media-item input[type="checkbox"] {
+.media-item input[type='checkbox'] {
   accent-color: #e1306c;
   width: 16px;
   height: 16px;
@@ -143,13 +143,51 @@ button:disabled {
   background: #000;
   position: relative;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .media-preview img,
-.media-preview video {
+.media-preview video,
+.media-preview .preview-placeholder,
+.media-preview .preview-loading,
+.media-preview .preview-error {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.preview-placeholder,
+.preview-loading,
+.preview-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 9px;
+  color: #666;
+}
+
+.preview-icon {
+  font-size: 14px;
+  opacity: 0.5;
+}
+
+.preview-text {
+  font-size: 8px;
+  color: #555;
+}
+
+.preview-error {
+  color: #f87171;
+  font-size: 8px;
+}
+
+.preview-unavailable {
+  font-size: 8px;
+  color: #666;
 }
 
 .play-icon {
@@ -159,7 +197,7 @@ button:disabled {
   transform: translate(-50%, -50%);
   color: #fff;
   font-size: 16px;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .media-info {
