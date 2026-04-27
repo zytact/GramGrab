@@ -1,225 +1,242 @@
+import { useState, useEffect, useCallback } from 'react';
 import './styles.css';
 
-const root = document.getElementById('root');
-
-if (!root) {
-  throw new Error('Popup root missing');
-}
-
-root.innerHTML = `
-  <div class="container">
-    <header>InstaSave</header>
-    <p class="hint">Instagram post, reel, story, or highlight URL</p>
-    <div class="input-group">
-      <input id="ig-url" type="url" placeholder="Paste URL or auto-detected from tab" />
-    </div>
-    <div class="row">
-      <button id="fetch-btn" type="button">Fetch Media</button>
-    </div>
-    <div id="media-list" class="media-list"></div>
-    <div class="row">
-      <button id="download-selected-btn" type="button" disabled>Download Selected</button>
-    </div>
-    <p id="status" class="msg info">Ready.</p>
-  </div>
-`;
-
-const input = document.getElementById('ig-url') as HTMLInputElement;
-const fetchButton = document.getElementById('fetch-btn') as HTMLButtonElement;
-const downloadSelectedButton = document.getElementById(
-  'download-selected-btn'
-) as HTMLButtonElement;
-const mediaList = document.getElementById('media-list') as HTMLDivElement;
-const status = document.getElementById('status') as HTMLParagraphElement;
-
-let mediaItems: {
+interface MediaItem {
   index: number;
   type: string;
   url: string;
   filenameHint: string;
   selected: boolean;
   previewUrl?: string;
-}[] = [];
-let previewCleanup: string[] = [];
+}
 
-// Auto-detect URL from active tab
-browser.tabs
-  ?.query({ active: true, currentWindow: true })
-  .then(tabs => {
-    const active = tabs[0];
-    const url = active?.url ?? '';
-    if (url.includes('instagram.com')) {
-      input.value = url;
-      status.className = 'msg info';
-      status.textContent = 'Instagram URL detected. Click Fetch Media.';
-    }
-  })
-  .catch(() => {
-    // Ignore errors
-  });
+interface MediaResponse {
+  media?: { url: string; type: string; filenameHint: string }[];
+  error?: string;
+}
 
-function renderMediaList() {
-  previewCleanup.forEach(url => {
-    if (url.startsWith('data:')) return;
-    URL.revokeObjectURL(url);
-  });
-  previewCleanup = [];
+interface PreviewResponse {
+  previewUrl?: string;
+  error?: string;
+}
 
-  if (mediaItems.length === 0) {
-    mediaList.innerHTML = "<p class='hint'>No media found.</p>";
-    downloadSelectedButton.disabled = true;
-    return;
-  }
+type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
-  mediaList.innerHTML = mediaItems
-    .map(
-      (item, i) => `
-    <label class="media-item">
-      <input type="checkbox" data-index="${i}" ${item.selected ? 'checked' : ''} />
-      <div class="media-preview">
-        ${
-          item.type === 'image'
-            ? `<div class="preview-placeholder" data-preview-index="${i}"><span class="preview-icon">📷</span><span class="preview-text">Loading preview...</span></div>`
-            : `<video src="${item.url}" muted playsinline></video><div class="play-icon">▶</div>`
+export default function Popup() {
+  const [url, setUrl] = useState('');
+  const [status, setStatus] = useState<Status>('idle');
+  const [message, setMessage] = useState('Ready.');
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [previewLoading, setPreviewLoading] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    browser.tabs
+      ?.query({ active: true, currentWindow: true })
+      .then(tabs => {
+        const active = tabs[0];
+        const currentUrl = active?.url ?? '';
+        if (currentUrl.includes('instagram.com')) {
+          setUrl(currentUrl);
+          setMessage('Instagram URL detected. Click Fetch Media.');
         }
-      </div>
-      <div class="media-info">
-        <span class="media-type">${item.type}</span>
-        <span class="media-hint">${item.filenameHint}</span>
-      </div>
-    </label>
-  `
-    )
-    .join('');
+      })
+      .catch(() => {});
+  }, []);
 
-  // Add event listeners to checkboxes
-  mediaList.querySelectorAll<HTMLInputElement>("input[type='checkbox']").forEach(checkbox => {
-    checkbox.addEventListener('change', () => {
-      const idx = parseInt(checkbox.dataset.index!);
-      mediaItems[idx].selected = checkbox.checked;
-      updateDownloadButton();
-    });
-  });
-
-  mediaList.querySelectorAll<HTMLElement>('[data-preview-index]').forEach(el => {
-    const idx = parseInt(el.getAttribute('data-preview-index')!);
-    const item = mediaItems[idx];
-    void loadPreview(el, item);
-  });
-
-  // Select all by default
-  mediaItems.forEach(item => (item.selected = true));
-  updateDownloadButton();
-}
-
-async function loadPreview(
-  el: HTMLElement,
-  item: { url: string; type: string; previewUrl?: string }
-) {
-  if (item.type !== 'image') return;
-  try {
-    el.innerHTML = '<span class="preview-loading">Loading...</span>';
-    const res = await browser.runtime.sendMessage({ type: 'GET_PREVIEW_URL', url: item.url });
-    if (res?.previewUrl) {
-      el.innerHTML = `<img src="${res.previewUrl}" alt="Preview" />`;
-    } else {
-      el.innerHTML = `<span class="preview-unavailable">Preview Unavailable</span>`;
-    }
-  } catch {
-    el.innerHTML = `<span class="preview-unavailable">Preview Unavailable</span>`;
-  }
-}
-
-function updateDownloadButton() {
-  const selectedCount = mediaItems.filter(m => m.selected).length;
-  downloadSelectedButton.disabled = selectedCount === 0;
-  downloadSelectedButton.textContent =
-    selectedCount > 0 ? `Download Selected (${selectedCount})` : 'Download Selected';
-}
-
-fetchButton.addEventListener('click', async () => {
-  const url = input.value.trim();
-  if (!url) {
-    status.className = 'msg error';
-    status.textContent = 'No URL provided.';
-    return;
-  }
-
-  status.className = 'msg info';
-  status.textContent = 'Fetching media...';
-  fetchButton.disabled = true;
-
-  try {
-    const res = await browser.runtime.sendMessage({ type: 'FETCH_MEDIA', url });
-    if (res?.error) {
-      status.className = 'msg error';
-      status.textContent = res.error;
-      fetchButton.disabled = false;
+  const handleFetch = useCallback(async () => {
+    if (!url.trim()) {
+      setMessage('No URL provided.');
+      setStatus('error');
       return;
     }
 
-    const items = res?.media ?? [];
-    mediaItems = items.map(
-      (item: { url: string; type: string; filenameHint: string }, i: number) => ({
+    setStatus('fetching');
+    setMessage('Fetching media...');
+
+    try {
+      const res = (await browser.runtime.sendMessage({
+        type: 'FETCH_MEDIA',
+        url: url.trim(),
+      })) as MediaResponse;
+
+      if (res?.error) {
+        setMessage(res.error);
+        setStatus('error');
+        return;
+      }
+
+      const items = (res?.media ?? []).map((item, i) => ({
         index: i,
         type: item.type,
         url: item.url,
         filenameHint: item.filenameHint,
         selected: true,
-      })
-    );
+      }));
 
-    renderMediaList();
+      setMediaItems(items);
+      setStatus(items.length > 0 ? 'done' : 'error');
+      setMessage(
+        items.length > 0
+          ? `Found ${items.length} item(s). Select and download.`
+          : 'No downloadable media found.'
+      );
+    } catch (err) {
+      setMessage(String(err));
+      setStatus('error');
+    }
+  }, [url]);
 
-    status.className = mediaItems.length > 0 ? 'msg success' : 'msg error';
-    status.textContent =
-      mediaItems.length > 0
-        ? `Found ${mediaItems.length} item(s). Select and download.`
-        : 'No downloadable media found.';
-  } catch (err) {
-    status.className = 'msg error';
-    status.textContent = String(err);
-  } finally {
-    fetchButton.disabled = false;
-  }
-});
-
-downloadSelectedButton.addEventListener('click', async () => {
-  const selected = mediaItems.filter(m => m.selected);
-  if (selected.length === 0) {
-    status.className = 'msg error';
-    status.textContent = 'No items selected.';
-    return;
-  }
-
-  status.className = 'msg info';
-  status.textContent = `Downloading ${selected.length} item(s)...`;
-  downloadSelectedButton.disabled = true;
-
-  try {
-    const urls = selected.map(m => m.url);
-    const hints = selected.map(m => m.filenameHint);
-    const types = selected.map(m => m.type);
-
-    const res = await browser.runtime.sendMessage({
-      type: 'DOWNLOAD_MEDIA',
-      urls,
-      hints,
-      types,
-    });
-
-    if (res?.error) {
-      status.className = 'msg error';
-      status.textContent = res.error;
+  const handleDownload = useCallback(async () => {
+    const selected = mediaItems.filter(m => m.selected);
+    if (selected.length === 0) {
+      setMessage('No items selected.');
+      setStatus('error');
       return;
     }
 
-    status.className = 'msg success';
-    status.textContent = `Downloaded ${selected.length} item(s).`;
-  } catch (err) {
-    status.className = 'msg error';
-    status.textContent = String(err);
-  } finally {
-    downloadSelectedButton.disabled = false;
-  }
-});
+    setStatus('downloading');
+    setMessage(`Downloading ${selected.length} item(s)...`);
+
+    try {
+      const res = (await browser.runtime.sendMessage({
+        type: 'DOWNLOAD_MEDIA',
+        urls: selected.map(m => m.url),
+        hints: selected.map(m => m.filenameHint),
+        types: selected.map(m => m.type),
+      })) as { error?: string };
+
+      if (res?.error) {
+        setMessage(res.error);
+        setStatus('error');
+        return;
+      }
+
+      setMessage(`Downloaded ${selected.length} item(s).`);
+      setStatus('done');
+    } catch (err) {
+      setMessage(String(err));
+      setStatus('error');
+    }
+  }, [mediaItems]);
+
+  const toggleItem = useCallback((index: number) => {
+    setMediaItems(prev =>
+      prev.map(item => (item.index === index ? { ...item, selected: !item.selected } : item))
+    );
+  }, []);
+
+  const loadPreview = useCallback(async (index: number, itemUrl: string) => {
+    setPreviewLoading(prev => new Set(prev).add(index));
+
+    try {
+      const res = (await browser.runtime.sendMessage({
+        type: 'GET_PREVIEW_URL',
+        url: itemUrl,
+      })) as PreviewResponse;
+
+      if (res?.previewUrl) {
+        setMediaItems(prev =>
+          prev.map(item => (item.index === index ? { ...item, previewUrl: res.previewUrl } : item))
+        );
+      }
+    } finally {
+      setPreviewLoading(prev => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    mediaItems.forEach((item, idx) => {
+      if (item.type === 'image' && !item.previewUrl) {
+        loadPreview(idx, item.url);
+      }
+    });
+  }, [mediaItems, loadPreview]);
+
+  const selectedCount = mediaItems.filter(m => m.selected).length;
+
+  return (
+    <div className="container">
+      <header>InstaSave</header>
+      <p className="hint">Instagram post, reel, story, or highlight URL</p>
+      <div className="input-group">
+        <input
+          type="url"
+          placeholder="Paste URL or auto-detected from tab"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+        />
+      </div>
+      <div className="row">
+        <button onClick={handleFetch} disabled={status === 'fetching' || status === 'downloading'}>
+          {status === 'fetching' ? 'Fetching...' : 'Fetch Media'}
+        </button>
+      </div>
+      <div className="media-list">
+        {mediaItems.length === 0 ? (
+          <p className="hint">No media found.</p>
+        ) : (
+          mediaItems.map(item => (
+            <MediaItemComponent
+              key={item.index}
+              item={item}
+              loading={previewLoading.has(item.index)}
+              onToggle={() => toggleItem(item.index)}
+            />
+          ))
+        )}
+      </div>
+      <div className="row">
+        <button
+          onClick={handleDownload}
+          disabled={selectedCount === 0 || status === 'fetching' || status === 'downloading'}
+        >
+          {selectedCount > 0 ? `Download Selected (${selectedCount})` : 'Download Selected'}
+        </button>
+      </div>
+      <p className={`msg ${status === 'error' ? 'error' : status === 'done' ? 'success' : 'info'}`}>
+        {message}
+      </p>
+    </div>
+  );
+}
+
+function MediaItemComponent({
+  item,
+  loading,
+  onToggle,
+}: {
+  item: MediaItem;
+  loading: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <label className="media-item">
+      <input type="checkbox" checked={item.selected} onChange={onToggle} />
+      <div className="media-preview">
+        {item.type === 'video' ? (
+          <>
+            <video src={item.url} muted playsInline />
+            <div className="play-icon">▶</div>
+          </>
+        ) : item.previewUrl ? (
+          <img src={item.previewUrl} alt="Preview" />
+        ) : loading ? (
+          <span className="preview-loading">Loading...</span>
+        ) : (
+          <div className="preview-placeholder">
+            <span className="preview-icon">📷</span>
+            <span className="preview-text">Loading preview...</span>
+          </div>
+        )}
+      </div>
+      <div className="media-info">
+        <span className="media-type">{item.type}</span>
+        <span className="media-hint">{item.filenameHint}</span>
+      </div>
+    </label>
+  );
+}
