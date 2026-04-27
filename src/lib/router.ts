@@ -18,28 +18,29 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
     const path = u.pathname.replace(/\/$/, "").split("/").filter(Boolean);
     if (path.length === 0) return null;
 
-    const [first, second, third] = path;
-
-    if (first === "p" && second) {
+    const postIndex = path.indexOf("p");
+    if (postIndex >= 0 && path[postIndex + 1]) {
       return {
         type: "post",
-        shortcode: second,
+        shortcode: path[postIndex + 1],
         carouselIndex: u.searchParams.has("img_index")
           ? parseInt(u.searchParams.get("img_index")!) - 1
           : undefined,
       };
     }
 
-    if (first === "reel" && second) {
-      return { type: "reel", shortcode: second };
+    const reelIndex = path.indexOf("reel");
+    if (reelIndex >= 0 && path[reelIndex + 1]) {
+      return { type: "reel", shortcode: path[reelIndex + 1] };
     }
 
-    if (first === "stories") {
-      if (second === "highlights" && third) {
-        return { type: "highlight", highlightId: third };
+    const storiesIndex = path.indexOf("stories");
+    if (storiesIndex >= 0) {
+      if (path[storiesIndex + 1] === "highlights" && path[storiesIndex + 2]) {
+        return { type: "highlight", highlightId: path[storiesIndex + 2] };
       }
-      if (second) {
-        return { type: "story", username: second };
+      if (path[storiesIndex + 1]) {
+        return { type: "story", username: path[storiesIndex + 1] };
       }
     }
 

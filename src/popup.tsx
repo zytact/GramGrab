@@ -30,7 +30,8 @@ const downloadSelectedButton = document.getElementById("download-selected-btn") 
 const mediaList = document.getElementById("media-list") as HTMLDivElement;
 const status = document.getElementById("status") as HTMLParagraphElement;
 
-let mediaItems: { index: number; type: string; url: string; filenameHint: string; selected: boolean }[] = [];
+let mediaItems: { index: number; type: string; url: string; filenameHint: string; selected: boolean; previewUrl?: string }[] = [];
+let previewCleanup: string[] = [];
 
 // Auto-detect URL from active tab
 browser.tabs?.query({ active: true, currentWindow: true }).then((tabs) => {
@@ -46,6 +47,9 @@ browser.tabs?.query({ active: true, currentWindow: true }).then((tabs) => {
 });
 
 function renderMediaList() {
+  previewCleanup.forEach((url) => URL.revokeObjectURL(url));
+  previewCleanup = [];
+
   if (mediaItems.length === 0) {
     mediaList.innerHTML = "<p class='hint'>No media found.</p>";
     downloadSelectedButton.disabled = true;
@@ -55,8 +59,15 @@ function renderMediaList() {
   mediaList.innerHTML = mediaItems.map((item, i) => `
     <label class="media-item">
       <input type="checkbox" data-index="${i}" ${item.selected ? "checked" : ""} />
-      <span class="media-type">${item.type}</span>
-      <span class="media-hint">${item.filenameHint}</span>
+      <div class="media-preview">
+        ${item.type === "image" 
+          ? `<img data-preview-index="${i}" alt="Preview" />` 
+          : `<video src="${item.url}" muted playsinline></video><div class="play-icon">▶</div>`}
+      </div>
+      <div class="media-info">
+        <span class="media-type">${item.type}</span>
+        <span class="media-hint">${item.filenameHint}</span>
+      </div>
     </label>
   `).join("");
 
@@ -69,9 +80,30 @@ function renderMediaList() {
     });
   });
 
+  mediaList.querySelectorAll<HTMLImageElement>("[data-preview-index]").forEach((el) => {
+    const idx = parseInt(el.getAttribute("data-preview-index")!);
+    const item = mediaItems[idx];
+    void loadPreview(el, item);
+  });
+
   // Select all by default
   mediaItems.forEach((item) => (item.selected = true));
   updateDownloadButton();
+}
+
+async function loadPreview(el: HTMLImageElement, item: { url: string; type: string; previewUrl?: string }) {
+  try {
+    const res = await browser.runtime.sendMessage({ type: "GET_PREVIEW_URL", url: item.url });
+    if (res?.previewUrl) {
+      previewCleanup.push(res.previewUrl);
+      item.previewUrl = res.previewUrl;
+      el.src = res.previewUrl;
+    } else {
+      el.alt = "Preview unavailable";
+    }
+  } catch {
+    el.alt = "Preview unavailable";
+  }
 }
 
 function updateDownloadButton() {
