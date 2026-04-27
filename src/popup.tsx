@@ -157,6 +157,12 @@ export default function Popup() {
   }, [mediaItems, loadPreview]);
 
   const selectedCount = mediaItems.filter(m => m.selected).length;
+  const allSelected = mediaItems.length > 0 && selectedCount === mediaItems.length;
+
+  const toggleAll = useCallback(() => {
+    const newSelected = !allSelected;
+    setMediaItems(prev => prev.map(item => ({ ...item, selected: newSelected })));
+  }, [allSelected]);
 
   return (
     <div className="container">
@@ -175,6 +181,12 @@ export default function Popup() {
           {status === 'fetching' ? 'Fetching...' : 'Fetch Media'}
         </button>
       </div>
+      {mediaItems.length > 0 && (
+        <label className="select-all">
+          <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+          Select All
+        </label>
+      )}
       <div className="media-list">
         {mediaItems.length === 0 ? (
           <p className="hint">No media found.</p>
