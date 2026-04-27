@@ -3,7 +3,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "vite build && node scripts/postbuild.mjs",
+    "build": "vite build && bun scripts/postbuild.mjs",
     "dev": "vite build --watch",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
