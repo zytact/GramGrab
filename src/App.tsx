@@ -12,34 +12,34 @@ export default function App({ initialUrl = '' }: AppProps) {
   const [url, setUrl] = useState(initialUrl);
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
-  const [count, setCount] = useState(0);
   const [debug, setDebug] = useState('');
 
   const handleDownload = useCallback(async () => {
     if (!url.trim()) {
-      setMessage('No URL provided.');
+      setMessage('Supply a link first.');
       setStatus('error');
       return;
     }
 
     setStatus('resolving');
     setMessage('');
-    setCount(0);
     setDebug('');
 
     try {
       const parsed = parseInstagramUrl(url.trim() || initialUrl);
 
       if (!parsed) {
-        setMessage('Not a supported Instagram URL.');
+        setMessage('Invalid or unsupported link.');
         setStatus('error');
         return;
       }
 
       const msg = formatDetected(parsed);
-      setDebug(_d => `Detected: ${msg}`);
+      setDebug(_d => `[TRACK] ${msg}`);
       setStatus('fetching');
 
+      // Assuming browser is available globally in extension context
+      // @ts-expect-error browser type missing
       const task = await browser.runtime.sendMessage({
         type: 'DOWNLOAD',
         url: url.trim() || initialUrl,
@@ -52,8 +52,7 @@ export default function App({ initialUrl = '' }: AppProps) {
         return;
       }
 
-      setCount(task.media?.length ?? 0);
-      setMessage(`Found ${task.media?.length ?? 0} media item(s)`);
+      setMessage(`Acquired ${task.media?.length ?? 0} media asset(s)`);
       setStatus('done');
     } catch (err) {
       setMessage(String(err));
@@ -62,38 +61,67 @@ export default function App({ initialUrl = '' }: AppProps) {
   }, [url]);
 
   return (
-    <div className="container">
-      <header>InstaSave</header>
-      <p className="hint">Paste an Instagram post, reel, story, or highlight URL.</p>
-      <div className="input-group">
-        <input
-          type="url"
-          placeholder="Instagram post / reel / story URL"
-          value={url}
-          onChange={e => setUrl(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleDownload()}
-        />
+    <div className="wrapper">
+      <div className="glass-panel">
+        <header>
+          <div className="logo-glitch" data-text="INSTAEXT">
+            INSTAEXT
+          </div>
+          <span className="badge">v2.0</span>
+        </header>
+
+        <div className="content">
+          <p className="instruction">Extract media from any post, reel, or story.</p>
+
+          <div className="input-wrapper">
+            <input
+              type="url"
+              placeholder="https://instagram.com/..."
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleDownload()}
+              className="neo-input"
+            />
+            <div className="input-backdrop"></div>
+          </div>
+
+          <button
+            className={`action-btn ${status}`}
+            onClick={handleDownload}
+            disabled={status === 'resolving' || status === 'fetching'}
+          >
+            <span className="btn-text">
+              {status === 'resolving'
+                ? 'ANALYZING...'
+                : status === 'fetching'
+                  ? 'EXTRACTING...'
+                  : 'EXTRACT MEDIA'}
+            </span>
+            <div className="btn-glow"></div>
+          </button>
+        </div>
+
+        {message && (
+          <div className={`status-banner ${status === 'error' ? 'error' : 'success'}`}>
+            <span className="indicator"></span>
+            {message}
+          </div>
+        )}
+
+        {debug && (
+          <div className="telemetry">
+            <pre>{debug}</pre>
+          </div>
+        )}
       </div>
-      <div className="row">
-        <button onClick={handleDownload} disabled={status === 'resolving' || status === 'fetching'}>
-          {status === 'resolving'
-            ? 'Resolving...'
-            : status === 'fetching'
-              ? 'Fetching...'
-              : 'Download'}
-        </button>
-      </div>
-      {message && <p className={`msg ${status === 'error' ? 'error' : 'info'}`}>{message}</p>}
-      {count > 0 && <p className="msg success">{count} item(s) saved to Downloads</p>}
-      {debug && <pre className="debug">{debug}</pre>}
     </div>
   );
 }
 
 function formatDetected(parsed: ParsedUrl): string {
-  if (parsed.type === 'story') return `Story — @${parsed.username}`;
-  if (parsed.type === 'highlight') return `Highlight — ${parsed.highlightId}`;
-  return `${capitalize(parsed.type)} — ${parsed.shortcode ?? ''}`;
+  if (parsed.type === 'story') return `Story / @${parsed.username}`;
+  if (parsed.type === 'highlight') return `Highlight / ${parsed.highlightId}`;
+  return `${capitalize(parsed.type)} / ${parsed.shortcode ?? ''}`;
 }
 
 function capitalize(s: string): string {

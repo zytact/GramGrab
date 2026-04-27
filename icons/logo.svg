@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#050505" rx="120" />
+  
+  <!-- Outer Glow / Gradient Border -->
+  <rect x="32" y="32" width="448" height="448" fill="none" stroke="url(#grad)" stroke-width="32" rx="100" />
+  
+  <!-- Camera lens / Center element -->
+  <circle cx="256" cy="256" r="100" fill="none" stroke="#00f0ff" stroke-width="32" />
+  <circle cx="256" cy="256" r="40" fill="#ff0055" />
+  
+  <!-- Flash / Accent -->
+  <circle cx="380" cy="132" r="24" fill="#00f0ff" />
+  
+  <!-- Inner cyber-lines -->
+  <line x1="256" y1="50" x2="256" y2="124" stroke="#ff0055" stroke-width="16" />
+  <line x1="256" y1="388" x2="256" y2="462" stroke="#ff0055" stroke-width="16" />
+  <line x1="50" y1="256" x2="124" y2="256" stroke="#ff0055" stroke-width="16" />
+  <line x1="388" y1="256" x2="462" y2="256" stroke="#ff0055" stroke-width="16" />
+
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff0055" />
+      <stop offset="100%" stop-color="#00f0ff" />
+    </linearGradient>
+  </defs>
+</svg>
