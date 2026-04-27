@@ -479,7 +479,7 @@ browser.runtime.onMessage.addListener((msg: { type?: string; json?: unknown }) =
     try {
       await browser.downloads.download({
         url,
-        filename: `instasave-debug-${Date.now()}.json`,
+        filename: `instaext-debug-${Date.now()}.json`,
         saveAs: true,
       });
       return { error: undefined };

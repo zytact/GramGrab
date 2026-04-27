@@ -160,7 +160,7 @@ export default function Popup() {
 
   return (
     <div className="container">
-      <header>InstaSave</header>
+      <header>Instaext</header>
       <p className="hint">Instagram post, reel, story, or highlight URL</p>
       <div className="input-group">
         <input

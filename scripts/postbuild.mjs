@@ -19,4 +19,3 @@ await mkdir('extension/icons', { recursive: true });
 await copyFile('icons/icon-16.png', 'extension/icons/icon-16.png');
 await copyFile('icons/icon-48.png', 'extension/icons/icon-48.png');
 await copyFile('icons/icon-96.png', 'extension/icons/icon-96.png');
-await copyFile('icons/icon.svg', 'extension/icons/icon.svg');
