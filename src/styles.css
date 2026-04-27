@@ -132,6 +132,23 @@ input[type='url']:focus {
   gap: 10px;
 }
 
+.select-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.select-all input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand-secondary);
+  cursor: pointer;
+}
+
 button {
   flex: 1;
   background: var(--surface);

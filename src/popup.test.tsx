@@ -174,4 +174,96 @@ describe('Popup', () => {
       expect(screen.getByText('No downloadable media found.')).toBeDefined();
     });
   });
+
+  it('shows "Select All" checkbox when media items are loaded', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [
+        { url: 'https://instagram.com/img1.jpg', type: 'image', filenameHint: 'abc123' },
+        { url: 'https://instagram.com/img2.jpg', type: 'image', filenameHint: 'def456' },
+      ],
+      error: undefined,
+    });
+
+    await act(async () => {
+      render(<Popup />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('https://www.instagram.com/p/abc123/')).toBeDefined();
+    });
+
+    const fetchButton = screen.getByText('Fetch Media');
+    await user.click(fetchButton);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Select All')).toBeDefined();
+    });
+  });
+
+  it('selects all items when clicking "Select All"', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [
+        { url: 'https://instagram.com/img1.jpg', type: 'image', filenameHint: 'abc123' },
+        { url: 'https://instagram.com/img2.jpg', type: 'image', filenameHint: 'def456' },
+      ],
+      error: undefined,
+    });
+
+    await act(async () => {
+      render(<Popup />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('https://www.instagram.com/p/abc123/')).toBeDefined();
+    });
+
+    const fetchButton = screen.getByText('Fetch Media');
+    await user.click(fetchButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Download Selected \(2\)/)).toBeDefined();
+    });
+
+    const selectAllCheckbox = screen.getByLabelText('Select All');
+    await user.click(selectAllCheckbox);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Select All')).toBeDefined();
+    });
+  });
+
+  it('deselects all items when clicking "Select All" again', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [
+        { url: 'https://instagram.com/img1.jpg', type: 'image', filenameHint: 'abc123' },
+        { url: 'https://instagram.com/img2.jpg', type: 'image', filenameHint: 'def456' },
+      ],
+      error: undefined,
+    });
+
+    await act(async () => {
+      render(<Popup />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('https://www.instagram.com/p/abc123/')).toBeDefined();
+    });
+
+    const fetchButton = screen.getByText('Fetch Media');
+    await user.click(fetchButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Download Selected \(2\)/)).toBeDefined();
+    });
+
+    const selectAllCheckbox = screen.getByLabelText('Select All');
+    await user.click(selectAllCheckbox);
+
+    await waitFor(() => {
+      expect(screen.getByText('Download Selected')).toBeDefined();
+    });
+  });
 });
