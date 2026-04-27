@@ -7,6 +7,11 @@ export interface MediaItem {
   filenameHint: string;
 }
 
+function unwrapData(data: unknown): Record<string, unknown> {
+  const root = data as Record<string, unknown> | undefined;
+  return (root?.data as Record<string, unknown>) ?? root ?? {};
+}
+
 function pickBestVideo(
   resources: { src: string; config_width?: number; config_height?: number }[]
 ): string | null {
@@ -32,14 +37,20 @@ function extractUrls(node: Record<string, unknown>): {
 export function normalizeShortcodeMedia(data: unknown): MediaItem[] {
   const items: MediaItem[] = [];
 
-  const media = (data as Record<string, unknown>)?.xdt_shortcode_media;
+  const root = unwrapData(data);
+  let media = root.xdt_shortcode_media as Record<string, unknown> | undefined;
+
+  if (!media) {
+    media = root.shortcode_media as Record<string, unknown> | undefined;
+  }
   if (!media) return items;
 
-  const { displayUrl, videoUrl, videoResources } = extractUrls(media as Record<string, unknown>);
-  const shortcode = (media as Record<string, unknown>).shortcode as string | undefined;
-  const typename = (media as Record<string, unknown>).__typename as string | undefined;
-  const takenAt = (media as Record<string, unknown>).taken_at_timestamp as number | undefined;
-  const id = (media as Record<string, unknown>).id as string | undefined;
+  const { displayUrl, videoUrl, videoResources } = extractUrls(media);
+  const shortcode = media.shortcode as string | undefined;
+  const typename = media.__typename as string | undefined;
+  const takenAt = media.taken_at_timestamp as number | undefined;
+  const id = media.id as string | undefined;
+  const dims = media.dimensions as { width?: number; height?: number } | undefined;
 
   const addItem = (url: string, type: 'image' | 'video', width?: number, height?: number) => {
     items.push({
@@ -53,11 +64,14 @@ export function normalizeShortcodeMedia(data: unknown): MediaItem[] {
   };
 
   if (typename === 'GraphSidecar') {
-    const children = (media as Record<string, unknown>).edge_sidecar_to_children as
+    const children = media.edge_sidecar_to_children as
       | { edges?: { node: Record<string, unknown> }[] }
       | undefined;
     children?.edges?.forEach((edge, _i) => {
       const n = edge.node;
+      const displayResources = n.display_resources as
+        | { src: string; config_width?: number; config_height?: number }[]
+        | undefined;
       const du = (n.display_url as string | undefined) ?? (n.uri as string | undefined);
       const vu = n.video_url as string | undefined;
       const vr = n.video_resources as
@@ -69,15 +83,21 @@ export function normalizeShortcodeMedia(data: unknown): MediaItem[] {
       if (isVid) {
         const bestUrl = pickBestVideo(vr ?? []) ?? vu;
         if (bestUrl) addItem(bestUrl, 'video', w?.width, w?.height);
+      } else if (displayResources && displayResources.length > 0) {
+        const sorted = [...displayResources].sort(
+          (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
+        );
+        const best = sorted[0];
+        if (best) addItem(best.src, 'image', best.config_width, best.config_height);
       } else if (du) {
         addItem(du, 'image', w?.width, w?.height);
       }
     });
   } else if (typename === 'GraphVideo') {
     const bestUrl = pickBestVideo(videoResources ?? []) ?? videoUrl;
-    if (bestUrl) addItem(bestUrl, 'video');
+    if (bestUrl) addItem(bestUrl, 'video', dims?.width, dims?.height);
   } else if (typename === 'GraphImage') {
-    if (displayUrl) addItem(displayUrl, 'image');
+    if (displayUrl) addItem(displayUrl, 'image', dims?.width, dims?.height);
   }
 
   return items;
@@ -86,10 +106,12 @@ export function normalizeShortcodeMedia(data: unknown): MediaItem[] {
 export function normalizeReelsMedia(data: unknown): MediaItem[] {
   const items: MediaItem[] = [];
 
-  const reels = (data as Record<string, unknown>)?.reels_media as
-    | { id?: string; items?: Record<string, unknown>[] }[]
-    | undefined;
+  const root = unwrapData(data);
+  let reels = root.reels_media as { id?: string; items?: Record<string, unknown>[] }[] | undefined;
 
+  if (!reels) {
+    reels = root.reels as { id?: string; items?: Record<string, unknown>[] }[] | undefined;
+  }
   if (!reels) return items;
 
   for (const reel of reels) {

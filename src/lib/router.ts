@@ -36,8 +36,11 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
 
     const storiesIndex = path.indexOf('stories');
     if (storiesIndex >= 0) {
-      if (path[storiesIndex + 1] === 'highlights' && path[storiesIndex + 2]) {
-        return { type: 'highlight', highlightId: path[storiesIndex + 2] };
+      if (path[storiesIndex + 1] === 'highlights') {
+        if (path[storiesIndex + 2]) {
+          return { type: 'highlight', highlightId: path[storiesIndex + 2] };
+        }
+        return null;
       }
       if (path[storiesIndex + 1]) {
         return { type: 'story', username: path[storiesIndex + 1] };
