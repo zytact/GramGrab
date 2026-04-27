@@ -1,0 +1,137 @@
+export interface MediaItem {
+  type: "image" | "video";
+  url: string;
+  width?: number;
+  height?: number;
+  takenAt?: number;
+  filenameHint: string;
+}
+
+function pickBestVideo(
+  resources: { src: string; config_width?: number; config_height?: number }[]
+): string | null {
+  if (!resources || resources.length === 0) return null;
+  const sorted = [...resources].sort(
+    (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
+  );
+  return sorted[0]?.src ?? null;
+}
+
+function extractUrls(
+  node: Record<string, unknown>
+): { displayUrl?: string; videoUrl?: string; videoResources?: { src: string; config_width?: number; config_height?: number }[] } {
+  return {
+    displayUrl: (node.display_url as string | undefined) ?? (node.uri as string | undefined),
+    videoUrl: (node.video_url as string | undefined),
+    videoResources: (node.video_resources as { src: string; config_width?: number; config_height?: number }[] | undefined),
+  };
+}
+
+export function normalizeShortcodeMedia(
+  data: unknown
+): MediaItem[] {
+  const items: MediaItem[] = [];
+
+  const media = (data as Record<string, unknown>)?.xdt_shortcode_media;
+  if (!media) return items;
+
+  const { displayUrl, videoUrl, videoResources } = extractUrls(media as Record<string, unknown>);
+  const shortcode = (media as Record<string, unknown>).shortcode as string | undefined;
+  const typename = (media as Record<string, unknown>).__typename as string | undefined;
+  const takenAt = (media as Record<string, unknown>).taken_at_timestamp as number | undefined;
+  const id = (media as Record<string, unknown>).id as string | undefined;
+
+  const addItem = (
+    url: string,
+    type: "image" | "video",
+    width?: number,
+    height?: number
+  ) => {
+    items.push({
+      type,
+      url,
+      width,
+      height,
+      takenAt,
+      filenameHint: `${shortcode ?? id ?? "media"}_${typename ?? type}`,
+    });
+  };
+
+  if (typename === "GraphSidecar") {
+    const children =
+      (media as Record<string, unknown>).edge_sidecar_to_children as
+      | { edges?: { node: Record<string, unknown> }[] }
+      | undefined;
+    children?.edges?.forEach((edge, i) => {
+      const n = edge.node;
+      const du = (n.display_url as string | undefined) ?? (n.uri as string | undefined);
+      const vu = (n.video_url as string | undefined);
+      const vr = n.video_resources as { src: string; config_width?: number; config_height?: number }[] | undefined;
+      const isVid = (n.is_video as boolean | undefined) ?? false;
+      const w = n.dimensions as { width?: number; height?: number } | undefined;
+
+      if (isVid) {
+        const bestUrl = pickBestVideo(vr ?? []) ?? vu;
+        if (bestUrl) addItem(bestUrl, "video", w?.width, w?.height);
+      } else if (du) {
+        addItem(du, "image", w?.width, w?.height);
+      }
+    });
+  } else if (typename === "GraphVideo") {
+    const bestUrl = pickBestVideo(videoResources ?? []) ?? videoUrl;
+    if (bestUrl) addItem(bestUrl, "video");
+  } else if (typename === "GraphImage") {
+    if (displayUrl) addItem(displayUrl, "image");
+  }
+
+  return items;
+}
+
+export function normalizeReelsMedia(
+  data: unknown
+): MediaItem[] {
+  const items: MediaItem[] = [];
+
+  const reels =
+    (data as Record<string, unknown>)?.reels_media as
+    | { id?: string; items?: Record<string, unknown>[] }[]
+    | undefined;
+
+  if (!reels) return items;
+
+  for (const reel of reels) {
+    const reelId = reel.id ?? "reel";
+    for (const item of reel.items ?? []) {
+      const { displayUrl, videoUrl, videoResources } = extractUrls(item);
+      const isVid = (item.is_video as boolean | undefined) ?? false;
+      const takenAt = item.taken_at_timestamp as number | undefined;
+      const itemId = item.id as string | undefined;
+      const dims = item.dimensions as { width?: number; height?: number } | undefined;
+
+      const addItem = (
+        url: string,
+        type: "image" | "video",
+        width?: number,
+        height?: number
+      ) => {
+        items.push({
+          type,
+          url,
+          width,
+          height,
+          takenAt,
+          filenameHint: `${reelId}_${itemId ?? "item"}`,
+        });
+      };
+
+      if (isVid) {
+        const bestUrl = pickBestVideo(videoResources ?? []) ?? videoUrl;
+        if (bestUrl) addItem(bestUrl, "video", dims?.width, dims?.height);
+      } else if (displayUrl) {
+        addItem(displayUrl, "image", dims?.width, dims?.height);
+      }
+    }
+  }
+
+  return items;
+}

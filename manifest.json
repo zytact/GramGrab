@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "InstaSave",
+  "version": "1.0.0",
+  "description": "Download Instagram posts, reels, stories, and highlights directly from your browser session.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png"
+    },
+    "default_title": "InstaSave"
+  },
+  "background": {
+    "page": "background.html"
+  },
+  "permissions": [
+    "downloads",
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://*.instagram.com/*"
+  ]
+}
