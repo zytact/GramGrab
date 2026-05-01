@@ -52,7 +52,9 @@ export default function App({ initialUrl = '' }: AppProps) {
         return;
       }
 
-      setMessage(`Acquired ${task.media?.length ?? 0} media asset(s)`);
+      setMessage(
+        `Acquired ${task.media?.length ?? 0} media asset${(task.media?.length ?? 0) !== 1 ? 's' : ''}.`
+      );
       setStatus('done');
     } catch (err) {
       setMessage(String(err));
@@ -60,12 +62,16 @@ export default function App({ initialUrl = '' }: AppProps) {
     }
   }, [url]);
 
+  const isBusy = status === 'resolving' || status === 'fetching';
+
   return (
     <div className="wrapper">
       <div className="glass-panel">
+        {/* ── Header ── */}
         <header>
-          <div className="logo-glitch" data-text="INSTAEXT">
-            INSTAEXT
+          <div className="logo-glitch">
+            Insta
+            <em style={{ fontStyle: 'italic', color: 'var(--brand)', fontWeight: 400 }}>ext</em>
           </div>
           <span className="badge">v2.0</span>
         </header>
@@ -76,34 +82,31 @@ export default function App({ initialUrl = '' }: AppProps) {
           <div className="input-wrapper">
             <input
               type="url"
-              placeholder="https://instagram.com/..."
+              className="neo-input"
+              placeholder="https://instagram.com/…"
               value={url}
               onChange={e => setUrl(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleDownload()}
-              className="neo-input"
+              onKeyDown={e => e.key === 'Enter' && !isBusy && handleDownload()}
             />
-            <div className="input-backdrop"></div>
+            <div className="input-backdrop" />
           </div>
 
-          <button
-            className={`action-btn ${status}`}
-            onClick={handleDownload}
-            disabled={status === 'resolving' || status === 'fetching'}
-          >
+          <button className="action-btn" onClick={handleDownload} disabled={isBusy}>
+            {isBusy && <span className="btn-spinner" />}
             <span className="btn-text">
               {status === 'resolving'
-                ? 'ANALYZING...'
+                ? 'Analyzing…'
                 : status === 'fetching'
-                  ? 'EXTRACTING...'
-                  : 'EXTRACT MEDIA'}
+                  ? 'Extracting…'
+                  : 'Extract Media'}
             </span>
-            <div className="btn-glow"></div>
+            <div className="btn-glow" />
           </button>
         </div>
 
         {message && (
           <div className={`status-banner ${status === 'error' ? 'error' : 'success'}`}>
-            <span className="indicator"></span>
+            <span className="indicator" />
             {message}
           </div>
         )}
