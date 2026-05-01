@@ -1,4 +1,4 @@
-import { OPERATIONS, IG_HEADERS } from './config';
+import { OPERATIONS, IG_HEADERS, ENDPOINTS } from './config';
 import type { MediaItem } from './normalizer';
 
 export async function fetchMediaByShortcode(shortcode: string): Promise<MediaItem[]> {
@@ -17,6 +17,23 @@ export async function fetchReelsMedia(params: {
     precomposed_overlay: false,
   };
   return fetchGraphQL(OPERATIONS.REELS_MEDIA.query_hash, 'query_hash', variables);
+}
+
+export async function fetchProfileInfo(username: string): Promise<Record<string, unknown>> {
+  const url = `${ENDPOINTS.userProfile}?username=${encodeURIComponent(username)}`;
+  const res = await fetch(url, {
+    credentials: 'omit',
+    headers: {
+      ...IG_HEADERS,
+      Origin: 'https://www.instagram.com',
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Profile request failed: ${res.status} ${res.statusText}`);
+  }
+
+  return res.json();
 }
 
 async function fetchGraphQL(

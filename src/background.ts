@@ -23,7 +23,7 @@ const IG_HEADERS = {
 const USER_PROFILE_URL = 'https://www.instagram.com/api/v1/users/web_profile_info/';
 
 interface ParsedUrl {
-  type: 'post' | 'reel' | 'story' | 'highlight';
+  type: 'post' | 'reel' | 'story' | 'highlight' | 'profile';
   shortcode?: string;
   username?: string;
   highlightId?: string;
@@ -57,6 +57,22 @@ function parseInstagramUrl(url: string): ParsedUrl | null {
       }
       if (path[storiesIndex + 1]) {
         return { type: 'story', username: path[storiesIndex + 1] };
+      }
+    }
+    if (path.length === 1) {
+      const username = path[0];
+      const reserved = new Set([
+        'p',
+        'reel',
+        'reels',
+        'stories',
+        'explore',
+        'direct',
+        'accounts',
+        'tv',
+      ]);
+      if (!reserved.has(username)) {
+        return { type: 'profile', username };
       }
     }
     return null;
@@ -173,6 +189,74 @@ interface MediaItem {
   height?: number;
   takenAt?: number;
   filenameHint: string;
+}
+
+function normalizeProfilePicture(data: unknown, username: string, hdUrl?: string): MediaItem[] {
+  const items: MediaItem[] = [];
+  const root = unwrapData(data);
+  const user =
+    (root.user as Record<string, unknown> | undefined) ??
+    (root.data as Record<string, unknown> | undefined)?.user;
+  // Prefer the full-res HD URL from the /users/{id}/info/ endpoint when available,
+  // then fall back to profile_pic_url_hd (320x320) from web_profile_info.
+  const picUrl =
+    hdUrl ??
+    (user?.profile_pic_url_hd as string | undefined) ??
+    (user?.profile_pic_url as string | undefined);
+  if (!picUrl) return items;
+  const dims = user?.profile_pic_dimensions as { width?: number; height?: number } | undefined;
+
+  items.push({
+    type: 'image',
+    url: picUrl,
+    width: dims?.width,
+    height: dims?.height,
+    filenameHint: `${username}_profile`,
+  });
+
+  return items;
+}
+
+async function fetchProfilePicture(username: string): Promise<MediaItem[]> {
+  // Step 1: fetch web_profile_info for basic profile data + fallback pic URL
+  const profileRes = await fetch(`${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`, {
+    credentials: 'omit',
+    headers: { ...IG_HEADERS, Origin: 'https://www.instagram.com' },
+  });
+  if (!profileRes.ok) {
+    throw new Error(`Profile request failed: ${profileRes.status} ${profileRes.statusText}`);
+  }
+  const profileData = (await profileRes.json()) as Record<string, unknown>;
+
+  // Extract user ID so we can fetch the full-resolution picture
+  const profileUser = (profileData?.data as Record<string, unknown> | undefined)?.user as
+    | Record<string, unknown>
+    | undefined;
+  const userId = (profileUser?.id ?? profileUser?.pk) as string | number | undefined;
+
+  // Step 2: fetch full-res profile pic via the private user-info endpoint.
+  // This requires an active Instagram session (credentials: 'include') but gracefully
+  // falls back to the 320x320 profile_pic_url_hd when not logged in or on error.
+  let hdUrl: string | undefined;
+  if (userId) {
+    try {
+      const infoRes = await fetch(`https://i.instagram.com/api/v1/users/${userId}/info/`, {
+        credentials: 'include',
+        headers: { ...IG_HEADERS, Origin: 'https://www.instagram.com' },
+      });
+      if (infoRes.ok) {
+        const infoData = (await infoRes.json()) as Record<string, unknown>;
+        const infoUser = infoData?.user as Record<string, unknown> | undefined;
+        hdUrl = (infoUser?.hd_profile_pic_url_info as Record<string, unknown> | undefined)?.url as
+          | string
+          | undefined;
+      }
+    } catch {
+      // fall through to fallback
+    }
+  }
+
+  return normalizeProfilePicture(profileData, username, hdUrl);
 }
 
 function normalizeShortcodeMedia(data: unknown): MediaItem[] {
@@ -392,6 +476,8 @@ browser.runtime.onMessage.addListener((msg: FetchMediaMsg) => {
         precomposed_overlay: false,
       });
       items = normalizeReelsMedia(raw);
+    } else if (parsed.type === 'profile') {
+      items = await fetchProfilePicture(parsed.username!);
     }
 
     const media = items.map(item => ({
@@ -520,6 +606,8 @@ async function executeDownload(url: string, carouselIndex?: number): Promise<Med
       precomposed_overlay: false,
     });
     items = normalizeReelsMedia(raw);
+  } else if (parsed.type === 'profile') {
+    items = await fetchProfilePicture(parsed.username!);
   }
 
   if (carouselIndex !== undefined && items[carouselIndex]) {
