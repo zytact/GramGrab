@@ -90,6 +90,23 @@ describe('parseInstagramUrl', () => {
     });
   });
 
+  describe('profiles', () => {
+    it('parses profile URL', () => {
+      const result = parseInstagramUrl('https://www.instagram.com/username/');
+      expect(result).toEqual({ type: 'profile', username: 'username' });
+    });
+
+    it('parses profile URL without trailing slash', () => {
+      const result = parseInstagramUrl('https://www.instagram.com/username');
+      expect(result).toEqual({ type: 'profile', username: 'username' });
+    });
+
+    it('ignores reserved paths', () => {
+      expect(parseInstagramUrl('https://www.instagram.com/reels/')).toBeNull();
+      expect(parseInstagramUrl('https://www.instagram.com/explore/')).toBeNull();
+    });
+  });
+
   describe('rejection', () => {
     it('rejects non-Instagram domains', () => {
       expect(parseInstagramUrl('https://facebook.com/p/abc123/')).toBeNull();
@@ -102,7 +119,6 @@ describe('parseInstagramUrl', () => {
     });
 
     it('rejects unsupported paths', () => {
-      expect(parseInstagramUrl('https://www.instagram.com/username/')).toBeNull();
       expect(parseInstagramUrl('https://www.instagram.com/explore/')).toBeNull();
       expect(parseInstagramUrl('https://www.instagram.com/direct/inbox/')).toBeNull();
     });
