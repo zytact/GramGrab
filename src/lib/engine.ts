@@ -1,11 +1,15 @@
 import { parseInstagramUrl } from './router';
 import { resolveUsernameToId } from './resolver';
-import { fetchMediaByShortcode, fetchReelsMedia } from './graphql';
-import { normalizeShortcodeMedia, normalizeReelsMedia } from './normalizer';
+import { fetchMediaByShortcode, fetchReelsMedia, fetchProfileInfo } from './graphql';
+import {
+  normalizeShortcodeMedia,
+  normalizeReelsMedia,
+  normalizeProfilePicture,
+} from './normalizer';
 import type { MediaItem } from './normalizer';
 
 export interface DownloadTask {
-  type: 'post' | 'reel' | 'story' | 'highlight';
+  type: 'post' | 'reel' | 'story' | 'highlight' | 'profile';
   shortcode?: string;
   username?: string;
   highlightId?: string;
@@ -37,6 +41,11 @@ export async function buildDownloadTasks(
       type: 'story',
       username: parsed.username,
     });
+  } else if (parsed.type === 'profile') {
+    tasks.push({
+      type: 'profile',
+      username: parsed.username,
+    });
   }
 
   return tasks;
@@ -59,6 +68,10 @@ export async function executeDownloadTasks(tasks: DownloadTask[]): Promise<Media
     } else if (task.type === 'highlight') {
       const raw = await fetchReelsMedia({ highlight_reel_ids: [task.highlightId!] });
       const items = normalizeReelsMedia(raw);
+      allMedia.push(...items);
+    } else if (task.type === 'profile') {
+      const raw = await fetchProfileInfo(task.username!);
+      const items = normalizeProfilePicture(raw, task.username!);
       allMedia.push(...items);
     }
   }

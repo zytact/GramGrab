@@ -1,4 +1,4 @@
-export type ContentType = 'post' | 'reel' | 'story' | 'highlight';
+export type ContentType = 'post' | 'reel' | 'story' | 'highlight' | 'profile';
 
 export interface ParsedUrl {
   type: ContentType;
@@ -44,6 +44,23 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
       }
       if (path[storiesIndex + 1]) {
         return { type: 'story', username: path[storiesIndex + 1] };
+      }
+    }
+
+    if (path.length === 1) {
+      const username = path[0];
+      const reserved = new Set([
+        'p',
+        'reel',
+        'reels',
+        'stories',
+        'explore',
+        'direct',
+        'accounts',
+        'tv',
+      ]);
+      if (!reserved.has(username)) {
+        return { type: 'profile', username };
       }
     }
 

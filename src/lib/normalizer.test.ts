@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeShortcodeMedia, normalizeReelsMedia } from './normalizer';
+import {
+  normalizeShortcodeMedia,
+  normalizeReelsMedia,
+  normalizeProfilePicture,
+} from './normalizer';
 
 describe('normalizeShortcodeMedia', () => {
   it('returns empty array for null/undefined input', () => {
@@ -421,5 +425,52 @@ describe('normalizeReelsMedia', () => {
     };
     const result = normalizeReelsMedia(data);
     expect(result).toHaveLength(1);
+  });
+});
+
+describe('normalizeProfilePicture', () => {
+  it('extracts profile_pic_url_hd when present', () => {
+    const data = {
+      data: {
+        user: {
+          profile_pic_url_hd: 'https://instagram.com/s320x320/profile_hd.jpg',
+          profile_pic_url: 'https://instagram.com/profile.jpg',
+          profile_pic_dimensions: { width: 320, height: 320 },
+        },
+      },
+    };
+    const result = normalizeProfilePicture(data, 'testuser');
+    expect(result).toHaveLength(1);
+    expect(result[0].url).toBe('https://instagram.com/s1080x1080/profile_hd.jpg');
+    expect(result[0].width).toBe(320);
+    expect(result[0].filenameHint).toBe('testuser_profile');
+  });
+
+  it('falls back to profile_pic_url', () => {
+    const data = {
+      data: {
+        user: {
+          profile_pic_url: 'https://instagram.com/s150x150/profile.jpg',
+        },
+      },
+    };
+    const result = normalizeProfilePicture(data, 'testuser');
+    expect(result).toHaveLength(1);
+    expect(result[0].url).toBe('https://instagram.com/s1080x1080/profile.jpg');
+  });
+
+  it('falls back to provided fallbackUrl', () => {
+    const result = normalizeProfilePicture(
+      {},
+      'testuser',
+      'https://instagram.com/s150x150/fallback.jpg'
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].url).toBe('https://instagram.com/s1080x1080/fallback.jpg');
+  });
+
+  it('returns empty array when no url available', () => {
+    const result = normalizeProfilePicture({}, 'testuser');
+    expect(result).toEqual([]);
   });
 });
