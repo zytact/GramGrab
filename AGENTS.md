@@ -8,20 +8,20 @@ Instaext is a Chrome/Firefox browser extension (Manifest V3) for downloading Ins
 
 ```bash
 # Build extension (outputs to extension/)
-npm run build
+bun run build
 
 # Dev rebuild on file changes
-npm run dev
+bun run dev
 
 # Test
-npm run test          # single run
-npm run test:watch   # watch mode
+bun run test          # single run
+bun run test:watch   # watch mode
 
 # Lint & Format
-npm run lint         # eslint
-npm run lint:fix     # eslint --fix
-npm run format      # prettier --write
-npm run format:check
+bun run lint         # eslint
+bun run lint:fix     # eslint --fix
+bun run format      # prettier --write
+bun run format:check
 ```
 
 ## Architecture
@@ -41,5 +41,5 @@ npm run format:check
 ## Important Quirks
 
 - No `typecheck` command available
-- Always run `npm run build` before testing in browser - builds to `extension/` directory
+- Always run `bun run build` before testing in browser - builds to `extension/` directory
 - Vite config root is `templates/` not project root
