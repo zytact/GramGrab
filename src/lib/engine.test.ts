@@ -8,10 +8,11 @@ vi.mock('./resolver', () => ({
 vi.mock('./graphql', () => ({
   fetchMediaByShortcode: vi.fn(),
   fetchReelsMedia: vi.fn(),
+  fetchProfileInfo: vi.fn(),
 }));
 
 import { resolveUsernameToId } from './resolver';
-import { fetchMediaByShortcode, fetchReelsMedia } from './graphql';
+import { fetchMediaByShortcode, fetchReelsMedia, fetchProfileInfo } from './graphql';
 
 describe('buildDownloadTasks', () => {
   it('returns empty array for invalid URL', async () => {
@@ -45,6 +46,13 @@ describe('buildDownloadTasks', () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0].type).toBe('highlight');
     expect(tasks[0].highlightId).toBe('abc123');
+  });
+
+  it('creates profile task from profile URL', async () => {
+    const tasks = await buildDownloadTasks('https://www.instagram.com/username/');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].type).toBe('profile');
+    expect(tasks[0].username).toBe('username');
   });
 
   it('extracts carousel index from post URL', async () => {
@@ -168,6 +176,26 @@ describe('executeDownloadTasks', () => {
     expect(fetchReelsMedia).toHaveBeenCalledWith({ highlight_reel_ids: ['highlight1'] });
     expect(result).toHaveLength(1);
     expect(result[0].url).toBe('https://instagram.com/img.jpg');
+  });
+
+  it('fetches profile picture for profile task', async () => {
+    const mockRawResponse = {
+      data: {
+        user: {
+          profile_pic_url_hd: 'https://instagram.com/profile_hd.jpg',
+          profile_pic_dimensions: { width: 320, height: 320 },
+        },
+      },
+    };
+    (fetchProfileInfo as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockRawResponse);
+
+    const tasks = [{ type: 'profile' as const, username: 'testuser' }];
+    const result = await executeDownloadTasks(tasks);
+
+    expect(fetchProfileInfo).toHaveBeenCalledWith('testuser');
+    expect(result).toHaveLength(1);
+    expect(result[0].url).toBe('https://instagram.com/profile_hd.jpg');
+    expect(result[0].width).toBe(320);
   });
 
   it('merges media from multiple tasks', async () => {

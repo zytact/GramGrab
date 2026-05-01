@@ -145,3 +145,43 @@ export function normalizeReelsMedia(data: unknown): MediaItem[] {
 
   return items;
 }
+
+function upgradeProfilePicUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const upgradedPath = parsed.pathname.replace(/\/s\d+x\d+\//, '/s1080x1080/');
+    parsed.pathname = upgradedPath;
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+export function normalizeProfilePicture(
+  data: unknown,
+  username: string,
+  fallbackUrl?: string
+): MediaItem[] {
+  const items: MediaItem[] = [];
+  const root = unwrapData(data);
+  const user =
+    (root.user as Record<string, unknown> | undefined) ??
+    (root.data as Record<string, unknown> | undefined)?.user;
+  const picUrl =
+    (user?.profile_pic_url_hd as string | undefined) ??
+    (user?.profile_pic_url as string | undefined) ??
+    fallbackUrl;
+  if (!picUrl) return items;
+  const upgradedUrl = upgradeProfilePicUrl(picUrl);
+  const dims = user?.profile_pic_dimensions as { width?: number; height?: number } | undefined;
+
+  items.push({
+    type: 'image',
+    url: upgradedUrl,
+    width: dims?.width,
+    height: dims?.height,
+    filenameHint: `${username}_profile`,
+  });
+
+  return items;
+}

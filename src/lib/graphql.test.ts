@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchMediaByShortcode, fetchReelsMedia } from './graphql';
+import { fetchMediaByShortcode, fetchReelsMedia, fetchProfileInfo } from './graphql';
 
 global.fetch = vi.fn();
 
@@ -128,6 +128,36 @@ describe('graphql', () => {
       const vars = JSON.parse(varsJson);
       expect(vars.reel_ids).toEqual([]);
       expect(vars.highlight_reel_ids).toEqual([]);
+    });
+  });
+
+  describe('fetchProfileInfo', () => {
+    it('fetches profile info without credentials', async () => {
+      const mockData = { data: { user: { username: 'testuser' } } };
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockData),
+      });
+
+      const result = await fetchProfileInfo('testuser');
+      expect(result).toEqual(mockData);
+
+      const [url, options] = fetch.mock.calls[0];
+      expect(url).toContain('web_profile_info');
+      expect(url).toContain('username=testuser');
+      expect(options.credentials).toBe('omit');
+    });
+
+    it('throws on non-ok response', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+      });
+
+      await expect(fetchProfileInfo('testuser')).rejects.toThrow(
+        'Profile request failed: 404 Not Found'
+      );
     });
   });
 
