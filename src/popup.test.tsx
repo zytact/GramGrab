@@ -29,7 +29,7 @@ describe('Popup', () => {
     await act(async () => {
       render(<Popup />);
     });
-    expect(screen.getByPlaceholderText(/Paste URL or auto-detected/i)).toBeDefined();
+    expect(screen.getByPlaceholderText(/Paste Instagram URL/i)).toBeDefined();
     expect(screen.getByText('Fetch Media')).toBeDefined();
   });
 
@@ -99,7 +99,7 @@ describe('Popup', () => {
     await user.click(fetchButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Found 2 item/)).toBeDefined();
+      expect(screen.getByText(/2 items found — select and download/i)).toBeDefined();
     });
   });
 
@@ -145,7 +145,7 @@ describe('Popup', () => {
     const fetchButton = screen.getByText('Fetch Media');
     await user.click(fetchButton);
 
-    expect(screen.getByText('Fetching...')).toBeDefined();
+    expect(screen.getByText('Fetching…')).toBeDefined();
 
     await act(async () => {
       resolveFetch!({ media: [], error: undefined });
@@ -197,7 +197,7 @@ describe('Popup', () => {
     await user.click(fetchButton);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Select All')).toBeDefined();
+      expect(screen.getByLabelText('Select all')).toBeDefined();
     });
   });
 
@@ -223,14 +223,14 @@ describe('Popup', () => {
     await user.click(fetchButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Download Selected \(2\)/)).toBeDefined();
+      expect(screen.getByText(/Download 2 Selected/)).toBeDefined();
     });
 
-    const selectAllCheckbox = screen.getByLabelText('Select All');
+    const selectAllCheckbox = screen.getByLabelText('Select all');
     await user.click(selectAllCheckbox);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Select All')).toBeDefined();
+      expect(screen.getByLabelText('Select all')).toBeDefined();
     });
   });
 
@@ -256,10 +256,10 @@ describe('Popup', () => {
     await user.click(fetchButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Download Selected \(2\)/)).toBeDefined();
+      expect(screen.getByText(/Download 2 Selected/)).toBeDefined();
     });
 
-    const selectAllCheckbox = screen.getByLabelText('Select All');
+    const selectAllCheckbox = screen.getByLabelText('Select all');
     await user.click(selectAllCheckbox);
 
     await waitFor(() => {

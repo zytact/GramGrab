@@ -25,9 +25,10 @@ type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 export default function Popup() {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<Status>('idle');
-  const [message, setMessage] = useState('Ready.');
+  const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [previewLoading, setPreviewLoading] = useState<Set<number>>(new Set());
+  const [autoDetected, setAutoDetected] = useState(false);
 
   useEffect(() => {
     browser.tabs
@@ -37,7 +38,8 @@ export default function Popup() {
         const currentUrl = active?.url ?? '';
         if (currentUrl.includes('instagram.com')) {
           setUrl(currentUrl);
-          setMessage('Instagram URL detected. Click Fetch Media.');
+          setAutoDetected(true);
+          setMessage('Instagram URL detected — ready to fetch.');
         }
       })
       .catch(() => {});
@@ -51,7 +53,7 @@ export default function Popup() {
     }
 
     setStatus('fetching');
-    setMessage('Fetching media...');
+    setMessage('Fetching media…');
 
     try {
       const res = (await browser.runtime.sendMessage({
@@ -77,7 +79,7 @@ export default function Popup() {
       setStatus(items.length > 0 ? 'done' : 'error');
       setMessage(
         items.length > 0
-          ? `Found ${items.length} item(s). Select and download.`
+          ? `${items.length} item${items.length !== 1 ? 's' : ''} found — select and download.`
           : 'No downloadable media found.'
       );
     } catch (err) {
@@ -95,7 +97,7 @@ export default function Popup() {
     }
 
     setStatus('downloading');
-    setMessage(`Downloading ${selected.length} item(s)...`);
+    setMessage(`Downloading ${selected.length} item${selected.length !== 1 ? 's' : ''}…`);
 
     try {
       const res = (await browser.runtime.sendMessage({
@@ -111,7 +113,9 @@ export default function Popup() {
         return;
       }
 
-      setMessage(`Downloaded ${selected.length} item(s).`);
+      setMessage(
+        `Downloaded ${selected.length} item${selected.length !== 1 ? 's' : ''} successfully.`
+      );
       setStatus('done');
     } catch (err) {
       setMessage(String(err));
@@ -164,59 +168,119 @@ export default function Popup() {
     setMediaItems(prev => prev.map(item => ({ ...item, selected: newSelected })));
   }, [allSelected]);
 
+  const isBusy = status === 'fetching' || status === 'downloading';
+
   return (
     <div className="container">
-      <header>Instaext</header>
-      <p className="hint">Instagram post, reel, story, highlight, or profile URL</p>
-      <div className="input-group">
-        <input
-          type="url"
-          placeholder="Paste URL or auto-detected from tab"
-          value={url}
-          onChange={e => setUrl(e.target.value)}
-        />
+      {/* ── Header ── */}
+      <header className="ext-header">
+        <div className="ext-logo">
+          Insta<em>ext</em>
+        </div>
+        <div className="ext-meta">
+          <span className="ext-version">v2.0</span>
+          <span className="ext-subtitle">Media Extractor</span>
+        </div>
+      </header>
+
+      <div className="ext-body">
+        {/* ── URL Input Section ── */}
+        <div className="ext-section">
+          <div className="field-label">Source URL</div>
+          <input
+            className={`url-input${autoDetected ? ' detected' : ''}`}
+            type="url"
+            placeholder="Paste Instagram URL…"
+            value={url}
+            onChange={e => {
+              setUrl(e.target.value);
+              setAutoDetected(false);
+            }}
+            onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
+          />
+        </div>
+
+        {/* ── Fetch Button ── */}
+        <div className="ext-section">
+          <button className="btn" onClick={handleFetch} disabled={isBusy}>
+            {status === 'fetching' ? (
+              <>
+                <span className="btn-spinner" />
+                Fetching…
+              </>
+            ) : (
+              <>
+                <span className="btn-icon">⬇</span>
+                Fetch Media
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* ── Media List Section ── */}
+        <div className="ext-section" style={{ flex: 1 }}>
+          {mediaItems.length > 0 && (
+            <div className="media-header">
+              <span className="media-count-label">
+                <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
+              </span>
+              <label className="select-all-label">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                Select all
+              </label>
+            </div>
+          )}
+
+          <div className="media-list">
+            {mediaItems.length === 0 ? (
+              <p className="media-empty">No media yet.</p>
+            ) : (
+              mediaItems.map(item => (
+                <MediaItemRow
+                  key={item.index}
+                  item={item}
+                  loading={previewLoading.has(item.index)}
+                  onToggle={() => toggleItem(item.index)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* ── Download Button ── */}
+        <div className="ext-section">
+          <button className="btn" onClick={handleDownload} disabled={selectedCount === 0 || isBusy}>
+            {status === 'downloading' ? (
+              <>
+                <span className="btn-spinner" />
+                Downloading…
+              </>
+            ) : (
+              <>
+                <span className="btn-icon">↓</span>
+                {selectedCount > 0 ? `Download ${selectedCount} Selected` : 'Download Selected'}
+              </>
+            )}
+          </button>
+        </div>
       </div>
-      <div className="row">
-        <button onClick={handleFetch} disabled={status === 'fetching' || status === 'downloading'}>
-          {status === 'fetching' ? 'Fetching...' : 'Fetch Media'}
-        </button>
+
+      {/* ── Status Bar ── */}
+      <div className="status-bar">
+        <span className={`status-dot ${status}`} />
+        <span className={`status-text ${status}`}>{message}</span>
       </div>
-      {mediaItems.length > 0 && (
-        <label className="select-all">
-          <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-          Select All
-        </label>
-      )}
-      <div className="media-list">
-        {mediaItems.length === 0 ? (
-          <p className="hint">No media found.</p>
-        ) : (
-          mediaItems.map(item => (
-            <MediaItemComponent
-              key={item.index}
-              item={item}
-              loading={previewLoading.has(item.index)}
-              onToggle={() => toggleItem(item.index)}
-            />
-          ))
-        )}
-      </div>
-      <div className="row">
-        <button
-          onClick={handleDownload}
-          disabled={selectedCount === 0 || status === 'fetching' || status === 'downloading'}
-        >
-          {selectedCount > 0 ? `Download Selected (${selectedCount})` : 'Download Selected'}
-        </button>
-      </div>
-      <p className={`msg ${status === 'error' ? 'error' : status === 'done' ? 'success' : 'info'}`}>
-        {message}
-      </p>
+
+      {/* ── Footer ── */}
+      <footer className="ext-footer">
+        <span className="footer-brand">Instaext</span>
+        <span className="footer-tagline">Posts · Reels · Stories</span>
+      </footer>
     </div>
   );
 }
 
-function MediaItemComponent({
+function MediaItemRow({
   item,
   loading,
   onToggle,
@@ -225,30 +289,43 @@ function MediaItemComponent({
   loading: boolean;
   onToggle: () => void;
 }) {
+  const num = String(item.index + 1).padStart(2, '0');
+
   return (
-    <label className="media-item">
-      <input type="checkbox" checked={item.selected} onChange={onToggle} />
-      <div className="media-preview">
+    <label className={`media-item${item.selected ? ' selected' : ''}`}>
+      <span className="item-number">{num}</span>
+
+      <div className="media-thumb">
         {item.type === 'video' ? (
           <>
             <video src={item.url} muted playsInline />
-            <div className="play-icon">▶</div>
+            <div className="play-overlay">
+              <div className="play-triangle" />
+            </div>
           </>
         ) : item.previewUrl ? (
           <img src={item.previewUrl} alt="Preview" />
         ) : loading ? (
-          <span className="preview-loading">Loading...</span>
+          <span className="thumb-loading">···</span>
         ) : (
-          <div className="preview-placeholder">
-            <span className="preview-icon">📷</span>
-            <span className="preview-text">Loading preview...</span>
+          <div className="thumb-placeholder">
+            <span className="thumb-icon">◻</span>
           </div>
         )}
       </div>
-      <div className="media-info">
-        <span className="media-type">{item.type}</span>
-        <span className="media-hint">{item.filenameHint}</span>
+
+      <div className="item-info">
+        <span className={`item-type-badge ${item.type}`}>{item.type}</span>
+        <span className="item-filename">{item.filenameHint}</span>
       </div>
+
+      <input
+        className="item-checkbox"
+        type="checkbox"
+        checked={item.selected}
+        onChange={onToggle}
+        onClick={e => e.stopPropagation()}
+      />
     </label>
   );
 }
