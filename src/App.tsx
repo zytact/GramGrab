@@ -72,7 +72,6 @@ export default function App({ initialUrl = '' }: AppProps) {
             Insta
             <em style={{ fontStyle: 'italic', color: 'var(--brand)', fontWeight: 400 }}>ext</em>
           </div>
-          <span className="badge">v2.0</span>
         </header>
 
         <div className="content">
