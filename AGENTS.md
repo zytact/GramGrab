@@ -18,6 +18,7 @@ bun run test          # single run
 bun run test:watch   # watch mode
 
 # Lint & Format
+bun run typecheck
 bun run lint         # eslint
 bun run lint:fix     # eslint --fix
 bun run format      # prettier --write

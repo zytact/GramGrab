@@ -114,6 +114,7 @@ bun run test
 bun run test:watch
 
 # Lint & format
+bun run typecheck
 bun run lint
 bun run lint:fix
 bun run format
