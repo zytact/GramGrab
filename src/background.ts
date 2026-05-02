@@ -74,7 +74,7 @@ function parseInstagramUrl(url: string): ParsedUrl | null {
         'accounts',
         'tv',
       ]);
-      if (!reserved.has(username)) {
+      if (username && !reserved.has(username)) {
         return { type: 'profile', username };
       }
     }
@@ -111,7 +111,7 @@ async function graphqlFetch(
     headers: { ...IG_HEADERS, Origin: 'https://www.instagram.com' },
   });
   if (!res.ok) throw new Error(`GraphQL failed: ${res.status}`);
-  return res.json();
+  return (await res.json()) as Record<string, unknown>;
 }
 
 function pickBestVideoResource(resources: { src: string; config_width?: number }[]): string | null {
@@ -199,7 +199,9 @@ function normalizeProfilePicture(data: unknown, username: string, hdUrl?: string
   const root = unwrapData(data);
   const user =
     (root.user as Record<string, unknown> | undefined) ??
-    (root.data as Record<string, unknown> | undefined)?.user;
+    ((root.data as Record<string, unknown> | undefined)?.user as
+      | Record<string, unknown>
+      | undefined);
   // Prefer the full-res HD URL from the /users/{id}/info/ endpoint when available,
   // then fall back to profile_pic_url_hd (320x320) from web_profile_info.
   const picUrl =
@@ -207,7 +209,8 @@ function normalizeProfilePicture(data: unknown, username: string, hdUrl?: string
     (user?.profile_pic_url_hd as string | undefined) ??
     (user?.profile_pic_url as string | undefined);
   if (!picUrl) return items;
-  const dims = user?.profile_pic_dimensions as { width?: number; height?: number } | undefined;
+  const dims =
+    (user?.profile_pic_dimensions as { width?: number; height?: number } | undefined) ?? undefined;
 
   items.push({
     type: 'image',
@@ -537,8 +540,11 @@ async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{ error: stri
     const { urls, hints, types } = msg;
     for (let i = 0; i < urls.length; i++) {
       const ext = types[i] === 'video' ? 'mp4' : 'jpg';
-      const filename = `${hints[i]}_${i + 1}.${ext}`;
-      await browser.downloads.download({ url: urls[i], filename, saveAs: false });
+      const url = urls[i];
+      const hint = hints[i] ?? 'media';
+      if (!url) continue;
+      const filename = `${hint}_${i + 1}.${ext}`;
+      await browser.downloads.download({ url, filename, saveAs: false });
     }
     return { error: undefined };
   } catch (err) {
@@ -685,6 +691,7 @@ async function executeDownload(url: string, carouselIndex?: number): Promise<Med
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
+    if (!item) continue;
     const ext = item.type === 'video' ? 'mp4' : 'jpg';
     const filename = `${item.filenameHint}_${i + 1}.${ext}`;
     await browser.downloads.download({ url: item.url, filename, saveAs: false });

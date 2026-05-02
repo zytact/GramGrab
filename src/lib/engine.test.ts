@@ -23,46 +23,53 @@ describe('buildDownloadTasks', () => {
   it('creates post task from post URL', async () => {
     const tasks = await buildDownloadTasks('https://www.instagram.com/p/abc123/');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].type).toBe('post');
-    expect(tasks[0].shortcode).toBe('abc123');
+    const [task] = tasks;
+    expect(task?.type).toBe('post');
+    expect(task?.shortcode).toBe('abc123');
   });
 
   it('creates reel task from reel URL', async () => {
     const tasks = await buildDownloadTasks('https://www.instagram.com/reel/abc123/');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].type).toBe('reel');
-    expect(tasks[0].shortcode).toBe('abc123');
+    const [task] = tasks;
+    expect(task?.type).toBe('reel');
+    expect(task?.shortcode).toBe('abc123');
   });
 
   it('creates story task from story URL', async () => {
     const tasks = await buildDownloadTasks('https://www.instagram.com/stories/username/');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].type).toBe('story');
-    expect(tasks[0].username).toBe('username');
+    const [task] = tasks;
+    expect(task?.type).toBe('story');
+    expect(task?.username).toBe('username');
   });
 
   it('creates highlight task from highlight URL', async () => {
     const tasks = await buildDownloadTasks('https://www.instagram.com/stories/highlights/abc123/');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].type).toBe('highlight');
-    expect(tasks[0].highlightId).toBe('abc123');
+    const [task] = tasks;
+    expect(task?.type).toBe('highlight');
+    expect(task?.highlightId).toBe('abc123');
   });
 
   it('creates profile task from profile URL', async () => {
     const tasks = await buildDownloadTasks('https://www.instagram.com/username/');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].type).toBe('profile');
-    expect(tasks[0].username).toBe('username');
+    const [task] = tasks;
+    expect(task?.type).toBe('profile');
+    expect(task?.username).toBe('username');
   });
 
   it('extracts carousel index from post URL', async () => {
     const tasks = await buildDownloadTasks('https://www.instagram.com/p/abc123/?img_index=2');
-    expect(tasks[0].carouselIndex).toBe(1);
+    const [task] = tasks;
+    expect(task?.carouselIndex).toBe(1);
   });
 
   it('does not include carousel index when not present', async () => {
     const tasks = await buildDownloadTasks('https://www.instagram.com/p/abc123/');
-    expect(tasks[0].carouselIndex).toBeUndefined();
+    const [task] = tasks;
+    expect(task?.carouselIndex).toBeUndefined();
   });
 });
 
@@ -89,7 +96,7 @@ describe('executeDownloadTasks', () => {
 
     expect(fetchMediaByShortcode).toHaveBeenCalledWith('abc123');
     expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://instagram.com/img.jpg');
+    expect(result[0]?.url).toBe('https://instagram.com/img.jpg');
   });
 
   it('fetches media for reel task', async () => {
@@ -109,7 +116,7 @@ describe('executeDownloadTasks', () => {
 
     expect(fetchMediaByShortcode).toHaveBeenCalledWith('abc123');
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe('video');
+    expect(result[0]?.type).toBe('video');
   });
 
   it('resolves username and fetches for story task', async () => {
@@ -138,7 +145,7 @@ describe('executeDownloadTasks', () => {
     expect(resolveUsernameToId).toHaveBeenCalledWith('testuser');
     expect(fetchReelsMedia).toHaveBeenCalledWith({ reel_ids: ['123456'] });
     expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://instagram.com/img.jpg');
+    expect(result[0]?.url).toBe('https://instagram.com/img.jpg');
   });
 
   it('throws when username resolution fails', async () => {
@@ -175,7 +182,7 @@ describe('executeDownloadTasks', () => {
 
     expect(fetchReelsMedia).toHaveBeenCalledWith({ highlight_reel_ids: ['highlight1'] });
     expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://instagram.com/img.jpg');
+    expect(result[0]?.url).toBe('https://instagram.com/img.jpg');
   });
 
   it('fetches profile picture for profile task', async () => {
@@ -194,8 +201,8 @@ describe('executeDownloadTasks', () => {
 
     expect(fetchProfileInfo).toHaveBeenCalledWith('testuser');
     expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://instagram.com/profile_hd.jpg');
-    expect(result[0].width).toBe(320);
+    expect(result[0]?.url).toBe('https://instagram.com/profile_hd.jpg');
+    expect(result[0]?.width).toBe(320);
   });
 
   it('merges media from multiple tasks', async () => {
@@ -228,7 +235,7 @@ describe('executeDownloadTasks', () => {
     const result = await executeDownloadTasks(tasks);
 
     expect(result).toHaveLength(2);
-    expect(result[0].url).toBe('https://instagram.com/img1.jpg');
-    expect(result[1].url).toBe('https://instagram.com/vid.mp4');
+    expect(result[0]?.url).toBe('https://instagram.com/img1.jpg');
+    expect(result[1]?.url).toBe('https://instagram.com/vid.mp4');
   });
 });

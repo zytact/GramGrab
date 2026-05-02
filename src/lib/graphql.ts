@@ -33,7 +33,7 @@ export async function fetchProfileInfo(username: string): Promise<Record<string,
     throw new Error(`Profile request failed: ${res.status} ${res.statusText}`);
   }
 
-  return res.json();
+  return (await res.json()) as Record<string, unknown>;
 }
 
 async function fetchGraphQL(
