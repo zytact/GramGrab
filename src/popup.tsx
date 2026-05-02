@@ -179,7 +179,6 @@ export default function Popup() {
           Insta<em>ext</em>
         </div>
         <div className="ext-meta">
-          <span className="ext-version">v2.0</span>
           <span className="ext-subtitle">Media Extractor</span>
         </div>
       </header>
