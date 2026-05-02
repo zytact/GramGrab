@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { parseInstagramUrl } from './lib/router';
 import type { ParsedUrl } from './lib/router';
+import { browser } from './lib/browser';
 
 type Status = 'idle' | 'resolving' | 'fetching' | 'downloading' | 'done' | 'error';
 
@@ -38,13 +39,11 @@ export default function App({ initialUrl = '' }: AppProps) {
       setDebug(_d => `[TRACK] ${msg}`);
       setStatus('fetching');
 
-      // Assuming browser is available globally in extension context
-      // @ts-expect-error browser type missing
-      const task = await browser.runtime.sendMessage({
+      const task = (await browser.runtime.sendMessage({
         type: 'DOWNLOAD',
         url: url.trim() || initialUrl,
         carouselIndex: parsed.carouselIndex,
-      });
+      })) as { error?: string; media?: unknown[] };
 
       if (task.error) {
         setMessage(task.error);

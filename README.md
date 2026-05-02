@@ -35,33 +35,39 @@
 ### Option A — Load the pre-built extension (recommended)
 
 1. Clone or download this repository.
-2. Run the build once to generate the `extension/` directory:
+2. Run the build to generate browser-specific output directories:
    ```bash
    bun install
-   bun run build
+   bun run build           # builds both targets
+   # or build individually:
+   bun run build:chromium  # → extension/chromium/
+   bun run build:firefox   # → extension/firefox/
    ```
 3. Load the extension into your browser:
 
    **Chrome / Edge / Brave**
    - Navigate to `chrome://extensions`
    - Enable **Developer mode** (toggle, top-right)
-   - Click **Load unpacked** and select the `extension/` folder
+   - Click **Load unpacked** and select the **`extension/chromium/`** folder
 
    **Firefox**
    - Navigate to `about:debugging#/runtime/this-firefox`
    - Click **Load Temporary Add-on…**
-   - Select any file inside the `extension/` folder (e.g. `manifest.json`)
+   - Select any file inside the **`extension/firefox/`** folder (e.g. `manifest.json`)
 
 4. The Instaext icon will appear in your browser toolbar.
+
+> **Why separate folders?** Chromium MV3 requires a `service_worker` background entry; Firefox MV3 uses `scripts`. The two builds share the same TypeScript source but get different generated `manifest.json` files.
 
 ### Option B — Development mode (live rebuild)
 
 ```bash
 bun install
-bun run dev   # rebuilds on every source change
+bun run dev            # live-rebuilds the Chromium target (extension/chromium/)
+bun run dev:firefox    # live-rebuilds the Firefox target (extension/firefox/)
 ```
 
-Then load the `extension/` folder as an unpacked extension (same steps as above). Reload the extension after each rebuild.
+Then load the matching `extension/chromium/` or `extension/firefox/` folder as an unpacked extension (same steps as above). Reload the extension in the browser after each rebuild.
 
 ---
 
@@ -93,11 +99,15 @@ Then load the `extension/` folder as an unpacked extension (same steps as above)
 # Install dependencies
 bun install
 
-# Production build → extension/
-bun run build
+# Production builds
+bun run build           # builds both targets
+bun run build:chromium  # → extension/chromium/
+bun run build:firefox   # → extension/firefox/
 
 # Watch mode (rebuilds on save)
-bun run dev
+bun run dev             # Chromium watch (extension/chromium/)
+bun run dev:chromium    # same as above
+bun run dev:firefox     # Firefox watch (extension/firefox/)
 
 # Run tests
 bun run test
@@ -110,7 +120,7 @@ bun run format
 bun run format:check
 ```
 
-The Vite build root is `templates/` and outputs to `extension/`. A post-build script copies `manifest.json`, icons, and generates any runtime config files automatically.
+The Vite build root is `templates/`; `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates a browser-specific `manifest.json` and copies icons into the output directory.
 
 ---
 
