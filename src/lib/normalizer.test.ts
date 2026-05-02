@@ -30,9 +30,9 @@ describe('normalizeShortcodeMedia', () => {
       };
       const result = normalizeShortcodeMedia(data);
       expect(result).toHaveLength(1);
-      expect(result[0].type).toBe('image');
-      expect(result[0].url).toBe('https://instagram.com/image1.jpg');
-      expect(result[0].filenameHint).toBe('abc123_GraphImage');
+      expect(result[0]?.type).toBe('image');
+      expect(result[0]?.url).toBe('https://instagram.com/image1.jpg');
+      expect(result[0]?.filenameHint).toBe('abc123_GraphImage');
     });
 
     it('uses uri as fallback for display_url', () => {
@@ -47,7 +47,7 @@ describe('normalizeShortcodeMedia', () => {
       };
       const result = normalizeShortcodeMedia(data);
       expect(result).toHaveLength(1);
-      expect(result[0].url).toBe('https://instagram.com/image1.jpg');
+      expect(result[0]?.url).toBe('https://instagram.com/image1.jpg');
     });
   });
 
@@ -64,8 +64,8 @@ describe('normalizeShortcodeMedia', () => {
       };
       const result = normalizeShortcodeMedia(data);
       expect(result).toHaveLength(1);
-      expect(result[0].type).toBe('video');
-      expect(result[0].url).toBe('https://instagram.com/video1.mp4');
+      expect(result[0]?.type).toBe('video');
+      expect(result[0]?.url).toBe('https://instagram.com/video1.mp4');
     });
 
     it('selects highest quality from video_resources', () => {
@@ -84,8 +84,8 @@ describe('normalizeShortcodeMedia', () => {
       };
       const result = normalizeShortcodeMedia(data);
       expect(result).toHaveLength(1);
-      expect(result[0].type).toBe('video');
-      expect(result[0].url).toBe('https://instagram.com/video1080.mp4');
+      expect(result[0]?.type).toBe('video');
+      expect(result[0]?.url).toBe('https://instagram.com/video1080.mp4');
     });
 
     it('prefers video_resources over video_url', () => {
@@ -100,7 +100,7 @@ describe('normalizeShortcodeMedia', () => {
         },
       };
       const result = normalizeShortcodeMedia(data);
-      expect(result[0].url).toBe('https://instagram.com/video_high.mp4');
+      expect(result[0]?.url).toBe('https://instagram.com/video_high.mp4');
     });
   });
 
@@ -122,8 +122,8 @@ describe('normalizeShortcodeMedia', () => {
       };
       const result = normalizeShortcodeMedia(data);
       expect(result).toHaveLength(2);
-      expect(result[0].type).toBe('image');
-      expect(result[1].type).toBe('image');
+      expect(result[0]?.type).toBe('image');
+      expect(result[1]?.type).toBe('image');
     });
 
     it('handles mixed video and image children', () => {
@@ -143,8 +143,8 @@ describe('normalizeShortcodeMedia', () => {
       };
       const result = normalizeShortcodeMedia(data);
       expect(result).toHaveLength(2);
-      expect(result[0].type).toBe('image');
-      expect(result[1].type).toBe('video');
+      expect(result[0]?.type).toBe('image');
+      expect(result[1]?.type).toBe('video');
     });
 
     it('uses display_resources for child images', () => {
@@ -171,7 +171,7 @@ describe('normalizeShortcodeMedia', () => {
       };
       const result = normalizeShortcodeMedia(data);
       expect(result).toHaveLength(1);
-      expect(result[0].url).toBe('https://instagram.com/img_large.jpg');
+      expect(result[0]?.url).toBe('https://instagram.com/img_large.jpg');
     });
   });
 
@@ -187,7 +187,7 @@ describe('normalizeShortcodeMedia', () => {
       },
     };
     const result = normalizeShortcodeMedia(data);
-    expect(result[0].takenAt).toBe(1700000000);
+    expect(result[0]?.takenAt).toBe(1700000000);
   });
 
   it('extracts dimensions when present', () => {
@@ -202,8 +202,8 @@ describe('normalizeShortcodeMedia', () => {
       },
     };
     const result = normalizeShortcodeMedia(data);
-    expect(result[0].width).toBe(1080);
-    expect(result[0].height).toBe(1350);
+    expect(result[0]?.width).toBe(1080);
+    expect(result[0]?.height).toBe(1350);
   });
 
   it('falls back to shortcode_media path', () => {
@@ -218,7 +218,7 @@ describe('normalizeShortcodeMedia', () => {
     };
     const result = normalizeShortcodeMedia(data);
     expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://instagram.com/image.jpg');
+    expect(result[0]?.url).toBe('https://instagram.com/image.jpg');
   });
 
   it('handles data without data wrapper', () => {
@@ -265,10 +265,10 @@ describe('normalizeReelsMedia', () => {
     };
     const result = normalizeReelsMedia(data);
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe('image');
-    expect(result[0].url).toBe('https://instagram.com/img1.jpg');
-    expect(result[0].filenameHint).toBe('reel123_item1');
-    expect(result[0].takenAt).toBe(1700000000);
+    expect(result[0]?.type).toBe('image');
+    expect(result[0]?.url).toBe('https://instagram.com/img1.jpg');
+    expect(result[0]?.filenameHint).toBe('reel123_item1');
+    expect(result[0]?.takenAt).toBe(1700000000);
   });
 
   it('extracts video items from reels_media', () => {
@@ -290,8 +290,8 @@ describe('normalizeReelsMedia', () => {
     };
     const result = normalizeReelsMedia(data);
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe('video');
-    expect(result[0].url).toBe('https://instagram.com/video1.mp4');
+    expect(result[0]?.type).toBe('video');
+    expect(result[0]?.url).toBe('https://instagram.com/video1.mp4');
   });
 
   it('selects highest quality from video_resources', () => {
@@ -315,7 +315,7 @@ describe('normalizeReelsMedia', () => {
       },
     };
     const result = normalizeReelsMedia(data);
-    expect(result[0].url).toBe('https://instagram.com/vid1080.mp4');
+    expect(result[0]?.url).toBe('https://instagram.com/vid1080.mp4');
   });
 
   it('extracts dimensions from items', () => {
@@ -337,8 +337,8 @@ describe('normalizeReelsMedia', () => {
       },
     };
     const result = normalizeReelsMedia(data);
-    expect(result[0].width).toBe(1080);
-    expect(result[0].height).toBe(1920);
+    expect(result[0]?.width).toBe(1080);
+    expect(result[0]?.height).toBe(1920);
   });
 
   it('handles multiple reels and items', () => {
@@ -384,7 +384,7 @@ describe('normalizeReelsMedia', () => {
       },
     };
     const result = normalizeReelsMedia(data);
-    expect(result[0].url).toBe('https://instagram.com/img1.jpg');
+    expect(result[0]?.url).toBe('https://instagram.com/img1.jpg');
   });
 
   it('handles data without data wrapper', () => {
@@ -441,9 +441,9 @@ describe('normalizeProfilePicture', () => {
     };
     const result = normalizeProfilePicture(data, 'testuser');
     expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://instagram.com/s1080x1080/profile_hd.jpg');
-    expect(result[0].width).toBe(320);
-    expect(result[0].filenameHint).toBe('testuser_profile');
+    expect(result[0]?.url).toBe('https://instagram.com/s1080x1080/profile_hd.jpg');
+    expect(result[0]?.width).toBe(320);
+    expect(result[0]?.filenameHint).toBe('testuser_profile');
   });
 
   it('falls back to profile_pic_url', () => {
@@ -456,7 +456,7 @@ describe('normalizeProfilePicture', () => {
     };
     const result = normalizeProfilePicture(data, 'testuser');
     expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://instagram.com/s1080x1080/profile.jpg');
+    expect(result[0]?.url).toBe('https://instagram.com/s1080x1080/profile.jpg');
   });
 
   it('falls back to provided fallbackUrl', () => {
@@ -466,7 +466,7 @@ describe('normalizeProfilePicture', () => {
       'https://instagram.com/s150x150/fallback.jpg'
     );
     expect(result).toHaveLength(1);
-    expect(result[0].url).toBe('https://instagram.com/s1080x1080/fallback.jpg');
+    expect(result[0]?.url).toBe('https://instagram.com/s1080x1080/fallback.jpg');
   });
 
   it('returns empty array when no url available', () => {

@@ -171,6 +171,6 @@ function getActiveBrowser(): BrowserShim {
 
 export const browser: BrowserShim = new Proxy({} as BrowserShim, {
   get(_target, prop: string) {
-    return (getActiveBrowser() as Record<string, unknown>)[prop];
+    return (getActiveBrowser() as unknown as Record<string, unknown>)[prop];
   },
 });

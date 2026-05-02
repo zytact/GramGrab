@@ -8,7 +8,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-type G = Record<string, unknown>;
 type Listener = (
   msg: unknown,
   sender: unknown,
@@ -59,18 +58,18 @@ function invoke(listener: Listener, msg: unknown): Promise<unknown> {
 // ---------------------------------------------------------------------------
 
 describe('background dispatcher', () => {
-  let savedBrowser: unknown;
+  let savedBrowser: typeof globalThis.browser;
   let savedFetch: typeof globalThis.fetch;
   let fakeBrowserObj: ReturnType<typeof makeFakeBrowser>;
 
   beforeEach(() => {
-    savedBrowser = (globalThis as G)['browser'];
+    savedBrowser = globalThis.browser;
     savedFetch = globalThis.fetch;
     vi.resetModules();
 
     fakeBrowserObj = makeFakeBrowser();
-    (globalThis as G)['browser'] = fakeBrowserObj.fakeBrowser;
-    (globalThis as G)['chrome'] = undefined;
+    globalThis.browser = fakeBrowserObj.fakeBrowser;
+    globalThis.chrome = undefined;
 
     // Provide a default no-op fetch so graphqlFetch doesn't throw on tests
     // that don't mock fetch themselves (e.g. tests that expect parse errors).
@@ -78,11 +77,11 @@ describe('background dispatcher', () => {
       ok: true,
       json: async () => ({}),
       blob: async () => new Blob([], { type: 'application/octet-stream' }),
-    });
+    }) as unknown as typeof fetch;
   });
 
   afterEach(() => {
-    (globalThis as G)['browser'] = savedBrowser;
+    globalThis.browser = savedBrowser;
     globalThis.fetch = savedFetch;
     vi.resetModules();
   });
@@ -103,7 +102,7 @@ describe('background dispatcher', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: {} }),
-    });
+    }) as unknown as typeof fetch;
     const listener = await loadBackground();
     const sendResponse = vi.fn();
 
@@ -136,7 +135,9 @@ describe('background dispatcher', () => {
     });
 
     it('returns { error } when fetch fails', async () => {
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'));
+      globalThis.fetch = vi
+        .fn()
+        .mockRejectedValue(new Error('network error')) as unknown as typeof fetch;
       const listener = await loadBackground();
       const result = await invoke(listener, {
         type: 'FETCH_MEDIA',
@@ -159,7 +160,7 @@ describe('background dispatcher', () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => mockMedia,
-      });
+      }) as unknown as typeof fetch;
       const listener = await loadBackground();
       const result = (await invoke(listener, {
         type: 'FETCH_MEDIA',
@@ -180,7 +181,7 @@ describe('background dispatcher', () => {
         ok: false,
         status: 403,
         blob: async () => new Blob(),
-      });
+      }) as unknown as typeof fetch;
       const listener = await loadBackground();
       const result = await invoke(listener, {
         type: 'GET_PREVIEW_URL',
@@ -195,7 +196,7 @@ describe('background dispatcher', () => {
         ok: true,
         status: 200,
         blob: async () => fakeBlob,
-      });
+      }) as unknown as typeof fetch;
       const listener = await loadBackground();
       const result = (await invoke(listener, {
         type: 'GET_PREVIEW_URL',
@@ -209,14 +210,14 @@ describe('background dispatcher', () => {
     it('does not use FileReader (service-worker-safe)', async () => {
       // FileReader should never be called in the GET_PREVIEW_URL handler
       const FileReaderSpy = vi.fn();
-      (globalThis as G)['FileReader'] = FileReaderSpy;
+      globalThis.FileReader = FileReaderSpy as unknown as typeof FileReader;
 
       const fakeBlob = new Blob(['data'], { type: 'image/jpeg' });
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
         blob: async () => fakeBlob,
-      });
+      }) as unknown as typeof fetch;
       const listener = await loadBackground();
       await invoke(listener, {
         type: 'GET_PREVIEW_URL',
@@ -308,7 +309,7 @@ describe('background dispatcher', () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => mockRaw,
-      });
+      }) as unknown as typeof fetch;
       const listener = await loadBackground();
       const result = await invoke(listener, {
         type: 'DEBUG_SHAPE',
