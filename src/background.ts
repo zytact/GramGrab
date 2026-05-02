@@ -1,3 +1,6 @@
+import { browser } from './lib/browser';
+import { blobToDataUrl, jsonToDataUrl } from './lib/data-url';
+
 const OPERATIONS = {
   MEDIA_BY_SHORTCODE: {
     doc_id: '8845758582119845',
@@ -427,27 +430,34 @@ function normalizeReelsMedia(data: unknown): MediaItem[] {
   return items;
 }
 
+// ---------------------------------------------------------------------------
+// Handler functions — each returns a structured response value
+// ---------------------------------------------------------------------------
+
 interface DownloadMsg {
   type: 'DOWNLOAD';
   url: string;
   carouselIndex?: number;
 }
 
-browser.runtime.onMessage.addListener((msg: DownloadMsg) => {
-  if (msg.type !== 'DOWNLOAD') return;
+async function handleDownload(
+  msg: DownloadMsg
+): Promise<{ media: MediaItem[] | undefined; error: string | undefined }> {
   return executeDownload(msg.url, msg.carouselIndex)
     .then(media => ({ media, error: undefined }))
     .catch(err => ({ media: undefined, error: String(err) }));
-});
+}
 
 interface FetchMediaMsg {
   type: 'FETCH_MEDIA';
   url: string;
 }
 
-browser.runtime.onMessage.addListener((msg: FetchMediaMsg) => {
-  if (msg.type !== 'FETCH_MEDIA') return;
-  return (async () => {
+async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
+  media: { url: string; type: string; filenameHint: string }[] | undefined;
+  error: string | undefined;
+}> {
+  try {
     const parsed = parseInstagramUrl(msg.url);
     if (!parsed) throw new Error('Unsupported Instagram URL');
 
@@ -487,36 +497,33 @@ browser.runtime.onMessage.addListener((msg: FetchMediaMsg) => {
     }));
 
     return { media, error: undefined };
-  })().catch(err => ({ media: undefined, error: String(err) }));
-});
+  } catch (err) {
+    return { media: undefined, error: String(err) };
+  }
+}
 
 interface GetPreviewUrlMsg {
   type: 'GET_PREVIEW_URL';
   url: string;
 }
 
-browser.runtime.onMessage.addListener((msg: GetPreviewUrlMsg) => {
-  if (msg.type !== 'GET_PREVIEW_URL') return;
-  return (async () => {
-    try {
-      const res = await fetch(msg.url, { credentials: 'omit' });
-      if (!res.ok) {
-        return { previewUrl: undefined, error: `HTTP ${res.status}` };
-      }
-      const blob = await res.blob();
-      const previewUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-      return { previewUrl, error: undefined };
-    } catch (err) {
-      console.error('[PREVIEW] Error:', err);
-      return { previewUrl: undefined, error: String(err) };
+async function handleGetPreviewUrl(
+  msg: GetPreviewUrlMsg
+): Promise<{ previewUrl: string | undefined; error: string | undefined }> {
+  try {
+    const res = await fetch(msg.url, { credentials: 'omit' });
+    if (!res.ok) {
+      return { previewUrl: undefined, error: `HTTP ${res.status}` };
     }
-  })().catch(err => ({ previewUrl: undefined, error: String(err) }));
-});
+    const blob = await res.blob();
+    // Use blobToDataUrl — safe in both service workers and document scripts
+    const previewUrl = await blobToDataUrl(blob);
+    return { previewUrl, error: undefined };
+  } catch (err) {
+    console.error('[PREVIEW] Error:', err);
+    return { previewUrl: undefined, error: String(err) };
+  }
+}
 
 interface DownloadMediaMsg {
   type: 'DOWNLOAD_MEDIA';
@@ -525,9 +532,8 @@ interface DownloadMediaMsg {
   types: string[];
 }
 
-browser.runtime.onMessage.addListener((msg: DownloadMediaMsg) => {
-  if (msg.type !== 'DOWNLOAD_MEDIA') return;
-  return (async () => {
+async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{ error: string | undefined }> {
+  try {
     const { urls, hints, types } = msg;
     for (let i = 0; i < urls.length; i++) {
       const ext = types[i] === 'video' ? 'mp4' : 'jpg';
@@ -535,47 +541,104 @@ browser.runtime.onMessage.addListener((msg: DownloadMediaMsg) => {
       await browser.downloads.download({ url: urls[i], filename, saveAs: false });
     }
     return { error: undefined };
-  })().catch(err => ({ error: String(err) }));
-});
+  } catch (err) {
+    return { error: String(err) };
+  }
+}
 
-// Temporary debug hook to inspect the raw GraphQL response shape from the popup.
-browser.runtime.onMessage.addListener((msg: { type?: string; url?: string }) => {
-  if (msg.type !== 'DEBUG_SHAPE') return;
-  return (async () => {
-    const parsed = parseInstagramUrl(msg.url ?? '');
-    if (!parsed || (parsed.type !== 'post' && parsed.type !== 'reel')) {
-      return { error: 'Use a post or reel URL for debug' };
-    }
+interface DebugShapeMsg {
+  type: 'DEBUG_SHAPE';
+  url?: string;
+}
+
+async function handleDebugShape(msg: DebugShapeMsg): Promise<{ raw?: unknown; error?: string }> {
+  const parsed = parseInstagramUrl(msg.url ?? '');
+  if (!parsed || (parsed.type !== 'post' && parsed.type !== 'reel')) {
+    return { error: 'Use a post or reel URL for debug' };
+  }
+  try {
     const raw = await graphqlFetch(OPERATIONS.MEDIA_BY_SHORTCODE.doc_id, 'doc_id', {
       shortcode: parsed.shortcode!,
     });
     return { raw };
-  })().catch(err => ({ error: String(err) }));
+  } catch (err) {
+    return { error: String(err) };
+  }
+}
+
+interface DownloadDebugJsonMsg {
+  type: 'DOWNLOAD_DEBUG_JSON';
+  json?: unknown;
+}
+
+async function handleDownloadDebugJson(
+  msg: DownloadDebugJsonMsg
+): Promise<{ error: string | undefined }> {
+  if (!msg.json) {
+    return { error: 'No debug JSON available' };
+  }
+  try {
+    // Use jsonToDataUrl — avoids URL.createObjectURL which is unavailable in
+    // Chromium MV3 service workers.
+    const url = jsonToDataUrl(msg.json);
+    await browser.downloads.download({
+      url,
+      filename: `instaext-debug-${Date.now()}.json`,
+      saveAs: true,
+    });
+    return { error: undefined };
+  } catch (err) {
+    return { error: String(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Single message dispatcher
+//
+// All listeners are registered synchronously at module top-level so they are
+// available immediately when the service worker starts.
+//
+// We use `sendResponse` + `return true` instead of returning a Promise from
+// the listener. This is the cross-browser-safe pattern: Chrome's MV3 docs
+// still recommend it, and Firefox supports it alongside promise-return style.
+// ---------------------------------------------------------------------------
+
+browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  const m = msg as { type?: string };
+
+  switch (m.type) {
+    case 'DOWNLOAD':
+      handleDownload(msg as DownloadMsg).then(sendResponse);
+      return true;
+
+    case 'FETCH_MEDIA':
+      handleFetchMedia(msg as FetchMediaMsg).then(sendResponse);
+      return true;
+
+    case 'GET_PREVIEW_URL':
+      handleGetPreviewUrl(msg as GetPreviewUrlMsg).then(sendResponse);
+      return true;
+
+    case 'DOWNLOAD_MEDIA':
+      handleDownloadMedia(msg as DownloadMediaMsg).then(sendResponse);
+      return true;
+
+    case 'DEBUG_SHAPE':
+      handleDebugShape(msg as DebugShapeMsg).then(sendResponse);
+      return true;
+
+    case 'DOWNLOAD_DEBUG_JSON':
+      handleDownloadDebugJson(msg as DownloadDebugJsonMsg).then(sendResponse);
+      return true;
+
+    default:
+      return false;
+  }
 });
 
-// Debug JSON download handler (popup can't use browser.downloads)
-browser.runtime.onMessage.addListener((msg: { type?: string; json?: unknown }) => {
-  if (msg.type !== 'DOWNLOAD_DEBUG_JSON') return;
-  return (async () => {
-    if (!msg.json) {
-      return { error: 'No debug JSON available' };
-    }
-    const blob = new Blob([JSON.stringify(msg.json, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    try {
-      await browser.downloads.download({
-        url,
-        filename: `instaext-debug-${Date.now()}.json`,
-        saveAs: true,
-      });
-      return { error: undefined };
-    } catch (err) {
-      return { error: String(err) };
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
-  })();
-});
+// ---------------------------------------------------------------------------
+// executeDownload — used by the DOWNLOAD handler
+// ---------------------------------------------------------------------------
 
 async function executeDownload(url: string, carouselIndex?: number): Promise<MediaItem[]> {
   const parsed = parseInstagramUrl(url);

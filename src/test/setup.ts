@@ -1,5 +1,33 @@
 import { vi } from 'vitest';
 
+// ---------------------------------------------------------------------------
+// Blob.prototype.arrayBuffer polyfill
+//
+// jsdom does not implement Blob.prototype.arrayBuffer. We polyfill it here
+// using a captured reference to the *original* FileReader so that tests which
+// spy on globalThis.FileReader do NOT see the polyfill's internal usage.
+// ---------------------------------------------------------------------------
+interface BlobWithArrayBuffer extends Blob {
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+const _OriginalFileReader = typeof FileReader !== 'undefined' ? FileReader : null;
+if (
+  typeof Blob !== 'undefined' &&
+  typeof (Blob.prototype as BlobWithArrayBuffer).arrayBuffer !== 'function' &&
+  _OriginalFileReader !== null
+) {
+  (Blob.prototype as BlobWithArrayBuffer).arrayBuffer = function (
+    this: Blob
+  ): Promise<ArrayBuffer> {
+    return new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new _OriginalFileReader!();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(this);
+    });
+  };
+}
+
 const mockTabs = [
   { id: 1, url: 'https://www.instagram.com/p/abc123/', active: true, currentWindow: true },
 ];
