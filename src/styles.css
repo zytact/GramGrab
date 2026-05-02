@@ -8,53 +8,53 @@
 
 /* ─── Dark theme (default) ─── */
 :root {
-  --bg:            #0e0c09;
-  --surface:       #16120d;
-  --panel:         #1e1812;
-  --panel-hover:   #252019;
-  --brand:         #d4622a;
-  --brand-dim:     rgba(212, 98, 42, 0.12);
-  --brand-glow:    rgba(212, 98, 42, 0.3);
-  --accent:        #c4a882;
-  --accent-dim:    rgba(196, 168, 130, 0.12);
-  --text:          #ede5d5;
-  --text-mid:      #b0a494;
-  --muted:         #6b6258;
-  --rule:          rgba(196, 168, 130, 0.14);
-  --rule-strong:   rgba(196, 168, 130, 0.28);
-  --success:       #6fa870;
-  --success-dim:   rgba(111, 168, 112, 0.12);
-  --error:         #c24a3a;
-  --error-dim:     rgba(194, 74, 58, 0.12);
-  --info-dim:      rgba(196, 168, 130, 0.08);
+  --bg:            #090c14;
+  --surface:       #0d1220;
+  --panel:         #131929;
+  --panel-hover:   #1a2236;
+  --brand:         #6e8efb;
+  --brand-dim:     rgba(110, 142, 251, 0.12);
+  --brand-glow:    rgba(110, 142, 251, 0.3);
+  --accent:        #a5b4fc;
+  --accent-dim:    rgba(165, 180, 252, 0.12);
+  --text:          #e0e8ff;
+  --text-mid:      #7f93c4;
+  --muted:         #3d4e72;
+  --rule:          rgba(165, 180, 252, 0.1);
+  --rule-strong:   rgba(165, 180, 252, 0.2);
+  --success:       #4ade80;
+  --success-dim:   rgba(74, 222, 128, 0.12);
+  --error:         #f87171;
+  --error-dim:     rgba(248, 113, 113, 0.12);
+  --info-dim:      rgba(165, 180, 252, 0.08);
   --font-display:  'Cormorant Garamond', Georgia, serif;
   --font-mono:     'IBM Plex Mono', ui-monospace, monospace;
-  --radius:        4px;
+  --radius:        6px;
   --transition:    0.18s ease;
 }
 
 /* ─── Light theme ─── */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg:            #f5f0e8;
-    --surface:       #faf7f2;
-    --panel:         #ede8de;
-    --panel-hover:   #e4ddd0;
-    --brand:         #b84e1a;
-    --brand-dim:     rgba(184, 78, 26, 0.1);
-    --brand-glow:    rgba(184, 78, 26, 0.25);
-    --accent:        #7a5c3a;
-    --accent-dim:    rgba(122, 92, 58, 0.1);
-    --text:          #1e1a14;
-    --text-mid:      #5a5044;
-    --muted:         #9a8f82;
-    --rule:          rgba(30, 26, 20, 0.1);
-    --rule-strong:   rgba(30, 26, 20, 0.2);
-    --success:       #3a7a3c;
-    --success-dim:   rgba(58, 122, 60, 0.1);
-    --error:         #a03020;
-    --error-dim:     rgba(160, 48, 32, 0.1);
-    --info-dim:      rgba(122, 92, 58, 0.08);
+    --bg:            #f0f4ff;
+    --surface:       #f8faff;
+    --panel:         #e6ecf8;
+    --panel-hover:   #dae2f5;
+    --brand:         #4a6cf7;
+    --brand-dim:     rgba(74, 108, 247, 0.1);
+    --brand-glow:    rgba(74, 108, 247, 0.25);
+    --accent:        #6366f1;
+    --accent-dim:    rgba(99, 102, 241, 0.1);
+    --text:          #0c1229;
+    --text-mid:      #3d5080;
+    --muted:         #7b8fb5;
+    --rule:          rgba(12, 18, 41, 0.1);
+    --rule-strong:   rgba(12, 18, 41, 0.18);
+    --success:       #16a34a;
+    --success-dim:   rgba(22, 163, 74, 0.1);
+    --error:         #dc2626;
+    --error-dim:     rgba(220, 38, 38, 0.1);
+    --info-dim:      rgba(99, 102, 241, 0.08);
   }
 
   /* Grain is more visible on light backgrounds */
@@ -63,19 +63,19 @@
   /* Top edge line is more opaque on light */
   body::before { opacity: 0.85; }
 
-  /* Container gets a warm inset shadow instead of dark glow */
+  /* Container gets a cool inset shadow */
   .container {
-    box-shadow: 0 1px 3px rgba(30, 26, 20, 0.08), inset 0 0 0 1px rgba(30, 26, 20, 0.06);
+    box-shadow: 0 1px 3px rgba(12, 18, 41, 0.08), inset 0 0 0 1px rgba(12, 18, 41, 0.06);
   }
 
   /* Ambient blob: use brand color in light too, slightly more visible */
   .container::before { opacity: 0.1; }
 
-  /* Status bar sits on parchment, needs a slight warmth */
-  .status-bar { background: #f0ead8; }
+  /* Status bar cool tint */
+  .status-bar { background: #edf1ff; }
 
   /* Scrollbar thumb in light */
-  .media-list::-webkit-scrollbar-thumb { background: #c0b4a4; }
+  .media-list::-webkit-scrollbar-thumb { background: #9aaad4; }
 }
 
 /* ─── Grain texture overlay ─── */
@@ -177,7 +177,7 @@ body::before {
 }
 
 .ext-version {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--brand);
@@ -185,7 +185,7 @@ body::before {
 }
 
 .ext-subtitle {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
@@ -215,7 +215,7 @@ body::before {
 
 /* ── Field label ── */
 .field-label {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
@@ -240,7 +240,7 @@ body::before {
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   padding: 10px 12px;
   outline: none;
   transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
@@ -277,7 +277,7 @@ body::before {
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -361,7 +361,7 @@ body::before {
 }
 
 .media-count-label {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
@@ -379,7 +379,7 @@ body::before {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-mid);
@@ -481,8 +481,8 @@ body::before {
 }
 
 .media-item.selected {
-  border-color: rgba(212, 98, 42, 0.35);
-  background: rgba(212, 98, 42, 0.04);
+  border-color: rgba(110, 142, 251, 0.35);
+  background: rgba(110, 142, 251, 0.06);
 }
 
 .media-item.selected::before {
@@ -554,7 +554,7 @@ body::before {
 }
 
 .thumb-loading {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -582,7 +582,7 @@ body::before {
 }
 
 .item-type-badge {
-  font-size: 8.5px;
+  font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   font-family: var(--font-mono);
@@ -594,18 +594,18 @@ body::before {
 
 .item-type-badge.image {
   color: var(--accent);
-  background: rgba(196, 168, 130, 0.1);
-  border: 1px solid rgba(196, 168, 130, 0.2);
+  background: var(--accent-dim);
+  border: 1px solid rgba(165, 180, 252, 0.25);
 }
 
 .item-type-badge.video {
   color: var(--brand);
   background: var(--brand-dim);
-  border: 1px solid rgba(212, 98, 42, 0.25);
+  border: 1px solid rgba(110, 142, 251, 0.25);
 }
 
 .item-filename {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-mid);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -679,7 +679,7 @@ body::before {
 }
 
 .status-text {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-mid);
   font-family: var(--font-mono);
   line-height: 1.4;
@@ -708,14 +708,14 @@ body::before {
 
 .footer-brand {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.06em;
   font-style: italic;
 }
 
 .footer-tagline {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -771,13 +771,13 @@ body::before {
 }
 
 .badge {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--brand);
   font-family: var(--font-mono);
   padding: 3px 6px;
-  border: 1px solid rgba(212, 98, 42, 0.4);
+  border: 1px solid rgba(110, 142, 251, 0.4);
   border-radius: 2px;
 }
 
@@ -789,7 +789,7 @@ body::before {
 }
 
 .instruction {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -807,7 +807,7 @@ body::before {
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   padding: 10px 12px;
   outline: none;
   transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
@@ -840,7 +840,7 @@ body::before {
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -881,7 +881,7 @@ body::before {
   gap: 10px;
   padding: 10px 20px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
   border-top: 1px solid var(--rule);
 }
@@ -906,7 +906,7 @@ body::before {
 
 .telemetry pre {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   white-space: pre-wrap;
   word-break: break-all;

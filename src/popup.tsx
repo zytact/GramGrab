@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import './styles.css';
+import { browser } from './lib/browser';
 
 interface MediaItem {
   index: number;
@@ -32,7 +33,7 @@ export default function Popup() {
 
   useEffect(() => {
     browser.tabs
-      ?.query({ active: true, currentWindow: true })
+      .query({ active: true, currentWindow: true })
       .then(tabs => {
         const active = tabs[0];
         const currentUrl = active?.url ?? '';
