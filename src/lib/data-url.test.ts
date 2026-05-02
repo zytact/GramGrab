@@ -25,7 +25,7 @@ describe('blobToDataUrl', () => {
     const blob = new Blob([bytes], { type: 'application/octet-stream' });
     const dataUrl = await blobToDataUrl(blob);
     // Decode and verify
-    const base64 = dataUrl.split(',')[1];
+    const base64 = dataUrl.split(',')[1] ?? '';
     const decoded = atob(base64);
     const result = new Uint8Array(decoded.length);
     for (let i = 0; i < decoded.length; i++) result[i] = decoded.charCodeAt(i);
@@ -42,7 +42,7 @@ describe('jsonToDataUrl', () => {
   it('round-trips a JSON value correctly', () => {
     const value = { a: 1, b: 'hello', c: [true, null] };
     const url = jsonToDataUrl(value);
-    const base64 = url.split(',')[1];
+    const base64 = url.split(',')[1] ?? '';
     const decoded = atob(base64);
     // Re-encode UTF-8 from latin1 passthrough
     const json = decodeURIComponent(

@@ -194,7 +194,7 @@ export default function Popup() {
             placeholder="Paste Instagram URL…"
             value={url}
             onChange={e => {
-              setUrl(e.target.value);
+              setUrl(e.currentTarget.value);
               setAutoDetected(false);
             }}
             onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}

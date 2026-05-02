@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveUsernameToId } from './resolver';
 
-global.fetch = vi.fn();
+globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
 describe('resolveUsernameToId', () => {
   beforeEach(() => {
@@ -16,7 +16,7 @@ describe('resolveUsernameToId', () => {
         },
       },
     };
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(mockResponse),
     });
@@ -29,7 +29,7 @@ describe('resolveUsernameToId', () => {
     const mockResponse = {
       data: {},
     };
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(mockResponse),
     });
@@ -42,7 +42,7 @@ describe('resolveUsernameToId', () => {
     const mockResponse = {
       data: {},
     };
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(mockResponse),
     });
@@ -52,7 +52,7 @@ describe('resolveUsernameToId', () => {
   });
 
   it('throws when response is not ok', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,
       status: 404,
       statusText: 'Not Found',
@@ -71,7 +71,7 @@ describe('resolveUsernameToId', () => {
         },
       },
     };
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(mockResponse),
     });
@@ -82,7 +82,7 @@ describe('resolveUsernameToId', () => {
   });
 
   it('sends correct URL and headers', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ data: { user: { id: '123' } } }),
     });
@@ -90,7 +90,9 @@ describe('resolveUsernameToId', () => {
     await resolveUsernameToId('testuser');
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    const [url, options] = fetch.mock.calls[0];
+    const [url, options] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+    if (typeof url !== 'string') throw new Error('Expected fetch to be called with a URL');
+    if (!options) throw new Error('Expected fetch to be called with options');
     expect(url).toContain('web_profile_info');
     expect(url).toContain('username=testuser');
     expect(options.headers).toBeDefined();
@@ -98,14 +100,15 @@ describe('resolveUsernameToId', () => {
   });
 
   it('encodes special characters in username', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ data: { user: { id: '123' } } }),
     });
 
     await resolveUsernameToId('user.name');
 
-    const [url] = fetch.mock.calls[0];
+    const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+    if (typeof url !== 'string') throw new Error('Expected fetch to be called with a URL');
     expect(url).toContain('username=user.name');
   });
 });

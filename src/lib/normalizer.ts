@@ -166,14 +166,17 @@ export function normalizeProfilePicture(
   const root = unwrapData(data);
   const user =
     (root.user as Record<string, unknown> | undefined) ??
-    (root.data as Record<string, unknown> | undefined)?.user;
+    ((root.data as Record<string, unknown> | undefined)?.user as
+      | Record<string, unknown>
+      | undefined);
   const picUrl =
     (user?.profile_pic_url_hd as string | undefined) ??
     (user?.profile_pic_url as string | undefined) ??
     fallbackUrl;
   if (!picUrl) return items;
   const upgradedUrl = upgradeProfilePicUrl(picUrl);
-  const dims = user?.profile_pic_dimensions as { width?: number; height?: number } | undefined;
+  const dims =
+    (user?.profile_pic_dimensions as { width?: number; height?: number } | undefined) ?? undefined;
 
   items.push({
     type: 'image',
