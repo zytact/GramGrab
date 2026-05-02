@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fetchMediaByShortcode, fetchReelsMedia, fetchProfileInfo } from './graphql';
 
-global.fetch = vi.fn();
+globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
 describe('graphql', () => {
   beforeEach(() => {
@@ -19,7 +19,7 @@ describe('graphql', () => {
           },
         },
       };
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(mockData),
       });
@@ -30,7 +30,7 @@ describe('graphql', () => {
     });
 
     it('throws on non-ok response', async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: false,
         status: 500,
         statusText: 'Internal Server Error',
@@ -42,14 +42,15 @@ describe('graphql', () => {
     });
 
     it('sends correct query parameters', async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({}),
       });
 
       await fetchMediaByShortcode('testshortcode');
 
-      const [url] = fetch.mock.calls[0];
+      const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+      if (typeof url !== 'string') throw new Error('Expected fetch to be called with a URL');
       expect(url).toContain('doc_id=');
       expect(url).toContain('variables=');
       expect(url).toContain('testshortcode');
@@ -63,7 +64,7 @@ describe('graphql', () => {
           reels_media: [],
         },
       };
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(mockData),
       });
@@ -78,7 +79,7 @@ describe('graphql', () => {
           reels_media: [],
         },
       };
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(mockData),
       });
@@ -88,21 +89,22 @@ describe('graphql', () => {
     });
 
     it('sends correct query parameters with query_hash', async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({}),
       });
 
       await fetchReelsMedia({ reel_ids: ['123'] });
 
-      const [url] = fetch.mock.calls[0];
+      const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+      if (typeof url !== 'string') throw new Error('Expected fetch to be called with a URL');
       expect(url).toContain('query_hash=');
       expect(url).toContain('reel_ids');
       expect(url).toContain('highlight_reel_ids');
     });
 
     it('throws on non-ok response', async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: false,
         status: 429,
         statusText: 'Too Many Requests',
@@ -114,14 +116,15 @@ describe('graphql', () => {
     });
 
     it('sends empty arrays for missing parameters', async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({}),
       });
 
       await fetchReelsMedia({});
 
-      const [url] = fetch.mock.calls[0];
+      const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+      if (typeof url !== 'string') throw new Error('Expected fetch to be called with a URL');
       expect(url).toContain('variables=');
       const varsStart = url.indexOf('variables=') + 10;
       const varsJson = decodeURIComponent(url.slice(varsStart));
@@ -134,7 +137,7 @@ describe('graphql', () => {
   describe('fetchProfileInfo', () => {
     it('fetches profile info without credentials', async () => {
       const mockData = { data: { user: { username: 'testuser' } } };
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(mockData),
       });
@@ -142,14 +145,16 @@ describe('graphql', () => {
       const result = await fetchProfileInfo('testuser');
       expect(result).toEqual(mockData);
 
-      const [url, options] = fetch.mock.calls[0];
+      const [url, options] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+      if (typeof url !== 'string') throw new Error('Expected fetch to be called with a URL');
+      if (!options) throw new Error('Expected fetch to be called with options');
       expect(url).toContain('web_profile_info');
       expect(url).toContain('username=testuser');
       expect(options.credentials).toBe('omit');
     });
 
     it('throws on non-ok response', async () => {
-      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: false,
         status: 404,
         statusText: 'Not Found',
@@ -162,14 +167,15 @@ describe('graphql', () => {
   });
 
   it('includes credentials and correct headers', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({}),
     });
 
     await fetchMediaByShortcode('abc123');
 
-    const [, options] = fetch.mock.calls[0];
+    const [, options] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+    if (!options) throw new Error('Expected fetch to be called with options');
     expect(options.credentials).toBe('include');
     expect(options.headers).toBeDefined();
     expect(options.headers['Origin']).toBe('https://www.instagram.com');

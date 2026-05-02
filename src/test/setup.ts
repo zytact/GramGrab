@@ -10,7 +10,8 @@ import { vi } from 'vitest';
 interface BlobWithArrayBuffer extends Blob {
   arrayBuffer(): Promise<ArrayBuffer>;
 }
-const _OriginalFileReader = typeof FileReader !== 'undefined' ? FileReader : null;
+const _OriginalFileReader =
+  typeof globalThis.FileReader !== 'undefined' ? globalThis.FileReader : null;
 if (
   typeof Blob !== 'undefined' &&
   typeof (Blob.prototype as BlobWithArrayBuffer).arrayBuffer !== 'function' &&
@@ -47,7 +48,7 @@ const mockDownloads = {
 
 const mockMessageCallbacks: Map<string, (msg: unknown) => unknown> = new Map();
 
-global.browser = {
+globalThis.browser = {
   runtime: {
     sendMessage: vi.fn().mockImplementation((msg: unknown) => {
       const type = (msg as { type: string }).type;

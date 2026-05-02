@@ -18,7 +18,7 @@ const mockBrowser = {
   },
 };
 
-global.browser = mockBrowser;
+globalThis.browser = mockBrowser as typeof globalThis.browser;
 
 describe('Popup', () => {
   beforeEach(() => {

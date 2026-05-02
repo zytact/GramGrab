@@ -10,6 +10,7 @@ export interface ParsedUrl {
 
 export function parseInstagramUrl(url: string): ParsedUrl | null {
   try {
+    if (!url) return null;
     const u = new URL(url);
     if (u.hostname !== 'www.instagram.com' && u.hostname !== 'instagram.com') {
       return null;
@@ -59,7 +60,7 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
         'accounts',
         'tv',
       ]);
-      if (!reserved.has(username)) {
+      if (username && !reserved.has(username)) {
         return { type: 'profile', username };
       }
     }

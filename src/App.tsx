@@ -84,7 +84,7 @@ export default function App({ initialUrl = '' }: AppProps) {
               className="neo-input"
               placeholder="https://instagram.com/…"
               value={url}
-              onChange={e => setUrl(e.target.value)}
+              onChange={e => setUrl(e.currentTarget.value)}
               onKeyDown={e => e.key === 'Enter' && !isBusy && handleDownload()}
             />
             <div className="input-backdrop" />
