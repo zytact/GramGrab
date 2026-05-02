@@ -30,6 +30,11 @@ export default tseslint.config(
   },
   {
     files: ['**/*.js', '**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
     plugins: {
       prettier,
     },
