@@ -1058,9 +1058,9 @@ postbuild.mjs runs
 
 ### Manifest Generation (postbuild.mjs)
 
-**Why?** Manifest.json must have browser-specific `background` field:
+**Why?** Manifest.json must have browser-specific `background` and gecko settings:
 - Chrome: `{ service_worker: 'js/background.js', type: 'module' }`
-- Firefox: `{ scripts: ['js/background.js'], type: 'module' }`
+- Firefox: `{ scripts: ['js/background.js'], type: 'module' }` + `browser_specific_settings`
 
 **Process:**
 
@@ -1068,27 +1068,69 @@ postbuild.mjs runs
 const browser = process.env.BROWSER ?? 'chromium';
 const outDir = `extension/${browser}`;
 
-const baseManifest = JSON.parse(readFileSync('manifest.json', 'utf-8'));
-
-const manifest = {
-  ...baseManifest,
-  background: browser === 'chromium'
-    ? { service_worker: 'js/background.js', type: 'module' }
-    : { scripts: ['js/background.js'], type: 'module' },
+// Shared manifest fields
+const baseManifest = {
+  manifest_version: 3,
+  name: 'Instaext',
+  version: '1.0.0',
+  // ... other fields
 };
+
+// Browser-specific background section
+const background = browser === 'chromium'
+  ? { service_worker: 'js/background.js', type: 'module' }
+  : { scripts: ['js/background.js'], type: 'module' };
+
+// Firefox-specific gecko settings
+const geckoSettings = browser === 'firefox'
+  ? { browser_specific_settings: { gecko: { id: 'instaext@zytact', strict_min_version: '109.0' } } }
+  : {};
+
+const manifest = { ...baseManifest, background, ...geckoSettings };
 
 writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
 
 // Copy icons
-copySync('icons/icon-16.png', `${outDir}/icons/icon-16.png`);
-copySync('icons/icon-48.png', `${outDir}/icons/icon-48.png`);
-copySync('icons/icon-96.png', `${outDir}/icons/icon-96.png`);
+mkdir(`${outDir}/icons`, { recursive: true });
+copyFile('icons/icon-16.png', `${outDir}/icons/icon-16.png`);
+copyFile('icons/icon-48.png', `${outDir}/icons/icon-48.png`);
+copyFile('icons/icon-96.png', `${outDir}/icons/icon-96.png`);
 ```
 
 **Result:**
-- `extension/chromium/manifest.json` has service_worker variant
-- `extension/firefox/manifest.json` has scripts variant
+- `extension/chromium/manifest.json` has Chromium MV3 format (service_worker)
+- `extension/firefox/manifest.json` has Firefox MV3 format (scripts) + gecko ID for signed releases
 - Both files are ready to load in respective browsers
+
+### Firefox XPI Packaging (package-firefox.mjs)
+
+**Purpose:** Package the built Firefox extension into an XPI file for distribution.
+
+**Process:**
+
+```javascript
+const srcDir = 'extension/firefox';
+
+// Verify the Firefox build exists
+if (!existsSync(srcDir)) {
+  console.error(`${srcDir} not found — run "bun run build:firefox" first`);
+  process.exit(1);
+}
+
+// Create XPI by zipping the extension directory
+execSync(`cd ${srcDir} && zip -r instaext.xpi .`, { stdio: 'inherit' });
+```
+
+**Result:** 
+- `extension/firefox/instaext.xpi` — a signed or self-signed ZIP archive ready for Firefox installation
+- Can be distributed to users or submitted to AMO (Mozilla Add-ons)
+
+**Usage:**
+```bash
+bun run package:firefox  # Builds Firefox extension and packages as XPI
+```
+
+---
 
 ### NPM Scripts
 
@@ -1098,6 +1140,7 @@ bun run build:chromium  # Build Chrome only (BROWSER=chromium)
 bun run build:firefox   # Build Firefox only (BROWSER=firefox)
 bun run dev            # Watch mode for chromium
 bun run dev:firefox    # Watch mode for firefox
+bun run package:firefox # Build Firefox and create instaext.xpi
 bun run test           # Single run, coverage
 bun run test:watch    # Watch mode
 bun run lint           # Check code style

@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prepare": "husky",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package:firefox": "bun run build:firefox && node scripts/package-firefox.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
