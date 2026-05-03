@@ -104,6 +104,9 @@ bun run build           # builds both targets
 bun run build:chromium  # → extension/chromium/
 bun run build:firefox   # → extension/firefox/
 
+# Package Firefox extension as XPI
+bun run package:firefox # → extension/firefox/instaext.xpi
+
 # Watch mode (rebuilds on save)
 bun run dev             # Chromium watch (extension/chromium/)
 bun run dev:chromium    # same as above
@@ -121,7 +124,7 @@ bun run format
 bun run format:check
 ```
 
-The Vite build root is `templates/`; `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates a browser-specific `manifest.json` and copies icons into the output directory.
+The Vite build root is `templates/`; `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. For Firefox, you can package the built extension as an XPI file using `bun run package:firefox`.
 
 ---
 

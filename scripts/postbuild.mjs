@@ -64,7 +64,16 @@ const background =
     ? { service_worker: 'js/background.js', type: 'module' }
     : { scripts: ['js/background.js'], type: 'module' };
 
-const manifest = { ...baseManifest, background };
+const geckoSettings =
+  browser === 'firefox'
+    ? {
+        browser_specific_settings: {
+          gecko: { id: 'instaext@zytact', strict_min_version: '109.0' },
+        },
+      }
+    : {};
+
+const manifest = { ...baseManifest, background, ...geckoSettings };
 
 await writeFile(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2) + '\n');
 
