@@ -86,7 +86,8 @@ body {
   min-height: 540px;
   margin: 0;
   padding: 0;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: subpixel-antialiased;
+  zoom: 1.15;
 }
 
 /* Top edge — warm amber strip like film leader */
@@ -187,7 +188,7 @@ body::before {
 }
 
 .ext-subtitle {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
@@ -217,7 +218,7 @@ body::before {
 
 /* ── Field label ── */
 .field-label {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
@@ -280,7 +281,7 @@ body::before {
   border: 1px solid var(--brand);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -353,7 +354,7 @@ body::before {
 }
 
 .media-count-label {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
@@ -574,7 +575,7 @@ body::before {
 }
 
 .item-type-badge {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-family: var(--font-mono);
@@ -597,7 +598,7 @@ body::before {
 }
 
 .item-filename {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-mid);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -724,7 +725,7 @@ body::before {
 }
 
 .footer-tagline {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -914,7 +915,7 @@ body::before {
 
 .telemetry pre {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   white-space: pre-wrap;
   word-break: break-all;
