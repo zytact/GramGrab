@@ -29,7 +29,7 @@ describe('Popup', () => {
     await act(async () => {
       render(<Popup />);
     });
-    expect(screen.getByPlaceholderText(/Paste Instagram URL/i)).toBeDefined();
+    expect(screen.getByPlaceholderText(/Paste an Instagram URL/i)).toBeDefined();
     expect(screen.getByText('Fetch Media')).toBeDefined();
   });
 
