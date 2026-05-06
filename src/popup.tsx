@@ -173,7 +173,6 @@ export default function Popup() {
 
   return (
     <div className="container">
-      {/* ── Header ── */}
       <header className="ext-header">
         <div className="ext-logo">
           Insta<em>ext</em>
@@ -184,13 +183,12 @@ export default function Popup() {
       </header>
 
       <div className="ext-body">
-        {/* ── URL Input Section ── */}
         <div className="ext-section">
           <div className="field-label">Source URL</div>
           <input
             className={`url-input${autoDetected ? ' detected' : ''}`}
             type="url"
-            placeholder="Paste Instagram URL…"
+            placeholder="Paste an Instagram URL…"
             value={url}
             onChange={e => {
               setUrl(e.currentTarget.value);
@@ -200,7 +198,6 @@ export default function Popup() {
           />
         </div>
 
-        {/* ── Fetch Button ── */}
         <div className="ext-section">
           <button className="btn" onClick={handleFetch} disabled={isBusy}>
             {status === 'fetching' ? (
@@ -209,15 +206,11 @@ export default function Popup() {
                 Fetching…
               </>
             ) : (
-              <>
-                <span className="btn-icon">⬇</span>
-                Fetch Media
-              </>
+              'Fetch Media'
             )}
           </button>
         </div>
 
-        {/* ── Media List Section ── */}
         <div className="ext-section" style={{ flex: 1 }}>
           {mediaItems.length > 0 && (
             <div className="media-header">
@@ -247,7 +240,6 @@ export default function Popup() {
           </div>
         </div>
 
-        {/* ── Download Button ── */}
         <div className="ext-section">
           <button className="btn" onClick={handleDownload} disabled={selectedCount === 0 || isBusy}>
             {status === 'downloading' ? (
@@ -255,23 +247,20 @@ export default function Popup() {
                 <span className="btn-spinner" />
                 Downloading…
               </>
+            ) : selectedCount > 0 ? (
+              `Download ${selectedCount} Selected`
             ) : (
-              <>
-                <span className="btn-icon">↓</span>
-                {selectedCount > 0 ? `Download ${selectedCount} Selected` : 'Download Selected'}
-              </>
+              'Download Selected'
             )}
           </button>
         </div>
       </div>
 
-      {/* ── Status Bar ── */}
       <div className="status-bar">
         <span className={`status-dot ${status}`} />
         <span className={`status-text ${status}`}>{message}</span>
       </div>
 
-      {/* ── Footer ── */}
       <footer className="ext-footer">
         <span className="footer-brand">Instaext</span>
         <span className="footer-tagline">Posts · Reels · Stories</span>
