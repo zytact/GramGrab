@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './styles.css';
 import { browser } from './lib/browser';
 
@@ -29,7 +29,9 @@ export default function Popup() {
   const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [previewLoading, setPreviewLoading] = useState<Set<number>>(new Set());
+  const [exportLoading, setExportLoading] = useState<Set<number>>(new Set());
   const [autoDetected, setAutoDetected] = useState(false);
+  const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
 
   useEffect(() => {
     browser.tabs
@@ -153,6 +155,101 @@ export default function Popup() {
     }
   }, []);
 
+  const captureFrameFromVideo = useCallback(async (video: HTMLVideoElement) => {
+    if (video.readyState < 1) {
+      await new Promise<void>(resolve => {
+        video.addEventListener('loadedmetadata', () => resolve(), { once: true });
+      });
+    }
+
+    if (!Number.isFinite(video.duration) || video.duration <= 0) {
+      throw new Error('no-duration');
+    }
+
+    const targetTime = Math.min(5, video.duration);
+    video.currentTime = targetTime;
+    await new Promise<void>(resolve => {
+      video.addEventListener('seeked', () => resolve(), { once: true });
+    });
+
+    if (!video.videoWidth || !video.videoHeight) {
+      throw new Error('no-frame');
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('no-canvas');
+    }
+
+    ctx.drawImage(video, 0, 0);
+    const blob = await new Promise<Blob | null>(resolve => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.95);
+    });
+
+    if (!blob) {
+      throw new Error('no-blob');
+    }
+
+    return blob;
+  }, []);
+
+  const handleExportFrame = useCallback(
+    async (index: number) => {
+      const video = videoRefs.current[index];
+      if (!video) return;
+
+      setExportLoading(prev => new Set(prev).add(index));
+
+      try {
+        const res = (await browser.runtime.sendMessage({
+          type: 'FETCH_VIDEO_BLOB',
+          url: mediaItems[index]?.url,
+        })) as { dataUrl?: string; error?: string };
+
+        if (res?.error || !res?.dataUrl) {
+          throw new Error('cors');
+        }
+
+        const exportVideo = document.createElement('video');
+        exportVideo.src = res.dataUrl;
+        exportVideo.muted = true;
+        exportVideo.playsInline = true;
+        exportVideo.crossOrigin = 'anonymous';
+        const blob = await captureFrameFromVideo(exportVideo);
+
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${mediaItems[index]?.filenameHint ?? 'media'}_frame.jpg`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        if (err instanceof Error && err.message === 'no-duration') {
+          setMessage('Frame export failed (duration unavailable).');
+        } else if (err instanceof Error && err.message === 'no-frame') {
+          setMessage('Frame export failed (no video frame).');
+        } else if (err instanceof Error && err.message === 'no-canvas') {
+          setMessage('Frame export failed (canvas unavailable).');
+        } else if (err instanceof Error && err.message === 'no-blob') {
+          setMessage('Frame export failed (image export).');
+        } else {
+          setMessage('Frame export failed (CORS)');
+        }
+        setStatus('error');
+      } finally {
+        setExportLoading(prev => {
+          const next = new Set(prev);
+          next.delete(index);
+          return next;
+        });
+      }
+    },
+    [captureFrameFromVideo, mediaItems]
+  );
+
   useEffect(() => {
     mediaItems.forEach((item, idx) => {
       if (item.type === 'image' && !item.previewUrl) {
@@ -233,7 +330,12 @@ export default function Popup() {
                   key={item.index}
                   item={item}
                   loading={previewLoading.has(item.index)}
+                  exporting={exportLoading.has(item.index)}
                   onToggle={() => toggleItem(item.index)}
+                  onExportFrame={() => handleExportFrame(item.index)}
+                  onVideoRef={el => {
+                    videoRefs.current[item.index] = el;
+                  }}
                 />
               ))
             )}
@@ -272,22 +374,31 @@ export default function Popup() {
 function MediaItemRow({
   item,
   loading,
+  exporting,
   onToggle,
+  onExportFrame,
+  onVideoRef,
 }: {
   item: MediaItem;
   loading: boolean;
+  exporting: boolean;
   onToggle: () => void;
+  onExportFrame: () => void;
+  onVideoRef: (el: HTMLVideoElement | null) => void;
 }) {
   const num = String(item.index + 1).padStart(2, '0');
 
   return (
-    <label className={`media-item${item.selected ? ' selected' : ''}`}>
+    <label
+      className={`media-item${item.selected ? ' selected' : ''}`}
+      style={{ gridTemplateColumns: '30px 56px 1fr 120px' }}
+    >
       <span className="item-number">{num}</span>
 
       <div className="media-thumb">
         {item.type === 'video' ? (
           <>
-            <video src={item.url} muted playsInline />
+            <video src={item.url} muted playsInline ref={onVideoRef} />
             <div className="play-overlay">
               <div className="play-triangle" />
             </div>
@@ -308,13 +419,40 @@ function MediaItemRow({
         <span className="item-filename">{item.filenameHint}</span>
       </div>
 
-      <input
-        className="item-checkbox"
-        type="checkbox"
-        checked={item.selected}
-        onChange={onToggle}
-        onClick={e => e.stopPropagation()}
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+        {item.type === 'video' && (
+          <button
+            type="button"
+            onClick={event => {
+              event.preventDefault();
+              event.stopPropagation();
+              onExportFrame();
+            }}
+            disabled={exporting}
+            style={{
+              background: 'var(--panel)',
+              border: '1px solid var(--rule-strong)',
+              color: 'var(--text-mid)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '9px',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              padding: '5px 8px',
+              cursor: exporting ? 'not-allowed' : 'pointer',
+              opacity: exporting ? 0.6 : 1,
+            }}
+          >
+            {exporting ? 'Exporting...' : 'Export Frame'}
+          </button>
+        )}
+        <input
+          className="item-checkbox"
+          type="checkbox"
+          checked={item.selected}
+          onChange={onToggle}
+          onClick={e => e.stopPropagation()}
+        />
+      </div>
     </label>
   );
 }
