@@ -29,7 +29,7 @@ export default function Popup() {
   const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [previewLoading, setPreviewLoading] = useState<Set<number>>(new Set());
-  const [exportLoading, setExportLoading] = useState<Set<number>>(new Set());
+  const [exportFrameSet, setExportFrameSet] = useState<Set<number>>(new Set());
   const [autoDetected, setAutoDetected] = useState(false);
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
 
@@ -79,6 +79,7 @@ export default function Popup() {
       }));
 
       setMediaItems(items);
+      setExportFrameSet(new Set());
       setStatus(items.length > 0 ? 'done' : 'error');
       setMessage(
         items.length > 0
@@ -91,45 +92,22 @@ export default function Popup() {
     }
   }, [url]);
 
-  const handleDownload = useCallback(async () => {
-    const selected = mediaItems.filter(m => m.selected);
-    if (selected.length === 0) {
-      setMessage('No items selected.');
-      setStatus('error');
-      return;
-    }
-
-    setStatus('downloading');
-    setMessage(`Downloading ${selected.length} item${selected.length !== 1 ? 's' : ''}…`);
-
-    try {
-      const res = (await browser.runtime.sendMessage({
-        type: 'DOWNLOAD_MEDIA',
-        urls: selected.map(m => m.url),
-        hints: selected.map(m => m.filenameHint),
-        types: selected.map(m => m.type),
-      })) as { error?: string };
-
-      if (res?.error) {
-        setMessage(res.error);
-        setStatus('error');
-        return;
-      }
-
-      setMessage(
-        `Downloaded ${selected.length} item${selected.length !== 1 ? 's' : ''} successfully.`
-      );
-      setStatus('done');
-    } catch (err) {
-      setMessage(String(err));
-      setStatus('error');
-    }
-  }, [mediaItems]);
-
   const toggleItem = useCallback((index: number) => {
     setMediaItems(prev =>
       prev.map(item => (item.index === index ? { ...item, selected: !item.selected } : item))
     );
+  }, []);
+
+  const toggleExportFrame = useCallback((index: number) => {
+    setExportFrameSet(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
   }, []);
 
   const loadPreview = useCallback(async (index: number, itemUrl: string) => {
@@ -201,8 +179,6 @@ export default function Popup() {
       const video = videoRefs.current[index];
       if (!video) return;
 
-      setExportLoading(prev => new Set(prev).add(index));
-
       try {
         const res = (await browser.runtime.sendMessage({
           type: 'FETCH_VIDEO_BLOB',
@@ -239,16 +215,57 @@ export default function Popup() {
           setMessage('Frame export failed (CORS)');
         }
         setStatus('error');
-      } finally {
-        setExportLoading(prev => {
-          const next = new Set(prev);
-          next.delete(index);
-          return next;
-        });
       }
     },
     [captureFrameFromVideo, mediaItems]
   );
+
+  const handleDownload = useCallback(async () => {
+    const selected = mediaItems.filter(m => m.selected);
+    if (selected.length === 0) {
+      setMessage('No items selected.');
+      setStatus('error');
+      return;
+    }
+
+    setStatus('downloading');
+    setMessage(`Downloading ${selected.length} item${selected.length !== 1 ? 's' : ''}…`);
+
+    try {
+      const standardItems: MediaItem[] = [];
+
+      for (const item of selected) {
+        if (item.type === 'video' && exportFrameSet.has(item.index)) {
+          await handleExportFrame(item.index);
+        } else {
+          standardItems.push(item);
+        }
+      }
+
+      if (standardItems.length > 0) {
+        const res = (await browser.runtime.sendMessage({
+          type: 'DOWNLOAD_MEDIA',
+          urls: standardItems.map(item => item.url),
+          hints: standardItems.map(item => item.filenameHint),
+          types: standardItems.map(item => item.type),
+        })) as { error?: string };
+
+        if (res?.error) {
+          setMessage(res.error);
+          setStatus('error');
+          return;
+        }
+      }
+
+      setMessage(
+        `Downloaded ${selected.length} item${selected.length !== 1 ? 's' : ''} successfully.`
+      );
+      setStatus('done');
+    } catch (err) {
+      setMessage(String(err));
+      setStatus('error');
+    }
+  }, [exportFrameSet, handleExportFrame, mediaItems]);
 
   useEffect(() => {
     mediaItems.forEach((item, idx) => {
@@ -330,9 +347,9 @@ export default function Popup() {
                   key={item.index}
                   item={item}
                   loading={previewLoading.has(item.index)}
-                  exporting={exportLoading.has(item.index)}
                   onToggle={() => toggleItem(item.index)}
-                  onExportFrame={() => handleExportFrame(item.index)}
+                  exportFrame={exportFrameSet.has(item.index)}
+                  onToggleExportFrame={() => toggleExportFrame(item.index)}
                   onVideoRef={el => {
                     videoRefs.current[item.index] = el;
                   }}
@@ -374,16 +391,16 @@ export default function Popup() {
 function MediaItemRow({
   item,
   loading,
-  exporting,
   onToggle,
-  onExportFrame,
+  exportFrame,
+  onToggleExportFrame,
   onVideoRef,
 }: {
   item: MediaItem;
   loading: boolean;
-  exporting: boolean;
   onToggle: () => void;
-  onExportFrame: () => void;
+  exportFrame: boolean;
+  onToggleExportFrame: () => void;
   onVideoRef: (el: HTMLVideoElement | null) => void;
 }) {
   const num = String(item.index + 1).padStart(2, '0');
@@ -421,29 +438,19 @@ function MediaItemRow({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
         {item.type === 'video' && (
-          <button
-            type="button"
-            onClick={event => {
-              event.preventDefault();
-              event.stopPropagation();
-              onExportFrame();
-            }}
-            disabled={exporting}
-            style={{
-              background: 'var(--panel)',
-              border: '1px solid var(--rule-strong)',
-              color: 'var(--text-mid)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '9px',
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              padding: '5px 8px',
-              cursor: exporting ? 'not-allowed' : 'pointer',
-              opacity: exporting ? 0.6 : 1,
-            }}
+          <label
+            className="frame-toggle"
+            title="Export frame on download"
+            onClick={event => event.stopPropagation()}
           >
-            {exporting ? 'Exporting...' : 'Export Frame'}
-          </button>
+            <input
+              type="checkbox"
+              checked={exportFrame}
+              onChange={onToggleExportFrame}
+              className="frame-toggle-checkbox"
+            />
+            Frame
+          </label>
         )}
         <input
           className="item-checkbox"
