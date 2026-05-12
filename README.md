@@ -2,8 +2,6 @@
 
 **Instaext** is a browser extension (Chrome & Firefox, Manifest V3) that lets you download media from Instagram directly from your browser — posts, carousels, reels, stories, highlights, and profile pictures — with a clean, minimal UI and no third-party services.
 
-![Instaext popup screenshot placeholder](docs/screenshot.png)
-
 ---
 
 ## Features
