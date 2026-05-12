@@ -1,6 +1,6 @@
 # Instaext: Living Architecture Document
 
-**Last Updated:** May 2, 2026  
+**Last Updated:** May 12, 2026  
 
 ---
 
@@ -680,6 +680,11 @@ interface Message {
 // DEBUG_SHAPE_JSON
 // Input: { type: 'DEBUG_SHAPE_JSON', url: string }
 // Process: Similar to DEBUG_SHAPE but export as JSON file
+
+// FETCH_VIDEO_BLOB
+// Input: { type: 'FETCH_VIDEO_BLOB', url: string }
+// Process: fetch video URL → blob → blobToDataUrl() → return data URL
+// Used by: Export frame toggle feature in popup
 ```
 
 **Error Handling Strategy:**
@@ -858,6 +863,106 @@ useEffect(() => {
 - Download button (prominent, disabled state)
 - Status bar (success/error messaging)
 - Scrollable container for media list
+- Frame toggle checkbox styling
+
+---
+
+### Export Frame Toggle — Video Frame Extraction
+
+**WHAT IT IS**
+A per-video toggle that exports a JPEG frame at the 5-second mark instead of downloading the video itself. Appears only on video items in the media list.
+
+**HOW IT WORKS**
+
+The user can optionally enable frame extraction for any video item via a checkbox labeled "Frame" next to the download checkbox. When downloading:
+
+1. User selects video items and clicks "Download Selected"
+2. For each selected video, the download handler checks if `exportFrameSet.has(item.index)` is true
+3. If frame export is enabled:
+   - Popup sends `FETCH_VIDEO_BLOB` message to service worker
+   - Service worker fetches video URL and converts to data URL via `blobToDataUrl`
+   - Popup receives data URL and creates a temporary `<video>` element
+   - `captureFrameFromVideo()` seeks to 5 seconds (or video duration if shorter)
+   - Canvas draws the video frame to a JPEG blob
+   - Browser triggers download of `{filenameHint}_frame.jpg`
+4. If frame export is not enabled, normal video download proceeds via `DOWNLOAD_MEDIA`
+
+**UI Integration (popup.tsx):**
+
+```typescript
+const [exportFrameSet, setExportFrameSet] = useState<Set<number>>(new Set());
+
+function toggleExportFrame(index: number) {
+  setExportFrameSet(prev => {
+    const next = new Set(prev);
+    next.has(index) ? next.delete(index) : next.add(index);
+    return next;
+  });
+}
+```
+
+**Frame Capture Logic (popup.tsx):**
+
+```typescript
+const captureFrameFromVideo = async (video: HTMLVideoElement) => {
+  if (video.readyState < 1) {
+    await new Promise(resolve => video.addEventListener('loadedmetadata', resolve, { once: true }));
+  }
+  const targetTime = Math.min(5, video.duration);
+  video.currentTime = targetTime;
+  await new Promise(resolve => video.addEventListener('seeked', resolve, { once: true }));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+  return blob;
+};
+```
+
+**Message Handler (background.ts):**
+
+```typescript
+case 'FETCH_VIDEO_BLOB': {
+  const { url } = msg as { url: string };
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const dataUrl = await blobToDataUrl(blob);
+  sendResponse({ dataUrl });
+}
+```
+
+**WHY IT WAS BUILT THIS WAY**
+- Videos cannot be displayed as previews in the UI (too resource-heavy)
+- Users often want just a thumbnail/frame rather than the full video
+- Frame extraction uses existing video element API, no additional libraries needed
+- Extraction happens client-side in popup to avoid encoding work in service worker
+
+**DATA SHAPES**
+
+```typescript
+interface FetchVideoBlobMsg {
+  type: 'FETCH_VIDEO_BLOB';
+  url: string;
+}
+
+interface FetchVideoBlobResponse {
+  dataUrl?: string;
+  error?: string;
+}
+```
+
+**FAILURE MODES**
+- CORS blocked video URL → "Frame export failed (CORS)" message
+- Video has no duration metadata → "Frame export failed (duration unavailable)"
+- Video has no readable frames → "Frame export failed (no video frame)"
+- Canvas API unavailable → "Frame export failed (canvas unavailable)"
+- JPEG encoding fails → "Frame export failed (image export)"
+
+**TESTS:** No dedicated tests. Manual verification by downloading videos with frame toggle enabled.
 
 ---
 
@@ -964,6 +1069,21 @@ useEffect(() => {
 
 ```
 data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAIBAQIBAQICAgICAgICAwUDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwDAwwD...
+```
+
+#### Input: FETCH_VIDEO_BLOB Message
+
+```typescript
+{
+  type: 'FETCH_VIDEO_BLOB',
+  url: 'https://scontent.cdninstagram.com/v/t50.2886-16/...'
+}
+```
+
+#### Output: Video Data URL
+
+```
+data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAAAG21kYXQAAAGzABAHAAABthADAowdbb9/AAAC7W1vb3YAAABsbXZoZAAAAAAAAAAAAAAAAAAAA+gAAAAAAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAIYdHJhawAAAFx0a2hkAAAAAwAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAA=
 ```
 
 #### GraphQL Query Example: MEDIA_BY_SHORTCODE
