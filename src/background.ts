@@ -535,6 +535,11 @@ interface DownloadMediaMsg {
   types: string[];
 }
 
+interface FetchVideoBlobMsg {
+  type: 'FETCH_VIDEO_BLOB';
+  url: string;
+}
+
 async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{ error: string | undefined }> {
   try {
     const { urls, hints, types } = msg;
@@ -549,6 +554,22 @@ async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{ error: stri
     return { error: undefined };
   } catch (err) {
     return { error: String(err) };
+  }
+}
+
+async function handleFetchVideoBlob(
+  msg: FetchVideoBlobMsg
+): Promise<{ dataUrl: string | undefined; error: string | undefined }> {
+  try {
+    const res = await fetch(msg.url, { credentials: 'omit' });
+    if (!res.ok) {
+      return { dataUrl: undefined, error: `HTTP ${res.status}` };
+    }
+    const blob = await res.blob();
+    const dataUrl = await blobToDataUrl(blob);
+    return { dataUrl, error: undefined };
+  } catch (err) {
+    return { dataUrl: undefined, error: String(err) };
   }
 }
 
@@ -627,6 +648,10 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case 'DOWNLOAD_MEDIA':
       handleDownloadMedia(msg as DownloadMediaMsg).then(sendResponse);
+      return true;
+
+    case 'FETCH_VIDEO_BLOB':
+      handleFetchVideoBlob(msg as FetchVideoBlobMsg).then(sendResponse);
       return true;
 
     case 'DEBUG_SHAPE':
