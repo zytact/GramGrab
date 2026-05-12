@@ -73,6 +73,11 @@ globalThis.browser = {
             }));
           } else if (msgType === 'DOWNLOAD_MEDIA') {
             mockMessageCallbacks.set('DOWNLOAD_MEDIA', () => ({ error: undefined }));
+          } else if (msgType === 'FETCH_VIDEO_BLOB') {
+            mockMessageCallbacks.set('FETCH_VIDEO_BLOB', () => ({
+              dataUrl: undefined,
+              error: undefined,
+            }));
           }
           return callback(msg);
         };
