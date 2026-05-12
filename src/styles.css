@@ -639,6 +639,42 @@ body::before {
   transform: rotate(45deg);
 }
 
+/* Frame toggle checkbox label */
+.frame-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.frame-toggle:hover {
+  border-color: var(--brand);
+  color: var(--text);
+}
+
+.frame-toggle-checkbox {
+  width: 11px;
+  height: 11px;
+  cursor: pointer;
+  accent-color: var(--brand);
+  flex-shrink: 0;
+}
+
+.frame-toggle:has(.frame-toggle-checkbox:checked) {
+  background: var(--brand-dim);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
 /* ══════════════════════════════════
    STATUS MESSAGE
 ══════════════════════════════════ */
