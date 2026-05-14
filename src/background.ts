@@ -188,6 +188,7 @@ function findArrayCandidates(root: unknown): unknown[] {
 interface MediaItem {
   type: 'image' | 'video';
   url: string;
+  previewUrl?: string;
   width?: number;
   height?: number;
   takenAt?: number;
@@ -265,6 +266,17 @@ async function fetchProfilePicture(username: string): Promise<MediaItem[]> {
   return normalizeProfilePicture(profileData, username, hdUrl);
 }
 
+function pickPreviewSrc(
+  resources: { src: string; config_width?: number }[],
+  fallback?: string
+): string | undefined {
+  if (resources.length === 0) return fallback;
+  const sorted = [...resources].sort((a, b) => (a.config_width ?? 0) - (b.config_width ?? 0));
+  // prefer at least 320px wide so the tile doesn't look blurry
+  const candidate = sorted.find(r => (r.config_width ?? 0) >= 320) ?? sorted[0];
+  return candidate?.src ?? fallback;
+}
+
 function normalizeShortcodeMedia(data: unknown): MediaItem[] {
   const items: MediaItem[] = [];
   const root = unwrapData(data);
@@ -298,10 +310,11 @@ function normalizeShortcodeMedia(data: unknown): MediaItem[] {
   const takenAt = candidate.taken_at_timestamp as number | undefined;
   const id = candidate.id as string | undefined;
 
-  const push = (url: string, type: 'image' | 'video', w?: number, h?: number) =>
+  const push = (url: string, type: 'image' | 'video', w?: number, h?: number, preview?: string) =>
     items.push({
       type,
       url,
+      previewUrl: preview,
       width: w,
       height: h,
       takenAt,
@@ -327,12 +340,16 @@ function normalizeShortcodeMedia(data: unknown): MediaItem[] {
           (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
         );
         const best = sorted[0]?.src;
+        const preview = isChildVideo
+          ? (n.display_url as string | undefined)
+          : pickPreviewSrc(displayResources, displayUrl);
         if (best) {
           push(
             best,
             isChildVideo ? 'video' : 'image',
             sorted[0]?.config_width,
-            sorted[0]?.config_height
+            sorted[0]?.config_height,
+            preview
           );
         }
       } else if (displayUrl) {
@@ -346,14 +363,16 @@ function normalizeShortcodeMedia(data: unknown): MediaItem[] {
     const videoUrl = candidate.video_url as string | undefined;
     const dims = candidate.dimensions as { width?: number; height?: number } | undefined;
 
+    const videoDisplayUrl = candidate.display_url as string | undefined;
     if (videoResources && videoResources.length > 0) {
       const sorted = [...videoResources].sort(
         (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
       );
       const best = sorted[0]?.src;
-      if (best) push(best, 'video', sorted[0]?.config_width, sorted[0]?.config_height);
+      if (best)
+        push(best, 'video', sorted[0]?.config_width, sorted[0]?.config_height, videoDisplayUrl);
     } else if (videoUrl) {
-      push(videoUrl, 'video', dims?.width, dims?.height);
+      push(videoUrl, 'video', dims?.width, dims?.height, videoDisplayUrl);
     }
   } else if (isImage) {
     // For images, prefer display_resources for quality selection
@@ -368,7 +387,8 @@ function normalizeShortcodeMedia(data: unknown): MediaItem[] {
         (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
       );
       const best = sorted[0]?.src;
-      if (best) push(best, 'image', sorted[0]?.config_width, sorted[0]?.config_height);
+      const preview = pickPreviewSrc(displayResources, displayUrl);
+      if (best) push(best, 'image', sorted[0]?.config_width, sorted[0]?.config_height, preview);
     } else if (displayUrl) {
       push(displayUrl, 'image', dims?.width, dims?.height);
     }
@@ -457,7 +477,7 @@ interface FetchMediaMsg {
 }
 
 async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
-  media: { url: string; type: string; filenameHint: string }[] | undefined;
+  media: { url: string; type: string; filenameHint: string; previewUrl?: string }[] | undefined;
   error: string | undefined;
 }> {
   try {
@@ -497,34 +517,12 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
       url: item.url,
       type: item.type,
       filenameHint: item.filenameHint,
+      previewUrl: item.previewUrl,
     }));
 
     return { media, error: undefined };
   } catch (err) {
     return { media: undefined, error: String(err) };
-  }
-}
-
-interface GetPreviewUrlMsg {
-  type: 'GET_PREVIEW_URL';
-  url: string;
-}
-
-async function handleGetPreviewUrl(
-  msg: GetPreviewUrlMsg
-): Promise<{ previewUrl: string | undefined; error: string | undefined }> {
-  try {
-    const res = await fetch(msg.url, { credentials: 'omit' });
-    if (!res.ok) {
-      return { previewUrl: undefined, error: `HTTP ${res.status}` };
-    }
-    const blob = await res.blob();
-    // Use blobToDataUrl — safe in both service workers and document scripts
-    const previewUrl = await blobToDataUrl(blob);
-    return { previewUrl, error: undefined };
-  } catch (err) {
-    console.error('[PREVIEW] Error:', err);
-    return { previewUrl: undefined, error: String(err) };
   }
 }
 
@@ -640,10 +638,6 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case 'FETCH_MEDIA':
       handleFetchMedia(msg as FetchMediaMsg).then(sendResponse);
-      return true;
-
-    case 'GET_PREVIEW_URL':
-      handleGetPreviewUrl(msg as GetPreviewUrlMsg).then(sendResponse);
       return true;
 
     case 'DOWNLOAD_MEDIA':

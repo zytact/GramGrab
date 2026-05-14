@@ -173,61 +173,6 @@ describe('background dispatcher', () => {
     });
   });
 
-  // ── GET_PREVIEW_URL ───────────────────────────────────────────────────────
-
-  describe('GET_PREVIEW_URL', () => {
-    it('returns { error } when the media fetch fails with non-ok status', async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 403,
-        blob: async () => new Blob(),
-      }) as unknown as typeof fetch;
-      const listener = await loadBackground();
-      const result = await invoke(listener, {
-        type: 'GET_PREVIEW_URL',
-        url: 'https://cdn.instagram.com/image.jpg',
-      });
-      expect(result).toMatchObject({ previewUrl: undefined, error: 'HTTP 403' });
-    });
-
-    it('returns a base64 data URL on success', async () => {
-      const fakeBlob = new Blob(['PNG'], { type: 'image/png' });
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        blob: async () => fakeBlob,
-      }) as unknown as typeof fetch;
-      const listener = await loadBackground();
-      const result = (await invoke(listener, {
-        type: 'GET_PREVIEW_URL',
-        url: 'https://cdn.instagram.com/image.jpg',
-      })) as { previewUrl: string; error: undefined };
-
-      expect(result.error).toBeUndefined();
-      expect(result.previewUrl).toMatch(/^data:image\/png;base64,/);
-    });
-
-    it('does not use FileReader (service-worker-safe)', async () => {
-      // FileReader should never be called in the GET_PREVIEW_URL handler
-      const FileReaderSpy = vi.fn();
-      globalThis.FileReader = FileReaderSpy as unknown as typeof FileReader;
-
-      const fakeBlob = new Blob(['data'], { type: 'image/jpeg' });
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        blob: async () => fakeBlob,
-      }) as unknown as typeof fetch;
-      const listener = await loadBackground();
-      await invoke(listener, {
-        type: 'GET_PREVIEW_URL',
-        url: 'https://cdn.instagram.com/image.jpg',
-      });
-
-      expect(FileReaderSpy).not.toHaveBeenCalled();
-    });
-  });
-
   // ── DOWNLOAD_MEDIA ────────────────────────────────────────────────────────
 
   describe('DOWNLOAD_MEDIA', () => {
