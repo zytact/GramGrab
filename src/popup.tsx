@@ -12,12 +12,7 @@ interface MediaItem {
 }
 
 interface MediaResponse {
-  media?: { url: string; type: string; filenameHint: string }[];
-  error?: string;
-}
-
-interface PreviewResponse {
-  previewUrl?: string;
+  media?: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
   error?: string;
 }
 
@@ -28,7 +23,6 @@ export default function Popup() {
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [previewLoading, setPreviewLoading] = useState<Set<number>>(new Set());
   const [exportFrameSet, setExportFrameSet] = useState<Set<number>>(new Set());
   const [autoDetected, setAutoDetected] = useState(false);
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
@@ -76,6 +70,7 @@ export default function Popup() {
         url: item.url,
         filenameHint: item.filenameHint,
         selected: true,
+        previewUrl: item.previewUrl,
       }));
 
       setMediaItems(items);
@@ -108,29 +103,6 @@ export default function Popup() {
       }
       return next;
     });
-  }, []);
-
-  const loadPreview = useCallback(async (index: number, itemUrl: string) => {
-    setPreviewLoading(prev => new Set(prev).add(index));
-
-    try {
-      const res = (await browser.runtime.sendMessage({
-        type: 'GET_PREVIEW_URL',
-        url: itemUrl,
-      })) as PreviewResponse;
-
-      if (res?.previewUrl) {
-        setMediaItems(prev =>
-          prev.map(item => (item.index === index ? { ...item, previewUrl: res.previewUrl } : item))
-        );
-      }
-    } finally {
-      setPreviewLoading(prev => {
-        const next = new Set(prev);
-        next.delete(index);
-        return next;
-      });
-    }
   }, []);
 
   const captureFrameFromVideo = useCallback(async (video: HTMLVideoElement) => {
@@ -267,14 +239,6 @@ export default function Popup() {
     }
   }, [exportFrameSet, handleExportFrame, mediaItems]);
 
-  useEffect(() => {
-    mediaItems.forEach((item, idx) => {
-      if (item.type === 'image' && !item.previewUrl) {
-        loadPreview(idx, item.url);
-      }
-    });
-  }, [mediaItems, loadPreview]);
-
   const selectedCount = mediaItems.filter(m => m.selected).length;
   const allSelected = mediaItems.length > 0 && selectedCount === mediaItems.length;
 
@@ -346,7 +310,6 @@ export default function Popup() {
                 <MediaItemRow
                   key={item.index}
                   item={item}
-                  loading={previewLoading.has(item.index)}
                   onToggle={() => toggleItem(item.index)}
                   exportFrame={exportFrameSet.has(item.index)}
                   onToggleExportFrame={() => toggleExportFrame(item.index)}
@@ -390,14 +353,12 @@ export default function Popup() {
 
 function MediaItemRow({
   item,
-  loading,
   onToggle,
   exportFrame,
   onToggleExportFrame,
   onVideoRef,
 }: {
   item: MediaItem;
-  loading: boolean;
   onToggle: () => void;
   exportFrame: boolean;
   onToggleExportFrame: () => void;
@@ -420,14 +381,8 @@ function MediaItemRow({
               <div className="play-triangle" />
             </div>
           </>
-        ) : item.previewUrl ? (
-          <img src={item.previewUrl} alt="Preview" />
-        ) : loading ? (
-          <span className="thumb-loading">···</span>
         ) : (
-          <div className="thumb-placeholder">
-            <span className="thumb-icon">◻</span>
-          </div>
+          <img src={item.previewUrl ?? item.url} alt="Preview" />
         )}
       </div>
 
