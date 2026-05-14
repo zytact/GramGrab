@@ -289,7 +289,7 @@ export default function Popup() {
     <div className="container">
       <header className="ext-header">
         <div className="ext-logo">
-          Insta<em>ext</em>
+          Gram<em>Grab</em>
         </div>
         <div className="ext-meta">
           <span className="ext-subtitle">Media Extractor</span>
