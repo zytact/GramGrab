@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Instaext is a Chrome/Firefox browser extension (Manifest V3) for downloading Instagram media.
+GramGrab is a Chrome/Firefox browser extension (Manifest V3) for downloading Instagram media.
 
 ## Build Commands
 
