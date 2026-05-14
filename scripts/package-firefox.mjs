@@ -8,6 +8,6 @@ if (!existsSync(srcDir)) {
   process.exit(1);
 }
 
-const output = 'extension/firefox/instaext.xpi';
-execSync(`cd ${srcDir} && zip -r instaext.xpi .`, { stdio: 'inherit' });
+const output = 'extension/firefox/gramgrab.xpi';
+execSync(`cd ${srcDir} && zip -r gramgrab.xpi .`, { stdio: 'inherit' });
 console.log(`[package-firefox] created ${output}`);

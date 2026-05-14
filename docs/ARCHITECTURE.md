@@ -1,4 +1,4 @@
-# Instaext: Living Architecture Document
+# GramGrab: Living Architecture Document
 
 **Last Updated:** May 12, 2026  
 
@@ -18,9 +18,9 @@
 
 ## System Overview
 
-### What Instaext Is
+### What GramGrab Is
 
-Instaext is a Manifest V3 browser extension for Chrome and Firefox that downloads Instagram media (posts, reels, stories, highlights, profile pictures) to the user's device. It operates entirely within browser sandbox restrictions and does not require a backend server.
+GramGrab is a Manifest V3 browser extension for Chrome and Firefox that downloads Instagram media (posts, reels, stories, highlights, profile pictures) to the user's device. It operates entirely within browser sandbox restrictions and does not require a backend server.
 
 ### High-Level Architecture
 
@@ -79,7 +79,7 @@ Instaext is a Manifest V3 browser extension for Chrome and Firefox that download
 ### Directory Structure
 
 ```
-instaext/
+gramgrab/
 ├── templates/                          # ← Vite root (non-standard placement)
 │   ├── popup.html                      # Popup entry point
 │   ├── popup.tsx                       # Symlink to ../src/popup.tsx
@@ -1191,7 +1191,7 @@ const outDir = `extension/${browser}`;
 // Shared manifest fields
 const baseManifest = {
   manifest_version: 3,
-  name: 'Instaext',
+  name: 'GramGrab',
   version: '1.0.0',
   // ... other fields
 };
@@ -1203,7 +1203,7 @@ const background = browser === 'chromium'
 
 // Firefox-specific gecko settings
 const geckoSettings = browser === 'firefox'
-  ? { browser_specific_settings: { gecko: { id: 'instaext@zytact', strict_min_version: '109.0' } } }
+  ? { browser_specific_settings: { gecko: { id: 'gramgrab@zytact', strict_min_version: '109.0' } } }
   : {};
 
 const manifest = { ...baseManifest, background, ...geckoSettings };
@@ -1238,11 +1238,11 @@ if (!existsSync(srcDir)) {
 }
 
 // Create XPI by zipping the extension directory
-execSync(`cd ${srcDir} && zip -r instaext.xpi .`, { stdio: 'inherit' });
+execSync(`cd ${srcDir} && zip -r gramgrab.xpi .`, { stdio: 'inherit' });
 ```
 
 **Result:** 
-- `extension/firefox/instaext.xpi` — a signed or self-signed ZIP archive ready for Firefox installation
+- `extension/firefox/gramgrab.xpi` — a signed or self-signed ZIP archive ready for Firefox installation
 - Can be distributed to users or submitted to AMO (Mozilla Add-ons)
 
 **Usage:**
@@ -1260,7 +1260,7 @@ bun run build:chromium  # Build Chrome only (BROWSER=chromium)
 bun run build:firefox   # Build Firefox only (BROWSER=firefox)
 bun run dev            # Watch mode for chromium
 bun run dev:firefox    # Watch mode for firefox
-bun run package:firefox # Build Firefox and create instaext.xpi
+bun run package:firefox # Build Firefox and create gramgrab.xpi
 bun run test           # Single run, coverage
 bun run test:watch    # Watch mode
 bun run lint           # Check code style
@@ -1381,7 +1381,7 @@ globalThis.browser = noopShim; // All operations are no-ops
 
 ### 1. **No Backend Server**
 
-**Decision:** Instaext operates entirely within the browser extension sandbox. No backend required.
+**Decision:** GramGrab operates entirely within the browser extension sandbox. No backend required.
 
 **Rationale:**
 - Users' data never leaves their device
@@ -1755,7 +1755,7 @@ console.log('Received message:', message);
 
 // Inspect logs:
 // 1. Go to chrome://extensions/
-// 2. Find Instaext extension
+// 2. Find GramGrab extension
 // 3. Click "Inspect views" → "service worker"
 // 4. Console tab shows logs
 ```
@@ -1793,7 +1793,7 @@ await browser.runtime.sendMessage({
 // - Can store data in browser.storage.* APIs (persists across wake/sleep)
 
 // Check service worker state:
-// chrome://extensions/ → Instaext → "Inspect views"
+// chrome://extensions/ → GramGrab → "Inspect views"
 // See "Active" or "Inactive" status
 ```
 

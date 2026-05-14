@@ -8,7 +8,7 @@ const Crx = require('crx');
 
 const srcDir = 'extension/chromium';
 const keyFile = 'extension/chromium/chromium.pem';
-const output = 'extension/chromium/instaext.crx';
+const output = 'extension/chromium/gramgrab.crx';
 
 if (!existsSync(srcDir)) {
   console.error(`[package-chromium] ${srcDir} not found — run "bun run build:chromium" first`);
