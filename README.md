@@ -1,6 +1,6 @@
-# Instaext
+# GramGrab
 
-**Instaext** is a browser extension (Chrome & Firefox, Manifest V3) that lets you download media from Instagram directly from your browser — posts, carousels, reels, stories, highlights, and profile pictures — with a clean, minimal UI and no third-party services.
+**GramGrab** is a browser extension (Chrome & Firefox, Manifest V3) that lets you download media from Instagram directly from your browser — posts, carousels, reels, stories, highlights, and profile pictures — with a clean, minimal UI and no third-party services.
 
 ---
 
@@ -54,7 +54,7 @@
    - Click **Load Temporary Add-on…**
    - Select any file inside the **`extension/firefox/`** folder (e.g. `manifest.json`)
 
-4. The Instaext icon will appear in your browser toolbar.
+4. The GramGrab icon will appear in your browser toolbar.
 
 > **Why separate folders?** Chromium MV3 requires a `service_worker` background entry; Firefox MV3 uses `scripts`. The two builds share the same TypeScript source but get different generated `manifest.json` files.
 
@@ -73,9 +73,9 @@ Then load the matching `extension/chromium/` or `extension/firefox/` folder as a
 ## How to Use
 
 1. **Open Instagram** in a browser tab and navigate to the content you want — a post, reel, story, highlight, or profile page.
-2. **Click the Instaext icon** in your toolbar to open the popup.
+2. **Click the GramGrab icon** in your toolbar to open the popup.
    - The URL field auto-fills with the Instagram URL from your active tab. If it doesn't, paste the URL manually.
-3. **Click "Fetch Media"** (or press Enter). Instaext queries Instagram for the available media items.
+3. **Click "Fetch Media"** (or press Enter). GramGrab queries Instagram for the available media items.
 4. **Review the results.** Each item shows a thumbnail, media type badge (image / video), and a filename hint.
    - Use the **Select All** checkbox or tick individual items.
 5. **Click "Download N Selected"** to save the chosen files. Your browser's standard download mechanism handles the rest — files land wherever your browser saves downloads.
@@ -104,9 +104,9 @@ bun run build:chromium  # → extension/chromium/
 bun run build:firefox   # → extension/firefox/
 
 # Package Firefox extension as XPI
-bun run package:firefox  # → extension/firefox/instaext.xpi
+bun run package:firefox  # → extension/firefox/gramgrab.xpi
 # Package Chromium extension as CRX
-bun run package:chromium # → extension/chromium/instaext.crx
+bun run package:chromium # → extension/chromium/gramgrab.crx
 
 # Watch mode (rebuilds on save)
 bun run dev             # Chromium watch (extension/chromium/)
@@ -131,14 +131,14 @@ The Vite build root is `templates/`; `src/background.ts` is bundled directly as 
 
 ## How It Works
 
-Instaext is built on two parts:
+GramGrab is built on two parts:
 
 - **Popup UI** — a React app (`src/App.tsx`) rendered inside the extension popup. It handles URL input, media listing, selection, and status feedback.
 - **Background service worker** (`src/background.ts`) — handles all network requests to Instagram's internal GraphQL API and triggers browser downloads via `browser.downloads.download()`.
 
 The popup sends messages to the background worker (`FETCH_MEDIA`, `DOWNLOAD_MEDIA`, `GET_PREVIEW_URL`). The worker fetches media metadata from Instagram using your authenticated browser session (cookies are included automatically), parses the response, and returns normalized media items to the popup.
 
-> Instaext never sends your data anywhere except directly to Instagram's own servers. All requests go from your browser to `instagram.com` and `fbcdn.net` (Instagram's media CDN).
+> GramGrab never sends your data anywhere except directly to Instagram's own servers. All requests go from your browser to `instagram.com` and `fbcdn.net` (Instagram's media CDN).
 
 ---
 
@@ -159,9 +159,9 @@ The popup sends messages to the background worker (`FETCH_MEDIA`, `DOWNLOAD_MEDI
 ## Limitations
 
 - **Login required** — you must be logged in to Instagram in the same browser profile. Private content is only accessible if your account follows that profile.
-- **API fragility** — Instaext uses Instagram's internal, undocumented GraphQL endpoints. Instagram may change these without notice, which can break fetching until the extension is updated.
-- **Time-limited CDN URLs** — Instagram media URLs expire after a few hours. Downloads initiated through Instaext must complete before the URL expires.
-- **No download history** — Instaext does not track what you have previously downloaded.
+- **API fragility** — GramGrab uses Instagram's internal, undocumented GraphQL endpoints. Instagram may change these without notice, which can break fetching until the extension is updated.
+- **Time-limited CDN URLs** — Instagram media URLs expire after a few hours. Downloads initiated through GramGrab must complete before the URL expires.
+- **No download history** — GramGrab does not track what you have previously downloaded.
 - **File formats** — images are always saved as `.jpg` and videos as `.mp4`, matching the formats Instagram serves.
 
 ---

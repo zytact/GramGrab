@@ -610,7 +610,7 @@ async function handleDownloadDebugJson(
     const url = jsonToDataUrl(msg.json);
     await browser.downloads.download({
       url,
-      filename: `instaext-debug-${Date.now()}.json`,
+      filename: `gramgrab-debug-${Date.now()}.json`,
       saveAs: true,
     });
     return { error: undefined };

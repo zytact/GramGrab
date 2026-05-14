@@ -35,7 +35,7 @@ await writeIfMissing(
 // Fields shared between both targets
 const baseManifest = {
   manifest_version: 3,
-  name: 'Instaext',
+  name: 'GramGrab',
   version: '1.0.0',
   description:
     'Download Instagram posts, reels, stories, and highlights directly from your browser session.',
@@ -50,7 +50,7 @@ const baseManifest = {
       16: 'icons/icon-16.png',
       48: 'icons/icon-48.png',
     },
-    default_title: 'Instaext',
+    default_title: 'GramGrab',
   },
   permissions: ['downloads', 'storage', 'activeTab', 'tabs', 'scripting'],
   host_permissions: ['https://*.instagram.com/*', 'https://*.fbcdn.net/*'],
@@ -68,7 +68,7 @@ const geckoSettings =
   browser === 'firefox'
     ? {
         browser_specific_settings: {
-          gecko: { id: 'instaext@zytact', strict_min_version: '109.0' },
+          gecko: { id: 'gramgrab@zytact', strict_min_version: '109.0' },
         },
       }
     : {};
