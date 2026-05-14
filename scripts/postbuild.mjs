@@ -1,32 +1,8 @@
-import { mkdir, writeFile, copyFile, access } from 'node:fs/promises';
+import { mkdir, writeFile, copyFile } from 'node:fs/promises';
 
 // Target browser is passed via BROWSER env (same as vite.config.ts).
 const browser = process.env.BROWSER ?? 'chromium';
 const outDir = `extension/${browser}`;
-
-await mkdir(`${outDir}/js/js`, { recursive: true });
-
-// Only write stubs if Vite didn't already emit these files
-async function writeIfMissing(path, content) {
-  try {
-    await access(path);
-    // File exists — Vite emitted it, leave it alone
-  } catch {
-    await writeFile(path, content);
-  }
-}
-
-await writeIfMissing(
-  `${outDir}/js/rolldown-runtime.js`,
-  'export function t(factory){const exports={};const value=factory(exports);return value??exports;}'
-);
-
-await writeFile(`${outDir}/js/modulepreload-polyfill.js`, '// noop\n');
-
-await writeIfMissing(
-  `${outDir}/js/js/bundle.js`,
-  'export function t(e){try{let t=new URL(e);if(t.hostname!==`www.instagram.com`&&t.hostname!==`instagram.com`)return null;let n=t.pathname.replace(/\\/$/,``).split(`/`).filter(Boolean);if(n.length===0)return null;let[r,i,a]=n;if(r===`p`&&i)return{type:`post`,shortcode:i,carouselIndex:t.searchParams.has(`img_index`)?parseInt(t.searchParams.get(`img_index`))-1:void 0};if(r===`reel`&&i)return{type:`reel`,shortcode:i};if(r===`stories`){if(i===`highlights`&&a)return{type:`highlight`,highlightId:a};if(i)return{type:`story`,username:i}}return null}catch{return null}}'
-);
 
 // ---------------------------------------------------------------------------
 // Browser-specific manifest generation
