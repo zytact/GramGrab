@@ -14,6 +14,7 @@
 - **Batch selection** — cherry-pick which items to download from any result set
 - **Preview thumbnails** — see images and videos before you download
 - **Auto-detect URL** — the popup reads the URL of your active Instagram tab automatically
+- **Export video frame** — toggle a "Frame" checkbox on any video to download a JPEG still (5s mark) instead of the MP4
 - **Dark/light theme** — follows your OS preference
 
 ---
@@ -103,7 +104,9 @@ bun run build:chromium  # → extension/chromium/
 bun run build:firefox   # → extension/firefox/
 
 # Package Firefox extension as XPI
-bun run package:firefox # → extension/firefox/instaext.xpi
+bun run package:firefox  # → extension/firefox/instaext.xpi
+# Package Chromium extension as CRX
+bun run package:chromium # → extension/chromium/instaext.crx
 
 # Watch mode (rebuilds on save)
 bun run dev             # Chromium watch (extension/chromium/)
@@ -122,7 +125,7 @@ bun run format
 bun run format:check
 ```
 
-The Vite build root is `templates/`; `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. For Firefox, you can package the built extension as an XPI file using `bun run package:firefox`.
+The Vite build root is `templates/`; `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. For Firefox, you can package the built extension as an XPI file using `bun run package:firefox`; for Chromium, use `bun run package:chromium` to create a `.crx` file. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a deeper look at the codebase structure.
 
 ---
 
@@ -165,7 +168,7 @@ The popup sends messages to the background worker (`FETCH_MEDIA`, `DOWNLOAD_MEDI
 
 ## Contributing
 
-Pull requests are welcome. Please run `bun run lint:fix` and `bun run format` before submitting.
+Pull requests are welcome. Please run `bun run lint:fix` and `bun run format` before submitting. Pre-commit hooks (via Husky + lint-staged) are set up to auto-fix lint and formatting on staged files — run `bun install` to activate them.
 
 ---
 
