@@ -381,7 +381,7 @@ export default function Popup() {
       </div>
 
       <footer className="ext-footer">
-        <span className="footer-brand">Instaext</span>
+        <span className="footer-brand">GramGrab</span>
         <span className="footer-tagline">Posts · Reels · Stories</span>
       </footer>
     </div>

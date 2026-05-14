@@ -2,50 +2,54 @@
 
 ## Project Overview
 
-Instaext is a Chrome/Firefox browser extension (Manifest V3) for downloading Instagram media.
+GramGrab is a Chrome/Firefox browser extension (Manifest V3) for downloading Instagram media.
 
-## Commands
+## Build Commands
 
 ```bash
-# Build (both targets -> extension/chromium, extension/firefox)
-bun run build
-bun run build:chromium
-bun run build:firefox
+bun run build           # chromium + firefox (extension/chromium/, extension/firefox/)
+bun run build:chromium  # BROWSER=chromium vite build + postbuild
+bun run build:firefox   # BROWSER=firefox vite build + postbuild
 
-# Dev watch (per-target)
-bun run dev            # chromium
-bun run dev:firefox
+bun run dev             # chromium watch (alias for dev:chromium)
+bun run dev:firefox     # firefox watch
 
-# Test
+bun run lint            # eslint .
+bun run lint:fix        # eslint --fix
+bun run format          # prettier --write
+bun run format:check
+bun run typecheck       # tsc --noEmit
+
 bun run test
 bun run test:watch
-
-# Lint & Format
-bun run typecheck
-bun run lint
-bun run lint:fix
-bun run format
-bun run format:check
-
-# Package Firefox XPI
-bun run package:firefox
+bun run package:firefox # build:firefox + XPI packaging
+bun run package:chromium
 ```
+
+## Verification Order
+
+Run linting and typecheck together before committing; test separately.
 
 ## Architecture
 
-- `templates/` - Vite root (popup.html)
-- `src/` - React + background worker source (App.tsx, popup.tsx, background.ts)
-- `extension/<browser>/` - build output; load this in browser
-- `BROWSER` env selects target; defaults to `chromium` if unset
-- Post-build script (`scripts/postbuild.mjs`) generates per-browser `manifest.json` and copies icons
+- **Vite root**: `templates/` (not project root). `popup.html` is the entry.
+- **Background worker**: `src/background.ts` — bundled directly as `js/background.js` (no HTML wrapper).
+- **Popup UI**: `src/App.tsx` rendered inside `popup.html`.
+- **Output**: `extension/chromium/` or `extension/firefox/` depending on `BROWSER` env.
+- **Post-build** (`scripts/postbuild.mjs`): generates per-browser `manifest.json`, copies icons, writes stub polyfill files.
+
+## TypeScript Notes
+
+- `tsconfig.json` uses `moduleResolution: bundler` and `verbatimModuleSyntax: true` — use `.js` extensions in `import` statements.
+- `noUncheckedIndexedAccess: true` is enabled — access results may be `undefined`.
+- Circular dependency warnings from Rollup are suppressed in Vite config (`CIRCULAR_DEPENDENCY` code is ignored).
 
 ## Testing
 
-- Vitest with `jsdom`
-- Test files: `src/**/*.test.ts`, `src/**/*.test.tsx`
-- Test setup: `src/test/setup.ts`
+- Vitest with `jsdom`.
+- Test files: `src/**/*.test.ts`, `src/**/*.test.tsx`.
+- Setup: `src/test/setup.ts`.
 
-## Important Quirks
+## Pre-commit
 
-- Pre-commit runs `bun run lint-staged` (eslint --fix + prettier --write on staged files)
-- Build output is per-browser; load `extension/chromium/` or `extension/firefox/`
+- `bun run lint-staged` (eslint --fix + prettier --write on staged `.ts/.tsx/.js/.mjs` files).
