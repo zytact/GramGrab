@@ -16,6 +16,11 @@ interface MediaResponse {
   error?: string;
 }
 
+interface PreviewResponse {
+  previewUrl?: string;
+  error?: string;
+}
+
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
 export default function Popup() {
@@ -24,6 +29,8 @@ export default function Popup() {
   const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [exportFrameSet, setExportFrameSet] = useState<Set<number>>(new Set());
+  const [fallbackLoading, setFallbackLoading] = useState<Set<number>>(new Set());
+  const [fallbackFailed, setFallbackFailed] = useState<Set<number>>(new Set());
   const [autoDetected, setAutoDetected] = useState(false);
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
 
@@ -103,6 +110,38 @@ export default function Popup() {
       }
       return next;
     });
+  }, []);
+
+  const requestFallbackPreview = useCallback(async (index: number, itemUrl: string) => {
+    setFallbackLoading(prev => new Set(prev).add(index));
+
+    try {
+      const res = (await browser.runtime.sendMessage({
+        type: 'GET_PREVIEW_URL',
+        url: itemUrl,
+      })) as PreviewResponse;
+
+      if (res?.previewUrl) {
+        setMediaItems(prev =>
+          prev.map(item => (item.index === index ? { ...item, previewUrl: res.previewUrl } : item))
+        );
+        setFallbackFailed(prev => {
+          const next = new Set(prev);
+          next.delete(index);
+          return next;
+        });
+      } else {
+        setFallbackFailed(prev => new Set(prev).add(index));
+      }
+    } catch {
+      setFallbackFailed(prev => new Set(prev).add(index));
+    } finally {
+      setFallbackLoading(prev => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+    }
   }, []);
 
   const captureFrameFromVideo = useCallback(async (video: HTMLVideoElement) => {
@@ -310,6 +349,17 @@ export default function Popup() {
                 <MediaItemRow
                   key={item.index}
                   item={item}
+                  fallbackLoading={fallbackLoading.has(item.index)}
+                  fallbackFailed={fallbackFailed.has(item.index)}
+                  onError={() => {
+                    if (
+                      fallbackLoading.has(item.index) ||
+                      fallbackFailed.has(item.index) ||
+                      item.previewUrl?.startsWith('data:')
+                    )
+                      return;
+                    requestFallbackPreview(item.index, item.url);
+                  }}
                   onToggle={() => toggleItem(item.index)}
                   exportFrame={exportFrameSet.has(item.index)}
                   onToggleExportFrame={() => toggleExportFrame(item.index)}
@@ -353,12 +403,18 @@ export default function Popup() {
 
 function MediaItemRow({
   item,
+  fallbackLoading,
+  fallbackFailed,
+  onError,
   onToggle,
   exportFrame,
   onToggleExportFrame,
   onVideoRef,
 }: {
   item: MediaItem;
+  fallbackLoading: boolean;
+  fallbackFailed: boolean;
+  onError: () => void;
   onToggle: () => void;
   exportFrame: boolean;
   onToggleExportFrame: () => void;
@@ -381,9 +437,14 @@ function MediaItemRow({
               <div className="play-triangle" />
             </div>
           </>
+        ) : fallbackFailed ? (
+          <div className="thumb-placeholder">
+            <span className="thumb-icon">◻</span>
+          </div>
         ) : (
-          <img src={item.previewUrl ?? item.url} alt="Preview" />
+          <img src={item.previewUrl ?? item.url} alt="Preview" onError={onError} />
         )}
+        {fallbackLoading && !item.previewUrl && <span className="thumb-loading">···</span>}
       </div>
 
       <div className="item-info">
