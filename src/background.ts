@@ -526,6 +526,27 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
   }
 }
 
+interface GetPreviewUrlMsg {
+  type: 'GET_PREVIEW_URL';
+  url: string;
+}
+
+async function handleGetPreviewUrl(
+  msg: GetPreviewUrlMsg
+): Promise<{ previewUrl: string | undefined; error: string | undefined }> {
+  try {
+    const res = await fetch(msg.url, { credentials: 'omit' });
+    if (!res.ok) {
+      return { previewUrl: undefined, error: `HTTP ${res.status}` };
+    }
+    const blob = await res.blob();
+    const previewUrl = await blobToDataUrl(blob);
+    return { previewUrl, error: undefined };
+  } catch (err) {
+    return { previewUrl: undefined, error: String(err) };
+  }
+}
+
 interface DownloadMediaMsg {
   type: 'DOWNLOAD_MEDIA';
   urls: string[];
@@ -638,6 +659,10 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case 'FETCH_MEDIA':
       handleFetchMedia(msg as FetchMediaMsg).then(sendResponse);
+      return true;
+
+    case 'GET_PREVIEW_URL':
+      handleGetPreviewUrl(msg as GetPreviewUrlMsg).then(sendResponse);
       return true;
 
     case 'DOWNLOAD_MEDIA':
