@@ -1,7 +1,7 @@
 # Effect.ts Migration
 
-> **Current phase:** Phase 0 complete — architecture documented, no Effect code yet.
-> **Next step:** Phase 1 — `bun add effect`, scaffold `src/effect/`, verify green build.
+> **Current phase:** Phase 1 complete — `effect@3.21.2` added; `src/effect/errors.ts` + `src/effect/runtime.ts` scaffolded; all checks green.
+> **Next step:** Phase 2 — finalize `formatError`, wire `runHandler` into one handler as proof-of-concept.
 
 ---
 
@@ -366,3 +366,4 @@ Non-blocking — do not need answers before Phase 1:
 | Date | Session | Inspected | Changed | Files modified | Checks run | Known issues | Next step |
 |---|---|---|---|---|---|---|---|
 | 2026-05-18 | Phase 0 | All `src/` files; `package.json`; `tsconfig.json`; `vite.config.ts` | None | `EFFECT_MIGRATION.md` (created) | none | none | Phase 1: `bun add effect`, scaffold `src/effect/` |
+| 2026-05-18 | Phase 1 | `package.json`; `bun.lock` | `effect@3.21.2` added; `src/effect/errors.ts` + `src/effect/runtime.ts` created | `package.json`, `bun.lock`, `src/effect/errors.ts`, `src/effect/runtime.ts`, `EFFECT_MIGRATION.md` | typecheck ✅ lint ✅ test ✅ (46/46) | none | Phase 2: finalize `formatError`, wire `runHandler` into one handler as proof-of-concept |
