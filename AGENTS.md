@@ -28,7 +28,7 @@ bun run package:chromium
 
 ## Verification Order
 
-Run linting and typecheck together before committing; test separately.
+Run linting and typecheck together; test separately.
 
 ## Architecture
 
