@@ -1,10 +1,57 @@
 import { Effect } from 'effect';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBlobAsDataUrl, fetchWebProfileInfoUser } from './instagram.ts';
-import { HttpError, NetworkError, ResponseShapeUnknown } from './errors.ts';
+import { fetchBlobAsDataUrl, fetchWebProfileInfoUser, graphqlFetch } from './instagram.ts';
+import { GraphQLRequestFailed, HttpError, NetworkError, ResponseShapeUnknown } from './errors.ts';
 
 beforeEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('graphqlFetch', () => {
+  const TEST_URL = 'https://www.instagram.com/graphql/query/';
+  const vars = { shortcode: 'abc123' };
+
+  it('returns parsed JSON on success', async () => {
+    const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => mockData,
+    }) as unknown as typeof fetch;
+
+    const result = await Effect.runPromise(graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}));
+    expect(result).toEqual(mockData);
+  });
+
+  it('fails with GraphQLRequestFailed on non-ok response', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+    }) as unknown as typeof fetch;
+
+    const result = await Effect.runPromise(
+      graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
+    );
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') {
+      expect(result.left).toBeInstanceOf(GraphQLRequestFailed);
+      expect((result.left as GraphQLRequestFailed).status).toBe(429);
+    }
+  });
+
+  it('fails with NetworkError when fetch throws', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new TypeError('Failed to fetch')) as unknown as typeof fetch;
+
+    const result = await Effect.runPromise(
+      graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
+    );
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') {
+      expect(result.left).toBeInstanceOf(NetworkError);
+    }
+  });
 });
 
 describe('fetchBlobAsDataUrl', () => {
