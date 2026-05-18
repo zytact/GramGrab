@@ -327,6 +327,52 @@ describe('background dispatcher', () => {
     });
   });
 
+  // ── FETCH_MEDIA (profile) ─────────────────────────────────────────────────
+
+  describe('FETCH_MEDIA — profile', () => {
+    it('returns { media } with image item on success', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            user: {
+              id: '999',
+              profile_pic_url_hd: 'https://cdn.instagram.com/pic_hd.jpg',
+              profile_pic_dimensions: { width: 320, height: 320 },
+            },
+          },
+        }),
+      }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/someuser/',
+      })) as { media: { url: string; type: string }[]; error: undefined };
+
+      expect(result.error).toBeUndefined();
+      expect(result.media).toHaveLength(1);
+      expect(result.media[0]?.url).toBe('https://cdn.instagram.com/pic_hd.jpg');
+      expect(result.media[0]?.type).toBe('image');
+    });
+
+    it('returns { error } when profile fetch returns non-ok status', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+      }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/someuser/',
+      });
+      expect(result).toMatchObject({ error: expect.stringContaining('Profile request failed') });
+    });
+  });
+
   // ── DEBUG_SHAPE ───────────────────────────────────────────────────────────
 
   describe('DEBUG_SHAPE', () => {

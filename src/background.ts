@@ -2,7 +2,8 @@ import { Effect } from 'effect';
 import { browser } from './lib/browser.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
 import { runHandler } from './effect/runtime.ts';
-import { fetchBlobAsDataUrl } from './effect/instagram.ts';
+import { fetchBlobAsDataUrl, fetchWebProfileInfoUser } from './effect/instagram.ts';
+import type { WebProfileInfoUser } from './effect/schemas.ts';
 
 const OPERATIONS = {
   MEDIA_BY_SHORTCODE: {
@@ -88,16 +89,23 @@ function parseInstagramUrl(url: string): ParsedUrl | null {
 }
 
 async function resolveUsernameToId(username: string): Promise<string | null> {
-  const res = await fetch(`${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`, {
-    credentials: 'include',
-    headers: { ...IG_HEADERS, Origin: 'https://www.instagram.com' },
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as {
-    data?: { user?: { id?: string | number } };
-  };
-  const userId = data?.data?.user?.id;
-  return userId ? String(userId) : null;
+  const url = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
+  const user = await Effect.runPromise(
+    fetchWebProfileInfoUser(url, 'include', {
+      ...IG_HEADERS,
+      Origin: 'https://www.instagram.com',
+    }).pipe(
+      Effect.tapError(err =>
+        Effect.sync(() => {
+          if (err._tag === 'ResponseShapeUnknown')
+            console.warn('resolveUsernameToId: unexpected web_profile_info shape');
+        })
+      ),
+      Effect.catchAll(() => Effect.succeed(undefined))
+    )
+  );
+  const userId = user?.id ?? user?.pk;
+  return userId != null ? String(userId) : null;
 }
 
 async function graphqlFetch(
@@ -198,51 +206,45 @@ interface MediaItem {
   filenameHint: string;
 }
 
-function normalizeProfilePicture(data: unknown, username: string, hdUrl?: string): MediaItem[] {
-  const items: MediaItem[] = [];
-  const root = unwrapData(data);
-  const user =
-    (root.user as Record<string, unknown> | undefined) ??
-    ((root.data as Record<string, unknown> | undefined)?.user as
-      | Record<string, unknown>
-      | undefined);
+function normalizeProfilePicture(
+  user: WebProfileInfoUser | undefined,
+  username: string,
+  hdUrl?: string
+): MediaItem[] {
   // Prefer the full-res HD URL from the /users/{id}/info/ endpoint when available,
   // then fall back to profile_pic_url_hd (320x320) from web_profile_info.
-  const picUrl =
-    hdUrl ??
-    (user?.profile_pic_url_hd as string | undefined) ??
-    (user?.profile_pic_url as string | undefined);
-  if (!picUrl) return items;
-  const dims =
-    (user?.profile_pic_dimensions as { width?: number; height?: number } | undefined) ?? undefined;
-
-  items.push({
-    type: 'image',
-    url: picUrl,
-    width: dims?.width,
-    height: dims?.height,
-    filenameHint: `${username}_profile`,
-  });
-
-  return items;
+  const picUrl = hdUrl ?? user?.profile_pic_url_hd ?? user?.profile_pic_url;
+  if (!picUrl) return [];
+  return [
+    {
+      type: 'image',
+      url: picUrl,
+      width: user?.profile_pic_dimensions?.width,
+      height: user?.profile_pic_dimensions?.height,
+      filenameHint: `${username}_profile`,
+    },
+  ];
 }
 
 async function fetchProfilePicture(username: string): Promise<MediaItem[]> {
+  const url = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
+
   // Step 1: fetch web_profile_info for basic profile data + fallback pic URL
-  const profileRes = await fetch(`${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`, {
-    credentials: 'omit',
-    headers: { ...IG_HEADERS, Origin: 'https://www.instagram.com' },
-  });
-  if (!profileRes.ok) {
-    throw new Error(`Profile request failed: ${profileRes.status} ${profileRes.statusText}`);
-  }
-  const profileData = (await profileRes.json()) as Record<string, unknown>;
+  const profileUser = await Effect.runPromise(
+    fetchWebProfileInfoUser(url, 'omit', {
+      ...IG_HEADERS,
+      Origin: 'https://www.instagram.com',
+    }).pipe(
+      Effect.mapError(err =>
+        err._tag === 'HttpError'
+          ? new Error(`Profile request failed: ${err.status} ${err.message}`)
+          : new Error(String(err))
+      )
+    )
+  );
 
   // Extract user ID so we can fetch the full-resolution picture
-  const profileUser = (profileData?.data as Record<string, unknown> | undefined)?.user as
-    | Record<string, unknown>
-    | undefined;
-  const userId = (profileUser?.id ?? profileUser?.pk) as string | number | undefined;
+  const userId = profileUser?.id ?? profileUser?.pk;
 
   // Step 2: fetch full-res profile pic via the private user-info endpoint.
   // This requires an active Instagram session (credentials: 'include') but gracefully
@@ -266,7 +268,7 @@ async function fetchProfilePicture(username: string): Promise<MediaItem[]> {
     }
   }
 
-  return normalizeProfilePicture(profileData, username, hdUrl);
+  return normalizeProfilePicture(profileUser, username, hdUrl);
 }
 
 function pickPreviewSrc(
