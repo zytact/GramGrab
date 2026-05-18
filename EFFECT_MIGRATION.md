@@ -333,8 +333,8 @@ no-FileReader — these guard the behavior.
 ### Phase 7 — Remaining workflows + optional popup enhancements
 
 - Migrate story/highlight/profile workflows.
-- Optionally: `captureFrameFromVideo` with `Effect.timeout` on event promises.
-- Optionally: `BrowserRuntimeService` if popup is ever migrated.
+- `captureFrameFromVideo` with `Effect.timeout` on event promises.
+-  `BrowserRuntimeService` if popup is ever migrated.
 
 ---
 
