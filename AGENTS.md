@@ -1,55 +1,56 @@
 # AGENTS.md
 
-## Project Overview
+## Project
 
-GramGrab is a Chrome/Firefox browser extension (Manifest V3) for downloading Instagram media.
+GramGrab is a Chrome/Firefox MV3 extension for downloading Instagram media. No content scripts.
 
-## Build Commands
+## Commands
 
 ```bash
-bun run build           # chromium + firefox (extension/chromium/, extension/firefox/)
-bun run build:chromium  # BROWSER=chromium vite build + postbuild
-bun run build:firefox   # BROWSER=firefox vite build + postbuild
-
+bun run build           # chromium + firefox
+bun run build:chromium  # → extension/chromium/
+bun run build:firefox   # → extension/firefox/
 bun run dev             # chromium watch (alias for dev:chromium)
 bun run dev:firefox     # firefox watch
-
 bun run lint            # eslint .
-bun run lint:fix        # eslint --fix
+bun run lint:fix
 bun run format          # prettier --write
 bun run format:check
 bun run typecheck       # tsc --noEmit
-
-bun run test
+bun run test            # vitest run
 bun run test:watch
-bun run package:firefox # build:firefox + XPI packaging
-bun run package:chromium
+bun run package:firefox # build + XPI
+bun run package:chromium# build + CRX (generates/uses chromium.pem key)
 ```
 
-## Verification Order
-
-Run linting and typecheck together; test separately.
+Verify in order: `lint` + `typecheck` together, then `test`.
+Never commit yourself.
 
 ## Architecture
 
-- **Vite root**: `templates/` (not project root). `popup.html` is the entry.
-- **Background worker**: `src/background.ts` — bundled directly as `js/background.js` (no HTML wrapper).
-- **Popup UI**: `src/App.tsx` rendered inside `popup.html`.
-- **Output**: `extension/chromium/` or `extension/firefox/` depending on `BROWSER` env.
-- **Post-build** (`scripts/postbuild.mjs`): generates per-browser `manifest.json`, copies icons, writes stub polyfill files.
+- **Vite root**: `templates/`. Entry: `templates/popup.html` (React app at `src/App.tsx`). Background worker (`src/background.ts`) bundled directly as `js/background.js` — no HTML wrapper.
+- **Output**: `extension/{chromium,firefox}/`. Post-build (`scripts/postbuild.mjs`) generates per-browser `manifest.json`, copies icons, writes stub polyfill files. Chromium gets `service_worker`, Firefox gets `scripts`.
+- **Message dispatcher** (`background.ts:639`): all listeners registered synchronously at module top. Uses `sendResponse` + `return true` (cross-browser-safe pattern), NOT Promise-return. The popup (`popup.tsx`) sends `FETCH_MEDIA`, `DOWNLOAD_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB` messages.
+- **Duplicated logic**: `handleFetchMedia` and `executeDownload` are near-identical fetch+normalize dispatch. Any change to URL type branching must update both. Effect migration plans to dedupe this.
+- **`browser` global**: Proxy-based shim (`src/lib/browser.ts`) resolving `globalThis.browser` → `globalThis.chrome` → no-op stub. Promisifies callback APIs.
 
-## TypeScript Notes
+## Effect Migration (in progress)
 
-- `tsconfig.json` uses `moduleResolution: bundler`, `verbatimModuleSyntax: true`, and `allowImportingTsExtensions: true`. Legacy `src/` files use extensionless relative imports (e.g. `./lib/browser`). Effect-migration files (`src/effect/` and any file importing from it) use `.ts` extensions (e.g. `./effect/runtime.ts`).
-- `noUncheckedIndexedAccess: true` is enabled — access results may be `undefined`.
-- Circular dependency warnings from Rollup are suppressed in Vite config (`CIRCULAR_DEPENDENCY` code is ignored).
+Phases 1–3 complete. `src/effect/` uses `.ts` import extensions (e.g. `./errors.ts`). Legacy `src/` files use extensionless imports. See `EFFECT_MIGRATION.md`.
+
+## TypeScript & Style
+
+- `moduleResolution: bundler`, `verbatimModuleSyntax: true`, `allowImportingTsExtensions: true`, `noUncheckedIndexedAccess: true` — array/object access may return `undefined`.
+- `no-console` rule: only `console.warn`/`console.error` allowed.
+- Prettier: single quotes, trailing commas (es5), 100 print width, arrow parens avoid.
 
 ## Testing
 
-- Vitest with `jsdom`.
-- Test files: `src/**/*.test.ts`, `src/**/*.test.tsx`.
-- Setup: `src/test/setup.ts`.
+- Vitest + jsdom. Files: `src/**/*.test.{ts,tsx}`. Setup: `src/test/setup.ts` (polyfills Blob.arrayBuffer, installs mock `globalThis.browser`).
+- Test helpers in `setup.ts`: `resetBrowserMocks()`, `setMockMessageHandler(type, handler)`, `getDownloadCalls()`.
+- Background tests dynamically import `background.ts` to capture the registered listener.
+- Coverage: `bun run test` generates text/json/html reports (v8 provider).
 
 ## Pre-commit
 
-- `bun run lint-staged` (eslint --fix + prettier --write on staged `.ts/.tsx/.js/.mjs` files).
+Husky runs `bun run lint-staged` (eslint --fix + prettier --write on staged `.ts/.tsx/.js/.mjs`).
