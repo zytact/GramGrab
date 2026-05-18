@@ -1,8 +1,8 @@
 import { Effect } from 'effect';
 import { browser } from './lib/browser.ts';
-import { blobToDataUrl, jsonToDataUrl } from './lib/data-url.ts';
-import { HttpError, NetworkError } from './effect/errors.ts';
+import { jsonToDataUrl } from './lib/data-url.ts';
 import { runHandler } from './effect/runtime.ts';
+import { fetchBlobAsDataUrl } from './effect/instagram.ts';
 
 const OPERATIONS = {
   MEDIA_BY_SHORTCODE: {
@@ -537,24 +537,9 @@ interface GetPreviewUrlMsg {
 async function handleGetPreviewUrl(
   msg: GetPreviewUrlMsg
 ): Promise<{ previewUrl: string | undefined; error: string | undefined }> {
-  const program = Effect.gen(function* () {
-    const res = yield* Effect.tryPromise({
-      try: () => fetch(msg.url, { credentials: 'omit' }),
-      catch: cause => new NetworkError({ cause }),
-    });
-    if (!res.ok)
-      return yield* Effect.fail(new HttpError({ status: res.status, message: res.statusText }));
-    const blob = yield* Effect.tryPromise({
-      try: () => res.blob(),
-      catch: cause => new NetworkError({ cause }),
-    });
-    const previewUrl = yield* Effect.tryPromise({
-      try: () => blobToDataUrl(blob),
-      catch: cause => new NetworkError({ cause }),
-    });
-    return { previewUrl };
+  return runHandler(fetchBlobAsDataUrl(msg.url).pipe(Effect.map(previewUrl => ({ previewUrl }))), {
+    previewUrl: undefined,
   });
-  return runHandler(program, { previewUrl: undefined });
 }
 
 interface DownloadMediaMsg {
@@ -589,17 +574,9 @@ async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{ error: stri
 async function handleFetchVideoBlob(
   msg: FetchVideoBlobMsg
 ): Promise<{ dataUrl: string | undefined; error: string | undefined }> {
-  try {
-    const res = await fetch(msg.url, { credentials: 'omit' });
-    if (!res.ok) {
-      return { dataUrl: undefined, error: `HTTP ${res.status}` };
-    }
-    const blob = await res.blob();
-    const dataUrl = await blobToDataUrl(blob);
-    return { dataUrl, error: undefined };
-  } catch (err) {
-    return { dataUrl: undefined, error: String(err) };
-  }
+  return runHandler(fetchBlobAsDataUrl(msg.url).pipe(Effect.map(dataUrl => ({ dataUrl }))), {
+    dataUrl: undefined,
+  });
 }
 
 interface DebugShapeMsg {

@@ -227,6 +227,42 @@ describe('background dispatcher', () => {
     });
   });
 
+  // ── FETCH_VIDEO_BLOB ──────────────────────────────────────────────────────
+
+  describe('FETCH_VIDEO_BLOB', () => {
+    it('returns { error } when the media fetch fails with non-ok status', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        blob: async () => new Blob(),
+      }) as unknown as typeof fetch;
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'FETCH_VIDEO_BLOB',
+        url: 'https://cdn.instagram.com/video.mp4',
+      });
+      expect(result).toMatchObject({ dataUrl: undefined, error: 'HTTP 403' });
+    });
+
+    it('returns a base64 data URL on success', async () => {
+      const fakeBlob = new Blob(['VIDEO'], { type: 'video/mp4' });
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: async () => fakeBlob,
+      }) as unknown as typeof fetch;
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_VIDEO_BLOB',
+        url: 'https://cdn.instagram.com/video.mp4',
+      })) as { dataUrl: string; error: undefined };
+
+      expect(result.error).toBeUndefined();
+      expect(result.dataUrl).toMatch(/^data:video\/mp4;base64,/);
+    });
+  });
+
   // ── DOWNLOAD_MEDIA ────────────────────────────────────────────────────────
 
   describe('DOWNLOAD_MEDIA', () => {
