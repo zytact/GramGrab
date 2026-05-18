@@ -1,5 +1,8 @@
-import { browser } from './lib/browser';
-import { blobToDataUrl, jsonToDataUrl } from './lib/data-url';
+import { Effect } from 'effect';
+import { browser } from './lib/browser.ts';
+import { blobToDataUrl, jsonToDataUrl } from './lib/data-url.ts';
+import { HttpError, NetworkError } from './effect/errors.ts';
+import { runHandler } from './effect/runtime.ts';
 
 const OPERATIONS = {
   MEDIA_BY_SHORTCODE: {
@@ -534,17 +537,24 @@ interface GetPreviewUrlMsg {
 async function handleGetPreviewUrl(
   msg: GetPreviewUrlMsg
 ): Promise<{ previewUrl: string | undefined; error: string | undefined }> {
-  try {
-    const res = await fetch(msg.url, { credentials: 'omit' });
-    if (!res.ok) {
-      return { previewUrl: undefined, error: `HTTP ${res.status}` };
-    }
-    const blob = await res.blob();
-    const previewUrl = await blobToDataUrl(blob);
-    return { previewUrl, error: undefined };
-  } catch (err) {
-    return { previewUrl: undefined, error: String(err) };
-  }
+  const program = Effect.gen(function* () {
+    const res = yield* Effect.tryPromise({
+      try: () => fetch(msg.url, { credentials: 'omit' }),
+      catch: cause => new NetworkError({ cause }),
+    });
+    if (!res.ok)
+      return yield* Effect.fail(new HttpError({ status: res.status, message: res.statusText }));
+    const blob = yield* Effect.tryPromise({
+      try: () => res.blob(),
+      catch: cause => new NetworkError({ cause }),
+    });
+    const previewUrl = yield* Effect.tryPromise({
+      try: () => blobToDataUrl(blob),
+      catch: cause => new NetworkError({ cause }),
+    });
+    return { previewUrl };
+  });
+  return runHandler(program, { previewUrl: undefined });
 }
 
 interface DownloadMediaMsg {

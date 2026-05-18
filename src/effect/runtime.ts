@@ -1,23 +1,18 @@
 import { Effect } from 'effect';
+import { formatError } from './errors.ts';
 
 export { Effect };
 
 export const runPromise = Effect.runPromise;
 
-// Phase 2: replace with formatError from errors.ts
-function serializeError(err: unknown): string {
-  return String(err);
-}
-
-export function runHandler<T extends object>(
-  program: Effect.Effect<T, unknown, never>
-): Promise<T & { error: string | undefined }> {
+export function runHandler<T extends object, E extends object>(
+  program: Effect.Effect<T, unknown, never>,
+  errorDefaults: E
+): Promise<(T & { error: undefined }) | (E & { error: string })> {
   return Effect.runPromise(
     program.pipe(
-      Effect.map(payload => ({ ...payload, error: undefined as string | undefined })),
-      Effect.catchAll(err =>
-        Effect.succeed({ error: serializeError(err) } as T & { error: string | undefined })
-      )
+      Effect.map(payload => ({ ...payload, error: undefined as undefined })),
+      Effect.catchAll(err => Effect.succeed({ ...errorDefaults, error: formatError(err) }))
     )
   );
 }

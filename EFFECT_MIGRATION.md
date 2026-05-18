@@ -1,7 +1,7 @@
 # Effect.ts Migration
 
-> **Current phase:** Phase 1 complete — `effect@3.21.2` added; `src/effect/errors.ts` + `src/effect/runtime.ts` scaffolded; all checks green.
-> **Next step:** Phase 2 — finalize `formatError`, wire `runHandler` into one handler as proof-of-concept.
+> **Current phase:** Phase 2 complete — `formatError` added; `runHandler` finalized; `handleGetPreviewUrl` migrated as POC.
+> **Next step:** Phase 3 — migrate `handleFetchVideoBlob` + `handleGetPreviewUrl` to shared `fetchBlobAsDataUrl` Effect.
 
 ---
 
@@ -259,8 +259,10 @@ bun add effect
 - Verify: `bun run typecheck`, `bun run lint`, `bun run test` all green.
 - Commit: "feat: add Effect dependency and scaffold src/effect/"
 
-**Note on `verbatimModuleSyntax`**: use `.js` extensions in `import` statements
-within `src/effect/` (e.g. `import { ... } from './errors.js'`).
+**Note on import extensions**: use `.ts` extensions in `import` statements
+within `src/effect/` and when importing from `src/effect/` (e.g.
+`import { ... } from './errors.ts'`). `allowImportingTsExtensions: true`
+permits this. Legacy `src/` files remain extensionless.
 
 ### Phase 2 — Error types + Promise-boundary helper
 - Finalize `src/effect/errors.ts` with the `formatError(err: unknown): string`
@@ -367,3 +369,4 @@ Non-blocking — do not need answers before Phase 1:
 |---|---|---|---|---|---|---|---|
 | 2026-05-18 | Phase 0 | All `src/` files; `package.json`; `tsconfig.json`; `vite.config.ts` | None | `EFFECT_MIGRATION.md` (created) | none | none | Phase 1: `bun add effect`, scaffold `src/effect/` |
 | 2026-05-18 | Phase 1 | `package.json`; `bun.lock` | `effect@3.21.2` added; `src/effect/errors.ts` + `src/effect/runtime.ts` created | `package.json`, `bun.lock`, `src/effect/errors.ts`, `src/effect/runtime.ts`, `EFFECT_MIGRATION.md` | typecheck ✅ lint ✅ test ✅ (46/46) | none | Phase 2: finalize `formatError`, wire `runHandler` into one handler as proof-of-concept |
+| 2026-05-18 | Phase 2 | `src/background.ts:534–548`; `src/background.test.ts` GET_PREVIEW_URL tests | `formatError` added to `errors.ts`; `runHandler` finalized (errorDefaults param, uses formatError); `handleGetPreviewUrl` migrated to Effect POC; `errors.test.ts` added; AGENTS.md + EFFECT_MIGRATION.md import-convention note corrected (`.js` → `.ts`) | `src/effect/errors.ts`, `src/effect/runtime.ts`, `src/background.ts`, `src/effect/errors.test.ts`, `AGENTS.md`, `EFFECT_MIGRATION.md` | typecheck ✅ lint ✅ test ✅ (54/54) | none | Phase 3: extract `fetchBlobAsDataUrl` Effect; migrate `handleFetchVideoBlob`; dedupe with updated `handleGetPreviewUrl` |
