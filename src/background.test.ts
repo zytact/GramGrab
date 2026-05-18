@@ -131,7 +131,7 @@ describe('background dispatcher', () => {
         type: 'FETCH_MEDIA',
         url: 'https://www.google.com/',
       });
-      expect(result).toMatchObject({ error: expect.stringContaining('Unsupported') });
+      expect(result).toMatchObject({ error: expect.stringContaining('Invalid Instagram URL') });
     });
 
     it('returns { error } when fetch fails', async () => {
@@ -370,6 +370,111 @@ describe('background dispatcher', () => {
         url: 'https://www.instagram.com/someuser/',
       });
       expect(result).toMatchObject({ error: expect.stringContaining('Profile request failed') });
+    });
+  });
+
+  // ── DOWNLOAD ─────────────────────────────────────────────────────────────
+
+  describe('DOWNLOAD', () => {
+    it('downloads each resolved media item and returns them', async () => {
+      const mockMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphImage',
+            shortcode: 'dl123',
+            display_url: 'https://cdn.instagram.com/dl.jpg',
+            taken_at_timestamp: 1700000000,
+          },
+        },
+      };
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockMedia,
+      }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'DOWNLOAD',
+        url: 'https://www.instagram.com/p/dl123/',
+      })) as { media: unknown[]; error: undefined };
+
+      expect(result.error).toBeUndefined();
+      expect(Array.isArray(result.media)).toBe(true);
+      expect(result.media.length).toBeGreaterThan(0);
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledTimes(1);
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://cdn.instagram.com/dl.jpg' })
+      );
+    });
+
+    it('selects only the carouselIndex item when provided', async () => {
+      const mockMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphSidecar',
+            shortcode: 'side1',
+            edge_sidecar_to_children: {
+              edges: [
+                {
+                  node: {
+                    display_url: 'https://cdn.instagram.com/slide1.jpg',
+                    display_resources: [
+                      { src: 'https://cdn.instagram.com/slide1_hq.jpg', config_width: 1080 },
+                    ],
+                  },
+                },
+                {
+                  node: {
+                    display_url: 'https://cdn.instagram.com/slide2.jpg',
+                    display_resources: [
+                      { src: 'https://cdn.instagram.com/slide2_hq.jpg', config_width: 1080 },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        },
+      };
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockMedia,
+      }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      await invoke(listener, {
+        type: 'DOWNLOAD',
+        url: 'https://www.instagram.com/p/side1/',
+        carouselIndex: 1,
+      });
+
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledTimes(1);
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://cdn.instagram.com/slide2_hq.jpg' })
+      );
+    });
+
+    it('returns { error } when URL is unsupported', async () => {
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'DOWNLOAD',
+        url: 'https://www.google.com/',
+      });
+      expect(result).toMatchObject({ error: expect.stringContaining('Invalid Instagram URL') });
+    });
+
+    it('returns { error } containing media-not-found hint when GraphQL returns no media', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({}), // no media fields
+      }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'DOWNLOAD',
+        url: 'https://www.instagram.com/p/abc123/',
+      });
+      expect(result).toMatchObject({ error: expect.stringContaining('No media found') });
     });
   });
 

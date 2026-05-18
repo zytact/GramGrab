@@ -31,12 +31,11 @@ Never commit yourself.
 - **Vite root**: `templates/`. Entry: `templates/popup.html` (React app at `src/App.tsx`). Background worker (`src/background.ts`) bundled directly as `js/background.js` — no HTML wrapper.
 - **Output**: `extension/{chromium,firefox}/`. Post-build (`scripts/postbuild.mjs`) generates per-browser `manifest.json`, copies icons, writes stub polyfill files. Chromium gets `service_worker`, Firefox gets `scripts`.
 - **Message dispatcher** (`background.ts:639`): all listeners registered synchronously at module top. Uses `sendResponse` + `return true` (cross-browser-safe pattern), NOT Promise-return. The popup (`popup.tsx`) sends `FETCH_MEDIA`, `DOWNLOAD_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB` messages.
-- **Duplicated logic**: `handleFetchMedia` and `executeDownload` are near-identical fetch+normalize dispatch. Any change to URL type branching must update both. Effect migration plans to dedupe this.
 - **`browser` global**: Proxy-based shim (`src/lib/browser.ts`) resolving `globalThis.browser` → `globalThis.chrome` → no-op stub. Promisifies callback APIs.
 
 ## Effect Migration (in progress)
 
-Phases 1–4 complete. `src/effect/` uses `.ts` import extensions (e.g. `./errors.ts`). Legacy `src/` files use extensionless imports. See `EFFECT_MIGRATION.md`.
+Phases 1–5 complete. `src/effect/` uses `.ts` import extensions (e.g. `./errors.ts`). Legacy `src/` files use extensionless imports. `FETCH_MEDIA` and `DOWNLOAD` both use the shared `resolveMediaEffect` in `background.ts`. See `EFFECT_MIGRATION.md`.
 
 ## TypeScript & Style
 
