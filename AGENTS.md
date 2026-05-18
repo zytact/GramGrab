@@ -36,7 +36,7 @@ Never commit yourself.
 
 ## Effect Migration (in progress)
 
-Phases 1–3 complete. `src/effect/` uses `.ts` import extensions (e.g. `./errors.ts`). Legacy `src/` files use extensionless imports. See `EFFECT_MIGRATION.md`.
+Phases 1–4 complete. `src/effect/` uses `.ts` import extensions (e.g. `./errors.ts`). Legacy `src/` files use extensionless imports. See `EFFECT_MIGRATION.md`.
 
 ## TypeScript & Style
 
