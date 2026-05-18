@@ -38,3 +38,38 @@ export class BrowserDownloadFailed extends Data.TaggedError('BrowserDownloadFail
 export class VideoFrameExtractionFailed extends Data.TaggedError('VideoFrameExtractionFailed')<{
   reason: 'no-duration' | 'no-frame' | 'no-canvas' | 'no-blob' | 'cors' | 'timeout';
 }> {}
+
+export function formatError(err: unknown): string {
+  if (typeof err !== 'object' || err === null || !('_tag' in err)) {
+    return String(err);
+  }
+  const e = err as Record<string, unknown>;
+  switch (e['_tag']) {
+    case 'InvalidInstagramUrl':
+      return `Invalid Instagram URL: ${String(e['url'])}`;
+    case 'UsernameUnresolved':
+      return `Could not resolve username: ${String(e['username'])}`;
+    case 'NetworkError':
+      return String(e['cause']);
+    case 'HttpError':
+      return `HTTP ${String(e['status'])}`;
+    case 'NotAuthenticated':
+      return 'HTTP 401';
+    case 'Forbidden':
+      return 'HTTP 403';
+    case 'RateLimited':
+      return 'HTTP 429';
+    case 'GraphQLRequestFailed':
+      return `GraphQL failed: ${String(e['status'])}`;
+    case 'MediaNotFound':
+      return `No media found: ${String(e['hint'])}`;
+    case 'ResponseShapeUnknown':
+      return `Unexpected response shape: ${String(e['context'])}`;
+    case 'BrowserDownloadFailed':
+      return `Download failed for ${String(e['url'])}: ${String(e['cause'])}`;
+    case 'VideoFrameExtractionFailed':
+      return `Frame extraction failed: ${String(e['reason'])}`;
+    default:
+      return String(err);
+  }
+}

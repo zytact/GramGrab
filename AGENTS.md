@@ -40,7 +40,7 @@ Run linting and typecheck together before committing; test separately.
 
 ## TypeScript Notes
 
-- `tsconfig.json` uses `moduleResolution: bundler` and `verbatimModuleSyntax: true` — use `.js` extensions in `import` statements.
+- `tsconfig.json` uses `moduleResolution: bundler`, `verbatimModuleSyntax: true`, and `allowImportingTsExtensions: true`. Legacy `src/` files use extensionless relative imports (e.g. `./lib/browser`). Effect-migration files (`src/effect/` and any file importing from it) use `.ts` extensions (e.g. `./effect/runtime.ts`).
 - `noUncheckedIndexedAccess: true` is enabled — access results may be `undefined`.
 - Circular dependency warnings from Rollup are suppressed in Vite config (`CIRCULAR_DEPENDENCY` code is ignored).
 
