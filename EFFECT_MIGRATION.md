@@ -257,7 +257,6 @@ bun add effect
   `runHandler` helper that maps Effect failures to `{ ..., error: string }`).
 - No existing call sites changed.
 - Verify: `bun run typecheck`, `bun run lint`, `bun run test` all green.
-- Commit: "feat: add Effect dependency and scaffold src/effect/"
 
 **Note on import extensions**: use `.ts` extensions in `import` statements
 within `src/effect/` and when importing from `src/effect/` (e.g.
