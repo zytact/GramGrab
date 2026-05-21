@@ -1,8 +1,18 @@
-import { Effect, Schema } from 'effect';
+import { Effect, Schedule, Schema } from 'effect';
 import { blobToDataUrl } from '../lib/data-url.ts';
-import { GraphQLRequestFailed, HttpError, NetworkError, ResponseShapeUnknown } from './errors.ts';
+import {
+  GraphQLRequestFailed,
+  HttpError,
+  NetworkError,
+  RateLimited,
+  ResponseShapeUnknown,
+} from './errors.ts';
 import { WebProfileInfoResponseSchema } from './schemas.ts';
 import type { WebProfileInfoUser } from './schemas.ts';
+
+const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
+  Schedule.compose(Schedule.recurs(3))
+);
 
 export const graphqlFetch = (
   url: string,
@@ -10,8 +20,8 @@ export const graphqlFetch = (
   operationId: string,
   variables: Record<string, unknown>,
   headers: Record<string, string>
-): Effect.Effect<Record<string, unknown>, NetworkError | GraphQLRequestFailed> =>
-  Effect.gen(function* () {
+): Effect.Effect<Record<string, unknown>, NetworkError | GraphQLRequestFailed | RateLimited> => {
+  const attempt = Effect.gen(function* () {
     const qs = new URLSearchParams({
       [operationKey]: operationId,
       variables: JSON.stringify(variables),
@@ -20,12 +30,26 @@ export const graphqlFetch = (
       try: () => fetch(`${url}?${qs}`, { credentials: 'include', headers }),
       catch: cause => new NetworkError({ cause }),
     });
-    if (!res.ok) return yield* Effect.fail(new GraphQLRequestFailed({ status: res.status }));
+    if (!res.ok) {
+      if (res.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
+      return yield* Effect.fail(new GraphQLRequestFailed({ status: res.status }));
+    }
     return yield* Effect.tryPromise({
       try: () => res.json() as Promise<Record<string, unknown>>,
       catch: cause => new NetworkError({ cause }),
     });
   });
+
+  return attempt.pipe(
+    Effect.retry({
+      schedule: GRAPHQL_RETRY_SCHEDULE,
+      while: err =>
+        err._tag === 'NetworkError' ||
+        err._tag === 'RateLimited' ||
+        (err._tag === 'GraphQLRequestFailed' && err.status >= 500),
+    })
+  );
+};
 
 export const fetchBlobAsDataUrl = (url: string) =>
   Effect.gen(function* () {
