@@ -259,7 +259,7 @@ export default function Popup() {
           urls: standardItems.map(item => item.url),
           hints: standardItems.map(item => item.filenameHint),
           types: standardItems.map(item => item.type),
-        })) as { error?: string };
+        })) as { error?: string; failures?: { url: string; reason: string }[] };
 
         if (res?.error) {
           setMessage(res.error);

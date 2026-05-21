@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect';
+import { Effect, Either, Schema } from 'effect';
 import { browser } from './lib/browser.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
 import { runHandler } from './effect/runtime.ts';
@@ -16,10 +16,13 @@ import {
   InvalidInstagramUrl,
   MediaNotFound,
   NetworkError,
+  RateLimited,
   ResponseShapeUnknown,
   UsernameUnresolved,
   formatError,
 } from './effect/errors.ts';
+
+const DOWNLOAD_CONCURRENCY = 3;
 
 const OPERATIONS = {
   MEDIA_BY_SHORTCODE: {
@@ -419,6 +422,7 @@ const resolveMediaEffect = (
   | UsernameUnresolved
   | NetworkError
   | GraphQLRequestFailed
+  | RateLimited
   | ResponseShapeUnknown
 > =>
   Effect.gen(function* () {
@@ -495,14 +499,14 @@ const downloadMediaEffect = (
   url: string,
   carouselIndex?: number
 ): Effect.Effect<
-  MediaItem[],
+  { items: MediaItem[]; failures: { url: string; reason: string }[] },
   | InvalidInstagramUrl
   | UsernameUnresolved
   | NetworkError
   | GraphQLRequestFailed
+  | RateLimited
   | ResponseShapeUnknown
   | MediaNotFound
-  | BrowserDownloadFailed
 > =>
   Effect.gen(function* () {
     const allItems = yield* resolveMediaEffect(url);
@@ -520,17 +524,28 @@ const downloadMediaEffect = (
       );
     }
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]!;
-      const ext = item.type === 'video' ? 'mp4' : 'jpg';
-      const filename = `${item.filenameHint}_${i + 1}.${ext}`;
-      yield* Effect.tryPromise({
-        try: () => browser.downloads.download({ url: item.url, filename, saveAs: false }),
-        catch: cause => new BrowserDownloadFailed({ url: item.url, cause }),
-      });
-    }
+    const results = yield* Effect.forEach(
+      items.map((item, i) => ({ item, i })),
+      ({ item, i }) => {
+        const ext = item.type === 'video' ? 'mp4' : 'jpg';
+        const filename = `${item.filenameHint}_${i + 1}.${ext}`;
+        return Effect.tryPromise({
+          try: () => browser.downloads.download({ url: item.url, filename, saveAs: false }),
+          catch: cause => new BrowserDownloadFailed({ url: item.url, cause }),
+        }).pipe(
+          Effect.map(() => item),
+          Effect.either
+        );
+      },
+      { concurrency: DOWNLOAD_CONCURRENCY }
+    );
 
-    return items;
+    const succeeded = results.flatMap(r => (Either.isRight(r) ? [r.right] : []));
+    const failures = results.flatMap(r =>
+      Either.isLeft(r) ? [{ url: r.left.url, reason: formatError(r.left) }] : []
+    );
+
+    return { items: succeeded, failures };
   });
 
 // ---------------------------------------------------------------------------
@@ -543,12 +558,38 @@ interface DownloadMsg {
   carouselIndex?: number;
 }
 
-async function handleDownload(
-  msg: DownloadMsg
-): Promise<{ media: MediaItem[] | undefined; error: string | undefined }> {
-  return runHandler(
-    downloadMediaEffect(msg.url, msg.carouselIndex).pipe(Effect.map(media => ({ media }))),
-    { media: undefined }
+async function handleDownload(msg: DownloadMsg): Promise<{
+  media: MediaItem[] | undefined;
+  failures: { url: string; reason: string }[] | undefined;
+  error: string | undefined;
+}> {
+  return Effect.runPromise(
+    downloadMediaEffect(msg.url, msg.carouselIndex).pipe(
+      Effect.map(({ items, failures }) => {
+        if (items.length === 0 && failures.length > 0) {
+          return {
+            media: undefined as MediaItem[] | undefined,
+            failures,
+            error: 'All downloads failed' as string | undefined,
+          };
+        }
+        return {
+          media: items as MediaItem[] | undefined,
+          failures:
+            failures.length > 0
+              ? failures
+              : (undefined as { url: string; reason: string }[] | undefined),
+          error: undefined as string | undefined,
+        };
+      }),
+      Effect.catchAll(err =>
+        Effect.succeed({
+          media: undefined as MediaItem[] | undefined,
+          failures: undefined as { url: string; reason: string }[] | undefined,
+          error: formatError(err) as string | undefined,
+        })
+      )
+    )
   );
 }
 
@@ -601,21 +642,46 @@ interface FetchVideoBlobMsg {
   url: string;
 }
 
-async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{ error: string | undefined }> {
-  try {
-    const { urls, hints, types } = msg;
-    for (let i = 0; i < urls.length; i++) {
-      const ext = types[i] === 'video' ? 'mp4' : 'jpg';
-      const url = urls[i];
-      const hint = hints[i] ?? 'media';
-      if (!url) continue;
-      const filename = `${hint}_${i + 1}.${ext}`;
-      await browser.downloads.download({ url, filename, saveAs: false });
-    }
-    return { error: undefined };
-  } catch (err) {
-    return { error: String(err) };
-  }
+async function handleDownloadMedia(
+  msg: DownloadMediaMsg
+): Promise<{ error: string | undefined; failures?: { url: string; reason: string }[] }> {
+  const { urls, hints, types } = msg;
+  const validItems = urls
+    .map((url, i) => ({ url, hint: hints[i] ?? 'media', type: types[i] ?? 'image', index: i }))
+    .filter(item => !!item.url);
+
+  return Effect.runPromise(
+    Effect.forEach(
+      validItems,
+      item => {
+        const ext = item.type === 'video' ? 'mp4' : 'jpg';
+        const filename = `${item.hint}_${item.index + 1}.${ext}`;
+        return Effect.tryPromise({
+          try: () => browser.downloads.download({ url: item.url, filename, saveAs: false }),
+          catch: cause => new BrowserDownloadFailed({ url: item.url, cause }),
+        }).pipe(Effect.either);
+      },
+      { concurrency: DOWNLOAD_CONCURRENCY }
+    ).pipe(
+      Effect.map(results => {
+        const failures = results.flatMap(r =>
+          Either.isLeft(r) ? [{ url: r.left.url, reason: formatError(r.left) }] : []
+        );
+        if (failures.length === results.length && results.length > 0) {
+          return { error: 'All downloads failed' as string | undefined, failures };
+        }
+        return {
+          error:
+            failures.length > 0
+              ? (`${results.length - failures.length} of ${results.length} downloads succeeded; ${failures.length} failed.` as
+                  | string
+                  | undefined)
+              : undefined,
+          failures: failures.length > 0 ? failures : undefined,
+        };
+      })
+    )
+  );
 }
 
 async function handleFetchVideoBlob(
