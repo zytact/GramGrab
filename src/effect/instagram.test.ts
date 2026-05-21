@@ -1,10 +1,20 @@
 import { Effect } from 'effect';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchBlobAsDataUrl, fetchWebProfileInfoUser, graphqlFetch } from './instagram.ts';
-import { GraphQLRequestFailed, HttpError, NetworkError, ResponseShapeUnknown } from './errors.ts';
+import {
+  GraphQLRequestFailed,
+  HttpError,
+  NetworkError,
+  RateLimited,
+  ResponseShapeUnknown,
+} from './errors.ts';
 
 beforeEach(() => {
   vi.restoreAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('graphqlFetch', () => {
@@ -23,21 +33,100 @@ describe('graphqlFetch', () => {
     expect(result).toEqual(mockData);
   });
 
-  it('fails with GraphQLRequestFailed on non-ok response', async () => {
+  it('fails with GraphQLRequestFailed on non-ok non-429 response', async () => {
+    vi.useFakeTimers();
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    }) as unknown as typeof fetch;
+
+    const resultPromise = Effect.runPromise(
+      graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
+    );
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') {
+      expect(result.left).toBeInstanceOf(GraphQLRequestFailed);
+      expect((result.left as GraphQLRequestFailed).status).toBe(500);
+    }
+  });
+
+  it('fails with RateLimited on 429 response', async () => {
+    vi.useFakeTimers();
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 429,
     }) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(
+    const resultPromise = Effect.runPromise(
       graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
     );
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
-      expect(result.left).toBeInstanceOf(GraphQLRequestFailed);
-      expect((result.left as GraphQLRequestFailed).status).toBe(429);
+      expect(result.left).toBeInstanceOf(RateLimited);
     }
   });
+
+  it('retries and succeeds after a 429 transient failure', async () => {
+    vi.useFakeTimers();
+    let count = 0;
+    const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      count++;
+      if (count === 1) return Promise.resolve({ ok: false, status: 429 });
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockData });
+    }) as unknown as typeof fetch;
+
+    const resultPromise = Effect.runPromise(
+      graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
+    );
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    expect(result._tag).toBe('Right');
+    expect(count).toBeGreaterThanOrEqual(2);
+  });
+
+  it('retries and succeeds after a 500 transient failure', async () => {
+    vi.useFakeTimers();
+    let count = 0;
+    const mockData = { data: { xdt_shortcode_media: { id: '2' } } };
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      count++;
+      if (count === 1) return Promise.resolve({ ok: false, status: 500 });
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockData });
+    }) as unknown as typeof fetch;
+
+    const resultPromise = Effect.runPromise(
+      graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
+    );
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    expect(result._tag).toBe('Right');
+    expect(count).toBeGreaterThanOrEqual(2);
+  });
+
+  it.each([400, 401, 403, 404])(
+    'fails immediately on permanent %i without retrying',
+    async status => {
+      let callCount = 0;
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        callCount++;
+        return Promise.resolve({ ok: false, status });
+      }) as unknown as typeof fetch;
+
+      const result = await Effect.runPromise(
+        graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
+      );
+      expect(result._tag).toBe('Left');
+      expect(callCount).toBe(1);
+      if (result._tag === 'Left') {
+        expect(result.left).toBeInstanceOf(GraphQLRequestFailed);
+      }
+    }
+  );
 
   it('fails with NetworkError when fetch throws', async () => {
     globalThis.fetch = vi

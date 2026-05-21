@@ -291,16 +291,62 @@ describe('background dispatcher', () => {
       );
     });
 
-    it('returns { error } when downloads.download rejects', async () => {
+    it('returns { error } when all downloads.download calls reject (all-fail)', async () => {
       fakeBrowserObj.fakeBrowser.downloads.download.mockRejectedValue(new Error('disk full'));
       const listener = await loadBackground();
-      const result = await invoke(listener, {
+      const result = (await invoke(listener, {
         type: 'DOWNLOAD_MEDIA',
         urls: ['https://cdn.instagram.com/a.jpg'],
         hints: ['hint'],
         types: ['image'],
+      })) as { error: string; failures: { url: string; reason: string }[] };
+      expect(result.error).toBe('All downloads failed');
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]?.reason).toContain('disk full');
+    });
+
+    it('returns partial success when some downloads fail', async () => {
+      let callCount = 0;
+      fakeBrowserObj.fakeBrowser.downloads.download.mockImplementation(() => {
+        callCount++;
+        return callCount === 1 ? Promise.reject(new Error('bad url')) : Promise.resolve(1);
       });
-      expect(result).toMatchObject({ error: expect.stringContaining('disk full') });
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'DOWNLOAD_MEDIA',
+        urls: ['https://cdn.instagram.com/a.jpg', 'https://cdn.instagram.com/b.jpg'],
+        hints: ['hint_a', 'hint_b'],
+        types: ['image', 'image'],
+      })) as { error: string | undefined; failures: { url: string; reason: string }[] };
+      expect(result.error).toBe('1 of 2 downloads succeeded; 1 failed.');
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]?.url).toBe('https://cdn.instagram.com/a.jpg');
+    });
+
+    it('caps concurrent browser.downloads.download calls at 3', async () => {
+      let inflight = 0;
+      let maxInflight = 0;
+      fakeBrowserObj.fakeBrowser.downloads.download.mockImplementation(() => {
+        inflight++;
+        maxInflight = Math.max(maxInflight, inflight);
+        return new Promise<number>(resolve =>
+          setTimeout(() => {
+            inflight--;
+            resolve(1);
+          }, 10)
+        );
+      });
+
+      const listener = await loadBackground();
+      await invoke(listener, {
+        type: 'DOWNLOAD_MEDIA',
+        urls: Array.from({ length: 10 }, (_, i) => `https://cdn.instagram.com/${i}.jpg`),
+        hints: Array.from({ length: 10 }, (_, i) => `hint_${i}`),
+        types: Array(10).fill('image') as string[],
+      });
+
+      expect(maxInflight).toBeLessThanOrEqual(3);
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledTimes(10);
     });
   });
 
@@ -475,6 +521,132 @@ describe('background dispatcher', () => {
         url: 'https://www.instagram.com/p/abc123/',
       });
       expect(result).toMatchObject({ error: expect.stringContaining('No media found') });
+    });
+
+    it('returns { error } when all browser downloads fail', async () => {
+      const mockMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphImage',
+            shortcode: 'fail1',
+            display_url: 'https://cdn.instagram.com/fail.jpg',
+          },
+        },
+      };
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockMedia,
+      }) as unknown as typeof fetch;
+      fakeBrowserObj.fakeBrowser.downloads.download.mockRejectedValue(new Error('disk full'));
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'DOWNLOAD',
+        url: 'https://www.instagram.com/p/fail1/',
+      })) as { media: unknown; error: string; failures: { url: string; reason: string }[] };
+      expect(result.error).toBe('All downloads failed');
+      expect(result.media).toBeUndefined();
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]?.reason).toContain('disk full');
+    });
+
+    it('returns partial success when some browser downloads fail (sidecar)', async () => {
+      const mockMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphSidecar',
+            shortcode: 'partial1',
+            edge_sidecar_to_children: {
+              edges: [
+                {
+                  node: {
+                    display_url: 'https://cdn.instagram.com/s1.jpg',
+                    display_resources: [
+                      { src: 'https://cdn.instagram.com/s1.jpg', config_width: 1080 },
+                    ],
+                  },
+                },
+                {
+                  node: {
+                    display_url: 'https://cdn.instagram.com/s2.jpg',
+                    display_resources: [
+                      { src: 'https://cdn.instagram.com/s2.jpg', config_width: 1080 },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        },
+      };
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockMedia,
+      }) as unknown as typeof fetch;
+
+      let callCount = 0;
+      fakeBrowserObj.fakeBrowser.downloads.download.mockImplementation(() => {
+        callCount++;
+        return callCount === 1 ? Promise.reject(new Error('cdn error')) : Promise.resolve(1);
+      });
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'DOWNLOAD',
+        url: 'https://www.instagram.com/p/partial1/',
+      })) as {
+        media: unknown[];
+        error: string | undefined;
+        failures: { url: string; reason: string }[];
+      };
+      expect(result.error).toBeUndefined();
+      expect(result.media).toHaveLength(1);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]?.reason).toContain('cdn error');
+    });
+
+    it('caps concurrent browser.downloads.download calls at 3 (sidecar)', async () => {
+      const edges = Array.from({ length: 10 }, (_, i) => ({
+        node: {
+          display_url: `https://cdn.instagram.com/s${i}.jpg`,
+          display_resources: [{ src: `https://cdn.instagram.com/s${i}.jpg`, config_width: 1080 }],
+        },
+      }));
+      const mockMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphSidecar',
+            shortcode: 'concurrency1',
+            edge_sidecar_to_children: { edges },
+          },
+        },
+      };
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockMedia,
+      }) as unknown as typeof fetch;
+
+      let inflight = 0;
+      let maxInflight = 0;
+      fakeBrowserObj.fakeBrowser.downloads.download.mockImplementation(() => {
+        inflight++;
+        maxInflight = Math.max(maxInflight, inflight);
+        return new Promise<number>(resolve =>
+          setTimeout(() => {
+            inflight--;
+            resolve(1);
+          }, 10)
+        );
+      });
+
+      const listener = await loadBackground();
+      await invoke(listener, {
+        type: 'DOWNLOAD',
+        url: 'https://www.instagram.com/p/concurrency1/',
+      });
+
+      expect(maxInflight).toBeLessThanOrEqual(3);
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledTimes(10);
     });
   });
 

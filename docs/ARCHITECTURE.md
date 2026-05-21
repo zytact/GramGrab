@@ -1,6 +1,6 @@
 # GramGrab: Living Architecture Document
 
-**Last Updated:** May 12, 2026  
+**Last Updated:** May 12, 2026
 
 ---
 
@@ -129,6 +129,7 @@ gramgrab/
 **Triggered by:** User clicking the extension icon  
 **Lifecycle:** Opens, closes, reopens (not persistent)  
 **Responsibilities:**
+
 - Accept Instagram URLs from user input or detect from active tab
 - Send `FETCH_MEDIA` message to service worker
 - Display media previews and metadata
@@ -136,6 +137,7 @@ gramgrab/
 - Download selected items via `DOWNLOAD_MEDIA` message
 
 **Entry flow:**
+
 ```
 popup.html
   ├── <script type="module" src="./popup.tsx">
@@ -149,6 +151,7 @@ popup.html
 **Triggered by:** Browser startup, extension messages  
 **Lifecycle:** Long-running, survives popup close  
 **Responsibilities:**
+
 - Listen for messages from popup and content scripts
 - Execute GraphQL queries to Instagram
 - Extract media metadata and URLs
@@ -156,6 +159,7 @@ popup.html
 - Provide preview data URLs
 
 **Entry flow:**
+
 ```
 background.html (Manifest V3 wrapper)
   └── <script type="module" src="../src/background.ts">
@@ -171,6 +175,7 @@ background.html (Manifest V3 wrapper)
 **Purpose:** Unified interface for Chrome and Firefox APIs with fallback for tests.
 
 **Why it exists:** Chrome and Firefox expose browser APIs differently:
+
 - Firefox: Standard `window.browser` (promise-based)
 - Chrome: `window.chrome` (callback-based)
 - Tests: Neither available; need no-op shim
@@ -185,13 +190,14 @@ export const browser = new Proxy({} as BrowserShim, {
 });
 
 function getActiveBrowser(): BrowserShim {
-  const nativeBrowser = globalThis['browser'];  // Firefox
-  const chrome = globalThis['chrome'];          // Chrome
+  const nativeBrowser = globalThis['browser']; // Firefox
+  const chrome = globalThis['chrome']; // Chrome
   return nativeBrowser ?? (chrome ? buildChromeShim(chrome) : noopShim);
 }
 ```
 
 **Key Features:**
+
 - **Promise-based API** — Wraps Chrome callbacks into Promises
 - **Lazy resolution** — Determines implementation at call-time
 - **Test support** — Falls back to no-op implementations
@@ -203,6 +209,7 @@ function getActiveBrowser(): BrowserShim {
   - `storage.get(keys)` / `storage.set(items)` — Persistent storage
 
 **Data Types:**
+
 ```typescript
 interface Tab {
   id?: number;
@@ -227,6 +234,7 @@ interface DownloadOptions {
 **Purpose:** Parse Instagram links and classify content type.
 
 **Why it exists:** Instagram has multiple URL patterns:
+
 - Posts: `instagram.com/p/{shortcode}/`
 - Reels: `instagram.com/reel/{shortcode}/`
 - Stories: `instagram.com/stories/{username}/`
@@ -242,10 +250,10 @@ export type ContentType = 'post' | 'reel' | 'story' | 'highlight' | 'profile';
 
 export interface ParsedUrl {
   type: ContentType;
-  shortcode?: string;       // For posts/reels
-  username?: string;        // For stories/profiles
-  highlightId?: string;     // For story highlights
-  carouselIndex?: number;   // For multi-image posts (optional)
+  shortcode?: string; // For posts/reels
+  username?: string; // For stories/profiles
+  highlightId?: string; // For story highlights
+  carouselIndex?: number; // For multi-image posts (optional)
 }
 
 export function parseInstagramUrl(url: string): ParsedUrl | null {
@@ -256,15 +264,16 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
 
 **Examples:**
 
-| URL | Output |
-|-----|--------|
-| `instagram.com/p/ABC123def/` | `{ type: 'post', shortcode: 'ABC123def' }` |
-| `instagram.com/reel/XYZ789/` | `{ type: 'reel', shortcode: 'XYZ789' }` |
-| `instagram.com/stories/jane_doe/` | `{ type: 'story', username: 'jane_doe' }` |
+| URL                                     | Output                                      |
+| --------------------------------------- | ------------------------------------------- |
+| `instagram.com/p/ABC123def/`            | `{ type: 'post', shortcode: 'ABC123def' }`  |
+| `instagram.com/reel/XYZ789/`            | `{ type: 'reel', shortcode: 'XYZ789' }`     |
+| `instagram.com/stories/jane_doe/`       | `{ type: 'story', username: 'jane_doe' }`   |
 | `instagram.com/stories/highlights/999/` | `{ type: 'highlight', highlightId: '999' }` |
-| `instagram.com/jane_doe/` | `{ type: 'profile', username: 'jane_doe' }` |
+| `instagram.com/jane_doe/`               | `{ type: 'profile', username: 'jane_doe' }` |
 
 **Failure modes:**
+
 - Non-Instagram URLs → returns `null`
 - Malformed URLs → returns `null`
 - Instagram URLs with query params → parsed correctly
@@ -283,12 +292,12 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
 
 ```typescript
 // Core operations exposed to service worker:
-export async function fetchMediaByShortcode(shortcode: string): Promise<MediaItem[]>
+export async function fetchMediaByShortcode(shortcode: string): Promise<MediaItem[]>;
 export async function fetchReelsMedia(params: {
   reel_ids?: string[];
   highlight_reel_ids?: string[];
-}): Promise<MediaItem[]>
-export async function fetchProfileInfo(username: string): Promise<Record<string, unknown>>
+}): Promise<MediaItem[]>;
+export async function fetchProfileInfo(username: string): Promise<Record<string, unknown>>;
 
 // Internal implementation:
 async function graphqlFetch(
@@ -296,7 +305,7 @@ async function graphqlFetch(
   variables: Record<string, unknown>,
   doc_id?: string,
   query_hash?: string
-): Promise<unknown>
+): Promise<unknown>;
 ```
 
 **Instagram API Details:**
@@ -313,7 +322,7 @@ Operations:
   - MEDIA_BY_SHORTCODE (doc_id: 8845758582119845)
     - Input: { shortcode: string }
     - Returns: Post or Reel data
-  
+
   - REELS_MEDIA (query_hash: 45246d3fe16ccc6577e0bd297a5db1ab)
     - Input: { reel_ids?: string[], highlight_reel_ids?: string[] }
     - Returns: Story or Highlight data
@@ -342,6 +351,7 @@ Return to caller (normalizer will extract MediaItem[])
 ```
 
 **Error Handling:**
+
 - Network errors → thrown to caller
 - 400 errors (malformed query) → thrown
 - 403/401 (not logged in) → response contains error, handled by normalizer
@@ -356,6 +366,7 @@ Return to caller (normalizer will extract MediaItem[])
 **Purpose:** Transform Instagram API responses into standardized `MediaItem` format.
 
 **Why it exists:** Instagram response structure varies by content type:
+
 - Posts can be single image, video, or carousel (multiple images)
 - Reels have different JSON structure
 - Profile pictures have fallback hierarchy
@@ -368,11 +379,11 @@ Normalizer abstracts these differences.
 ```typescript
 export interface MediaItem {
   type: 'image' | 'video';
-  url: string;              // Direct download URL
-  width?: number;           // Pixels
-  height?: number;          // Pixels
-  takenAt?: number;         // Unix timestamp (ms)
-  filenameHint: string;     // e.g. "ABC123def_GraphImage"
+  url: string; // Direct download URL
+  width?: number; // Pixels
+  height?: number; // Pixels
+  takenAt?: number; // Unix timestamp (ms)
+  filenameHint: string; // e.g. "ABC123def_GraphImage"
 }
 ```
 
@@ -438,18 +449,21 @@ Processing:
 ```
 
 **Quality Selection Strategy:**
+
 - **Images:** Highest `width` in `display_resources` array
 - **Videos:** Highest `bitrate` in `video_resources` array
 - **Rationale:** Instagram serves multiple quality variants; we want the best available
 
 **Filename Generation:**
+
 ```typescript
-filenameHint = `${shortcode}_${nodeTypeName}`
+filenameHint = `${shortcode}_${nodeTypeName}`;
 // Example: "ABC123def_GraphImage"
 // Used by download handler to create full filename with extension
 ```
 
 **Failure Modes:**
+
 - Response missing expected fields → returns `[]` (empty)
 - Media already deleted → normalized as `[]`
 - Not authenticated → falls back to lower-quality URLs
@@ -469,7 +483,7 @@ filenameHint = `${shortcode}_${nodeTypeName}`
 export async function resolveUsernameToId(username: string): Promise<string | null> {
   // REST endpoint (not GraphQL):
   // GET https://www.instagram.com/api/v1/users/web_profile_info/?username={username}
-  // 
+  //
   // Response shape:
   // { data: { user: { id: "123456789", username: "...", ... } } }
   //
@@ -478,6 +492,7 @@ export async function resolveUsernameToId(username: string): Promise<string | nu
 ```
 
 **Used by:**
+
 ```typescript
 // In background.ts message handler:
 if (parsed.type === 'story' || parsed.type === 'highlight') {
@@ -487,6 +502,7 @@ if (parsed.type === 'story' || parsed.type === 'highlight') {
 ```
 
 **Error Handling:**
+
 - Network error → throws
 - User not found → returns `null`
 - Service worker must handle null gracefully
@@ -500,6 +516,7 @@ if (parsed.type === 'story' || parsed.type === 'highlight') {
 **Purpose:** High-level API to convert Instagram URL → downloadable media tasks.
 
 **Why it exists:** Coordinates multiple steps:
+
 1. Parse URL
 2. Resolve username to ID (if needed)
 3. Query Instagram GraphQL
@@ -512,7 +529,7 @@ if (parsed.type === 'story' || parsed.type === 'highlight') {
 export async function buildDownloadTasks(
   url: string,
   carouselIndex?: number
-): Promise<DownloadTask[]>
+): Promise<DownloadTask[]>;
 
 // Returns array of { type: 'image' | 'video', url: string, filename: string }
 // carouselIndex: optional; if set, only return that carousel item (1-indexed)
@@ -536,6 +553,7 @@ Return: [ { type: 'image', url: '...', filename: 'ABC123def_0.jpg' }, ... ]
 ```
 
 **Responsibilities:**
+
 - Error propagation (throws on network/API errors)
 - Filename generation (based on content type, index, timestamp)
 - Carousel handling (filter by carouselIndex if provided)
@@ -547,6 +565,7 @@ Return: [ { type: 'image', url: '...', filename: 'ABC123def_0.jpg' }, ... ]
 **Purpose:** Centralize Instagram API constants and headers.
 
 **Contents:**
+
 ```typescript
 // GraphQL operation metadata
 export const OPERATIONS = {
@@ -575,6 +594,7 @@ export const ENDPOINTS = {
 ```
 
 **How it's used:**
+
 - Imported by `graphql.ts` and `resolver.ts`
 - Defines operation IDs (reverse-engineered from Instagram web app)
 - Centralized for easy updates if Instagram changes API
@@ -614,6 +634,7 @@ export function jsonToDataUrl(value: unknown): string {
 ```
 
 **Why not FileReader?**
+
 - Manifest V3 service workers have restricted context
 - FileReader not available
 - Alternative: Uint8Array + btoa() works reliably
@@ -625,7 +646,7 @@ export function jsonToDataUrl(value: unknown): string {
 const imageResponse = await fetch(imageUrl);
 const blob = await imageResponse.blob();
 const dataUrl = await blobToDataUrl(blob);
-sendResponse(dataUrl);  // Send to popup for img src
+sendResponse(dataUrl); // Send to popup for img src
 
 // In popup, debug export:
 const debugDataUrl = jsonToDataUrl(mediaItems);
@@ -641,6 +662,7 @@ browser.downloads.download({ url: debugDataUrl, filename: 'debug.json' });
 **Size:** 694 lines (largest module)
 
 **Responsibilities:**
+
 1. Register message listeners
 2. Parse and validate incoming requests
 3. Execute appropriate handlers
@@ -702,7 +724,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     }
   })();
-  return true;  // Allows async response
+  return true; // Allows async response
 });
 ```
 
@@ -717,7 +739,7 @@ async function handleFetchMedia(url: string): Promise<MediaItem[]> {
     case 'post':
     case 'reel':
       return fetchMediaByShortcode(parsed.shortcode!);
-    
+
     case 'story':
     case 'highlight':
       const userId = await resolveUsernameToId(parsed.username!);
@@ -725,12 +747,9 @@ async function handleFetchMedia(url: string): Promise<MediaItem[]> {
       return fetchReelsMedia({
         [parsed.type === 'story' ? 'reel_ids' : 'highlight_reel_ids']: [userId],
       });
-    
+
     case 'profile':
-      return normalizeProfilePicture(
-        await fetchProfileInfo(parsed.username!),
-        parsed.username!
-      );
+      return normalizeProfilePicture(await fetchProfileInfo(parsed.username!), parsed.username!);
   }
 }
 ```
@@ -738,6 +757,7 @@ async function handleFetchMedia(url: string): Promise<MediaItem[]> {
 **State Management:** None (stateless). Each message is independent.
 
 **Performance Considerations:**
+
 - No caching between requests
 - Every URL fetch hits Instagram API
 - Preview generation (blobToDataUrl) is synchronous but fast
@@ -754,10 +774,12 @@ async function handleFetchMedia(url: string): Promise<MediaItem[]> {
 **State Management:**
 
 ```typescript
-const [url, setUrl] = useState('');                 // Current URL input
-const [status, setStatus] = useState<'idle' | 'fetching' | 'downloading' | 'done' | 'error'>('idle');
+const [url, setUrl] = useState(''); // Current URL input
+const [status, setStatus] = useState<'idle' | 'fetching' | 'downloading' | 'done' | 'error'>(
+  'idle'
+);
 const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-const [message, setMessage] = useState('');         // User feedback
+const [message, setMessage] = useState(''); // User feedback
 const [selectedIndices, setSelectedIndices] = useState(new Set<number>());
 ```
 
@@ -830,13 +852,14 @@ async function getPreviewUrl(imageUrl: string): Promise<string> {
     type: 'GET_PREVIEW_URL',
     imageUrl,
   });
-  return response.data;  // data URL for <img src>
+  return response.data; // data URL for <img src>
 }
 ```
 
 **Auto-Detect Current Tab:**
 
 On mount, queries active tab and auto-fills URL:
+
 ```typescript
 useEffect(() => {
   (async () => {
@@ -855,6 +878,7 @@ useEffect(() => {
 **Size:** 20 KB
 
 **Key Sections:**
+
 - Popup container (width: 600px, height: 800px typical)
 - Header styling (logo, version badge)
 - URL input styling (text input, button)
@@ -936,6 +960,7 @@ case 'FETCH_VIDEO_BLOB': {
 ```
 
 **WHY IT WAS BUILT THIS WAY**
+
 - Videos cannot be displayed as previews in the UI (too resource-heavy)
 - Users often want just a thumbnail/frame rather than the full video
 - Frame extraction uses existing video element API, no additional libraries needed
@@ -956,6 +981,7 @@ interface FetchVideoBlobResponse {
 ```
 
 **FAILURE MODES**
+
 - CORS blocked video URL → "Frame export failed (CORS)" message
 - Video has no duration metadata → "Frame export failed (duration unavailable)"
 - Video has no readable frames → "Frame export failed (no video frame)"
@@ -1043,7 +1069,7 @@ interface FetchVideoBlobResponse {
     width: 1080,
     height: 1350,
     takenAt: 1704067200000,
-    filenameHint: 'ABC123def_GraphImage'
+    filenameHint: 'ABC123def_GraphImage',
   },
   {
     type: 'video',
@@ -1051,9 +1077,9 @@ interface FetchVideoBlobResponse {
     width: 1080,
     height: 1920,
     takenAt: 1704067200000,
-    filenameHint: 'ABC123def_GraphVideo'
-  }
-]
+    filenameHint: 'ABC123def_GraphVideo',
+  },
+];
 ```
 
 #### Input: GET_PREVIEW_URL Message
@@ -1141,7 +1167,7 @@ data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAAAG21kYX
 export default defineConfig({
   root: 'templates',
   build: {
-    outDir: `../extension/${browser}`,  // browser var set by postbuild script
+    outDir: `../extension/${browser}`, // browser var set by postbuild script
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'templates/popup.html'),
@@ -1151,7 +1177,7 @@ export default defineConfig({
         entryFileNames: 'js/[name].js',
         assetFileNames: '[ext]/[name].[ext]',
         manualChunks(id) {
-          if (id.includes('/src/lib/')) return 'js/bundle';  // Shared code
+          if (id.includes('/src/lib/')) return 'js/bundle'; // Shared code
           return undefined;
         },
       },
@@ -1179,6 +1205,7 @@ postbuild.mjs runs
 ### Manifest Generation (postbuild.mjs)
 
 **Why?** Manifest.json must have browser-specific `background` and gecko settings:
+
 - Chrome: `{ service_worker: 'js/background.js', type: 'module' }`
 - Firefox: `{ scripts: ['js/background.js'], type: 'module' }` + `browser_specific_settings`
 
@@ -1197,14 +1224,20 @@ const baseManifest = {
 };
 
 // Browser-specific background section
-const background = browser === 'chromium'
-  ? { service_worker: 'js/background.js', type: 'module' }
-  : { scripts: ['js/background.js'], type: 'module' };
+const background =
+  browser === 'chromium'
+    ? { service_worker: 'js/background.js', type: 'module' }
+    : { scripts: ['js/background.js'], type: 'module' };
 
 // Firefox-specific gecko settings
-const geckoSettings = browser === 'firefox'
-  ? { browser_specific_settings: { gecko: { id: 'gramgrab@zytact', strict_min_version: '109.0' } } }
-  : {};
+const geckoSettings =
+  browser === 'firefox'
+    ? {
+        browser_specific_settings: {
+          gecko: { id: 'gramgrab@zytact', strict_min_version: '109.0' },
+        },
+      }
+    : {};
 
 const manifest = { ...baseManifest, background, ...geckoSettings };
 
@@ -1218,6 +1251,7 @@ copyFile('icons/icon-96.png', `${outDir}/icons/icon-96.png`);
 ```
 
 **Result:**
+
 - `extension/chromium/manifest.json` has Chromium MV3 format (service_worker)
 - `extension/firefox/manifest.json` has Firefox MV3 format (scripts) + gecko ID for signed releases
 - Both files are ready to load in respective browsers
@@ -1241,11 +1275,13 @@ if (!existsSync(srcDir)) {
 execSync(`cd ${srcDir} && zip -r gramgrab.xpi .`, { stdio: 'inherit' });
 ```
 
-**Result:** 
+**Result:**
+
 - `extension/firefox/gramgrab.xpi` — a signed or self-signed ZIP archive ready for Firefox installation
 - Can be distributed to users or submitted to AMO (Mozilla Add-ons)
 
 **Usage:**
+
 ```bash
 bun run package:firefox  # Builds Firefox extension and packages as XPI
 ```
@@ -1299,6 +1335,7 @@ export default defineConfig({
 #### Module Tests: router.test.ts
 
 Tests URL parsing logic:
+
 ```typescript
 describe('parseInstagramUrl', () => {
   it('parses post URLs', () => {
@@ -1321,6 +1358,7 @@ describe('parseInstagramUrl', () => {
 #### Module Tests: data-url.test.ts
 
 Tests blob and JSON conversion:
+
 ```typescript
 describe('blobToDataUrl', () => {
   it('converts Blob to data URL', async () => {
@@ -1341,6 +1379,7 @@ describe('jsonToDataUrl', () => {
 #### Component Tests: popup.test.tsx
 
 Tests React component rendering and behavior:
+
 ```typescript
 describe('Popup Component', () => {
   it('renders URL input field', () => {
@@ -1353,10 +1392,10 @@ describe('Popup Component', () => {
     render(<Popup />);
     const input = screen.getByRole('textbox');
     const fetchButton = screen.getByText('Fetch');
-    
+
     await user.type(input, 'https://instagram.com/p/ABC123/');
     await user.click(fetchButton);
-    
+
     expect(mockBrowserSendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'FETCH_MEDIA' })
     );
@@ -1384,6 +1423,7 @@ globalThis.browser = noopShim; // All operations are no-ops
 **Decision:** GramGrab operates entirely within the browser extension sandbox. No backend required.
 
 **Rationale:**
+
 - Users' data never leaves their device
 - Simplifies deployment (no server to maintain)
 - Works offline for download operations
@@ -1398,21 +1438,27 @@ globalThis.browser = noopShim; // All operations are no-ops
 **Decision:** Use JavaScript Proxy to dynamically resolve browser API implementation.
 
 **Rationale:**
+
 ```typescript
-const browser = new Proxy({}, {
-  get(_target, prop: string) {
-    return (getActiveBrowser() as any)[prop];
-  },
-});
+const browser = new Proxy(
+  {},
+  {
+    get(_target, prop: string) {
+      return (getActiveBrowser() as any)[prop];
+    },
+  }
+);
 ```
 
 **Benefits:**
+
 - Single import across popup and service worker
 - Lazy resolution: Chrome vs Firefox detected at call-time
 - Testable: Falls back to no-op shim in tests
 - No if-statements at every call site
 
 **Alternative Considered:** Separate `browser-chrome.ts` and `browser-firefox.ts` with conditional imports.
+
 - **Rejected:** More imports, harder to test, no real benefit over Proxy.
 
 ---
@@ -1422,11 +1468,13 @@ const browser = new Proxy({}, {
 **Decision:** Use `Uint8Array` + `btoa()` instead of FileReader for blob-to-dataURL conversion.
 
 **Rationale:**
+
 - Manifest V3 service workers have restricted execution context
 - FileReader API not available
 - Uint8Array + btoa() works reliably in all contexts (service workers, documents, jsdom)
 
 **Code:**
+
 ```typescript
 export async function blobToDataUrl(blob: Blob): Promise<string> {
   const buffer = await blob.arrayBuffer();
@@ -1437,6 +1485,7 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 ```
 
 **Alternative Considered:** Use FileReader (simpler API).
+
 - **Rejected:** Not available in MV3 service workers.
 
 ---
@@ -1446,6 +1495,7 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 **Decision:** Doc IDs and query hashes are hardcoded in `config.ts`.
 
 **Rationale:**
+
 - Instagram doesn't expose a public GraphQL API schema
 - Operation IDs are reverse-engineered from Instagram web app
 - Hardcoding is the only reliable approach
@@ -1453,7 +1503,8 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 
 **Trade-off:** If Instagram changes operation IDs, extension breaks until updated.
 
-**Mitigation:** 
+**Mitigation:**
+
 - Monitor Instagram web app changes
 - Consider PR to publish new IDs when they change
 - Could scrape operation IDs from Instagram HTML as fallback (future work)
@@ -1465,6 +1516,7 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 **Decision:** `normalizeShortcodeMedia()`, `normalizeReelsMedia()`, etc. are synchronous.
 
 **Rationale:**
+
 - Normalization is pure data transformation, no I/O
 - No reason to make it async
 - Simpler call sites: `const items = normalize(data)` not `await normalize(data)`
@@ -1478,11 +1530,13 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 **Decision:** Vite's root is `templates/` instead of project root.
 
 **Rationale:**
+
 - Popup HTML entry point lives in `templates/popup.html`
 - Vite requires HTML entry points to be in root directory
 - Alternatively could symlink popup.html to project root, but `templates/` is clearer
 
 **Impact:**
+
 - Import paths from popup use relative `../../src/lib`
 - Scripts in `scripts/postbuild.mjs` must resolve paths relative to project root
 - Configuration is explicit: `root: 'templates'` in vite.config.ts
@@ -1494,12 +1548,14 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 **Decision:** Manifest.json is generated post-build with browser-specific fields.
 
 **Rationale:**
+
 - Chrome MV3 uses `service_worker` field
 - Firefox MV3 uses `scripts` field
 - Cannot use same manifest for both
 - Post-build generation is cleanest approach
 
 **Alternative Considered:** Conditional webpack loaders or separate manifest files.
+
 - **Rejected:** Over-complicated; postbuild.mjs is simpler.
 
 ---
@@ -1509,6 +1565,7 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 **Decision:** No caching of usernames-to-IDs, media URLs, or other data between requests.
 
 **Rationale:**
+
 - Keeps service worker simple and stateless
 - Avoids cache invalidation logic
 - Reduces memory footprint
@@ -1525,6 +1582,7 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 **Decision:** All service worker logic in one file (`background.ts`, 694 lines).
 
 **Rationale:**
+
 - Service workers should be small and focused
 - Can be split later if grows beyond ~1000 lines
 - Simpler mental model: one file, one `onMessage` listener
@@ -1538,12 +1596,14 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 **Decision:** Popup UI built with React (19.2.5).
 
 **Rationale:**
+
 - State management (media items, selected indices, status)
 - Component reusability
 - Testing support via React Testing Library
 - Vite + React plugin provides fast dev experience
 
 **Alternative Considered:** Plain HTML + vanilla JS.
+
 - **Rejected:** Would need manual state sync, event binding, DOM updates. React abstracts this well.
 
 ---
@@ -1555,6 +1615,7 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 **Scenario:** Instagram API unreachable or returns 500.
 
 **Handling:**
+
 ```typescript
 try {
   const response = await graphqlFetch(...);
@@ -1573,6 +1634,7 @@ try {
 **Scenario:** User not logged into Instagram in the browser.
 
 **Handling:**
+
 - Instagram still allows queries but with lower-quality URLs
 - Normalizer falls back through hierarchy:
   ```typescript
@@ -1588,6 +1650,7 @@ try {
 **Scenario:** User pastes non-Instagram URL or malformed URL.
 
 **Handling:**
+
 ```typescript
 const parsed = parseInstagramUrl(url);
 if (!parsed) throw new Error('Invalid Instagram URL');
@@ -1600,6 +1663,7 @@ if (!parsed) throw new Error('Invalid Instagram URL');
 **Scenario:** Post/reel/story was deleted between fetch and download.
 
 **Handling:**
+
 ```typescript
 const media = normalizeShortcodeMedia(response);
 if (media.length === 0) throw new Error('Media not found');
@@ -1612,6 +1676,7 @@ if (media.length === 0) throw new Error('Media not found');
 **Scenario:** User specifies `carouselIndex: 10` but carousel has only 3 images.
 
 **Handling:**
+
 ```typescript
 const mediaItems = normalizeShortcodeMedia(response);
 if (carouselIndex && carouselIndex > mediaItems.length) {
@@ -1626,6 +1691,7 @@ if (carouselIndex && carouselIndex > mediaItems.length) {
 **Scenario:** Browser terminates service worker due to inactivity.
 
 **Handling:**
+
 - Manifest V3 allows this
 - Next message to `browser.runtime.sendMessage()` will wake service worker
 - No error to user (transparent)
@@ -1637,6 +1703,7 @@ if (carouselIndex && carouselIndex > mediaItems.length) {
 **Scenario:** `browser.downloads.download()` fails (disk full, permission denied, etc.).
 
 **Handling:**
+
 ```typescript
 try {
   await browser.downloads.download({ url, filename });
@@ -1766,7 +1833,7 @@ console.log('Received message:', message);
 // Use DEBUG_SHAPE message type
 await browser.runtime.sendMessage({
   type: 'DEBUG_SHAPE',
-  url: 'https://instagram.com/p/ABC123/'
+  url: 'https://instagram.com/p/ABC123/',
 });
 
 // Returns raw GraphQL response (no normalization)
@@ -1798,4 +1865,3 @@ await browser.runtime.sendMessage({
 ```
 
 ---
-
