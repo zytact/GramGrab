@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Effect, Either } from 'effect';
 import './styles.css';
 import { browser } from './lib/browser';
+import { captureFrameFromVideoEffect } from './effect/frame-extraction';
 
 interface MediaItem {
   index: number;
@@ -144,46 +146,11 @@ export default function Popup() {
     }
   }, []);
 
-  const captureFrameFromVideo = useCallback(async (video: HTMLVideoElement) => {
-    if (video.readyState < 1) {
-      await new Promise<void>(resolve => {
-        video.addEventListener('loadedmetadata', () => resolve(), { once: true });
-      });
-    }
-
-    if (!Number.isFinite(video.duration) || video.duration <= 0) {
-      throw new Error('no-duration');
-    }
-
-    const targetTime = Math.min(5, video.duration);
-    video.currentTime = targetTime;
-    await new Promise<void>(resolve => {
-      video.addEventListener('seeked', () => resolve(), { once: true });
-    });
-
-    if (!video.videoWidth || !video.videoHeight) {
-      throw new Error('no-frame');
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      throw new Error('no-canvas');
-    }
-
-    ctx.drawImage(video, 0, 0);
-    const blob = await new Promise<Blob | null>(resolve => {
-      canvas.toBlob(resolve, 'image/jpeg', 0.95);
-    });
-
-    if (!blob) {
-      throw new Error('no-blob');
-    }
-
-    return blob;
-  }, []);
+  const captureFrameFromVideo = useCallback(
+    (video: HTMLVideoElement) =>
+      Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either)),
+    []
+  );
 
   const handleExportFrame = useCallback(
     async (index: number) => {
@@ -205,8 +172,32 @@ export default function Popup() {
         exportVideo.muted = true;
         exportVideo.playsInline = true;
         exportVideo.crossOrigin = 'anonymous';
-        const blob = await captureFrameFromVideo(exportVideo);
+        const result = await captureFrameFromVideo(exportVideo);
+        if (Either.isLeft(result)) {
+          switch (result.left.reason) {
+            case 'no-duration':
+              setMessage('Frame export failed (duration unavailable).');
+              break;
+            case 'no-frame':
+              setMessage('Frame export failed (no video frame).');
+              break;
+            case 'no-canvas':
+              setMessage('Frame export failed (canvas unavailable).');
+              break;
+            case 'no-blob':
+              setMessage('Frame export failed (image export).');
+              break;
+            case 'timeout':
+              setMessage('Frame export failed (timed out).');
+              break;
+            default:
+              setMessage('Frame export failed.');
+          }
+          setStatus('error');
+          return;
+        }
 
+        const blob = result.right;
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
@@ -214,17 +205,8 @@ export default function Popup() {
         anchor.click();
         URL.revokeObjectURL(url);
       } catch (err) {
-        if (err instanceof Error && err.message === 'no-duration') {
-          setMessage('Frame export failed (duration unavailable).');
-        } else if (err instanceof Error && err.message === 'no-frame') {
-          setMessage('Frame export failed (no video frame).');
-        } else if (err instanceof Error && err.message === 'no-canvas') {
-          setMessage('Frame export failed (canvas unavailable).');
-        } else if (err instanceof Error && err.message === 'no-blob') {
-          setMessage('Frame export failed (image export).');
-        } else {
-          setMessage('Frame export failed (CORS)');
-        }
+        void err;
+        setMessage('Frame export failed (CORS)');
         setStatus('error');
       }
     },
