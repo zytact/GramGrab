@@ -33,6 +33,16 @@ Never commit yourself.
 - **Message dispatcher** (`background.ts:639`): all listeners registered synchronously at module top. Uses `sendResponse` + `return true` (cross-browser-safe pattern), NOT Promise-return. The popup (`popup.tsx`) sends `FETCH_MEDIA`, `DOWNLOAD_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB` messages.
 - **`browser` global**: Proxy-based shim (`src/lib/browser.ts`) resolving `globalThis.browser` → `globalThis.chrome` → no-op stub. Promisifies callback APIs.
 
+## Vendored Repositories
+
+This project vendors external repositories under @repos/
+
+  - Use vendored repositories as read-only reference material when working with related libraries
+  - Prefer examples and patterns from the vendored source code over generated guesses or web search results
+  - Do not edit files under @repos/ unless explicitly asked
+  - Do not import from @repos/ - application code should continue importing from normal package dependencies
+  -  When writing Effect code, inspect @repos/effect/ for examples of idiomatic usage, tests, module structure, and API design. Treat it as the source of truth for Effect patterns.
+
 ## Effect Migration (in progress)
 
 Phases 1–5 complete. `src/effect/` uses `.ts` import extensions (e.g. `./errors.ts`). Legacy `src/` files use extensionless imports. `FETCH_MEDIA` and `DOWNLOAD` both use the shared `resolveMediaEffect` in `background.ts`. See `EFFECT_MIGRATION.md`.

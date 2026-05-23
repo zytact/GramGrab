@@ -6,7 +6,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'node_modules', '.husky', 'extension'],
+    ignores: ['dist', 'node_modules', '.husky', 'extension', 'repos'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
