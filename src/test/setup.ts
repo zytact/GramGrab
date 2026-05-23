@@ -1,5 +1,13 @@
 import { vi } from 'vitest';
 
+type BackgroundListener = (
+  msg: unknown,
+  sender: unknown,
+  sendResponse: (r: unknown) => void
+) => boolean | void;
+
+let _bgListener: BackgroundListener | null = null;
+
 // ---------------------------------------------------------------------------
 // Blob.prototype.arrayBuffer polyfill
 //
@@ -48,7 +56,17 @@ const mockDownloads = {
 
 const mockMessageCallbacks: Map<string, (msg: unknown) => unknown> = new Map();
 
-globalThis.browser = {
+type MockBrowser = {
+  runtime: {
+    sendMessage: ReturnType<typeof vi.fn>;
+    onMessage: { addListener: ReturnType<typeof vi.fn> };
+  };
+  tabs: { query: ReturnType<typeof vi.fn> };
+  downloads: typeof mockDownloads;
+  storage: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
+};
+
+const mockBrowserInstance: MockBrowser = {
   runtime: {
     sendMessage: vi.fn().mockImplementation((msg: unknown) => {
       const type = (msg as { type: string }).type;
@@ -95,6 +113,8 @@ globalThis.browser = {
   },
 };
 
+globalThis.browser = mockBrowserInstance;
+
 export const resetBrowserMocks = () => {
   mockDownloads.downloads = [];
   mockMessageCallbacks.clear();
@@ -106,3 +126,35 @@ export const setMockMessageHandler = (type: string, handler: (msg: unknown) => u
 };
 
 export const getDownloadCalls = () => mockDownloads.downloads;
+
+/**
+ * Loads background.ts fresh (via vi.resetModules) and wires browser.runtime.sendMessage
+ * to route messages through the real background dispatcher. Mock handlers registered via
+ * setMockMessageHandler take priority, letting individual tests stub specific message types
+ * (e.g. FETCH_MEDIA) while routing everything else through real background logic.
+ */
+export async function loadBackground() {
+  vi.resetModules();
+  _bgListener = null;
+
+  mockBrowserInstance.runtime.onMessage.addListener = vi.fn((cb: BackgroundListener) => {
+    _bgListener = cb;
+  });
+
+  mockBrowserInstance.runtime.sendMessage = vi.fn().mockImplementation((msg: unknown) => {
+    const type = (msg as { type: string }).type;
+    const mockCb = mockMessageCallbacks.get(type);
+    if (mockCb) {
+      return Promise.resolve(mockCb(msg));
+    }
+    if (_bgListener) {
+      return new Promise<unknown>(resolve => {
+        const ret = _bgListener!(msg, {}, resolve);
+        if (!ret) resolve(undefined);
+      });
+    }
+    return Promise.resolve({});
+  });
+
+  await import('../background.ts');
+}
