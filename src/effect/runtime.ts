@@ -5,8 +5,8 @@ export { Effect };
 
 export const runPromise = Effect.runPromise;
 
-export function runHandler<T extends object, E extends object>(
-  program: Effect.Effect<T, unknown, never>,
+export function runHandler<T extends object, E extends object, E0>(
+  program: Effect.Effect<T, E0, never>,
   errorDefaults: E
 ): Promise<(T & { error: undefined }) | (E & { error: string })> {
   return Effect.runPromise(
