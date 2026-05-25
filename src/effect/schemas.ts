@@ -1,10 +1,10 @@
 import { Schema } from 'effect';
 
 // ---------------------------------------------------------------------------
-// Shortcode-media (post / reel) schemas
+// Shared primitives
 // ---------------------------------------------------------------------------
 
-const DisplayResourceSchema = Schema.Struct({
+const MediaResourceSchema = Schema.Struct({
   src: Schema.String,
   config_width: Schema.optional(Schema.Number),
   config_height: Schema.optional(Schema.Number),
@@ -15,34 +15,86 @@ const DimensionsSchema = Schema.Struct({
   height: Schema.optional(Schema.Number),
 });
 
-// Leaf-level nodes inside a sidecar (no nested sidecars in practice)
+// ---------------------------------------------------------------------------
+// Shortcode-media (post / reel) — tagged union on __typename
+// ---------------------------------------------------------------------------
+
+// Sidecar child nodes share a flat shape (no nested sidecars in practice).
+// Image vs video within a sidecar is determined at runtime by is_video.
 const SidecarChildNodeSchema = Schema.Struct({
   __typename: Schema.optional(Schema.String),
   is_video: Schema.optional(Schema.Boolean),
   display_url: Schema.optional(Schema.String),
-  display_resources: Schema.optional(Schema.Array(DisplayResourceSchema)),
+  display_resources: Schema.optional(Schema.Array(MediaResourceSchema)),
   dimensions: Schema.optional(DimensionsSchema),
 });
 
-export const ShortcodeNodeSchema = Schema.Struct({
-  __typename: Schema.optional(Schema.String),
-  is_video: Schema.optional(Schema.Boolean),
-  shortcode: Schema.optional(Schema.String),
+const ShortcodeVideoSchema = Schema.Struct({
+  __typename: Schema.Literal(
+    'XDTGraphVideo',
+    'GraphVideo',
+    'Video',
+    'XDTMediaVideo',
+    'ClipsShareVideo'
+  ),
   id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  shortcode: Schema.optional(Schema.String),
   taken_at_timestamp: Schema.optional(Schema.Number),
   display_url: Schema.optional(Schema.String),
+  display_resources: Schema.optional(Schema.Array(MediaResourceSchema)),
+  // video_resources preferred over video_url when present. The doc_id endpoint
+  // (PolarisPostRootQuery) only serves video_url; older query_hash endpoints
+  // include video_resources. Decoder accepts either.
+  video_resources: Schema.optional(Schema.Array(MediaResourceSchema)),
   video_url: Schema.optional(Schema.String),
-  display_resources: Schema.optional(Schema.Array(DisplayResourceSchema)),
-  video_resources: Schema.optional(Schema.Array(DisplayResourceSchema)),
   dimensions: Schema.optional(DimensionsSchema),
+  is_video: Schema.optional(Schema.Boolean),
+});
+
+const ShortcodeImageSchema = Schema.Struct({
+  __typename: Schema.Literal('XDTGraphImage', 'GraphImage', 'Image', 'XDTMediaImage'),
+  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  shortcode: Schema.optional(Schema.String),
+  taken_at_timestamp: Schema.optional(Schema.Number),
+  display_url: Schema.optional(Schema.String),
+  display_resources: Schema.optional(Schema.Array(MediaResourceSchema)),
+  dimensions: Schema.optional(DimensionsSchema),
+  is_video: Schema.optional(Schema.Boolean),
+});
+
+const ShortcodeSidecarSchema = Schema.Struct({
+  __typename: Schema.Literal('XDTGraphSidecar', 'GraphSidecar', 'Sidecar', 'XDTMediaAlbum'),
+  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  shortcode: Schema.optional(Schema.String),
+  taken_at_timestamp: Schema.optional(Schema.Number),
+  display_url: Schema.optional(Schema.String),
   edge_sidecar_to_children: Schema.optional(
     Schema.Struct({
       edges: Schema.optional(Schema.Array(Schema.Struct({ node: SidecarChildNodeSchema }))),
     })
   ),
+  dimensions: Schema.optional(DimensionsSchema),
+  is_video: Schema.optional(Schema.Boolean),
 });
 
+// Unknown passthrough — IG ships new typenames occasionally. Decode succeeds;
+// normalizer skips the item and logs a console.warn with the typename.
+const ShortcodeUnknownSchema = Schema.Struct({
+  __typename: Schema.optional(Schema.String),
+  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+});
+
+export const ShortcodeNodeSchema = Schema.Union(
+  ShortcodeVideoSchema,
+  ShortcodeImageSchema,
+  ShortcodeSidecarSchema,
+  ShortcodeUnknownSchema
+);
+
 export type ShortcodeNode = Schema.Schema.Type<typeof ShortcodeNodeSchema>;
+export type ShortcodeVideo = Schema.Schema.Type<typeof ShortcodeVideoSchema>;
+export type ShortcodeImage = Schema.Schema.Type<typeof ShortcodeImageSchema>;
+export type ShortcodeSidecar = Schema.Schema.Type<typeof ShortcodeSidecarSchema>;
 export type SidecarChildNode = Schema.Schema.Type<typeof SidecarChildNodeSchema>;
 
 const ShortcodeDataSchema = Schema.Struct({
@@ -58,6 +110,87 @@ export const ShortcodeMediaResponseSchema = Schema.Struct({
   shortcode_media: Schema.optional(ShortcodeNodeSchema),
   media: Schema.optional(ShortcodeNodeSchema),
 });
+
+// ---------------------------------------------------------------------------
+// Reels media (stories + highlight reels) — tagged union on __typename
+// ---------------------------------------------------------------------------
+
+const StoryResourceSchema = Schema.Struct({
+  src: Schema.String,
+  config_width: Schema.optional(Schema.Number),
+  config_height: Schema.optional(Schema.Number),
+  mime_type: Schema.optional(Schema.String),
+  profile: Schema.optional(Schema.String),
+});
+
+const StoryDimensionsSchema = Schema.Struct({
+  height: Schema.Number,
+  width: Schema.Number,
+});
+
+const StoryVideoItemSchema = Schema.Struct({
+  __typename: Schema.Literal('GraphStoryVideo'),
+  id: Schema.String,
+  is_video: Schema.Literal(true),
+  display_url: Schema.String,
+  display_resources: Schema.Array(MediaResourceSchema),
+  // video_resources is the preferred download source for story videos
+  video_resources: Schema.Array(StoryResourceSchema),
+  dimensions: Schema.optional(StoryDimensionsSchema),
+  taken_at_timestamp: Schema.optional(Schema.Number),
+  expiring_at_timestamp: Schema.optional(Schema.Number),
+  video_duration: Schema.optional(Schema.Number),
+});
+
+const StoryImageItemSchema = Schema.Struct({
+  __typename: Schema.Literal('GraphStoryImage'),
+  id: Schema.String,
+  is_video: Schema.Literal(false),
+  display_url: Schema.String,
+  display_resources: Schema.Array(MediaResourceSchema),
+  dimensions: Schema.optional(StoryDimensionsSchema),
+  taken_at_timestamp: Schema.optional(Schema.Number),
+  expiring_at_timestamp: Schema.optional(Schema.Number),
+});
+
+// Unknown passthrough — skip unrecognised story types, log the typename
+const StoryUnknownItemSchema = Schema.Struct({
+  __typename: Schema.optional(Schema.String),
+  id: Schema.optional(Schema.String),
+});
+
+export const StoryItemSchema = Schema.Union(
+  StoryVideoItemSchema,
+  StoryImageItemSchema,
+  StoryUnknownItemSchema
+);
+
+export type StoryItem = Schema.Schema.Type<typeof StoryItemSchema>;
+export type StoryVideoItem = Schema.Schema.Type<typeof StoryVideoItemSchema>;
+export type StoryImageItem = Schema.Schema.Type<typeof StoryImageItemSchema>;
+
+const ReelOwnerSchema = Schema.Struct({
+  __typename: Schema.optional(Schema.String),
+  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  username: Schema.optional(Schema.String),
+  profile_pic_url: Schema.optional(Schema.String),
+});
+
+const ReelSchema = Schema.Struct({
+  __typename: Schema.optional(Schema.String),
+  id: Schema.Union(Schema.String, Schema.Number),
+  latest_reel_media: Schema.optional(Schema.NullOr(Schema.Number)),
+  owner: Schema.optional(ReelOwnerSchema),
+  items: Schema.Array(StoryItemSchema),
+});
+
+export const ReelsMediaResponseSchema = Schema.Struct({
+  data: Schema.Struct({
+    reels_media: Schema.Array(ReelSchema),
+  }),
+});
+
+export type ReelItem = Schema.Schema.Type<typeof ReelSchema>;
 
 // ---------------------------------------------------------------------------
 // web_profile_info schemas
@@ -81,3 +214,53 @@ export const WebProfileInfoResponseSchema = Schema.Struct({
 });
 
 export type WebProfileInfoUser = Schema.Schema.Type<typeof WebProfileInfoUserSchema>;
+
+// ---------------------------------------------------------------------------
+// HD avatar — i.instagram.com/api/v1/users/{id}/info/
+// Response is { user: {...}, status: "ok" } — NO data wrapper.
+// ---------------------------------------------------------------------------
+
+const HdPicVersionSchema = Schema.Struct({
+  url: Schema.String,
+  width: Schema.optional(Schema.Number),
+  height: Schema.optional(Schema.Number),
+});
+
+const HdAvatarUserSchema = Schema.Struct({
+  hd_profile_pic_url_info: Schema.optional(Schema.NullOr(HdPicVersionSchema)),
+  hd_profile_pic_versions: Schema.optional(Schema.Array(HdPicVersionSchema)),
+  profile_pic_url: Schema.optional(Schema.String),
+});
+
+export const HdAvatarResponseSchema = Schema.Struct({
+  user: HdAvatarUserSchema,
+});
+
+export type HdAvatarUser = Schema.Schema.Type<typeof HdAvatarUserSchema>;
+
+// ---------------------------------------------------------------------------
+// highlights_tray schemas
+// ---------------------------------------------------------------------------
+
+const CoverImageVersionSchema = Schema.Struct({
+  url: Schema.String,
+  width: Schema.optional(Schema.Number),
+  height: Schema.optional(Schema.Number),
+});
+
+const CoverMediaSchema = Schema.Struct({
+  full_image_version: Schema.optional(Schema.NullOr(CoverImageVersionSchema)),
+  cropped_image_version: Schema.optional(Schema.NullOr(CoverImageVersionSchema)),
+});
+
+export const HighlightsTrayItemSchema = Schema.Struct({
+  id: Schema.Union(Schema.String, Schema.Number),
+  title: Schema.optional(Schema.String),
+  cover_media: CoverMediaSchema,
+});
+
+export const HighlightsTrayResponseSchema = Schema.Struct({
+  tray: Schema.Array(HighlightsTrayItemSchema),
+});
+
+export type HighlightsTrayItem = Schema.Schema.Type<typeof HighlightsTrayItemSchema>;

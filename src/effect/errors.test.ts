@@ -39,7 +39,7 @@ describe('formatError', () => {
 
   it('ResponseShapeUnknown', () => {
     expect(formatError(new ResponseShapeUnknown({ context: 'shortcode query' }))).toBe(
-      'Unexpected response shape: shortcode query'
+      'Instagram changed their response format (shortcode query). The extension needs an update — please check for a new release.'
     );
   });
 
