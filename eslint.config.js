@@ -6,7 +6,14 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'node_modules', '.husky', 'extension', 'repos'],
+    ignores: [
+      'dist',
+      'node_modules',
+      '.husky',
+      'extension',
+      'repos',
+      'scripts/capture-ig-fixtures.mjs',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

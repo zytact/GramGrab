@@ -156,6 +156,20 @@ The popup sends messages to the background worker (`FETCH_MEDIA`, `DOWNLOAD_MEDI
 
 ---
 
+## Refreshing Instagram API schemas
+
+GramGrab decodes every Instagram API response through strict Effect schemas. If Instagram changes their response format, the extension will surface a clear message: _"Instagram changed their response format. The extension needs an update."_
+
+To fix it:
+
+1. Open `scripts/capture-ig-fixtures.mjs`, update the username/highlight-id constants at the top.
+2. Paste the whole file into DevTools console on `https://www.instagram.com` (logged in). Three JSON files will download.
+3. Replace the corresponding files in `src/effect/__fixtures__/`.
+4. Run `bun run test` — failing tests show exactly which fields changed.
+5. Update `src/effect/schemas.ts` to match the new shape, re-run tests, ship.
+
+---
+
 ## Limitations
 
 - **Login required** — you must be logged in to Instagram in the same browser profile. Private content is only accessible if your account follows that profile.
