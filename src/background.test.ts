@@ -180,11 +180,47 @@ describe('background dispatcher', () => {
   // ── FETCH_MEDIA (profile) ─────────────────────────────────────────────────
 
   describe('FETCH_MEDIA — profile', () => {
-    it('returns { media } with image item on success', async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
+    function mockProfileFetch(opts: {
+      webProfile?: unknown;
+      webProfileOk?: boolean;
+      webProfileStatus?: number;
+      tray?: unknown;
+      trayOk?: boolean;
+      trayStatus?: number;
+      userInfoOk?: boolean;
+    }) {
+      globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : (input as URL | Request).toString();
+        if (url.includes('/api/v1/users/web_profile_info/')) {
+          return {
+            ok: opts.webProfileOk ?? true,
+            status: opts.webProfileStatus ?? 200,
+            statusText: 'Not Found',
+            json: async () => opts.webProfile ?? {},
+          };
+        }
+        if (url.includes('/highlights_tray/')) {
+          return {
+            ok: opts.trayOk ?? true,
+            status: opts.trayStatus ?? 200,
+            statusText: 'Forbidden',
+            json: async () => opts.tray ?? { tray: [] },
+          };
+        }
+        if (url.includes('/users/') && url.includes('/info/')) {
+          return {
+            ok: opts.userInfoOk ?? false,
+            status: 200,
+            json: async () => ({}),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }) as unknown as typeof fetch;
+    }
+
+    it('returns avatar + highlight covers in one response', async () => {
+      mockProfileFetch({
+        webProfile: {
           data: {
             user: {
               id: '999',
@@ -192,27 +228,77 @@ describe('background dispatcher', () => {
               profile_pic_dimensions: { width: 320, height: 320 },
             },
           },
-        }),
-      }) as unknown as typeof fetch;
+        },
+        tray: {
+          tray: [
+            {
+              id: 'highlight:17900123',
+              title: 'Travel',
+              cover_media: {
+                full_image_version: { url: 'https://cdn.instagram.com/full1.jpg' },
+                cropped_image_version: { url: 'https://cdn.instagram.com/crop1.jpg' },
+              },
+            },
+            {
+              id: 17900456,
+              cover_media: {
+                cropped_image_version: { url: 'https://cdn.instagram.com/crop2.jpg' },
+              },
+            },
+          ],
+        },
+      });
 
       const listener = await loadBackground();
       const result = (await invoke(listener, {
         type: 'FETCH_MEDIA',
         url: 'https://www.instagram.com/someuser/',
-      })) as { media: { url: string; type: string }[]; error: undefined };
+      })) as {
+        media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
+        error: undefined;
+      };
+
+      expect(result.error).toBeUndefined();
+      expect(result.media).toHaveLength(3);
+      expect(result.media[0]?.url).toBe('https://cdn.instagram.com/pic_hd.jpg');
+      expect(result.media[1]?.url).toBe('https://cdn.instagram.com/full1.jpg');
+      expect(result.media[1]?.previewUrl).toBe('https://cdn.instagram.com/crop1.jpg');
+      expect(result.media[1]?.filenameHint).toBe('someuser_highlight_travel_17900123');
+      expect(result.media[2]?.url).toBe('https://cdn.instagram.com/crop2.jpg');
+      expect(result.media[2]?.previewUrl).toBeUndefined();
+      expect(result.media[2]?.filenameHint).toBe('someuser_highlight_untitled_17900456');
+    });
+
+    it('still returns avatar when highlights_tray fetch fails (swallowed)', async () => {
+      mockProfileFetch({
+        webProfile: {
+          data: {
+            user: {
+              id: '999',
+              profile_pic_url_hd: 'https://cdn.instagram.com/pic_hd.jpg',
+            },
+          },
+        },
+        trayOk: false,
+        trayStatus: 403,
+      });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/someuser/',
+      })) as { media: { url: string }[]; error: undefined };
 
       expect(result.error).toBeUndefined();
       expect(result.media).toHaveLength(1);
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/pic_hd.jpg');
-      expect(result.media[0]?.type).toBe('image');
+      expect(warnSpy).toHaveBeenCalledWith('highlights_tray failed:', expect.anything());
+      warnSpy.mockRestore();
     });
 
     it('returns { error } when profile fetch returns non-ok status', async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-      }) as unknown as typeof fetch;
+      mockProfileFetch({ webProfileOk: false, webProfileStatus: 404 });
 
       const listener = await loadBackground();
       const result = await invoke(listener, {

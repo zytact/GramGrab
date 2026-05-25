@@ -60,6 +60,24 @@ Phases 1–5 complete. `src/effect/` uses `.ts` import extensions (e.g. `./error
 - Background tests dynamically import `background.ts` to capture the registered listener.
 - Coverage: `bun run test` generates text/json/html reports (v8 provider).
 
+## IG Schema Fixtures & Strict-Schema Posture
+
+All Instagram API responses are decoded through Effect `Schema` tagged unions — not via ad-hoc casts. The posture is **strict + loud**: schema decode failures surface as `ResponseShapeUnknown` with a user-actionable message ("Instagram changed their format — please update the extension"). Unknown `__typename` values are passed through silently (B2) so partial changes don't brick the whole response.
+
+Real API response fixtures live in `src/effect/__fixtures__/` (see the README there). They are decoded by `src/effect/schemas.fixtures.test.ts`. **Handwritten tests in `schemas.test.ts` cover edge cases only** (missing required fields, null variants, Unknown passthrough, union dispatch) — not realistic happy paths.
+
+**When `ResponseShapeUnknown` fires in the wild:**
+1. Run `scripts/capture-ig-fixtures.mjs` in the DevTools console on `instagram.com`.
+2. Replace the relevant file(s) in `src/effect/__fixtures__/`.
+3. `bun run test` — failing fixture tests show what changed.
+4. Update `src/effect/schemas.ts` to match, re-run tests, ship.
+
+## Ubiquitous language
+
+This repo has a domain glossary at `UBIQUITOUS_LANGUAGE.md`.
+
+Read it when working on domain terminology, product concepts, naming, business rules, user-facing language, or when interpreting ambiguous terms (notably the overloaded **Reel** and **Unknown**). Prefer the canonical terms defined there, and avoid aliases listed as discouraged.
+
 ## Pre-commit
 
 Husky runs `bun run lint-staged` (eslint --fix + prettier --write on staged `.ts/.tsx/.js/.mjs`).
