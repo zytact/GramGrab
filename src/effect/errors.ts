@@ -65,7 +65,8 @@ const matchAppError = pipe(
     RateLimited: () => 'HTTP 429',
     GraphQLRequestFailed: e => `GraphQL failed: ${e.status}`,
     MediaNotFound: e => `No media found: ${e.hint}`,
-    ResponseShapeUnknown: e => `Unexpected response shape: ${e.context}`,
+    ResponseShapeUnknown: e =>
+      `Instagram changed their response format (${e.context}). The extension needs an update — please check for a new release.`,
     BrowserDownloadFailed: e => `Download failed for ${e.url}: ${String(e.cause)}`,
     VideoFrameExtractionFailed: e => `Frame extraction failed: ${e.reason}`,
   })
