@@ -6,7 +6,6 @@ import {
   fetchBlobAsDataUrl,
   fetchHdAvatarUser,
   fetchHighlightsTray,
-  fetchMediaInfo,
   fetchReelsMedia,
   fetchWebProfileInfoUser,
   graphqlFetch as graphqlFetchEffect,
@@ -15,7 +14,6 @@ import { ShortcodeMediaResponseSchema } from './effect/schemas.ts';
 import type {
   HdAvatarUser,
   HighlightsTrayItem,
-  MediaInfoItem,
   ReelItem,
   ShortcodeImage,
   ShortcodeNode,
@@ -243,22 +241,7 @@ function pickPreviewSrc(
   return candidate?.src ?? fallback;
 }
 
-// Highest-quality muxed (video+audio) URL from media-info's video_versions.
-// IG's GraphQL video_url uses ?stp=dst-mp4 which strips audio; media-info
-// returns the same .mp4 file with ?strext=1 which keeps it.
-function pickMuxedUrl(
-  versions: readonly { url: string; width?: number; height?: number }[] | undefined
-): string | undefined {
-  if (!versions || versions.length === 0) return undefined;
-  return [...versions].sort(
-    (a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0)
-  )[0]?.url;
-}
-
-function normalizeShortcodeMedia(
-  candidate: ShortcodeNode | undefined,
-  mediaInfo?: MediaInfoItem
-): MediaItem[] {
+function normalizeShortcodeMedia(candidate: ShortcodeNode | undefined): MediaItem[] {
   const items: MediaItem[] = [];
   if (!candidate) return items;
 
@@ -310,9 +293,8 @@ function normalizeShortcodeMedia(
     typename === 'XDTMediaAlbum'
   ) {
     const sidecar = node as ShortcodeSidecar;
-    sidecar.edge_sidecar_to_children?.edges?.forEach((edge, idx) => {
+    sidecar.edge_sidecar_to_children?.edges?.forEach(edge => {
       const n = edge.node;
-      const childMuxed = pickMuxedUrl(mediaInfo?.carousel_media?.[idx]?.video_versions);
       const displayResources = n.display_resources ?? [];
       const displayUrl = n.display_url;
       const isChildVideo = n.is_video === true;
@@ -320,7 +302,7 @@ function normalizeShortcodeMedia(
 
       if (isChildVideo) {
         const videoResources = n.video_resources ?? [];
-        const bestVideo = childMuxed ?? pickBestResource(videoResources) ?? n.video_url;
+        const bestVideo = pickBestResource(videoResources) ?? n.video_url;
         const preview = pickPreviewSrc(displayResources, displayUrl);
         if (bestVideo) {
           const sortedV = [...videoResources].sort(
@@ -357,8 +339,7 @@ function normalizeShortcodeMedia(
   ) {
     const video = node as ShortcodeVideo;
     const resources = video.video_resources ?? [];
-    const muxed = pickMuxedUrl(mediaInfo?.video_versions);
-    const best = muxed ?? pickBestResource(resources) ?? video.video_url;
+    const best = pickBestResource(resources) ?? video.video_url;
     const dims = video.dimensions;
     const preview = video.display_url;
     if (best) {
@@ -483,26 +464,7 @@ const resolveMediaEffect = (
         decoded.xdt_shortcode_media ??
         decoded.shortcode_media ??
         decoded.media;
-
-      // Audio recovery: when the node contains video(s), fetch media-info to
-      // get pre-muxed video_versions URLs (GraphQL's video_url is audio-stripped).
-      const mediaId = node && '__typename' in node && node.id != null ? String(node.id) : undefined;
-      const hasVideo =
-        node &&
-        '__typename' in node &&
-        (node.__typename === 'XDTGraphVideo' ||
-          node.__typename === 'GraphVideo' ||
-          node.__typename === 'Video' ||
-          node.__typename === 'XDTMediaVideo' ||
-          node.__typename === 'ClipsShareVideo' ||
-          node.__typename === 'XDTGraphSidecar' ||
-          node.__typename === 'GraphSidecar' ||
-          node.__typename === 'Sidecar' ||
-          node.__typename === 'XDTMediaAlbum');
-      const mediaInfo =
-        hasVideo && mediaId ? yield* fetchMediaInfo(mediaId, IG_HEADERS) : undefined;
-
-      return normalizeShortcodeMedia(node, mediaInfo);
+      return normalizeShortcodeMedia(node);
     }
 
     if (parsed.type === 'highlight') {

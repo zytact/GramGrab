@@ -28,7 +28,7 @@
     // so they're kept in full. All other arrays are capped at 3 to keep fixtures
     // small — fine for size-variant lists like display_resources / video_resources
     // where every entry is the same shape.
-    const KEEP_FULL = new Set(['items', 'edges', 'tray', 'carousel_media']);
+    const KEEP_FULL = new Set(['items', 'edges', 'tray']);
     function trim(v, parentKey) {
       if (v === null || typeof v !== 'object') return v;
       if (Array.isArray(v)) {
@@ -170,34 +170,6 @@
             console.log('  __typename:', node.__typename);
           }
           dl(file, { data: trim(j.data), errors: j.errors ?? null });
-        },
-      })),
-      // media/{id}/info/ — returns pre-muxed video_versions[] for video posts and
-      // each video child of a sidecar. We use this endpoint to recover audio when
-      // the GraphQL video_url is a DASH video-only stream.
-      ...[
-        ['media-info-video.json', POST_VIDEO_SHORTCODE, 'video reel'],
-        ['media-info-sidecar.json', POST_SIDECAR_SHORTCODE, 'sidecar carousel'],
-      ].map(([file, shortcode, kind]) => ({
-        label: `${file} (media/{id}/info/, ${kind}) for /p/${shortcode}/`,
-        run: async () => {
-          const g = await graphqlFetch({
-            doc_id: SHORTCODE_DOC_ID,
-            variables: JSON.stringify({ shortcode }),
-          });
-          const node = g?.data?.xdt_shortcode_media ?? g?.data?.shortcode_media;
-          const mediaId = node?.id;
-          if (!mediaId) {
-            console.warn(`  could not resolve media id for ${shortcode}`);
-            return;
-          }
-          const r = await fetch(`https://i.instagram.com/api/v1/media/${mediaId}/info/`, {
-            credentials: 'include',
-            headers: { 'X-IG-App-ID': APP_ID, Origin: 'https://www.instagram.com' },
-          });
-          console.log('  status:', r.status);
-          const j = await r.json();
-          dl(file, trim(j));
         },
       })),
     ];
