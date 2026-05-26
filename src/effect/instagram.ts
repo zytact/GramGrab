@@ -10,17 +10,10 @@ import {
 import {
   HdAvatarResponseSchema,
   HighlightsTrayResponseSchema,
-  MediaInfoResponseSchema,
   ReelsMediaResponseSchema,
   WebProfileInfoResponseSchema,
 } from './schemas.ts';
-import type {
-  HdAvatarUser,
-  HighlightsTrayItem,
-  MediaInfoItem,
-  ReelItem,
-  WebProfileInfoUser,
-} from './schemas.ts';
+import type { HdAvatarUser, HighlightsTrayItem, ReelItem, WebProfileInfoUser } from './schemas.ts';
 
 const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
   Schedule.compose(Schedule.recurs(3))
@@ -138,26 +131,6 @@ export const fetchHdAvatarUser = (
       );
       // decoded is Option<HdAvatarResponse>; return user or undefined
       return decoded._tag === 'Some' ? decoded.value.user : undefined;
-    },
-    catch: () => undefined,
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-export const fetchMediaInfo = (
-  mediaId: string,
-  headers: Record<string, string>
-): Effect.Effect<MediaInfoItem | undefined, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const res = await fetch(`https://i.instagram.com/api/v1/media/${mediaId}/info/`, {
-        credentials: 'include',
-        headers: { ...headers, Origin: 'https://www.instagram.com' },
-      });
-      if (!res.ok) return undefined;
-      const json = (await res.json()) as unknown;
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(MediaInfoResponseSchema)(json).pipe(Effect.option)
-      );
-      return decoded._tag === 'Some' ? decoded.value.items?.[0] : undefined;
     },
     catch: () => undefined,
   }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
