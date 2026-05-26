@@ -26,6 +26,10 @@ const SidecarChildNodeSchema = Schema.Struct({
   is_video: Schema.optional(Schema.Boolean),
   display_url: Schema.optional(Schema.String),
   display_resources: Schema.optional(Schema.Array(MediaResourceSchema)),
+  // Present when the child is a video. doc_id endpoint serves video_url;
+  // older query_hash endpoints include video_resources.
+  video_url: Schema.optional(Schema.String),
+  video_resources: Schema.optional(Schema.Array(MediaResourceSchema)),
   dimensions: Schema.optional(DimensionsSchema),
 });
 
@@ -237,6 +241,44 @@ export const HdAvatarResponseSchema = Schema.Struct({
 });
 
 export type HdAvatarUser = Schema.Schema.Type<typeof HdAvatarUserSchema>;
+
+// ---------------------------------------------------------------------------
+// media/{id}/info/ — i.instagram.com pre-muxed video_versions
+//
+// GraphQL's video_url uses the `stp=dst-mp4` URL param which strips audio.
+// The mobile media-info endpoint returns the same underlying .mp4 file with
+// `strext=1` — that variant keeps audio. Used to recover audio for video posts
+// and sidecar video children.
+// ---------------------------------------------------------------------------
+
+const MediaVideoVersionSchema = Schema.Struct({
+  type: Schema.optional(Schema.Number),
+  url: Schema.String,
+  width: Schema.optional(Schema.Number),
+  height: Schema.optional(Schema.Number),
+});
+
+const MediaInfoCarouselChildSchema = Schema.Struct({
+  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  media_type: Schema.optional(Schema.Number),
+  video_versions: Schema.optional(Schema.Array(MediaVideoVersionSchema)),
+});
+
+const MediaInfoItemSchema = Schema.Struct({
+  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  media_type: Schema.optional(Schema.Number),
+  has_audio: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  video_versions: Schema.optional(Schema.Array(MediaVideoVersionSchema)),
+  carousel_media: Schema.optional(Schema.Array(MediaInfoCarouselChildSchema)),
+});
+
+export const MediaInfoResponseSchema = Schema.Struct({
+  items: Schema.optional(Schema.Array(MediaInfoItemSchema)),
+});
+
+export type MediaInfoItem = Schema.Schema.Type<typeof MediaInfoItemSchema>;
+export type MediaInfoCarouselChild = Schema.Schema.Type<typeof MediaInfoCarouselChildSchema>;
+export type MediaVideoVersion = Schema.Schema.Type<typeof MediaVideoVersionSchema>;
 
 // ---------------------------------------------------------------------------
 // highlights_tray schemas
