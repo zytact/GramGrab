@@ -6,6 +6,7 @@ import {
   fetchBlobAsDataUrl,
   fetchHdAvatarUser,
   fetchHighlightsTray,
+  fetchMediaInfo,
   fetchReelsMedia,
   fetchWebProfileInfoUser,
   graphqlFetch as graphqlFetchEffect,
@@ -14,6 +15,7 @@ import { ShortcodeMediaResponseSchema } from './effect/schemas.ts';
 import type {
   HdAvatarUser,
   HighlightsTrayItem,
+  MediaInfoItem,
   ReelItem,
   ShortcodeImage,
   ShortcodeNode,
@@ -241,7 +243,22 @@ function pickPreviewSrc(
   return candidate?.src ?? fallback;
 }
 
-function normalizeShortcodeMedia(candidate: ShortcodeNode | undefined): MediaItem[] {
+// Highest-quality muxed (video+audio) URL from media-info's video_versions.
+// IG's GraphQL video_url uses ?stp=dst-mp4 which strips audio; media-info
+// returns the same .mp4 file with ?strext=1 which keeps it.
+function pickMuxedUrl(
+  versions: readonly { url: string; width?: number; height?: number }[] | undefined
+): string | undefined {
+  if (!versions || versions.length === 0) return undefined;
+  return [...versions].sort(
+    (a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0)
+  )[0]?.url;
+}
+
+function normalizeShortcodeMedia(
+  candidate: ShortcodeNode | undefined,
+  mediaInfo?: MediaInfoItem
+): MediaItem[] {
   const items: MediaItem[] = [];
   if (!candidate) return items;
 
@@ -293,29 +310,42 @@ function normalizeShortcodeMedia(candidate: ShortcodeNode | undefined): MediaIte
     typename === 'XDTMediaAlbum'
   ) {
     const sidecar = node as ShortcodeSidecar;
-    sidecar.edge_sidecar_to_children?.edges?.forEach(edge => {
+    sidecar.edge_sidecar_to_children?.edges?.forEach((edge, idx) => {
       const n = edge.node;
+      const childMuxed = pickMuxedUrl(mediaInfo?.carousel_media?.[idx]?.video_versions);
       const displayResources = n.display_resources ?? [];
       const displayUrl = n.display_url;
       const isChildVideo = n.is_video === true;
       const dims = n.dimensions;
+
+      if (isChildVideo) {
+        const videoResources = n.video_resources ?? [];
+        const bestVideo = childMuxed ?? pickBestResource(videoResources) ?? n.video_url;
+        const preview = pickPreviewSrc(displayResources, displayUrl);
+        if (bestVideo) {
+          const sortedV = [...videoResources].sort(
+            (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
+          );
+          push(
+            bestVideo,
+            'video',
+            sortedV[0]?.config_width ?? dims?.width,
+            sortedV[0]?.config_height ?? dims?.height,
+            preview
+          );
+        }
+        return;
+      }
 
       if (displayResources.length > 0) {
         const sorted = [...displayResources].sort(
           (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
         );
         const best = sorted[0]?.src;
-        const preview = isChildVideo ? displayUrl : pickPreviewSrc(displayResources, displayUrl);
-        if (best)
-          push(
-            best,
-            isChildVideo ? 'video' : 'image',
-            sorted[0]?.config_width,
-            sorted[0]?.config_height,
-            preview
-          );
+        const preview = pickPreviewSrc(displayResources, displayUrl);
+        if (best) push(best, 'image', sorted[0]?.config_width, sorted[0]?.config_height, preview);
       } else if (displayUrl) {
-        push(displayUrl, isChildVideo ? 'video' : 'image', dims?.width, dims?.height);
+        push(displayUrl, 'image', dims?.width, dims?.height);
       }
     });
   } else if (
@@ -327,15 +357,19 @@ function normalizeShortcodeMedia(candidate: ShortcodeNode | undefined): MediaIte
   ) {
     const video = node as ShortcodeVideo;
     const resources = video.video_resources ?? [];
-    const best = pickBestResource(resources);
-    const fallback = video.video_url;
+    const muxed = pickMuxedUrl(mediaInfo?.video_versions);
+    const best = muxed ?? pickBestResource(resources) ?? video.video_url;
     const dims = video.dimensions;
     const preview = video.display_url;
     if (best) {
       const sorted = [...resources].sort((a, b) => (b.config_width ?? 0) - (a.config_width ?? 0));
-      push(best, 'video', sorted[0]?.config_width, sorted[0]?.config_height, preview);
-    } else if (fallback) {
-      push(fallback, 'video', dims?.width, dims?.height, preview);
+      push(
+        best,
+        'video',
+        sorted[0]?.config_width ?? dims?.width,
+        sorted[0]?.config_height ?? dims?.height,
+        preview
+      );
     }
   } else {
     // Image
@@ -449,7 +483,26 @@ const resolveMediaEffect = (
         decoded.xdt_shortcode_media ??
         decoded.shortcode_media ??
         decoded.media;
-      return normalizeShortcodeMedia(node);
+
+      // Audio recovery: when the node contains video(s), fetch media-info to
+      // get pre-muxed video_versions URLs (GraphQL's video_url is audio-stripped).
+      const mediaId = node && '__typename' in node && node.id != null ? String(node.id) : undefined;
+      const hasVideo =
+        node &&
+        '__typename' in node &&
+        (node.__typename === 'XDTGraphVideo' ||
+          node.__typename === 'GraphVideo' ||
+          node.__typename === 'Video' ||
+          node.__typename === 'XDTMediaVideo' ||
+          node.__typename === 'ClipsShareVideo' ||
+          node.__typename === 'XDTGraphSidecar' ||
+          node.__typename === 'GraphSidecar' ||
+          node.__typename === 'Sidecar' ||
+          node.__typename === 'XDTMediaAlbum');
+      const mediaInfo =
+        hasVideo && mediaId ? yield* fetchMediaInfo(mediaId, IG_HEADERS) : undefined;
+
+      return normalizeShortcodeMedia(node, mediaInfo);
     }
 
     if (parsed.type === 'highlight') {
