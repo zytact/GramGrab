@@ -1,12 +1,241 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vite-plus';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
 // Target browser is passed via the BROWSER env variable.
 // Defaults to 'chromium' so plain `vite build` still works during development.
 const browser = (process.env.BROWSER ?? 'chromium') as 'chromium' | 'firefox';
+const autoInput = { auto: true } as const;
+const viteTempInput = { pattern: 'node_modules/.vite-temp/**', base: 'workspace' as const };
+const chromiumOutput = { pattern: 'extension/chromium/**', base: 'workspace' as const };
+const firefoxOutput = { pattern: 'extension/firefox/**', base: 'workspace' as const };
+const chromiumPackageOutput = {
+  pattern: 'extension/chromium/gramgrab.crx',
+  base: 'workspace' as const,
+};
+const firefoxPackageOutput = {
+  pattern: 'extension/firefox/gramgrab.xpi',
+  base: 'workspace' as const,
+};
 
 export default defineConfig({
+  run: {
+    cache: {
+      scripts: false, // Keep caching on explicit tasks so inputs/outputs stay well-defined.
+      tasks: true, // Cache task definitions (default: true)
+    },
+    tasks: {
+      'build-chromium': {
+        command: ['BROWSER=chromium vp build', 'BROWSER=chromium node scripts/postbuild.mjs'],
+        input: [autoInput, `!${viteTempInput.pattern}`, `!${chromiumOutput.pattern}`],
+        output: [chromiumOutput],
+      },
+      'build-firefox': {
+        command: ['BROWSER=firefox vp build', 'BROWSER=firefox node scripts/postbuild.mjs'],
+        input: [autoInput, `!${viteTempInput.pattern}`, `!${firefoxOutput.pattern}`],
+        output: [firefoxOutput],
+      },
+      'build-all': {
+        command: ['vp run build-chromium', 'vp run build-firefox'],
+      },
+      'package-chromium': {
+        command: ['vp run build-chromium', 'node scripts/package-chromium.mjs'],
+        input: [autoInput, `!${viteTempInput.pattern}`, `!${chromiumOutput.pattern}`],
+        output: [chromiumOutput, chromiumPackageOutput],
+      },
+      'package-firefox': {
+        command: ['vp run build-firefox', 'node scripts/package-firefox.mjs'],
+        input: [autoInput, `!${viteTempInput.pattern}`, `!${firefoxOutput.pattern}`],
+        output: [firefoxOutput, firefoxPackageOutput],
+      },
+    },
+  },
+  lint: {
+    plugins: ['oxc', 'typescript', 'unicorn', 'react'],
+    categories: {
+      correctness: 'warn',
+    },
+    env: {
+      builtin: true,
+    },
+    ignorePatterns: [
+      'dist',
+      'node_modules',
+      '.husky',
+      'extension',
+      'repos',
+      'scripts/capture-ig-fixtures.mjs',
+    ],
+    rules: {
+      'constructor-super': 'error',
+      'for-direction': 'error',
+      'getter-return': 'error',
+      'no-async-promise-executor': 'error',
+      'no-case-declarations': 'error',
+      'no-class-assign': 'error',
+      'no-compare-neg-zero': 'error',
+      'no-cond-assign': 'error',
+      'no-const-assign': 'error',
+      'no-constant-binary-expression': 'error',
+      'no-constant-condition': 'error',
+      'no-control-regex': 'error',
+      'no-debugger': 'error',
+      'no-delete-var': 'error',
+      'no-dupe-class-members': 'error',
+      'no-dupe-else-if': 'error',
+      'no-dupe-keys': 'error',
+      'no-duplicate-case': 'error',
+      'no-empty': 'error',
+      'no-empty-character-class': 'error',
+      'no-empty-pattern': 'error',
+      'no-empty-static-block': 'error',
+      'no-ex-assign': 'error',
+      'no-extra-boolean-cast': 'error',
+      'no-fallthrough': 'error',
+      'no-func-assign': 'error',
+      'no-global-assign': 'error',
+      'no-import-assign': 'error',
+      'no-invalid-regexp': 'error',
+      'no-irregular-whitespace': 'error',
+      'no-loss-of-precision': 'error',
+      'no-misleading-character-class': 'error',
+      'no-new-native-nonconstructor': 'error',
+      'no-nonoctal-decimal-escape': 'error',
+      'no-obj-calls': 'error',
+      'no-prototype-builtins': 'error',
+      'no-redeclare': 'error',
+      'no-regex-spaces': 'error',
+      'no-self-assign': 'error',
+      'no-setter-return': 'error',
+      'no-shadow-restricted-names': 'error',
+      'no-sparse-arrays': 'error',
+      'no-this-before-super': 'error',
+      'no-unassigned-vars': 'error',
+      'no-undef': 'error',
+      'no-unexpected-multiline': 'error',
+      'no-unreachable': 'error',
+      'no-unsafe-finally': 'error',
+      'no-unsafe-negation': 'error',
+      'no-unsafe-optional-chaining': 'error',
+      'no-unused-labels': 'error',
+      'no-unused-private-class-members': 'error',
+      'no-unused-vars': 'error',
+      'no-useless-assignment': 'error',
+      'no-useless-backreference': 'error',
+      'no-useless-catch': 'error',
+      'no-useless-escape': 'error',
+      'no-with': 'error',
+      'preserve-caught-error': 'error',
+      'require-yield': 'error',
+      'use-isnan': 'error',
+      'valid-typeof': 'error',
+      'no-array-constructor': 'error',
+      'no-unused-expressions': 'error',
+      'typescript/ban-ts-comment': 'error',
+      'typescript/no-duplicate-enum-values': 'error',
+      'typescript/no-empty-object-type': 'error',
+      'typescript/no-explicit-any': 'error',
+      'typescript/no-extra-non-null-assertion': 'error',
+      'typescript/no-misused-new': 'error',
+      'typescript/no-namespace': 'error',
+      'typescript/no-non-null-asserted-optional-chain': 'error',
+      'typescript/no-require-imports': 'error',
+      'typescript/no-this-alias': 'error',
+      'typescript/no-unnecessary-type-constraint': 'error',
+      'typescript/no-unsafe-declaration-merging': 'error',
+      'typescript/no-unsafe-function-type': 'error',
+      'typescript/no-wrapper-object-types': 'error',
+      'typescript/prefer-as-const': 'error',
+      'typescript/prefer-namespace-keyword': 'error',
+      'typescript/triple-slash-reference': 'error',
+      'vite-plus/prefer-vite-plus-imports': 'error',
+    },
+    overrides: [
+      {
+        files: ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'],
+        rules: {
+          'constructor-super': 'off',
+          'getter-return': 'off',
+          'no-class-assign': 'off',
+          'no-const-assign': 'off',
+          'no-dupe-class-members': 'off',
+          'no-dupe-keys': 'off',
+          'no-func-assign': 'off',
+          'no-import-assign': 'off',
+          'no-new-native-nonconstructor': 'off',
+          'no-obj-calls': 'off',
+          'no-redeclare': 'off',
+          'no-setter-return': 'off',
+          'no-this-before-super': 'off',
+          'no-undef': 'off',
+          'no-unreachable': 'off',
+          'no-unsafe-negation': 'off',
+          'no-var': 'error',
+          'no-with': 'off',
+          'prefer-const': 'error',
+          'prefer-rest-params': 'error',
+          'prefer-spread': 'error',
+        },
+      },
+      {
+        files: ['**/*.{ts,tsx}'],
+        rules: {
+          'prettier/prettier': 'error',
+          'no-console': [
+            'warn',
+            {
+              allow: ['warn', 'error'],
+            },
+          ],
+          'no-unused-vars': [
+            'error',
+            {
+              argsIgnorePattern: '^_',
+            },
+          ],
+        },
+        jsPlugins: ['eslint-plugin-prettier'],
+        env: {
+          browser: true,
+        },
+      },
+      {
+        files: ['**/*.js', '**/*.mjs'],
+        rules: {
+          'prettier/prettier': 'error',
+        },
+        jsPlugins: ['eslint-plugin-prettier'],
+        env: {
+          node: true,
+        },
+      },
+    ],
+    options: {
+      typeAware: true,
+      typeCheck: true,
+    },
+    jsPlugins: [
+      {
+        name: 'vite-plus',
+        specifier: 'vite-plus/oxlint-plugin',
+      },
+    ],
+  },
+  staged: {
+    '*.{ts,tsx,js,mjs}': ['vp lint --fix', 'vp fmt'],
+  },
+  fmt: {
+    singleQuote: true,
+    trailingComma: 'es5',
+    tabWidth: 2,
+    semi: true,
+    printWidth: 100,
+    bracketSpacing: true,
+    arrowParens: 'avoid',
+    endOfLine: 'lf',
+    sortPackageJson: false,
+    ignorePatterns: [],
+  },
   plugins: [react()],
   root: 'templates',
   build: {

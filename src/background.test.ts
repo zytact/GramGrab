@@ -6,7 +6,7 @@
  * the registered listener, and invoke it directly with test messages.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 
 type Listener = (
   msg: unknown,
