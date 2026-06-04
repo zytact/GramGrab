@@ -23,7 +23,7 @@
 
 - **Google Chrome** 88+ or **Mozilla Firefox** 109+
 - An active, logged-in Instagram session in the same browser profile
-- Node.js 18+ and npm (only if building from source)
+- Node.js 22+ plus the Vite+ CLI workflow (only if building from source)
 
 > Stories, highlights, and some metadata require that you are logged in to Instagram.
 
@@ -36,11 +36,11 @@
 1. Clone or download this repository.
 2. Run the build to generate browser-specific output directories:
    ```bash
-   bun install
-   bun run build           # builds both targets
+   vp install
+   vp run build            # builds both targets
    # or build individually:
-   bun run build:chromium  # → extension/chromium/
-   bun run build:firefox   # → extension/firefox/
+   vp run build:chromium   # → extension/chromium/
+   vp run build:firefox    # → extension/firefox/
    ```
 3. Load the extension into your browser:
 
@@ -61,9 +61,9 @@
 ### Option B — Development mode (live rebuild)
 
 ```bash
-bun install
-bun run dev            # live-rebuilds the Chromium target (extension/chromium/)
-bun run dev:firefox    # live-rebuilds the Firefox target (extension/firefox/)
+vp install
+vp run dev            # live-rebuilds the Chromium target (extension/chromium/)
+vp run dev:firefox    # live-rebuilds the Firefox target (extension/firefox/)
 ```
 
 Then load the matching `extension/chromium/` or `extension/firefox/` folder as an unpacked extension (same steps as above). Reload the extension in the browser after each rebuild.
@@ -96,36 +96,36 @@ Then load the matching `extension/chromium/` or `extension/firefox/` folder as a
 
 ```bash
 # Install dependencies
-bun install
+vp install
 
 # Production builds
-bun run build           # builds both targets
-bun run build:chromium  # → extension/chromium/
-bun run build:firefox   # → extension/firefox/
+vp run build            # cached builds for both targets
+vp run build:chromium   # → extension/chromium/
+vp run build:firefox    # → extension/firefox/
 
 # Package Firefox extension as XPI
-bun run package:firefox  # → extension/firefox/gramgrab.xpi
+vp run package:firefox   # → extension/firefox/gramgrab.xpi
 # Package Chromium extension as CRX
-bun run package:chromium # → extension/chromium/gramgrab.crx
+vp run package:chromium  # → extension/chromium/gramgrab.crx
 
 # Watch mode (rebuilds on save)
-bun run dev             # Chromium watch (extension/chromium/)
-bun run dev:chromium    # same as above
-bun run dev:firefox     # Firefox watch (extension/firefox/)
+vp run dev              # Chromium watch (extension/chromium/)
+vp run dev:chromium     # same as above
+vp run dev:firefox      # Firefox watch (extension/firefox/)
 
 # Run tests
-bun run test
-bun run test:watch
+vp test run
+vp test
 
 # Lint & format
-bun run typecheck
-bun run lint
-bun run lint:fix
-bun run format
-bun run format:check
+tsc --noEmit
+vp lint .
+vp lint . --fix
+vp fmt .
+vp fmt --check .
 ```
 
-The Vite build root is `templates/`; `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. For Firefox, you can package the built extension as an XPI file using `bun run package:firefox`; for Chromium, use `bun run package:chromium` to create a `.crx` file. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a deeper look at the codebase structure.
+The Vite build root is `templates/`; `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. Vite+ task caching is configured for the browser build and packaging workflows, so repeated `vp run build:*` and `vp run package:*` commands can replay cached outputs when inputs have not changed. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a deeper look at the codebase structure.
 
 ---
 
@@ -165,7 +165,7 @@ To fix it:
 1. Open `scripts/capture-ig-fixtures.mjs`, update the username/highlight-id constants at the top.
 2. Paste the whole file into DevTools console on `https://www.instagram.com` (logged in). Three JSON files will download.
 3. Replace the corresponding files in `src/effect/__fixtures__/`.
-4. Run `bun run test` — failing tests show exactly which fields changed.
+4. Run `vp test run` — failing tests show exactly which fields changed.
 5. Update `src/effect/schemas.ts` to match the new shape, re-run tests, ship.
 
 ---
@@ -182,7 +182,7 @@ To fix it:
 
 ## Contributing
 
-Pull requests are welcome. Please run `bun run lint:fix` and `bun run format` before submitting. Pre-commit hooks (via Husky + lint-staged) are set up to auto-fix lint and formatting on staged files — run `bun install` to activate them.
+Pull requests are welcome. Before submitting, run `vp lint . --fix`, `vp fmt .`, `tsc --noEmit`, and `vp test run`. The project uses Vite+ as the primary workflow surface, so prefer `vp` commands over package-manager wrappers when developing locally or in CI.
 
 ---
 
