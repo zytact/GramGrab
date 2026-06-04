@@ -180,7 +180,6 @@ export default defineConfig({
       {
         files: ['**/*.{ts,tsx}'],
         rules: {
-          'prettier/prettier': 'error',
           'no-console': [
             'warn',
             {
@@ -194,17 +193,12 @@ export default defineConfig({
             },
           ],
         },
-        jsPlugins: ['eslint-plugin-prettier'],
         env: {
           browser: true,
         },
       },
       {
         files: ['**/*.js', '**/*.mjs'],
-        rules: {
-          'prettier/prettier': 'error',
-        },
-        jsPlugins: ['eslint-plugin-prettier'],
         env: {
           node: true,
         },
@@ -234,7 +228,7 @@ export default defineConfig({
     arrowParens: 'avoid',
     endOfLine: 'lf',
     sortPackageJson: false,
-    ignorePatterns: [],
+    ignorePatterns: ['repos'],
   },
   plugins: [react()],
   root: 'templates',

@@ -179,11 +179,7 @@
     "media_count": 12,
     "mutual_followers_count": 37,
     "nametag": {
-      "available_theme_colors": [
-        -1,
-        7747834,
-        13828293
-      ],
+      "available_theme_colors": [-1, 7747834, 13828293],
       "background_image_url": "",
       "emoji": "😀",
       "emoji_color": -16777216,
@@ -272,11 +268,7 @@
         "username": "povofpriya_"
       }
     ],
-    "profile_context_mutual_follow_ids": [
-      47457542273,
-      52466324739,
-      78181509128
-    ],
+    "profile_context_mutual_follow_ids": [47457542273, 52466324739, 78181509128],
     "profile_pic_genai_tool_info": [],
     "pronouns": [],
     "relevant_news_regulation_locations": [],
