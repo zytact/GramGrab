@@ -2,47 +2,47 @@
 
 ## Media kinds
 
-| Term         | Definition                                                                                  | Aliases to avoid       |
-| ------------ | ------------------------------------------------------------------------------------------- | ---------------------- |
-| **Post**     | A permanent Instagram shortcode-addressable media item (image, video, or sidecar)           | Feed item              |
-| **Reel**     | A short-form video served via the shortcode endpoint, distinct from a **Story** **Reel**    | Clip                   |
-| **Sidecar**  | A multi-item **Post** carrying multiple image/video children under one shortcode            | Album, carousel, gallery |
-| **Story**    | An ephemeral item belonging to a user's current 24-hour tray                                | Snap                   |
-| **Highlight**| A curated, persistent collection of past **Stories** grouped under a tray entry             | Saved story            |
-| **Avatar**   | A user's profile picture, available in standard and HD variants                             | Profile pic, DP        |
+| Term          | Definition                                                                               | Aliases to avoid         |
+| ------------- | ---------------------------------------------------------------------------------------- | ------------------------ |
+| **Post**      | A permanent Instagram shortcode-addressable media item (image, video, or sidecar)        | Feed item                |
+| **Reel**      | A short-form video served via the shortcode endpoint, distinct from a **Story** **Reel** | Clip                     |
+| **Sidecar**   | A multi-item **Post** carrying multiple image/video children under one shortcode         | Album, carousel, gallery |
+| **Story**     | An ephemeral item belonging to a user's current 24-hour tray                             | Snap                     |
+| **Highlight** | A curated, persistent collection of past **Stories** grouped under a tray entry          | Saved story              |
+| **Avatar**    | A user's profile picture, available in standard and HD variants                          | Profile pic, DP          |
 
 ## Schema & decoding
 
-| Term                       | Definition                                                                                                          | Aliases to avoid           |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| **Schema**                 | An Effect `Schema` describing the expected shape of an Instagram API response                                       | Type, validator            |
-| **Tagged union**           | A `Schema.Union` discriminated by the IG `__typename` field                                                         | Sum type, variant          |
-| **Typename**               | The `__typename` string IG attaches to a node, used as the discriminator                                            | Kind, tag                  |
-| **Decode**                 | Running `Schema.decodeUnknown` against a raw JSON payload to produce a typed value                                  | Parse, validate            |
-| **Unknown passthrough**    | A fallback union member that accepts unrecognised `__typename` values so partial IG changes don't fail the response | Catch-all, fallback        |
-| **Strict + loud posture**  | The project rule that decode failures must surface as `ResponseShapeUnknown`, never silent casts                    | Lenient parsing            |
-| **Fixture**                | A captured real IG API response stored under `src/effect/__fixtures__/` and exercised by fixture tests              | Sample, mock response      |
-| **Normalizer**             | Code that walks a decoded schema value and produces the app's internal media list, skipping Unknown nodes           | Mapper, transformer        |
+| Term                      | Definition                                                                                                          | Aliases to avoid      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| **Schema**                | An Effect `Schema` describing the expected shape of an Instagram API response                                       | Type, validator       |
+| **Tagged union**          | A `Schema.Union` discriminated by the IG `__typename` field                                                         | Sum type, variant     |
+| **Typename**              | The `__typename` string IG attaches to a node, used as the discriminator                                            | Kind, tag             |
+| **Decode**                | Running `Schema.decodeUnknown` against a raw JSON payload to produce a typed value                                  | Parse, validate       |
+| **Unknown passthrough**   | A fallback union member that accepts unrecognised `__typename` values so partial IG changes don't fail the response | Catch-all, fallback   |
+| **Strict + loud posture** | The project rule that decode failures must surface as `ResponseShapeUnknown`, never silent casts                    | Lenient parsing       |
+| **Fixture**               | A captured real IG API response stored under `src/effect/__fixtures__/` and exercised by fixture tests              | Sample, mock response |
+| **Normalizer**            | Code that walks a decoded schema value and produces the app's internal media list, skipping Unknown nodes           | Mapper, transformer   |
 
 ## Errors
 
-| Term                       | Definition                                                                            | Aliases to avoid     |
-| -------------------------- | ------------------------------------------------------------------------------------- | -------------------- |
-| **`ResponseShapeUnknown`** | Tagged error raised when a response fails schema decoding                              | Parse error          |
-| **`RateLimited`**          | Tagged error raised on HTTP 429 from IG                                                | Throttled            |
-| **`NetworkError`**         | Tagged error wrapping a failed `fetch` (DNS, offline, abort, etc.)                     | Fetch error          |
-| **`HttpError`**            | Tagged error for non-OK HTTP responses other than 429                                  | Status error         |
-| **`GraphQLRequestFailed`** | Tagged error for IG GraphQL-layer failures (operation rejected, missing data wrapper) | GQL error            |
+| Term                       | Definition                                                                            | Aliases to avoid |
+| -------------------------- | ------------------------------------------------------------------------------------- | ---------------- |
+| **`ResponseShapeUnknown`** | Tagged error raised when a response fails schema decoding                             | Parse error      |
+| **`RateLimited`**          | Tagged error raised on HTTP 429 from IG                                               | Throttled        |
+| **`NetworkError`**         | Tagged error wrapping a failed `fetch` (DNS, offline, abort, etc.)                    | Fetch error      |
+| **`HttpError`**            | Tagged error for non-OK HTTP responses other than 429                                 | Status error     |
+| **`GraphQLRequestFailed`** | Tagged error for IG GraphQL-layer failures (operation rejected, missing data wrapper) | GQL error        |
 
 ## Endpoints
 
-| Term                  | Definition                                                                                                  |
-| --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Shortcode media**   | The GraphQL endpoint returning a **Post**, **Reel**, or **Sidecar** keyed by shortcode                      |
-| **`reels_media`**     | The GraphQL endpoint returning a user's **Stories** and **Highlight** items as `ReelItem[]`                 |
-| **`web_profile_info`**| The web endpoint returning standard-resolution **Avatar** and basic profile info                            |
-| **HD avatar endpoint**| `i.instagram.com/api/v1/users/{id}/info/` — returns the HD **Avatar** variants, no `data` wrapper           |
-| **`highlights_tray`** | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/` — lists a user's **Highlight** tray entries       |
+| Term                   | Definition                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Shortcode media**    | The GraphQL endpoint returning a **Post**, **Reel**, or **Sidecar** keyed by shortcode                |
+| **`reels_media`**      | The GraphQL endpoint returning a user's **Stories** and **Highlight** items as `ReelItem[]`           |
+| **`web_profile_info`** | The web endpoint returning standard-resolution **Avatar** and basic profile info                      |
+| **HD avatar endpoint** | `i.instagram.com/api/v1/users/{id}/info/` — returns the HD **Avatar** variants, no `data` wrapper     |
+| **`highlights_tray`**  | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/` — lists a user's **Highlight** tray entries |
 
 ## Relationships
 
