@@ -6,7 +6,7 @@
  * re-evaluated with the desired globals, then dynamically imports it.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 
 // Helpers -------------------------------------------------------------------
 

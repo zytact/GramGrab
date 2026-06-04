@@ -7,23 +7,25 @@ GramGrab is a Chrome/Firefox MV3 extension for downloading Instagram media. No c
 ## Commands
 
 ```bash
-bun run build           # chromium + firefox
-bun run build:chromium  # → extension/chromium/
-bun run build:firefox   # → extension/firefox/
-bun run dev             # chromium watch (alias for dev:chromium)
-bun run dev:firefox     # firefox watch
-bun run lint            # eslint .
-bun run lint:fix
-bun run format          # prettier --write
-bun run format:check
-bun run typecheck       # tsc --noEmit
-bun run test            # vitest run
-bun run test:watch
-bun run package:firefox # build + XPI
-bun run package:chromium# build + CRX (generates/uses chromium.pem key)
+vp run build              # cached chromium + firefox build workflow
+vp run build:chromium     # → extension/chromium/
+vp run build:firefox      # → extension/firefox/
+vp run dev                # chromium watch
+vp run dev:firefox        # firefox watch
+vp lint .                 # lint the repo
+vp lint . --fix
+vp fmt .                  # format the repo
+vp fmt --check .
+tsc --noEmit              # typecheck
+vp test run               # run tests once
+vp test                   # watch mode
+vp run package:firefox    # cached build + XPI
+vp run package:chromium   # cached build + CRX (generates/uses chromium.pem key)
 ```
 
-Verify in order: `lint` + `typecheck` together, then `test`.
+Use Vite+ as the primary workflow surface. Prefer `vp` commands and `vp run <script>` / `vp run <task>` over package-manager wrappers.
+
+Verify in order: `vp lint .` + `tsc --noEmit` together, then `vp test run`.
 Never commit yourself.
 
 ## Architecture
@@ -37,11 +39,11 @@ Never commit yourself.
 
 This project vendors external repositories under @repos/
 
-  - Use vendored repositories as read-only reference material when working with related libraries
-  - Prefer examples and patterns from the vendored source code over generated guesses or web search results
-  - Do not edit files under @repos/ unless explicitly asked
-  - Do not import from @repos/ - application code should continue importing from normal package dependencies
-  -  When writing Effect code, inspect @repos/effect/ for examples of idiomatic usage, tests, module structure, and API design. Treat it as the source of truth for Effect patterns.
+- Use vendored repositories as read-only reference material when working with related libraries
+- Prefer examples and patterns from the vendored source code over generated guesses or web search results
+- Do not edit files under @repos/ unless explicitly asked
+- Do not import from @repos/ - application code should continue importing from normal package dependencies
+- When writing Effect code, inspect @repos/effect/ for examples of idiomatic usage, tests, module structure, and API design. Treat it as the source of truth for Effect patterns.
 
 ## Effect Migration (in progress)
 
@@ -58,7 +60,7 @@ Phases 1–5 complete. `src/effect/` uses `.ts` import extensions (e.g. `./error
 - Vitest + jsdom. Files: `src/**/*.test.{ts,tsx}`. Setup: `src/test/setup.ts` (polyfills Blob.arrayBuffer, installs mock `globalThis.browser`).
 - Test helpers in `setup.ts`: `resetBrowserMocks()`, `setMockMessageHandler(type, handler)`, `getDownloadCalls()`.
 - Background tests dynamically import `background.ts` to capture the registered listener.
-- Coverage: `bun run test` generates text/json/html reports (v8 provider).
+- Coverage: `vp test run` generates text/json/html reports (v8 provider).
 
 ## IG Schema Fixtures & Strict-Schema Posture
 
@@ -67,9 +69,10 @@ All Instagram API responses are decoded through Effect `Schema` tagged unions �
 Real API response fixtures live in `src/effect/__fixtures__/` (see the README there). They are decoded by `src/effect/schemas.fixtures.test.ts`. **Handwritten tests in `schemas.test.ts` cover edge cases only** (missing required fields, null variants, Unknown passthrough, union dispatch) — not realistic happy paths.
 
 **When `ResponseShapeUnknown` fires in the wild:**
+
 1. Run `scripts/capture-ig-fixtures.mjs` in the DevTools console on `instagram.com`.
 2. Replace the relevant file(s) in `src/effect/__fixtures__/`.
-3. `bun run test` — failing fixture tests show what changed.
+3. `vp test run` — failing fixture tests show what changed.
 4. Update `src/effect/schemas.ts` to match, re-run tests, ship.
 
 ## Ubiquitous language
@@ -80,4 +83,21 @@ Read it when working on domain terminology, product concepts, naming, business r
 
 ## Pre-commit
 
-Husky runs `bun run lint-staged` (eslint --fix + prettier --write on staged `.ts/.tsx/.js/.mjs`).
+Vite plus controls the pre-commit hook.
+
+<!--VITE PLUS START-->
+
+## Using Vite+, the Unified Toolchain for the Web
+
+This project is using Vite+, a unified toolchain built on top of Vite, Rolldown, Vitest, tsdown, Oxlint, Oxfmt, and Vite Task. Vite+ wraps runtime management, package management, and frontend tooling in a single global CLI called `vp`. Vite+ is distinct from Vite, and it invokes Vite through `vp dev` and `vp build`. Run `vp help` to print a list of commands and `vp <command> --help` for information about a specific command.
+
+Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.dev/guide/.
+
+## Review Checklist
+
+- [ ] Run `vp install` after pulling remote changes and before getting started.
+- [ ] Run `vp lint .` and `tsc --noEmit` together, then `vp test run`.
+- [ ] Prefer `vp` commands for normal repo workflows; use `vp run <task>` when you need an explicit cached task such as `build-chromium`, `build-firefox`, `package-chromium`, or `package-firefox`.
+- [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
+
+<!--VITE PLUS END-->
