@@ -39,11 +39,11 @@ Never commit yourself.
 
 This project vendors external repositories under @repos/
 
-  - Use vendored repositories as read-only reference material when working with related libraries
-  - Prefer examples and patterns from the vendored source code over generated guesses or web search results
-  - Do not edit files under @repos/ unless explicitly asked
-  - Do not import from @repos/ - application code should continue importing from normal package dependencies
-  -  When writing Effect code, inspect @repos/effect/ for examples of idiomatic usage, tests, module structure, and API design. Treat it as the source of truth for Effect patterns.
+- Use vendored repositories as read-only reference material when working with related libraries
+- Prefer examples and patterns from the vendored source code over generated guesses or web search results
+- Do not edit files under @repos/ unless explicitly asked
+- Do not import from @repos/ - application code should continue importing from normal package dependencies
+- When writing Effect code, inspect @repos/effect/ for examples of idiomatic usage, tests, module structure, and API design. Treat it as the source of truth for Effect patterns.
 
 ## Effect Migration (in progress)
 
@@ -69,6 +69,7 @@ All Instagram API responses are decoded through Effect `Schema` tagged unions �
 Real API response fixtures live in `src/effect/__fixtures__/` (see the README there). They are decoded by `src/effect/schemas.fixtures.test.ts`. **Handwritten tests in `schemas.test.ts` cover edge cases only** (missing required fields, null variants, Unknown passthrough, union dispatch) — not realistic happy paths.
 
 **When `ResponseShapeUnknown` fires in the wild:**
+
 1. Run `scripts/capture-ig-fixtures.mjs` in the DevTools console on `instagram.com`.
 2. Replace the relevant file(s) in `src/effect/__fixtures__/`.
 3. `vp test run` — failing fixture tests show what changed.
@@ -83,6 +84,7 @@ Read it when working on domain terminology, product concepts, naming, business r
 ## Pre-commit
 
 Vite plus controls the pre-commit hook.
+
 <!--VITE PLUS START-->
 
 ## Using Vite+, the Unified Toolchain for the Web

@@ -1,7 +1,5 @@
 {
-  "js/ts.preferences.autoImportFileExcludePatterns": [
-    "repos/**"
-  ],
+  "js/ts.preferences.autoImportFileExcludePatterns": ["repos/**"],
   "files.exclude": {
     "repos/**": true
   },
