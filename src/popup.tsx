@@ -340,7 +340,7 @@ export default function Popup() {
                       item.previewUrl?.startsWith('data:')
                     )
                       return;
-                    requestFallbackPreview(item.index, item.url);
+                    void requestFallbackPreview(item.index, item.url);
                   }}
                   onToggle={() => toggleItem(item.index)}
                   exportFrame={exportFrameSet.has(item.index)}

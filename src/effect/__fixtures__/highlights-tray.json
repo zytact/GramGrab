@@ -67,11 +67,7 @@
       "can_reshare": true,
       "is_archived": false,
       "cover_media": {
-        "crop_rect": [
-          0,
-          0.26308384918401795,
-          1
-        ],
+        "crop_rect": [0, 0.26308384918401795, 1],
         "media_id": "3492549366416679152_60483811374",
         "upload_id": null,
         "cropped_image_version": {
@@ -175,11 +171,7 @@
       "can_reshare": true,
       "is_archived": false,
       "cover_media": {
-        "crop_rect": [
-          0,
-          0.21880492091388398,
-          1
-        ],
+        "crop_rect": [0, 0.21880492091388398, 1],
         "media_id": "3653177800544336019_60483811374",
         "upload_id": null,
         "cropped_image_version": {

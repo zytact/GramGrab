@@ -807,31 +807,31 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   switch (m.type) {
     case 'DOWNLOAD':
-      handleDownload(msg as DownloadMsg).then(sendResponse);
+      void handleDownload(msg as DownloadMsg).then(sendResponse);
       return true;
 
     case 'FETCH_MEDIA':
-      handleFetchMedia(msg as FetchMediaMsg).then(sendResponse);
+      void handleFetchMedia(msg as FetchMediaMsg).then(sendResponse);
       return true;
 
     case 'GET_PREVIEW_URL':
-      handleGetPreviewUrl(msg as GetPreviewUrlMsg).then(sendResponse);
+      void handleGetPreviewUrl(msg as GetPreviewUrlMsg).then(sendResponse);
       return true;
 
     case 'DOWNLOAD_MEDIA':
-      handleDownloadMedia(msg as DownloadMediaMsg).then(sendResponse);
+      void handleDownloadMedia(msg as DownloadMediaMsg).then(sendResponse);
       return true;
 
     case 'FETCH_VIDEO_BLOB':
-      handleFetchVideoBlob(msg as FetchVideoBlobMsg).then(sendResponse);
+      void handleFetchVideoBlob(msg as FetchVideoBlobMsg).then(sendResponse);
       return true;
 
     case 'DEBUG_SHAPE':
-      handleDebugShape(msg as DebugShapeMsg).then(sendResponse);
+      void handleDebugShape(msg as DebugShapeMsg).then(sendResponse);
       return true;
 
     case 'DOWNLOAD_DEBUG_JSON':
-      handleDownloadDebugJson(msg as DownloadDebugJsonMsg).then(sendResponse);
+      void handleDownloadDebugJson(msg as DownloadDebugJsonMsg).then(sendResponse);
       return true;
 
     default:
