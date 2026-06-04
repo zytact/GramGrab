@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { VideoFrameExtractionFailed } from './errors.ts';
 import { captureFrameFromVideoEffect } from './frame-extraction.ts';
 
