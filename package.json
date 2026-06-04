@@ -3,25 +3,24 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "bun run build:chromium && bun run build:firefox",
-    "build:chromium": "BROWSER=chromium vite build && BROWSER=chromium bun scripts/postbuild.mjs",
-    "build:firefox": "BROWSER=firefox vite build && BROWSER=firefox bun scripts/postbuild.mjs",
-    "dev": "bun run dev:chromium",
-    "dev:chromium": "BROWSER=chromium vite build --watch",
-    "dev:firefox": "BROWSER=firefox vite build --watch",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "prepare": "husky",
+    "build": "vp run build-all",
+    "build:chromium": "vp run build-chromium",
+    "build:firefox": "vp run build-firefox",
+    "dev": "BROWSER=chromium vp build --watch",
+    "dev:chromium": "BROWSER=chromium vp build --watch",
+    "dev:firefox": "BROWSER=firefox vp build --watch",
+    "lint": "vp lint .",
+    "lint:fix": "vp lint . --fix",
+    "format": "vp fmt .",
+    "format:check": "vp fmt --check .",
+    "test": "vp test run",
+    "test:watch": "vp test",
+    "prepare": "vp config",
     "typecheck": "tsc --noEmit",
-    "package:firefox": "bun run build:firefox && node scripts/package-firefox.mjs",
-    "package:chromium": "bun run build:chromium && node scripts/package-chromium.mjs"
+    "package:firefox": "vp run package-firefox",
+    "package:chromium": "vp run package-chromium"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
     "@types/bun": "^1.3.13",
@@ -29,29 +28,23 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "crx": "^5.0.1",
-    "eslint": "^10.2.1",
-    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "globals": "^17.5.0",
-    "husky": "^9.1.7",
     "jiti": "^2.6.1",
     "jsdom": "^26.0.0",
-    "lint-staged": "^16.4.0",
-    "prettier": "^3.8.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.59.0",
-    "vite": "^8.0.10",
-    "vitest": "^3.0.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
+    "vite-plus": "latest"
   },
   "dependencies": {
     "effect": "^3.21.2"
   },
-  "lint-staged": {
-    "*.{ts,tsx,js,mjs}": [
-      "eslint --fix",
-      "prettier --write"
-    ]
+  "packageManager": "pnpm@11.5.1",
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
   }
 }

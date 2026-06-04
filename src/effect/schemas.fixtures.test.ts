@@ -8,7 +8,7 @@
  * for the refresh workflow.
  */
 import { Effect, Schema } from 'effect';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vite-plus/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
