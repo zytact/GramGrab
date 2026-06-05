@@ -1,3 +1,5 @@
+// fallow-ignore-file unused-file
+// fallow-ignore-file complexity
 /* eslint-env browser */
 // Paste this entire file into the DevTools console on https://www.instagram.com
 // (logged in). Edit the constants below, then hit Enter.

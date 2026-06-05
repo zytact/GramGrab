@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { generateKeyPairSync } from 'node:crypto';
 import { resolve } from 'node:path';
