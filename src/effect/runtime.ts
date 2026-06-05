@@ -1,10 +1,6 @@
 import { Effect } from 'effect';
 import { formatError } from './errors.ts';
 
-export { Effect };
-
-export const runPromise = Effect.runPromise;
-
 export function runHandler<T extends object, E extends object, E0>(
   program: Effect.Effect<T, E0, never>,
   errorDefaults: E
