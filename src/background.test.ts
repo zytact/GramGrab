@@ -180,6 +180,81 @@ describe('background dispatcher', () => {
   // ── FETCH_MEDIA (profile) ─────────────────────────────────────────────────
 
   describe('FETCH_MEDIA — profile', () => {
+    function toFetchUrl(input: RequestInfo | URL): string {
+      if (typeof input === 'string') return input;
+      return input instanceof URL ? input.toString() : input.url;
+    }
+
+    function mockJsonResponse(body: unknown, ok = true, status = 200, statusText = 'OK') {
+      return {
+        ok,
+        status,
+        statusText,
+        json: async () => body,
+      };
+    }
+
+    function classifyProfileFetchUrl(url: string) {
+      if (url.includes('/api/v1/users/web_profile_info/')) return 'web-profile';
+      if (url.includes('/highlights_tray/')) return 'tray';
+      if (url.includes('/users/') && url.includes('/info/')) return 'user-info';
+      return 'default';
+    }
+
+    function buildWebProfileResponse(opts: {
+      webProfile?: unknown;
+      webProfileOk?: boolean;
+      webProfileStatus?: number;
+    }) {
+      return mockJsonResponse(
+        opts.webProfile ?? {},
+        opts.webProfileOk ?? true,
+        opts.webProfileStatus ?? 200,
+        'Not Found'
+      );
+    }
+
+    function buildHighlightsTrayResponse(opts: {
+      tray?: unknown;
+      trayOk?: boolean;
+      trayStatus?: number;
+    }) {
+      return mockJsonResponse(
+        opts.tray ?? { tray: [] },
+        opts.trayOk ?? true,
+        opts.trayStatus ?? 200,
+        'Forbidden'
+      );
+    }
+
+    function buildUserInfoResponse(opts: { userInfoOk?: boolean }) {
+      return mockJsonResponse({}, opts.userInfoOk ?? false, 200, 'OK');
+    }
+
+    function resolveProfileFetchResponse(
+      url: string,
+      opts: {
+        webProfile?: unknown;
+        webProfileOk?: boolean;
+        webProfileStatus?: number;
+        tray?: unknown;
+        trayOk?: boolean;
+        trayStatus?: number;
+        userInfoOk?: boolean;
+      }
+    ) {
+      switch (classifyProfileFetchUrl(url)) {
+        case 'web-profile':
+          return buildWebProfileResponse(opts);
+        case 'tray':
+          return buildHighlightsTrayResponse(opts);
+        case 'user-info':
+          return buildUserInfoResponse(opts);
+        default:
+          return mockJsonResponse({}, true, 200, 'OK');
+      }
+    }
+
     function mockProfileFetch(opts: {
       webProfile?: unknown;
       webProfileOk?: boolean;
@@ -189,33 +264,11 @@ describe('background dispatcher', () => {
       trayStatus?: number;
       userInfoOk?: boolean;
     }) {
-      globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : (input as URL | Request).toString();
-        if (url.includes('/api/v1/users/web_profile_info/')) {
-          return {
-            ok: opts.webProfileOk ?? true,
-            status: opts.webProfileStatus ?? 200,
-            statusText: 'Not Found',
-            json: async () => opts.webProfile ?? {},
-          };
-        }
-        if (url.includes('/highlights_tray/')) {
-          return {
-            ok: opts.trayOk ?? true,
-            status: opts.trayStatus ?? 200,
-            statusText: 'Forbidden',
-            json: async () => opts.tray ?? { tray: [] },
-          };
-        }
-        if (url.includes('/users/') && url.includes('/info/')) {
-          return {
-            ok: opts.userInfoOk ?? false,
-            status: 200,
-            json: async () => ({}),
-          };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }) as unknown as typeof fetch;
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (input: RequestInfo | URL) =>
+          resolveProfileFetchResponse(toFetchUrl(input), opts)
+        ) as unknown as typeof fetch;
     }
 
     it('returns avatar + highlight covers in one response', async () => {
