@@ -26,6 +26,7 @@ import type {
 import {
   BrowserDownloadFailed,
   GraphQLRequestFailed,
+  HttpError,
   InvalidInstagramUrl,
   MediaNotFound,
   NetworkError,
@@ -101,29 +102,34 @@ interface ParsedUrl {
 type SidecarChild = NonNullable<
   NonNullable<ShortcodeSidecar['edge_sidecar_to_children']>['edges']
 >[number]['node'];
+type ShortcodeMediaResponse = Schema.Schema.Type<typeof ShortcodeMediaResponseSchema>;
+
+interface MediaContext {
+  takenAt?: number;
+  filenameHint: string;
+}
+
+interface MediaDimensions {
+  width?: number;
+  height?: number;
+}
 
 function parseInstagramUrl(url: string): ParsedUrl | null {
   try {
     const u = new URL(url);
-    if (u.hostname !== 'www.instagram.com' && u.hostname !== 'instagram.com') return null;
+    if (!isInstagramHostname(u.hostname)) return null;
     const path = u.pathname.replace(/\/$/, '').split('/').filter(Boolean);
     if (path.length === 0) return null;
-    const post = parsePostUrl(path, u);
-    if (post) return post;
-    const reel = parseReelUrl(path);
-    if (reel) return reel;
-    const stories = parseStoriesUrl(path);
-    if (stories) return stories;
-    if (path.length === 1) {
-      const username = path[0];
-      if (username && !RESERVED_PROFILE_PATHS.has(username)) {
-        return { type: 'profile', username };
-      }
-    }
-    return null;
+    return (
+      parsePostUrl(path, u) ?? parseReelUrl(path) ?? parseStoriesUrl(path) ?? parseProfileUrl(path)
+    );
   } catch {
     return null;
   }
+}
+
+function isInstagramHostname(hostname: string): boolean {
+  return hostname === 'www.instagram.com' || hostname === 'instagram.com';
 }
 
 function parsePostUrl(path: string[], url: URL): ParsedUrl | null {
@@ -154,6 +160,13 @@ function parseStoriesUrl(path: string[]): ParsedUrl | null {
 
   const username = path[storiesIndex + 1];
   return username ? { type: 'story', username } : null;
+}
+
+function parseProfileUrl(path: string[]): ParsedUrl | null {
+  if (path.length !== 1) return null;
+  const username = path[0];
+  if (!username || RESERVED_PROFILE_PATHS.has(username)) return null;
+  return { type: 'profile', username };
 }
 
 function parseCarouselIndex(imgIndex: string | null): number | undefined {
@@ -260,20 +273,28 @@ function createHighlightCoverItem(
   entry: HighlightsTrayItem,
   username: string
 ): MediaItem | undefined {
-  const full = entry.cover_media.full_image_version ?? undefined;
-  const cropped = entry.cover_media.cropped_image_version ?? undefined;
-  const downloadUrl = full?.url ?? cropped?.url;
+  const versions = getHighlightCoverVersions(entry);
+  const downloadUrl = versions.full?.url ?? versions.cropped?.url;
   if (!downloadUrl) return undefined;
 
-  const dims = full ?? cropped;
   return {
     type: 'image',
     url: downloadUrl,
-    previewUrl: buildHighlightPreviewUrl(cropped?.url, downloadUrl),
-    width: dims?.width,
-    height: dims?.height,
-    filenameHint: `${username}_highlight_${slugifyTitle(entry.title) || 'untitled'}_${highlightIdTail(entry.id)}`,
+    previewUrl: buildHighlightPreviewUrl(versions.cropped?.url, downloadUrl),
+    ...pickMediaDimensions(versions.full, versions.cropped),
+    filenameHint: buildHighlightFilenameHint(entry, username),
   };
+}
+
+function getHighlightCoverVersions(entry: HighlightsTrayItem) {
+  return {
+    full: entry.cover_media.full_image_version ?? undefined,
+    cropped: entry.cover_media.cropped_image_version ?? undefined,
+  };
+}
+
+function buildHighlightFilenameHint(entry: HighlightsTrayItem, username: string): string {
+  return `${username}_highlight_${slugifyTitle(entry.title) || 'untitled'}_${highlightIdTail(entry.id)}`;
 }
 
 function buildHighlightPreviewUrl(
@@ -329,7 +350,7 @@ function buildShortcodeMediaContext(
   node: ShortcodeVideo | ShortcodeImage | ShortcodeSidecar,
   typename: string | undefined,
   id: string | undefined
-) {
+): MediaContext {
   return {
     takenAt: node.taken_at_timestamp,
     filenameHint: `${node.shortcode ?? id ?? 'media'}_${typename ?? 'media'}`,
@@ -337,7 +358,7 @@ function buildShortcodeMediaContext(
 }
 
 function createShortcodeMediaItem(
-  context: { takenAt?: number; filenameHint: string },
+  context: MediaContext,
   url: string,
   type: 'image' | 'video',
   width?: number,
@@ -358,7 +379,7 @@ function createShortcodeMediaItem(
 function collectShortcodeMediaItems(
   node: ShortcodeVideo | ShortcodeImage | ShortcodeSidecar,
   typename: string | undefined,
-  context: { takenAt?: number; filenameHint: string }
+  context: MediaContext
 ): MediaItem[] {
   if (SHORTCODE_SIDECAR_TYPENAMES.has(typename ?? '')) {
     return normalizeSidecarChildren(node as ShortcodeSidecar, context);
@@ -373,10 +394,7 @@ function collectShortcodeMediaItems(
   return item ? [item] : [];
 }
 
-function normalizeSidecarChildren(
-  sidecar: ShortcodeSidecar,
-  context: { takenAt?: number; filenameHint: string }
-): MediaItem[] {
+function normalizeSidecarChildren(sidecar: ShortcodeSidecar, context: MediaContext): MediaItem[] {
   return (sidecar.edge_sidecar_to_children?.edges ?? []).flatMap(edge => {
     const item = edge.node.is_video
       ? normalizeSidecarVideoItem(edge.node, context)
@@ -387,26 +405,28 @@ function normalizeSidecarChildren(
 
 function normalizeSidecarVideoItem(
   node: SidecarChild,
-  context: { takenAt?: number; filenameHint: string }
+  context: MediaContext
 ): MediaItem | undefined {
-  const videoResources = node.video_resources ?? [];
-  const bestVideo = pickBestResource(videoResources) ?? node.video_url;
-  if (!bestVideo) return undefined;
-
-  const largest = sortResourcesByWidth(videoResources)[0];
-  return createShortcodeMediaItem(
-    context,
-    bestVideo,
-    'video',
-    largest?.config_width ?? node.dimensions?.width,
-    largest?.config_height ?? node.dimensions?.height,
-    pickPreviewSrc(node.display_resources ?? [], node.display_url)
+  const mediaSource = resolveVideoMediaSource(
+    node.video_resources ?? [],
+    node.video_url,
+    node.dimensions
   );
+  return mediaSource
+    ? createShortcodeMediaItem(
+        context,
+        mediaSource.url,
+        'video',
+        mediaSource.width,
+        mediaSource.height,
+        pickPreviewSrc(node.display_resources ?? [], node.display_url)
+      )
+    : undefined;
 }
 
 function normalizeSidecarImageItem(
   node: SidecarChild,
-  context: { takenAt?: number; filenameHint: string }
+  context: MediaContext
 ): MediaItem | undefined {
   return createImageMediaItem(
     node.display_resources ?? [],
@@ -418,26 +438,28 @@ function normalizeSidecarImageItem(
 
 function normalizeShortcodeVideoItem(
   video: ShortcodeVideo,
-  context: { takenAt?: number; filenameHint: string }
+  context: MediaContext
 ): MediaItem | undefined {
-  const resources = video.video_resources ?? [];
-  const best = pickBestResource(resources) ?? video.video_url;
-  if (!best) return undefined;
-
-  const largest = sortResourcesByWidth(resources)[0];
-  return createShortcodeMediaItem(
-    context,
-    best,
-    'video',
-    largest?.config_width ?? video.dimensions?.width,
-    largest?.config_height ?? video.dimensions?.height,
-    video.display_url
+  const mediaSource = resolveVideoMediaSource(
+    video.video_resources ?? [],
+    video.video_url,
+    video.dimensions
   );
+  return mediaSource
+    ? createShortcodeMediaItem(
+        context,
+        mediaSource.url,
+        'video',
+        mediaSource.width,
+        mediaSource.height,
+        video.display_url
+      )
+    : undefined;
 }
 
 function normalizeShortcodeImageItem(
   image: ShortcodeImage,
-  context: { takenAt?: number; filenameHint: string }
+  context: MediaContext
 ): MediaItem | undefined {
   return createImageMediaItem(
     image.display_resources ?? [],
@@ -447,22 +469,57 @@ function normalizeShortcodeImageItem(
   );
 }
 
+function resolveVideoMediaSource(
+  resources: readonly { src: string; config_width?: number; config_height?: number }[],
+  fallbackUrl: string | undefined,
+  dims: MediaDimensions | undefined
+): { url: string; width?: number; height?: number } | undefined {
+  const bestUrl = pickBestResource(resources) ?? fallbackUrl;
+  if (!bestUrl) return undefined;
+
+  return {
+    url: bestUrl,
+    ...pickLargestResourceDimensions(resources, dims),
+  };
+}
+
+function pickLargestResourceDimensions(
+  resources: readonly { config_width?: number; config_height?: number }[],
+  dims: MediaDimensions | undefined
+): MediaDimensions {
+  const largest = sortResourcesByWidth(resources)[0];
+  return {
+    width: largest?.config_width ?? dims?.width,
+    height: largest?.config_height ?? dims?.height,
+  };
+}
+
+function pickMediaDimensions(
+  preferred: MediaDimensions | undefined,
+  fallback: MediaDimensions | undefined
+): MediaDimensions {
+  return {
+    width: preferred?.width ?? fallback?.width,
+    height: preferred?.height ?? fallback?.height,
+  };
+}
+
 function createImageMediaItem(
   resources: readonly { src: string; config_width?: number; config_height?: number }[],
   fallbackUrl: string | undefined,
-  dims: { width?: number; height?: number } | undefined,
-  context: { takenAt?: number; filenameHint: string }
+  dims: MediaDimensions | undefined,
+  context: MediaContext
 ): MediaItem | undefined {
-  const largest = sortResourcesByWidth(resources)[0];
-  const bestUrl = largest?.src ?? fallbackUrl;
+  const bestUrl = pickBestResource(resources) ?? fallbackUrl;
   if (!bestUrl) return undefined;
+  const size = pickLargestResourceDimensions(resources, dims);
 
   return createShortcodeMediaItem(
     context,
     bestUrl,
     'image',
-    largest?.config_width ?? dims?.width,
-    largest?.config_height ?? dims?.height,
+    size.width,
+    size.height,
     pickPreviewSrc(resources, fallbackUrl)
   );
 }
@@ -524,6 +581,138 @@ function createStoryImageItem(reelId: string, item: StoryImageItem): MediaItem |
 
 const IG_GRAPHQL_HEADERS = { ...IG_HEADERS, Origin: 'https://www.instagram.com' } as const;
 
+function resolveShortcodeResponseNode(decoded: ShortcodeMediaResponse) {
+  return (
+    decoded.data?.xdt_shortcode_media ??
+    decoded.data?.shortcode_media ??
+    decoded.data?.media ??
+    decoded.xdt_shortcode_media ??
+    decoded.shortcode_media ??
+    decoded.media
+  );
+}
+
+const fetchShortcodeMediaItems = (
+  shortcode: string
+): Effect.Effect<
+  MediaItem[],
+  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> =>
+  graphqlFetchEffect(
+    OPERATIONS.MEDIA_BY_SHORTCODE.url,
+    'doc_id',
+    OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
+    { shortcode },
+    IG_GRAPHQL_HEADERS
+  ).pipe(
+    Effect.flatMap(raw =>
+      Schema.decodeUnknown(ShortcodeMediaResponseSchema)(raw).pipe(
+        Effect.mapError(() => new ResponseShapeUnknown({ context: 'shortcode_media' }))
+      )
+    ),
+    Effect.map(resolveShortcodeResponseNode),
+    Effect.map(normalizeShortcodeMedia)
+  );
+
+function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
+  return kind === 'highlight'
+    ? {
+        highlight_reel_ids: [id],
+        reel_ids: [],
+        location_ids: [],
+        precomposed_overlay: false,
+      }
+    : {
+        reel_ids: [id],
+        highlight_reel_ids: [],
+        location_ids: [],
+        precomposed_overlay: false,
+      };
+}
+
+const fetchHighlightMediaItems = (
+  highlightId: string
+): Effect.Effect<
+  MediaItem[],
+  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> =>
+  fetchReelsMedia(
+    OPERATIONS.MEDIA_BY_SHORTCODE.url,
+    'query_hash',
+    OPERATIONS.REELS_MEDIA.query_hash,
+    createReelsRequestVariables('highlight', highlightId),
+    IG_GRAPHQL_HEADERS
+  ).pipe(Effect.map(normalizeReelsMediaItems));
+
+const fetchStoryMediaItems = (
+  username: string
+): Effect.Effect<
+  MediaItem[],
+  UsernameUnresolved | GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> =>
+  Effect.gen(function* () {
+    const userId = yield* Effect.tryPromise({
+      try: () => resolveUsernameToId(username),
+      catch: cause => new NetworkError({ cause }),
+    });
+
+    if (!userId) {
+      return yield* Effect.fail(new UsernameUnresolved({ username }));
+    }
+
+    const reels = yield* fetchReelsMedia(
+      OPERATIONS.MEDIA_BY_SHORTCODE.url,
+      'query_hash',
+      OPERATIONS.REELS_MEDIA.query_hash,
+      createReelsRequestVariables('story', userId),
+      IG_GRAPHQL_HEADERS
+    );
+
+    return normalizeReelsMediaItems(reels);
+  });
+
+function mapProfileRequestError(err: HttpError | NetworkError | ResponseShapeUnknown) {
+  return err._tag === 'HttpError'
+    ? new NetworkError({ cause: `Profile request failed: ${err.status} ${err.message}` })
+    : err._tag === 'ResponseShapeUnknown'
+      ? err
+      : new NetworkError({ cause: err });
+}
+
+const fetchProfileMediaItems = (
+  username: string
+): Effect.Effect<MediaItem[], NetworkError | ResponseShapeUnknown> => {
+  const profileInfoUrl = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
+
+  return fetchWebProfileInfoUser(profileInfoUrl, 'omit', IG_GRAPHQL_HEADERS).pipe(
+    Effect.mapError(mapProfileRequestError),
+    Effect.flatMap(user => {
+      const rawUserId = user?.id ?? user?.pk;
+      const userId = rawUserId != null ? String(rawUserId) : undefined;
+      const avatarEffect = userId
+        ? fetchHdAvatarUser(userId, IG_HEADERS).pipe(
+            Effect.map(hdUser => normalizeProfilePicture(user, username, hdUser))
+          )
+        : Effect.succeed(normalizeProfilePicture(user, username));
+      const coversEffect = userId
+        ? fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
+            Effect.map(tray => normalizeHighlightCovers(tray, username)),
+            Effect.catchAll(err =>
+              Effect.sync(() => {
+                console.warn('highlights_tray failed:', err);
+                return [] as MediaItem[];
+              })
+            )
+          )
+        : Effect.succeed([] as MediaItem[]);
+
+      return Effect.all([avatarEffect, coversEffect], { concurrency: 'unbounded' }).pipe(
+        Effect.map(([avatar, covers]) => [...avatar, ...covers])
+      );
+    })
+  );
+};
+
 const resolveMediaEffect = (
   url: string
 ): Effect.Effect<
@@ -539,102 +728,17 @@ const resolveMediaEffect = (
     const parsed = parseInstagramUrl(url);
     if (!parsed) return yield* Effect.fail(new InvalidInstagramUrl({ url }));
 
-    if (parsed.type === 'post' || parsed.type === 'reel') {
-      const raw = yield* graphqlFetchEffect(
-        OPERATIONS.MEDIA_BY_SHORTCODE.url,
-        'doc_id',
-        OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
-        { shortcode: parsed.shortcode! },
-        IG_GRAPHQL_HEADERS
-      );
-      const decoded = yield* Schema.decodeUnknown(ShortcodeMediaResponseSchema)(raw).pipe(
-        Effect.mapError(() => new ResponseShapeUnknown({ context: 'shortcode_media' }))
-      );
-      const node =
-        decoded.data?.xdt_shortcode_media ??
-        decoded.data?.shortcode_media ??
-        decoded.data?.media ??
-        decoded.xdt_shortcode_media ??
-        decoded.shortcode_media ??
-        decoded.media;
-      return normalizeShortcodeMedia(node);
+    switch (parsed.type) {
+      case 'post':
+      case 'reel':
+        return yield* fetchShortcodeMediaItems(parsed.shortcode!);
+      case 'highlight':
+        return yield* fetchHighlightMediaItems(parsed.highlightId!);
+      case 'story':
+        return yield* fetchStoryMediaItems(parsed.username!);
+      case 'profile':
+        return yield* fetchProfileMediaItems(parsed.username!);
     }
-
-    if (parsed.type === 'highlight') {
-      const reels = yield* fetchReelsMedia(
-        OPERATIONS.MEDIA_BY_SHORTCODE.url,
-        'query_hash',
-        OPERATIONS.REELS_MEDIA.query_hash,
-        {
-          highlight_reel_ids: [parsed.highlightId!],
-          reel_ids: [],
-          location_ids: [],
-          precomposed_overlay: false,
-        },
-        IG_GRAPHQL_HEADERS
-      );
-      return normalizeReelsMediaItems(reels);
-    }
-
-    if (parsed.type === 'story') {
-      const userId = yield* Effect.tryPromise({
-        try: () => resolveUsernameToId(parsed.username!),
-        catch: cause => new NetworkError({ cause }),
-      });
-      if (!userId)
-        return yield* Effect.fail(new UsernameUnresolved({ username: parsed.username! }));
-      const reels = yield* fetchReelsMedia(
-        OPERATIONS.MEDIA_BY_SHORTCODE.url,
-        'query_hash',
-        OPERATIONS.REELS_MEDIA.query_hash,
-        {
-          reel_ids: [userId],
-          highlight_reel_ids: [],
-          location_ids: [],
-          precomposed_overlay: false,
-        },
-        IG_GRAPHQL_HEADERS
-      );
-      return normalizeReelsMediaItems(reels);
-    }
-
-    // profile: one web_profile_info call shared between avatar + highlight covers
-    const username = parsed.username!;
-    const profileInfoUrl = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
-    const user = yield* fetchWebProfileInfoUser(profileInfoUrl, 'omit', IG_GRAPHQL_HEADERS).pipe(
-      Effect.mapError(err =>
-        err._tag === 'HttpError'
-          ? new NetworkError({ cause: `Profile request failed: ${err.status} ${err.message}` })
-          : err._tag === 'ResponseShapeUnknown'
-            ? err
-            : new NetworkError({ cause: err })
-      )
-    );
-    const rawUserId = user?.id ?? user?.pk;
-    const userId = rawUserId != null ? String(rawUserId) : undefined;
-
-    const avatarEffect = userId
-      ? fetchHdAvatarUser(userId, IG_HEADERS).pipe(
-          Effect.map(hdUser => normalizeProfilePicture(user, username, hdUser))
-        )
-      : Effect.succeed(normalizeProfilePicture(user, username));
-
-    const coversEffect = userId
-      ? fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
-          Effect.map(tray => normalizeHighlightCovers(tray, username)),
-          Effect.catchAll(err =>
-            Effect.sync(() => {
-              console.warn('highlights_tray failed:', err);
-              return [] as MediaItem[];
-            })
-          )
-        )
-      : Effect.succeed([] as MediaItem[]);
-
-    const [avatar, covers] = yield* Effect.all([avatarEffect, coversEffect], {
-      concurrency: 'unbounded',
-    });
-    return [...avatar, ...covers];
   });
 
 const downloadMediaEffect = (
