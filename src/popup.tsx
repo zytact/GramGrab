@@ -216,6 +216,20 @@ export default function Popup() {
   }, [allSelected]);
 
   const isBusy = status === 'fetching' || status === 'downloading';
+  const handleUrlChange = useCallback((nextUrl: string) => {
+    setUrl(nextUrl);
+    setAutoDetected(false);
+  }, []);
+  const handlePreviewError = useCallback(
+    (item: MediaItem) => {
+      if (shouldSkipFallbackPreview(item, fallbackLoading, fallbackFailed)) return;
+      void requestFallbackPreview(item.index, item.url);
+    },
+    [fallbackFailed, fallbackLoading, requestFallbackPreview]
+  );
+  const handleVideoRef = useCallback((index: number, el: HTMLVideoElement | null) => {
+    videoRefs.current[index] = el;
+  }, []);
 
   return (
     <div className="container">
@@ -236,10 +250,7 @@ export default function Popup() {
             type="url"
             placeholder="Paste an Instagram URL…"
             value={url}
-            onChange={e => {
-              setUrl(e.currentTarget.value);
-              setAutoDetected(false);
-            }}
+            onChange={e => handleUrlChange(e.currentTarget.value)}
             onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
           />
         </div>
@@ -257,62 +268,22 @@ export default function Popup() {
           </button>
         </div>
 
-        <div className="ext-section" style={{ flex: 1 }}>
-          {mediaItems.length > 0 && (
-            <div className="media-header">
-              <span className="media-count-label">
-                <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
-              </span>
-              <label className="select-all-label">
-                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-                Select all
-              </label>
-            </div>
-          )}
-
-          <div className="media-list">
-            {mediaItems.length === 0 ? (
-              <p className="media-empty">No media yet.</p>
-            ) : (
-              mediaItems.map(item => (
-                <MediaItemRow
-                  key={item.index}
-                  item={item}
-                  fallbackLoading={fallbackLoading.has(item.index)}
-                  fallbackFailed={fallbackFailed.has(item.index)}
-                  onError={() => {
-                    if (
-                      fallbackLoading.has(item.index) ||
-                      fallbackFailed.has(item.index) ||
-                      item.previewUrl?.startsWith('data:')
-                    )
-                      return;
-                    void requestFallbackPreview(item.index, item.url);
-                  }}
-                  onToggle={() => toggleItem(item.index)}
-                  exportFrame={exportFrameSet.has(item.index)}
-                  onToggleExportFrame={() => toggleExportFrame(item.index)}
-                  onVideoRef={el => {
-                    videoRefs.current[item.index] = el;
-                  }}
-                />
-              ))
-            )}
-          </div>
-        </div>
+        <MediaListSection
+          mediaItems={mediaItems}
+          allSelected={allSelected}
+          fallbackLoading={fallbackLoading}
+          fallbackFailed={fallbackFailed}
+          exportFrameSet={exportFrameSet}
+          onPreviewError={handlePreviewError}
+          onToggle={toggleItem}
+          onToggleAll={toggleAll}
+          onToggleExportFrame={toggleExportFrame}
+          onVideoRef={handleVideoRef}
+        />
 
         <div className="ext-section">
           <button className="btn" onClick={handleDownload} disabled={selectedCount === 0 || isBusy}>
-            {status === 'downloading' ? (
-              <>
-                <span className="btn-spinner" />
-                Downloading…
-              </>
-            ) : selectedCount > 0 ? (
-              `Download ${selectedCount} Selected`
-            ) : (
-              'Download Selected'
-            )}
+            {renderDownloadButtonLabel(status, selectedCount)}
           </button>
         </div>
       </div>
@@ -326,6 +297,91 @@ export default function Popup() {
         <span className="footer-brand">GramGrab</span>
         <span className="footer-tagline">Posts · Reels · Stories</span>
       </footer>
+    </div>
+  );
+}
+
+function shouldSkipFallbackPreview(
+  item: MediaItem,
+  fallbackLoading: Set<number>,
+  fallbackFailed: Set<number>
+): boolean {
+  return (
+    fallbackLoading.has(item.index) ||
+    fallbackFailed.has(item.index) ||
+    item.previewUrl?.startsWith('data:') === true
+  );
+}
+
+function renderDownloadButtonLabel(status: Status, selectedCount: number) {
+  if (status === 'downloading') {
+    return (
+      <>
+        <span className="btn-spinner" />
+        Downloading…
+      </>
+    );
+  }
+
+  return selectedCount > 0 ? `Download ${selectedCount} Selected` : 'Download Selected';
+}
+
+function MediaListSection({
+  mediaItems,
+  allSelected,
+  fallbackLoading,
+  fallbackFailed,
+  exportFrameSet,
+  onPreviewError,
+  onToggle,
+  onToggleAll,
+  onToggleExportFrame,
+  onVideoRef,
+}: {
+  mediaItems: MediaItem[];
+  allSelected: boolean;
+  fallbackLoading: Set<number>;
+  fallbackFailed: Set<number>;
+  exportFrameSet: Set<number>;
+  onPreviewError: (item: MediaItem) => void;
+  onToggle: (index: number) => void;
+  onToggleAll: () => void;
+  onToggleExportFrame: (index: number) => void;
+  onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
+}) {
+  return (
+    <div className="ext-section" style={{ flex: 1 }}>
+      {mediaItems.length > 0 && (
+        <div className="media-header">
+          <span className="media-count-label">
+            <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
+          </span>
+          <label className="select-all-label">
+            <input type="checkbox" checked={allSelected} onChange={onToggleAll} />
+            Select all
+          </label>
+        </div>
+      )}
+
+      <div className="media-list">
+        {mediaItems.length === 0 ? (
+          <p className="media-empty">No media yet.</p>
+        ) : (
+          mediaItems.map(item => (
+            <MediaItemRow
+              key={item.index}
+              item={item}
+              fallbackLoading={fallbackLoading.has(item.index)}
+              fallbackFailed={fallbackFailed.has(item.index)}
+              onError={() => onPreviewError(item)}
+              onToggle={() => onToggle(item.index)}
+              exportFrame={exportFrameSet.has(item.index)}
+              onToggleExportFrame={() => onToggleExportFrame(item.index)}
+              onVideoRef={el => onVideoRef(item.index, el)}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
