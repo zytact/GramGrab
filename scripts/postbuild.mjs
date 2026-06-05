@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 import { mkdir, writeFile, copyFile } from 'node:fs/promises';
 
 // Target browser is passed via BROWSER env (same as vite.config.ts).

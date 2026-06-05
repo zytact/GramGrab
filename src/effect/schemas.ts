@@ -88,7 +88,7 @@ const ShortcodeUnknownSchema = Schema.Struct({
   id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
 });
 
-export const ShortcodeNodeSchema = Schema.Union(
+const ShortcodeNodeSchema = Schema.Union(
   ShortcodeVideoSchema,
   ShortcodeImageSchema,
   ShortcodeSidecarSchema,
@@ -99,7 +99,6 @@ export type ShortcodeNode = Schema.Schema.Type<typeof ShortcodeNodeSchema>;
 export type ShortcodeVideo = Schema.Schema.Type<typeof ShortcodeVideoSchema>;
 export type ShortcodeImage = Schema.Schema.Type<typeof ShortcodeImageSchema>;
 export type ShortcodeSidecar = Schema.Schema.Type<typeof ShortcodeSidecarSchema>;
-export type SidecarChildNode = Schema.Schema.Type<typeof SidecarChildNodeSchema>;
 
 const ShortcodeDataSchema = Schema.Struct({
   xdt_shortcode_media: Schema.optional(ShortcodeNodeSchema),
@@ -163,13 +162,12 @@ const StoryUnknownItemSchema = Schema.Struct({
   id: Schema.optional(Schema.String),
 });
 
-export const StoryItemSchema = Schema.Union(
+const StoryItemSchema = Schema.Union(
   StoryVideoItemSchema,
   StoryImageItemSchema,
   StoryUnknownItemSchema
 );
 
-export type StoryItem = Schema.Schema.Type<typeof StoryItemSchema>;
 export type StoryVideoItem = Schema.Schema.Type<typeof StoryVideoItemSchema>;
 export type StoryImageItem = Schema.Schema.Type<typeof StoryImageItemSchema>;
 
@@ -257,7 +255,7 @@ const CoverMediaSchema = Schema.Struct({
   cropped_image_version: Schema.optional(Schema.NullOr(CoverImageVersionSchema)),
 });
 
-export const HighlightsTrayItemSchema = Schema.Struct({
+const HighlightsTrayItemSchema = Schema.Struct({
   id: Schema.Union(Schema.String, Schema.Number),
   title: Schema.optional(Schema.String),
   cover_media: CoverMediaSchema,

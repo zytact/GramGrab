@@ -13,8 +13,8 @@ export class NetworkError extends Data.TaggedError('NetworkError')<{ cause: unkn
 export class HttpError extends Data.TaggedError('HttpError')<{ status: number; message: string }> {}
 
 // These derive from HttpError.status — new behavior enrichment (Phase 3+)
-export class NotAuthenticated extends Data.TaggedError('NotAuthenticated')<{ status: 401 }> {}
-export class Forbidden extends Data.TaggedError('Forbidden')<{ status: 403 }> {}
+class NotAuthenticated extends Data.TaggedError('NotAuthenticated')<{ status: 401 }> {}
+class Forbidden extends Data.TaggedError('Forbidden')<{ status: 403 }> {}
 export class RateLimited extends Data.TaggedError('RateLimited')<{ status: 429 }> {}
 
 // GraphQL path
@@ -39,7 +39,7 @@ export class VideoFrameExtractionFailed extends Data.TaggedError('VideoFrameExtr
   reason: 'no-duration' | 'no-frame' | 'no-canvas' | 'no-blob' | 'cors' | 'timeout';
 }> {}
 
-export type AppError =
+type AppError =
   | InvalidInstagramUrl
   | UsernameUnresolved
   | NetworkError

@@ -26,6 +26,7 @@ import type {
 import {
   BrowserDownloadFailed,
   GraphQLRequestFailed,
+  HttpError,
   InvalidInstagramUrl,
   MediaNotFound,
   NetworkError,
@@ -60,6 +61,35 @@ const IG_HEADERS = {
 } as const;
 
 const USER_PROFILE_URL = 'https://www.instagram.com/api/v1/users/web_profile_info/';
+const RESERVED_PROFILE_PATHS = new Set([
+  'p',
+  'reel',
+  'reels',
+  'stories',
+  'explore',
+  'direct',
+  'accounts',
+  'tv',
+]);
+const SHORTCODE_VIDEO_TYPENAMES = new Set([
+  'XDTGraphVideo',
+  'GraphVideo',
+  'Video',
+  'XDTMediaVideo',
+  'ClipsShareVideo',
+]);
+const SHORTCODE_IMAGE_TYPENAMES = new Set([
+  'XDTGraphImage',
+  'GraphImage',
+  'Image',
+  'XDTMediaImage',
+]);
+const SHORTCODE_SIDECAR_TYPENAMES = new Set([
+  'XDTGraphSidecar',
+  'GraphSidecar',
+  'Sidecar',
+  'XDTMediaAlbum',
+]);
 
 interface ParsedUrl {
   type: 'post' | 'reel' | 'story' | 'highlight' | 'profile';
@@ -69,55 +99,80 @@ interface ParsedUrl {
   carouselIndex?: number;
 }
 
+type SidecarChild = NonNullable<
+  NonNullable<ShortcodeSidecar['edge_sidecar_to_children']>['edges']
+>[number]['node'];
+type ShortcodeMediaResponse = Schema.Schema.Type<typeof ShortcodeMediaResponseSchema>;
+
+interface MediaContext {
+  takenAt?: number;
+  filenameHint: string;
+}
+
+interface MediaDimensions {
+  width?: number;
+  height?: number;
+}
+
 function parseInstagramUrl(url: string): ParsedUrl | null {
   try {
     const u = new URL(url);
-    if (u.hostname !== 'www.instagram.com' && u.hostname !== 'instagram.com') return null;
+    if (!isInstagramHostname(u.hostname)) return null;
     const path = u.pathname.replace(/\/$/, '').split('/').filter(Boolean);
     if (path.length === 0) return null;
-    const postIndex = path.indexOf('p');
-    if (postIndex >= 0 && path[postIndex + 1]) {
-      return {
-        type: 'post',
-        shortcode: path[postIndex + 1],
-        carouselIndex: u.searchParams.has('img_index')
-          ? parseInt(u.searchParams.get('img_index')!) - 1
-          : undefined,
-      };
-    }
-    const reelIndex = path.indexOf('reel');
-    if (reelIndex >= 0 && path[reelIndex + 1]) {
-      return { type: 'reel', shortcode: path[reelIndex + 1] };
-    }
-    const storiesIndex = path.indexOf('stories');
-    if (storiesIndex >= 0) {
-      if (path[storiesIndex + 1] === 'highlights' && path[storiesIndex + 2]) {
-        return { type: 'highlight', highlightId: path[storiesIndex + 2] };
-      }
-      if (path[storiesIndex + 1]) {
-        return { type: 'story', username: path[storiesIndex + 1] };
-      }
-    }
-    if (path.length === 1) {
-      const username = path[0];
-      const reserved = new Set([
-        'p',
-        'reel',
-        'reels',
-        'stories',
-        'explore',
-        'direct',
-        'accounts',
-        'tv',
-      ]);
-      if (username && !reserved.has(username)) {
-        return { type: 'profile', username };
-      }
-    }
-    return null;
+    return (
+      parsePostUrl(path, u) ?? parseReelUrl(path) ?? parseStoriesUrl(path) ?? parseProfileUrl(path)
+    );
   } catch {
     return null;
   }
+}
+
+function isInstagramHostname(hostname: string): boolean {
+  return hostname === 'www.instagram.com' || hostname === 'instagram.com';
+}
+
+function parsePostUrl(path: string[], url: URL): ParsedUrl | null {
+  const postIndex = path.indexOf('p');
+  const shortcode = postIndex >= 0 ? path[postIndex + 1] : undefined;
+  if (!shortcode) return null;
+
+  return {
+    type: 'post',
+    shortcode,
+    carouselIndex: parseCarouselIndex(url.searchParams.get('img_index')),
+  };
+}
+
+function parseReelUrl(path: string[]): ParsedUrl | null {
+  const reelIndex = path.indexOf('reel');
+  const shortcode = reelIndex >= 0 ? path[reelIndex + 1] : undefined;
+  return shortcode ? { type: 'reel', shortcode } : null;
+}
+
+function parseStoriesUrl(path: string[]): ParsedUrl | null {
+  const storiesIndex = path.indexOf('stories');
+  if (storiesIndex < 0) return null;
+
+  if (path[storiesIndex + 1] === 'highlights' && path[storiesIndex + 2]) {
+    return { type: 'highlight', highlightId: path[storiesIndex + 2] };
+  }
+
+  const username = path[storiesIndex + 1];
+  return username ? { type: 'story', username } : null;
+}
+
+function parseProfileUrl(path: string[]): ParsedUrl | null {
+  if (path.length !== 1) return null;
+  const username = path[0];
+  if (!username || RESERVED_PROFILE_PATHS.has(username)) return null;
+  return { type: 'profile', username };
+}
+
+function parseCarouselIndex(imgIndex: string | null): number | undefined {
+  if (!imgIndex) return undefined;
+  const parsed = Number.parseInt(imgIndex, 10);
+  return Number.isFinite(parsed) ? parsed - 1 : undefined;
 }
 
 async function resolveUsernameToId(username: string): Promise<string | null> {
@@ -208,26 +263,45 @@ function normalizeHighlightCovers(
   tray: readonly HighlightsTrayItem[],
   username: string
 ): MediaItem[] {
-  const items: MediaItem[] = [];
-  for (const entry of tray) {
-    const full = entry.cover_media.full_image_version ?? undefined;
-    const cropped = entry.cover_media.cropped_image_version ?? undefined;
-    const downloadUrl = full?.url ?? cropped?.url;
-    if (!downloadUrl) continue;
-    const preview = cropped?.url && cropped.url !== downloadUrl ? cropped.url : undefined;
-    const dims = full ?? cropped;
-    const slug = slugifyTitle(entry.title) || 'untitled';
-    const tail = highlightIdTail(entry.id);
-    items.push({
-      type: 'image',
-      url: downloadUrl,
-      previewUrl: preview,
-      width: dims?.width,
-      height: dims?.height,
-      filenameHint: `${username}_highlight_${slug}_${tail}`,
-    });
-  }
-  return items;
+  return tray.flatMap(entry => {
+    const item = createHighlightCoverItem(entry, username);
+    return item ? [item] : [];
+  });
+}
+
+function createHighlightCoverItem(
+  entry: HighlightsTrayItem,
+  username: string
+): MediaItem | undefined {
+  const versions = getHighlightCoverVersions(entry);
+  const downloadUrl = versions.full?.url ?? versions.cropped?.url;
+  if (!downloadUrl) return undefined;
+
+  return {
+    type: 'image',
+    url: downloadUrl,
+    previewUrl: buildHighlightPreviewUrl(versions.cropped?.url, downloadUrl),
+    ...pickMediaDimensions(versions.full, versions.cropped),
+    filenameHint: buildHighlightFilenameHint(entry, username),
+  };
+}
+
+function getHighlightCoverVersions(entry: HighlightsTrayItem) {
+  return {
+    full: entry.cover_media.full_image_version ?? undefined,
+    cropped: entry.cover_media.cropped_image_version ?? undefined,
+  };
+}
+
+function buildHighlightFilenameHint(entry: HighlightsTrayItem, username: string): string {
+  return `${username}_highlight_${slugifyTitle(entry.title) || 'untitled'}_${highlightIdTail(entry.id)}`;
+}
+
+function buildHighlightPreviewUrl(
+  croppedUrl: string | undefined,
+  downloadUrl: string
+): string | undefined {
+  return croppedUrl && croppedUrl !== downloadUrl ? croppedUrl : undefined;
 }
 
 function pickPreviewSrc(
@@ -248,181 +322,257 @@ function normalizeShortcodeMedia(candidate: ShortcodeNode | undefined): MediaIte
   const typename = candidate.__typename;
   const id = candidate.id != null ? String(candidate.id) : undefined;
 
-  // Unknown passthrough — log and skip
-  if (
-    typename !== 'XDTGraphVideo' &&
-    typename !== 'GraphVideo' &&
-    typename !== 'Video' &&
-    typename !== 'XDTMediaVideo' &&
-    typename !== 'ClipsShareVideo' &&
-    typename !== 'XDTGraphImage' &&
-    typename !== 'GraphImage' &&
-    typename !== 'Image' &&
-    typename !== 'XDTMediaImage' &&
-    typename !== 'XDTGraphSidecar' &&
-    typename !== 'GraphSidecar' &&
-    typename !== 'Sidecar' &&
-    typename !== 'XDTMediaAlbum'
-  ) {
+  if (!isKnownShortcodeTypename(typename)) {
     console.warn('[GramGrab] unknown shortcode __typename:', typename);
     return items;
   }
 
-  // TypeScript now narrows candidate to Video | Image | Sidecar
   const node = candidate as ShortcodeVideo | ShortcodeImage | ShortcodeSidecar;
-
-  const shortcode = node.shortcode;
-  const takenAt = node.taken_at_timestamp;
-  const hint = `${shortcode ?? id ?? 'media'}_${typename ?? 'media'}`;
-
-  const push = (url: string, type: 'image' | 'video', w?: number, h?: number, preview?: string) =>
-    items.push({
-      type,
-      url,
-      previewUrl: preview,
-      width: w,
-      height: h,
-      takenAt,
-      filenameHint: hint,
-    });
-
-  if (
-    typename === 'XDTGraphSidecar' ||
-    typename === 'GraphSidecar' ||
-    typename === 'Sidecar' ||
-    typename === 'XDTMediaAlbum'
-  ) {
-    const sidecar = node as ShortcodeSidecar;
-    sidecar.edge_sidecar_to_children?.edges?.forEach(edge => {
-      const n = edge.node;
-      const displayResources = n.display_resources ?? [];
-      const displayUrl = n.display_url;
-      const isChildVideo = n.is_video === true;
-      const dims = n.dimensions;
-
-      if (isChildVideo) {
-        const videoResources = n.video_resources ?? [];
-        const bestVideo = pickBestResource(videoResources) ?? n.video_url;
-        const preview = pickPreviewSrc(displayResources, displayUrl);
-        if (bestVideo) {
-          const sortedV = [...videoResources].sort(
-            (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
-          );
-          push(
-            bestVideo,
-            'video',
-            sortedV[0]?.config_width ?? dims?.width,
-            sortedV[0]?.config_height ?? dims?.height,
-            preview
-          );
-        }
-        return;
-      }
-
-      if (displayResources.length > 0) {
-        const sorted = [...displayResources].sort(
-          (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
-        );
-        const best = sorted[0]?.src;
-        const preview = pickPreviewSrc(displayResources, displayUrl);
-        if (best) push(best, 'image', sorted[0]?.config_width, sorted[0]?.config_height, preview);
-      } else if (displayUrl) {
-        push(displayUrl, 'image', dims?.width, dims?.height);
-      }
-    });
-  } else if (
-    typename === 'XDTGraphVideo' ||
-    typename === 'GraphVideo' ||
-    typename === 'Video' ||
-    typename === 'XDTMediaVideo' ||
-    typename === 'ClipsShareVideo'
-  ) {
-    const video = node as ShortcodeVideo;
-    const resources = video.video_resources ?? [];
-    const best = pickBestResource(resources) ?? video.video_url;
-    const dims = video.dimensions;
-    const preview = video.display_url;
-    if (best) {
-      const sorted = [...resources].sort((a, b) => (b.config_width ?? 0) - (a.config_width ?? 0));
-      push(
-        best,
-        'video',
-        sorted[0]?.config_width ?? dims?.width,
-        sorted[0]?.config_height ?? dims?.height,
-        preview
-      );
-    }
-  } else {
-    // Image
-    const image = node as ShortcodeImage;
-    const displayResources = image.display_resources ?? [];
-    const displayUrl = image.display_url;
-    const dims = image.dimensions;
-
-    if (displayResources.length > 0) {
-      const sorted = [...displayResources].sort(
-        (a, b) => (b.config_width ?? 0) - (a.config_width ?? 0)
-      );
-      const best = sorted[0]?.src;
-      const preview = pickPreviewSrc(displayResources, displayUrl);
-      if (best) push(best, 'image', sorted[0]?.config_width, sorted[0]?.config_height, preview);
-    } else if (displayUrl) {
-      push(displayUrl, 'image', dims?.width, dims?.height);
-    }
-  }
-
-  return items;
+  const context = buildShortcodeMediaContext(node, typename, id);
+  return collectShortcodeMediaItems(node, typename, context);
 }
 
 function normalizeReelsMediaItems(reels: readonly ReelItem[]): MediaItem[] {
-  const items: MediaItem[] = [];
+  return reels.flatMap(reel =>
+    reel.items.flatMap(item => normalizeReelItem(String(reel.id), item))
+  );
+}
 
-  for (const reel of reels) {
-    const reelId = String(reel.id);
-    for (const item of reel.items) {
-      const typename = item.__typename;
+function isKnownShortcodeTypename(typename: string | undefined): boolean {
+  return (
+    SHORTCODE_VIDEO_TYPENAMES.has(typename ?? '') ||
+    SHORTCODE_IMAGE_TYPENAMES.has(typename ?? '') ||
+    SHORTCODE_SIDECAR_TYPENAMES.has(typename ?? '')
+  );
+}
 
-      if (typename === 'GraphStoryVideo') {
-        const v = item as StoryVideoItem;
-        const best = pickBestResource(v.video_resources);
-        if (!best) continue;
-        const preview = pickPreviewSrc(v.display_resources, v.display_url);
-        items.push({
-          type: 'video',
-          url: best,
-          previewUrl: preview,
-          width: v.dimensions?.width,
-          height: v.dimensions?.height,
-          takenAt: v.taken_at_timestamp,
-          filenameHint: `${reelId}_${v.id}`,
-        });
-      } else if (typename === 'GraphStoryImage') {
-        const img = item as StoryImageItem;
-        const displayResources = img.display_resources;
-        const best =
-          displayResources.length > 0
-            ? [...displayResources].sort((a, b) => (b.config_width ?? 0) - (a.config_width ?? 0))[0]
-                ?.src
-            : img.display_url;
-        if (!best) continue;
-        const preview = pickPreviewSrc(displayResources, img.display_url);
-        items.push({
-          type: 'image',
-          url: best,
-          previewUrl: preview,
-          width: img.dimensions?.width,
-          height: img.dimensions?.height,
-          takenAt: img.taken_at_timestamp,
-          filenameHint: `${reelId}_${img.id}`,
-        });
-      } else {
-        // Unknown story type — skip and log so we know to update the schema
-        console.warn('[GramGrab] unknown story item __typename:', typename);
-      }
-    }
+function buildShortcodeMediaContext(
+  node: ShortcodeVideo | ShortcodeImage | ShortcodeSidecar,
+  typename: string | undefined,
+  id: string | undefined
+): MediaContext {
+  return {
+    takenAt: node.taken_at_timestamp,
+    filenameHint: `${node.shortcode ?? id ?? 'media'}_${typename ?? 'media'}`,
+  };
+}
+
+function createShortcodeMediaItem(
+  context: MediaContext,
+  url: string,
+  type: 'image' | 'video',
+  width?: number,
+  height?: number,
+  previewUrl?: string
+): MediaItem {
+  return {
+    type,
+    url,
+    previewUrl,
+    width,
+    height,
+    takenAt: context.takenAt,
+    filenameHint: context.filenameHint,
+  };
+}
+
+function collectShortcodeMediaItems(
+  node: ShortcodeVideo | ShortcodeImage | ShortcodeSidecar,
+  typename: string | undefined,
+  context: MediaContext
+): MediaItem[] {
+  if (SHORTCODE_SIDECAR_TYPENAMES.has(typename ?? '')) {
+    return normalizeSidecarChildren(node as ShortcodeSidecar, context);
   }
 
-  return items;
+  if (SHORTCODE_VIDEO_TYPENAMES.has(typename ?? '')) {
+    const item = normalizeShortcodeVideoItem(node as ShortcodeVideo, context);
+    return item ? [item] : [];
+  }
+
+  const item = normalizeShortcodeImageItem(node as ShortcodeImage, context);
+  return item ? [item] : [];
+}
+
+function normalizeSidecarChildren(sidecar: ShortcodeSidecar, context: MediaContext): MediaItem[] {
+  return (sidecar.edge_sidecar_to_children?.edges ?? []).flatMap(edge => {
+    const item = edge.node.is_video
+      ? normalizeSidecarVideoItem(edge.node, context)
+      : normalizeSidecarImageItem(edge.node, context);
+    return item ? [item] : [];
+  });
+}
+
+function normalizeSidecarVideoItem(
+  node: SidecarChild,
+  context: MediaContext
+): MediaItem | undefined {
+  const mediaSource = resolveVideoMediaSource(
+    node.video_resources ?? [],
+    node.video_url,
+    node.dimensions
+  );
+  return mediaSource
+    ? createShortcodeMediaItem(
+        context,
+        mediaSource.url,
+        'video',
+        mediaSource.width,
+        mediaSource.height,
+        pickPreviewSrc(node.display_resources ?? [], node.display_url)
+      )
+    : undefined;
+}
+
+function normalizeSidecarImageItem(
+  node: SidecarChild,
+  context: MediaContext
+): MediaItem | undefined {
+  return createImageMediaItem(
+    node.display_resources ?? [],
+    node.display_url,
+    node.dimensions,
+    context
+  );
+}
+
+function normalizeShortcodeVideoItem(
+  video: ShortcodeVideo,
+  context: MediaContext
+): MediaItem | undefined {
+  const mediaSource = resolveVideoMediaSource(
+    video.video_resources ?? [],
+    video.video_url,
+    video.dimensions
+  );
+  return mediaSource
+    ? createShortcodeMediaItem(
+        context,
+        mediaSource.url,
+        'video',
+        mediaSource.width,
+        mediaSource.height,
+        video.display_url
+      )
+    : undefined;
+}
+
+function normalizeShortcodeImageItem(
+  image: ShortcodeImage,
+  context: MediaContext
+): MediaItem | undefined {
+  return createImageMediaItem(
+    image.display_resources ?? [],
+    image.display_url,
+    image.dimensions,
+    context
+  );
+}
+
+function resolveVideoMediaSource(
+  resources: readonly { src: string; config_width?: number; config_height?: number }[],
+  fallbackUrl: string | undefined,
+  dims: MediaDimensions | undefined
+): { url: string; width?: number; height?: number } | undefined {
+  const bestUrl = pickBestResource(resources) ?? fallbackUrl;
+  if (!bestUrl) return undefined;
+
+  return {
+    url: bestUrl,
+    ...pickLargestResourceDimensions(resources, dims),
+  };
+}
+
+function pickLargestResourceDimensions(
+  resources: readonly { config_width?: number; config_height?: number }[],
+  dims: MediaDimensions | undefined
+): MediaDimensions {
+  const largest = sortResourcesByWidth(resources)[0];
+  return {
+    width: largest?.config_width ?? dims?.width,
+    height: largest?.config_height ?? dims?.height,
+  };
+}
+
+function pickMediaDimensions(
+  preferred: MediaDimensions | undefined,
+  fallback: MediaDimensions | undefined
+): MediaDimensions {
+  return {
+    width: preferred?.width ?? fallback?.width,
+    height: preferred?.height ?? fallback?.height,
+  };
+}
+
+function createImageMediaItem(
+  resources: readonly { src: string; config_width?: number; config_height?: number }[],
+  fallbackUrl: string | undefined,
+  dims: MediaDimensions | undefined,
+  context: MediaContext
+): MediaItem | undefined {
+  const bestUrl = pickBestResource(resources) ?? fallbackUrl;
+  if (!bestUrl) return undefined;
+  const size = pickLargestResourceDimensions(resources, dims);
+
+  return createShortcodeMediaItem(
+    context,
+    bestUrl,
+    'image',
+    size.width,
+    size.height,
+    pickPreviewSrc(resources, fallbackUrl)
+  );
+}
+
+function sortResourcesByWidth<T extends { config_width?: number; config_height?: number }>(
+  resources: readonly T[]
+): T[] {
+  return [...resources].sort((a, b) => (b.config_width ?? 0) - (a.config_width ?? 0));
+}
+
+function normalizeReelItem(reelId: string, item: ReelItem['items'][number]): MediaItem[] {
+  if (item.__typename === 'GraphStoryVideo') {
+    const normalized = createStoryVideoItem(reelId, item as StoryVideoItem);
+    return normalized ? [normalized] : [];
+  }
+
+  if (item.__typename === 'GraphStoryImage') {
+    const normalized = createStoryImageItem(reelId, item as StoryImageItem);
+    return normalized ? [normalized] : [];
+  }
+
+  console.warn('[GramGrab] unknown story item __typename:', item.__typename);
+  return [];
+}
+
+function createStoryVideoItem(reelId: string, item: StoryVideoItem): MediaItem | undefined {
+  const best = pickBestResource(item.video_resources);
+  return best
+    ? {
+        type: 'video',
+        url: best,
+        previewUrl: pickPreviewSrc(item.display_resources, item.display_url),
+        width: item.dimensions?.width,
+        height: item.dimensions?.height,
+        takenAt: item.taken_at_timestamp,
+        filenameHint: `${reelId}_${item.id}`,
+      }
+    : undefined;
+}
+
+function createStoryImageItem(reelId: string, item: StoryImageItem): MediaItem | undefined {
+  const best = pickBestResource(item.display_resources) ?? item.display_url;
+  return best
+    ? {
+        type: 'image',
+        url: best,
+        previewUrl: pickPreviewSrc(item.display_resources, item.display_url),
+        width: item.dimensions?.width,
+        height: item.dimensions?.height,
+        takenAt: item.taken_at_timestamp,
+        filenameHint: `${reelId}_${item.id}`,
+      }
+    : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -430,6 +580,138 @@ function normalizeReelsMediaItems(reels: readonly ReelItem[]): MediaItem[] {
 // ---------------------------------------------------------------------------
 
 const IG_GRAPHQL_HEADERS = { ...IG_HEADERS, Origin: 'https://www.instagram.com' } as const;
+
+function resolveShortcodeResponseNode(decoded: ShortcodeMediaResponse) {
+  return (
+    decoded.data?.xdt_shortcode_media ??
+    decoded.data?.shortcode_media ??
+    decoded.data?.media ??
+    decoded.xdt_shortcode_media ??
+    decoded.shortcode_media ??
+    decoded.media
+  );
+}
+
+const fetchShortcodeMediaItems = (
+  shortcode: string
+): Effect.Effect<
+  MediaItem[],
+  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> =>
+  graphqlFetchEffect(
+    OPERATIONS.MEDIA_BY_SHORTCODE.url,
+    'doc_id',
+    OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
+    { shortcode },
+    IG_GRAPHQL_HEADERS
+  ).pipe(
+    Effect.flatMap(raw =>
+      Schema.decodeUnknown(ShortcodeMediaResponseSchema)(raw).pipe(
+        Effect.mapError(() => new ResponseShapeUnknown({ context: 'shortcode_media' }))
+      )
+    ),
+    Effect.map(resolveShortcodeResponseNode),
+    Effect.map(normalizeShortcodeMedia)
+  );
+
+function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
+  return kind === 'highlight'
+    ? {
+        highlight_reel_ids: [id],
+        reel_ids: [],
+        location_ids: [],
+        precomposed_overlay: false,
+      }
+    : {
+        reel_ids: [id],
+        highlight_reel_ids: [],
+        location_ids: [],
+        precomposed_overlay: false,
+      };
+}
+
+const fetchHighlightMediaItems = (
+  highlightId: string
+): Effect.Effect<
+  MediaItem[],
+  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> =>
+  fetchReelsMedia(
+    OPERATIONS.MEDIA_BY_SHORTCODE.url,
+    'query_hash',
+    OPERATIONS.REELS_MEDIA.query_hash,
+    createReelsRequestVariables('highlight', highlightId),
+    IG_GRAPHQL_HEADERS
+  ).pipe(Effect.map(normalizeReelsMediaItems));
+
+const fetchStoryMediaItems = (
+  username: string
+): Effect.Effect<
+  MediaItem[],
+  UsernameUnresolved | GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> =>
+  Effect.gen(function* () {
+    const userId = yield* Effect.tryPromise({
+      try: () => resolveUsernameToId(username),
+      catch: cause => new NetworkError({ cause }),
+    });
+
+    if (!userId) {
+      return yield* Effect.fail(new UsernameUnresolved({ username }));
+    }
+
+    const reels = yield* fetchReelsMedia(
+      OPERATIONS.MEDIA_BY_SHORTCODE.url,
+      'query_hash',
+      OPERATIONS.REELS_MEDIA.query_hash,
+      createReelsRequestVariables('story', userId),
+      IG_GRAPHQL_HEADERS
+    );
+
+    return normalizeReelsMediaItems(reels);
+  });
+
+function mapProfileRequestError(err: HttpError | NetworkError | ResponseShapeUnknown) {
+  return err._tag === 'HttpError'
+    ? new NetworkError({ cause: `Profile request failed: ${err.status} ${err.message}` })
+    : err._tag === 'ResponseShapeUnknown'
+      ? err
+      : new NetworkError({ cause: err });
+}
+
+const fetchProfileMediaItems = (
+  username: string
+): Effect.Effect<MediaItem[], NetworkError | ResponseShapeUnknown> => {
+  const profileInfoUrl = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
+
+  return fetchWebProfileInfoUser(profileInfoUrl, 'omit', IG_GRAPHQL_HEADERS).pipe(
+    Effect.mapError(mapProfileRequestError),
+    Effect.flatMap(user => {
+      const rawUserId = user?.id ?? user?.pk;
+      const userId = rawUserId != null ? String(rawUserId) : undefined;
+      const avatarEffect = userId
+        ? fetchHdAvatarUser(userId, IG_HEADERS).pipe(
+            Effect.map(hdUser => normalizeProfilePicture(user, username, hdUser))
+          )
+        : Effect.succeed(normalizeProfilePicture(user, username));
+      const coversEffect = userId
+        ? fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
+            Effect.map(tray => normalizeHighlightCovers(tray, username)),
+            Effect.catchAll(err =>
+              Effect.sync(() => {
+                console.warn('highlights_tray failed:', err);
+                return [] as MediaItem[];
+              })
+            )
+          )
+        : Effect.succeed([] as MediaItem[]);
+
+      return Effect.all([avatarEffect, coversEffect], { concurrency: 'unbounded' }).pipe(
+        Effect.map(([avatar, covers]) => [...avatar, ...covers])
+      );
+    })
+  );
+};
 
 const resolveMediaEffect = (
   url: string
@@ -446,102 +728,17 @@ const resolveMediaEffect = (
     const parsed = parseInstagramUrl(url);
     if (!parsed) return yield* Effect.fail(new InvalidInstagramUrl({ url }));
 
-    if (parsed.type === 'post' || parsed.type === 'reel') {
-      const raw = yield* graphqlFetchEffect(
-        OPERATIONS.MEDIA_BY_SHORTCODE.url,
-        'doc_id',
-        OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
-        { shortcode: parsed.shortcode! },
-        IG_GRAPHQL_HEADERS
-      );
-      const decoded = yield* Schema.decodeUnknown(ShortcodeMediaResponseSchema)(raw).pipe(
-        Effect.mapError(() => new ResponseShapeUnknown({ context: 'shortcode_media' }))
-      );
-      const node =
-        decoded.data?.xdt_shortcode_media ??
-        decoded.data?.shortcode_media ??
-        decoded.data?.media ??
-        decoded.xdt_shortcode_media ??
-        decoded.shortcode_media ??
-        decoded.media;
-      return normalizeShortcodeMedia(node);
+    switch (parsed.type) {
+      case 'post':
+      case 'reel':
+        return yield* fetchShortcodeMediaItems(parsed.shortcode!);
+      case 'highlight':
+        return yield* fetchHighlightMediaItems(parsed.highlightId!);
+      case 'story':
+        return yield* fetchStoryMediaItems(parsed.username!);
+      case 'profile':
+        return yield* fetchProfileMediaItems(parsed.username!);
     }
-
-    if (parsed.type === 'highlight') {
-      const reels = yield* fetchReelsMedia(
-        OPERATIONS.MEDIA_BY_SHORTCODE.url,
-        'query_hash',
-        OPERATIONS.REELS_MEDIA.query_hash,
-        {
-          highlight_reel_ids: [parsed.highlightId!],
-          reel_ids: [],
-          location_ids: [],
-          precomposed_overlay: false,
-        },
-        IG_GRAPHQL_HEADERS
-      );
-      return normalizeReelsMediaItems(reels);
-    }
-
-    if (parsed.type === 'story') {
-      const userId = yield* Effect.tryPromise({
-        try: () => resolveUsernameToId(parsed.username!),
-        catch: cause => new NetworkError({ cause }),
-      });
-      if (!userId)
-        return yield* Effect.fail(new UsernameUnresolved({ username: parsed.username! }));
-      const reels = yield* fetchReelsMedia(
-        OPERATIONS.MEDIA_BY_SHORTCODE.url,
-        'query_hash',
-        OPERATIONS.REELS_MEDIA.query_hash,
-        {
-          reel_ids: [userId],
-          highlight_reel_ids: [],
-          location_ids: [],
-          precomposed_overlay: false,
-        },
-        IG_GRAPHQL_HEADERS
-      );
-      return normalizeReelsMediaItems(reels);
-    }
-
-    // profile: one web_profile_info call shared between avatar + highlight covers
-    const username = parsed.username!;
-    const profileInfoUrl = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
-    const user = yield* fetchWebProfileInfoUser(profileInfoUrl, 'omit', IG_GRAPHQL_HEADERS).pipe(
-      Effect.mapError(err =>
-        err._tag === 'HttpError'
-          ? new NetworkError({ cause: `Profile request failed: ${err.status} ${err.message}` })
-          : err._tag === 'ResponseShapeUnknown'
-            ? err
-            : new NetworkError({ cause: err })
-      )
-    );
-    const rawUserId = user?.id ?? user?.pk;
-    const userId = rawUserId != null ? String(rawUserId) : undefined;
-
-    const avatarEffect = userId
-      ? fetchHdAvatarUser(userId, IG_HEADERS).pipe(
-          Effect.map(hdUser => normalizeProfilePicture(user, username, hdUser))
-        )
-      : Effect.succeed(normalizeProfilePicture(user, username));
-
-    const coversEffect = userId
-      ? fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
-          Effect.map(tray => normalizeHighlightCovers(tray, username)),
-          Effect.catchAll(err =>
-            Effect.sync(() => {
-              console.warn('highlights_tray failed:', err);
-              return [] as MediaItem[];
-            })
-          )
-        )
-      : Effect.succeed([] as MediaItem[]);
-
-    const [avatar, covers] = yield* Effect.all([avatarEffect, coversEffect], {
-      concurrency: 'unbounded',
-    });
-    return [...avatar, ...covers];
   });
 
 const downloadMediaEffect = (
