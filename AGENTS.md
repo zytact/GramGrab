@@ -19,13 +19,14 @@ vp fmt --check .
 tsc --noEmit              # typecheck
 vp test run               # run tests once
 vp test                   # watch mode
+vp run fallow             # run fallow
 vp run package:firefox    # cached build + XPI
 vp run package:chromium   # cached build + CRX (generates/uses chromium.pem key)
 ```
 
 Use Vite+ as the primary workflow surface. Prefer `vp` commands and `vp run <script>` / `vp run <task>` over package-manager wrappers.
 
-Verify in order: `vp lint .` + `tsc --noEmit` together, then `vp test run`.
+Verify in order: `vp lint .` + `tsc --noEmit` together, then `vp test run` and finally `vp run fallow`.
 Never commit yourself.
 
 ## Architecture
@@ -87,7 +88,7 @@ Vite plus controls the pre-commit hook.
 
 <!--VITE PLUS START-->
 
-## Using Vite+, the Unified Toolchain for the Web
+# Using Vite+, the Unified Toolchain for the Web
 
 This project is using Vite+, a unified toolchain built on top of Vite, Rolldown, Vitest, tsdown, Oxlint, Oxfmt, and Vite Task. Vite+ wraps runtime management, package management, and frontend tooling in a single global CLI called `vp`. Vite+ is distinct from Vite, and it invokes Vite through `vp dev` and `vp build`. Run `vp help` to print a list of commands and `vp <command> --help` for information about a specific command.
 
@@ -96,8 +97,8 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 ## Review Checklist
 
 - [ ] Run `vp install` after pulling remote changes and before getting started.
-- [ ] Run `vp lint .` and `tsc --noEmit` together, then `vp test run`.
-- [ ] Prefer `vp` commands for normal repo workflows; use `vp run <task>` when you need an explicit cached task such as `build-chromium`, `build-firefox`, `package-chromium`, or `package-firefox`.
+- [ ] Run `vp check` and `vp test` to format, lint, type check and test changes.
+- [ ] Check if there are `vite.config.ts` tasks or `package.json` scripts necessary for validation, run via `vp run <script>`.
 - [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
 
 <!--VITE PLUS END-->

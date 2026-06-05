@@ -24,6 +24,8 @@ interface PreviewResponse {
 }
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
+type VideoBlobResponse = { dataUrl?: string; error?: string };
+type DownloadMediaResponse = { error?: string; failures?: { url: string; reason: string }[] };
 
 export default function Popup() {
   const [url, setUrl] = useState('');
@@ -52,7 +54,8 @@ export default function Popup() {
   }, []);
 
   const handleFetch = useCallback(async () => {
-    if (!url.trim()) {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) {
       setMessage('No URL provided.');
       setStatus('error');
       return;
@@ -64,7 +67,7 @@ export default function Popup() {
     try {
       const res = (await browser.runtime.sendMessage({
         type: 'FETCH_MEDIA',
-        url: url.trim(),
+        url: trimmedUrl,
       })) as MediaResponse;
 
       if (res?.error) {
@@ -73,23 +76,7 @@ export default function Popup() {
         return;
       }
 
-      const items = (res?.media ?? []).map((item, i) => ({
-        index: i,
-        type: item.type,
-        url: item.url,
-        filenameHint: item.filenameHint,
-        selected: true,
-        previewUrl: item.previewUrl,
-      }));
-
-      setMediaItems(items);
-      setExportFrameSet(new Set());
-      setStatus(items.length > 0 ? 'done' : 'error');
-      setMessage(
-        items.length > 0
-          ? `${items.length} item${items.length !== 1 ? 's' : ''} found — select and download.`
-          : 'No downloadable media found.'
-      );
+      applyFetchSuccess(res?.media ?? [], setMediaItems, setExportFrameSet, setStatus, setMessage);
     } catch (err) {
       setMessage(String(err));
       setStatus('error');
@@ -161,49 +148,17 @@ export default function Popup() {
         const res = (await browser.runtime.sendMessage({
           type: 'FETCH_VIDEO_BLOB',
           url: mediaItems[index]?.url,
-        })) as { dataUrl?: string; error?: string };
+        })) as VideoBlobResponse;
 
-        if (res?.error || !res?.dataUrl) {
-          throw new Error('cors');
-        }
-
-        const exportVideo = document.createElement('video');
-        exportVideo.src = res.dataUrl;
-        exportVideo.muted = true;
-        exportVideo.playsInline = true;
-        exportVideo.crossOrigin = 'anonymous';
-        const result = await captureFrameFromVideo(exportVideo);
+        const dataUrl = getVideoBlobDataUrl(res);
+        const result = await captureFrameFromVideo(createExportVideo(dataUrl));
         if (Either.isLeft(result)) {
-          switch (result.left.reason) {
-            case 'no-duration':
-              setMessage('Frame export failed (duration unavailable).');
-              break;
-            case 'no-frame':
-              setMessage('Frame export failed (no video frame).');
-              break;
-            case 'no-canvas':
-              setMessage('Frame export failed (canvas unavailable).');
-              break;
-            case 'no-blob':
-              setMessage('Frame export failed (image export).');
-              break;
-            case 'timeout':
-              setMessage('Frame export failed (timed out).');
-              break;
-            default:
-              setMessage('Frame export failed.');
-          }
+          setMessage(frameExportErrorMessage(result.left.reason));
           setStatus('error');
           return;
         }
 
-        const blob = result.right;
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `${mediaItems[index]?.filenameHint ?? 'media'}_frame.jpg`;
-        anchor.click();
-        URL.revokeObjectURL(url);
+        downloadBlobAsFile(result.right, `${mediaItems[index]?.filenameHint ?? 'media'}_frame.jpg`);
       } catch (err) {
         void err;
         setMessage('Frame export failed (CORS)');
@@ -225,15 +180,7 @@ export default function Popup() {
     setMessage(`Downloading ${selected.length} item${selected.length !== 1 ? 's' : ''}…`);
 
     try {
-      const standardItems: MediaItem[] = [];
-
-      for (const item of selected) {
-        if (item.type === 'video' && exportFrameSet.has(item.index)) {
-          await handleExportFrame(item.index);
-        } else {
-          standardItems.push(item);
-        }
-      }
+      const standardItems = await exportSelectedFrames(selected, exportFrameSet, handleExportFrame);
 
       if (standardItems.length > 0) {
         const res = (await browser.runtime.sendMessage({
@@ -241,7 +188,7 @@ export default function Popup() {
           urls: standardItems.map(item => item.url),
           hints: standardItems.map(item => item.filenameHint),
           types: standardItems.map(item => item.type),
-        })) as { error?: string; failures?: { url: string; reason: string }[] };
+        })) as DownloadMediaResponse;
 
         if (res?.error) {
           setMessage(res.error);
@@ -269,6 +216,20 @@ export default function Popup() {
   }, [allSelected]);
 
   const isBusy = status === 'fetching' || status === 'downloading';
+  const handleUrlChange = useCallback((nextUrl: string) => {
+    setUrl(nextUrl);
+    setAutoDetected(false);
+  }, []);
+  const handlePreviewError = useCallback(
+    (item: MediaItem) => {
+      if (shouldSkipFallbackPreview(item, fallbackLoading, fallbackFailed)) return;
+      void requestFallbackPreview(item.index, item.url);
+    },
+    [fallbackFailed, fallbackLoading, requestFallbackPreview]
+  );
+  const handleVideoRef = useCallback((index: number, el: HTMLVideoElement | null) => {
+    videoRefs.current[index] = el;
+  }, []);
 
   return (
     <div className="container">
@@ -289,10 +250,7 @@ export default function Popup() {
             type="url"
             placeholder="Paste an Instagram URL…"
             value={url}
-            onChange={e => {
-              setUrl(e.currentTarget.value);
-              setAutoDetected(false);
-            }}
+            onChange={e => handleUrlChange(e.currentTarget.value)}
             onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
           />
         </div>
@@ -310,62 +268,22 @@ export default function Popup() {
           </button>
         </div>
 
-        <div className="ext-section" style={{ flex: 1 }}>
-          {mediaItems.length > 0 && (
-            <div className="media-header">
-              <span className="media-count-label">
-                <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
-              </span>
-              <label className="select-all-label">
-                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-                Select all
-              </label>
-            </div>
-          )}
-
-          <div className="media-list">
-            {mediaItems.length === 0 ? (
-              <p className="media-empty">No media yet.</p>
-            ) : (
-              mediaItems.map(item => (
-                <MediaItemRow
-                  key={item.index}
-                  item={item}
-                  fallbackLoading={fallbackLoading.has(item.index)}
-                  fallbackFailed={fallbackFailed.has(item.index)}
-                  onError={() => {
-                    if (
-                      fallbackLoading.has(item.index) ||
-                      fallbackFailed.has(item.index) ||
-                      item.previewUrl?.startsWith('data:')
-                    )
-                      return;
-                    void requestFallbackPreview(item.index, item.url);
-                  }}
-                  onToggle={() => toggleItem(item.index)}
-                  exportFrame={exportFrameSet.has(item.index)}
-                  onToggleExportFrame={() => toggleExportFrame(item.index)}
-                  onVideoRef={el => {
-                    videoRefs.current[item.index] = el;
-                  }}
-                />
-              ))
-            )}
-          </div>
-        </div>
+        <MediaListSection
+          mediaItems={mediaItems}
+          allSelected={allSelected}
+          fallbackLoading={fallbackLoading}
+          fallbackFailed={fallbackFailed}
+          exportFrameSet={exportFrameSet}
+          onPreviewError={handlePreviewError}
+          onToggle={toggleItem}
+          onToggleAll={toggleAll}
+          onToggleExportFrame={toggleExportFrame}
+          onVideoRef={handleVideoRef}
+        />
 
         <div className="ext-section">
           <button className="btn" onClick={handleDownload} disabled={selectedCount === 0 || isBusy}>
-            {status === 'downloading' ? (
-              <>
-                <span className="btn-spinner" />
-                Downloading…
-              </>
-            ) : selectedCount > 0 ? (
-              `Download ${selectedCount} Selected`
-            ) : (
-              'Download Selected'
-            )}
+            {renderDownloadButtonLabel(status, selectedCount)}
           </button>
         </div>
       </div>
@@ -381,6 +299,177 @@ export default function Popup() {
       </footer>
     </div>
   );
+}
+
+function shouldSkipFallbackPreview(
+  item: MediaItem,
+  fallbackLoading: Set<number>,
+  fallbackFailed: Set<number>
+): boolean {
+  return (
+    fallbackLoading.has(item.index) ||
+    fallbackFailed.has(item.index) ||
+    item.previewUrl?.startsWith('data:') === true
+  );
+}
+
+function renderDownloadButtonLabel(status: Status, selectedCount: number) {
+  if (status === 'downloading') {
+    return (
+      <>
+        <span className="btn-spinner" />
+        Downloading…
+      </>
+    );
+  }
+
+  return selectedCount > 0 ? `Download ${selectedCount} Selected` : 'Download Selected';
+}
+
+function MediaListSection({
+  mediaItems,
+  allSelected,
+  fallbackLoading,
+  fallbackFailed,
+  exportFrameSet,
+  onPreviewError,
+  onToggle,
+  onToggleAll,
+  onToggleExportFrame,
+  onVideoRef,
+}: {
+  mediaItems: MediaItem[];
+  allSelected: boolean;
+  fallbackLoading: Set<number>;
+  fallbackFailed: Set<number>;
+  exportFrameSet: Set<number>;
+  onPreviewError: (item: MediaItem) => void;
+  onToggle: (index: number) => void;
+  onToggleAll: () => void;
+  onToggleExportFrame: (index: number) => void;
+  onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
+}) {
+  return (
+    <div className="ext-section" style={{ flex: 1 }}>
+      {mediaItems.length > 0 && (
+        <div className="media-header">
+          <span className="media-count-label">
+            <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
+          </span>
+          <label className="select-all-label">
+            <input type="checkbox" checked={allSelected} onChange={onToggleAll} />
+            Select all
+          </label>
+        </div>
+      )}
+
+      <div className="media-list">
+        {mediaItems.length === 0 ? (
+          <p className="media-empty">No media yet.</p>
+        ) : (
+          mediaItems.map(item => (
+            <MediaItemRow
+              key={item.index}
+              item={item}
+              fallbackLoading={fallbackLoading.has(item.index)}
+              fallbackFailed={fallbackFailed.has(item.index)}
+              onError={() => onPreviewError(item)}
+              onToggle={() => onToggle(item.index)}
+              exportFrame={exportFrameSet.has(item.index)}
+              onToggleExportFrame={() => onToggleExportFrame(item.index)}
+              onVideoRef={el => onVideoRef(item.index, el)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function applyFetchSuccess(
+  media: NonNullable<MediaResponse['media']>,
+  setMediaItems: React.Dispatch<React.SetStateAction<MediaItem[]>>,
+  setExportFrameSet: React.Dispatch<React.SetStateAction<Set<number>>>,
+  setStatus: React.Dispatch<React.SetStateAction<Status>>,
+  setMessage: React.Dispatch<React.SetStateAction<string>>
+) {
+  const items = media.map((item, i) => ({
+    index: i,
+    type: item.type,
+    url: item.url,
+    filenameHint: item.filenameHint,
+    selected: true,
+    previewUrl: item.previewUrl,
+  }));
+
+  setMediaItems(items);
+  setExportFrameSet(new Set());
+  setStatus(items.length > 0 ? 'done' : 'error');
+  setMessage(
+    items.length > 0
+      ? `${items.length} item${items.length !== 1 ? 's' : ''} found — select and download.`
+      : 'No downloadable media found.'
+  );
+}
+
+function getVideoBlobDataUrl(response: VideoBlobResponse): string {
+  if (response?.error || !response?.dataUrl) {
+    throw new Error('cors');
+  }
+  return response.dataUrl;
+}
+
+function createExportVideo(dataUrl: string) {
+  const exportVideo = document.createElement('video');
+  exportVideo.src = dataUrl;
+  exportVideo.muted = true;
+  exportVideo.playsInline = true;
+  exportVideo.crossOrigin = 'anonymous';
+  return exportVideo;
+}
+
+function frameExportErrorMessage(reason: string): string {
+  switch (reason) {
+    case 'no-duration':
+      return 'Frame export failed (duration unavailable).';
+    case 'no-frame':
+      return 'Frame export failed (no video frame).';
+    case 'no-canvas':
+      return 'Frame export failed (canvas unavailable).';
+    case 'no-blob':
+      return 'Frame export failed (image export).';
+    case 'timeout':
+      return 'Frame export failed (timed out).';
+    default:
+      return 'Frame export failed.';
+  }
+}
+
+function downloadBlobAsFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportSelectedFrames(
+  selected: MediaItem[],
+  exportFrameSet: Set<number>,
+  handleExportFrame: (index: number) => Promise<void>
+) {
+  const standardItems: MediaItem[] = [];
+
+  for (const item of selected) {
+    if (item.type === 'video' && exportFrameSet.has(item.index)) {
+      await handleExportFrame(item.index);
+      continue;
+    }
+    standardItems.push(item);
+  }
+
+  return standardItems;
 }
 
 function MediaItemRow({

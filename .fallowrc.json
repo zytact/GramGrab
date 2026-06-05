@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": ["src/index.{ts,tsx,js,jsx}", "src/main.{ts,tsx,js,jsx}"],
+  "ignorePatterns": ["repos/**"],
+  "duplicates": {
+    // Hide pair-only clones; focus on widespread copy-paste
+    // worth refactoring. Lower to 2 to report every duplicate pair.
+    "minOccurrences": 3,
+    // Test suites often repeat setup and assertions intentionally.
+    "ignore": ["**/*.test.*", "**/*.spec.*"]
+  },
+  "rules": {
+    "unused-dependencies": "warn"
+  }
+}
