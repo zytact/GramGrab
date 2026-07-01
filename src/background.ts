@@ -9,6 +9,7 @@ import {
   fetchReelsMedia,
   fetchWebProfileInfoUser,
   graphqlFetch as graphqlFetchEffect,
+  graphqlPost as graphqlPostEffect,
 } from './effect/instagram.ts';
 import { ShortcodeMediaResponseSchema } from './effect/schemas.ts';
 import type {
@@ -40,7 +41,8 @@ const DOWNLOAD_CONCURRENCY = 3;
 
 const OPERATIONS = {
   MEDIA_BY_SHORTCODE: {
-    doc_id: '8845758582119845',
+    doc_ids: ['8845758582119845', '10015901848480474'],
+    apiUrl: 'https://www.instagram.com/api/graphql/',
     url: 'https://www.instagram.com/graphql/query/',
   },
   REELS_MEDIA: {
@@ -332,6 +334,16 @@ function normalizeShortcodeMedia(candidate: ShortcodeNode | undefined): MediaIte
   return collectShortcodeMediaItems(node, typename, context);
 }
 
+const normalizeKnownShortcodeMedia = (
+  candidate: ShortcodeNode | undefined
+): Effect.Effect<MediaItem[], ResponseShapeUnknown> => {
+  const items = normalizeShortcodeMedia(candidate);
+  if (candidate && isKnownShortcodeTypename(candidate.__typename) && items.length === 0) {
+    return Effect.fail(new ResponseShapeUnknown({ context: 'shortcode_media' }));
+  }
+  return Effect.succeed(items);
+};
+
 function normalizeReelsMediaItems(reels: readonly ReelItem[]): MediaItem[] {
   return reels.flatMap(reel =>
     reel.items.flatMap(item => normalizeReelItem(String(reel.id), item))
@@ -580,6 +592,10 @@ function createStoryImageItem(reelId: string, item: StoryImageItem): MediaItem |
 // ---------------------------------------------------------------------------
 
 const IG_GRAPHQL_HEADERS = { ...IG_HEADERS, Origin: 'https://www.instagram.com' } as const;
+const IG_API_GRAPHQL_HEADERS = {
+  ...IG_GRAPHQL_HEADERS,
+  Referer: 'https://www.instagram.com/',
+} as const;
 
 function resolveShortcodeResponseNode(decoded: ShortcodeMediaResponse) {
   return (
@@ -592,26 +608,113 @@ function resolveShortcodeResponseNode(decoded: ShortcodeMediaResponse) {
   );
 }
 
+function decodeShortcodeResponse(raw: unknown) {
+  return Schema.decodeUnknown(ShortcodeMediaResponseSchema)(raw).pipe(
+    Effect.mapError(() => new ResponseShapeUnknown({ context: 'shortcode_media' }))
+  );
+}
+
+type ShortcodeFetchAttempt =
+  | { readonly _tag: 'Found'; readonly raw: Record<string, unknown> }
+  | { readonly _tag: 'Missing'; readonly raw: Record<string, unknown> }
+  | {
+      readonly _tag: 'Failed';
+      readonly error: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown;
+    };
+
+const classifyShortcodeRaw = (raw: Record<string, unknown>) =>
+  decodeShortcodeResponse(raw).pipe(
+    Effect.map(decoded =>
+      resolveShortcodeResponseNode(decoded)
+        ? ({ _tag: 'Found', raw } as const)
+        : ({ _tag: 'Missing', raw } as const)
+    )
+  );
+
+const attemptShortcodeRequest = (
+  request: Effect.Effect<Record<string, unknown>, GraphQLRequestFailed | RateLimited | NetworkError>
+): Effect.Effect<ShortcodeFetchAttempt, RateLimited> =>
+  request.pipe(
+    Effect.flatMap(classifyShortcodeRaw),
+    Effect.catchAll(err =>
+      err._tag === 'RateLimited'
+        ? Effect.fail(err)
+        : Effect.succeed({ _tag: 'Failed', error: err } as const)
+    )
+  );
+
+function pickShortcodeAttempt(
+  getAttempt: ShortcodeFetchAttempt,
+  postAttempt: ShortcodeFetchAttempt
+): ShortcodeFetchAttempt {
+  if (postAttempt._tag === 'Found') return postAttempt;
+  if (getAttempt._tag === 'Failed' && getAttempt.error._tag === 'ResponseShapeUnknown') {
+    return getAttempt;
+  }
+  if (postAttempt._tag === 'Failed') return postAttempt;
+  if (getAttempt._tag === 'Missing') return getAttempt;
+  return postAttempt;
+}
+
+const fetchShortcodeMediaRaw = (
+  shortcode: string
+): Effect.Effect<
+  Record<string, unknown>,
+  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> => {
+  const fetchWithDocId = (docId: string): Effect.Effect<ShortcodeFetchAttempt, RateLimited> =>
+    Effect.gen(function* () {
+      const getAttempt = yield* attemptShortcodeRequest(
+        graphqlFetchEffect(
+          OPERATIONS.MEDIA_BY_SHORTCODE.url,
+          'doc_id',
+          docId,
+          { shortcode },
+          IG_GRAPHQL_HEADERS
+        )
+      );
+      if (getAttempt._tag === 'Found') return getAttempt;
+
+      const postAttempt = yield* attemptShortcodeRequest(
+        graphqlPostEffect(
+          OPERATIONS.MEDIA_BY_SHORTCODE.apiUrl,
+          docId,
+          { shortcode },
+          IG_API_GRAPHQL_HEADERS
+        )
+      );
+      return pickShortcodeAttempt(getAttempt, postAttempt);
+    });
+
+  return Effect.gen(function* () {
+    let lastError: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown | undefined;
+    let lastRawWithoutNode: Record<string, unknown> | undefined;
+
+    for (const docId of OPERATIONS.MEDIA_BY_SHORTCODE.doc_ids) {
+      const result = yield* fetchWithDocId(docId);
+      if (result._tag === 'Found') return result.raw;
+      if (result._tag === 'Missing') lastRawWithoutNode = result.raw;
+      else lastError = result.error;
+    }
+
+    if (lastError) return yield* Effect.fail(lastError);
+    if (lastRawWithoutNode) return lastRawWithoutNode;
+    return yield* Effect.fail(
+      lastError ?? new ResponseShapeUnknown({ context: 'shortcode_media' })
+    );
+  });
+};
+
 const fetchShortcodeMediaItems = (
   shortcode: string
 ): Effect.Effect<
   MediaItem[],
   GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
 > =>
-  graphqlFetchEffect(
-    OPERATIONS.MEDIA_BY_SHORTCODE.url,
-    'doc_id',
-    OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
-    { shortcode },
-    IG_GRAPHQL_HEADERS
-  ).pipe(
-    Effect.flatMap(raw =>
-      Schema.decodeUnknown(ShortcodeMediaResponseSchema)(raw).pipe(
-        Effect.mapError(() => new ResponseShapeUnknown({ context: 'shortcode_media' }))
-      )
-    ),
+  fetchShortcodeMediaRaw(shortcode).pipe(
+    Effect.flatMap(decodeShortcodeResponse),
     Effect.map(resolveShortcodeResponseNode),
-    Effect.map(normalizeShortcodeMedia)
+    Effect.flatMap(normalizeKnownShortcodeMedia)
   );
 
 function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
@@ -949,13 +1052,7 @@ async function handleDebugShape(msg: DebugShapeMsg): Promise<{ raw?: unknown; er
     return { error: 'Use a post or reel URL for debug' };
   }
   return Effect.runPromise(
-    graphqlFetchEffect(
-      OPERATIONS.MEDIA_BY_SHORTCODE.url,
-      'doc_id',
-      OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
-      { shortcode: parsed.shortcode! },
-      IG_GRAPHQL_HEADERS
-    ).pipe(
+    fetchShortcodeMediaRaw(parsed.shortcode!).pipe(
       Effect.map(raw => ({ raw })),
       Effect.catchAll(err => Effect.succeed({ error: formatError(err) }))
     )

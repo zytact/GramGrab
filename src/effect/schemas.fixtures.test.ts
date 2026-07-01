@@ -90,19 +90,22 @@ describe('fixtures: avatar.json', () => {
     expect(result.user).toBeDefined();
   });
 
-  it('has hd_profile_pic_url_info with a url', async () => {
+  it('accepts current empty-user response from the HD avatar endpoint', async () => {
     const json = loadFixture('avatar.json');
     const result = await Effect.runPromise(Schema.decodeUnknown(HdAvatarResponseSchema)(json));
-    expect(typeof result.user.hd_profile_pic_url_info?.url).toBe('string');
+    expect(result.user.hd_profile_pic_url_info).toBeUndefined();
+    expect(result.user.hd_profile_pic_versions).toBeUndefined();
   });
 
-  it('has hd_profile_pic_versions sorted by width', async () => {
+  it('falls back to web_profile_info for usable avatar URL coverage', async () => {
     const json = loadFixture('avatar.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(HdAvatarResponseSchema)(json));
-    const versions = result.user.hd_profile_pic_versions ?? [];
-    expect(versions.length).toBeGreaterThan(0);
-    expect(typeof versions[0]?.url).toBe('string');
-    expect(typeof versions[0]?.width).toBe('number');
+    await Effect.runPromise(Schema.decodeUnknown(HdAvatarResponseSchema)(json));
+
+    const profileJson = loadFixture('web-profile-info.json');
+    const profile = await Effect.runPromise(
+      Schema.decodeUnknown(WebProfileInfoResponseSchema)(profileJson)
+    );
+    expect(typeof profile.data?.user?.profile_pic_url_hd).toBe('string');
   });
 
   it('response has no data wrapper (top-level user key)', async () => {
