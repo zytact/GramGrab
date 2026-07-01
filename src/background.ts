@@ -651,6 +651,7 @@ function pickShortcodeAttempt(
   if (getAttempt._tag === 'Failed' && getAttempt.error._tag === 'ResponseShapeUnknown') {
     return getAttempt;
   }
+  if (postAttempt._tag === 'Failed') return postAttempt;
   if (getAttempt._tag === 'Missing') return getAttempt;
   return postAttempt;
 }
@@ -696,7 +697,7 @@ const fetchShortcodeMediaRaw = (
       else lastError = result.error;
     }
 
-    if (lastError?._tag === 'ResponseShapeUnknown') return yield* Effect.fail(lastError);
+    if (lastError) return yield* Effect.fail(lastError);
     if (lastRawWithoutNode) return lastRawWithoutNode;
     return yield* Effect.fail(
       lastError ?? new ResponseShapeUnknown({ context: 'shortcode_media' })

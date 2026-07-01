@@ -158,6 +158,7 @@ describe('background dispatcher', () => {
 
   describe('FETCH_MEDIA — shortcode fallback', () => {
     it('falls back to /api/graphql/ POST when the old shortcode route has no node', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
       const fallbackMedia = {
         data: {
           xdt_shortcode_media: {
@@ -200,6 +201,7 @@ describe('background dispatcher', () => {
     });
 
     it('falls back to /api/graphql/ POST when the old shortcode route is non-json', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
       const fallbackMedia = {
         data: {
           xdt_shortcode_media: {
@@ -241,6 +243,7 @@ describe('background dispatcher', () => {
     });
 
     it('tries the newer shortcode doc id when the older doc id returns no media', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
       const fallbackMedia = {
         data: {
           xdt_shortcode_media: {
@@ -295,7 +298,42 @@ describe('background dispatcher', () => {
       ).toContain('doc_id=10015901848480474');
     });
 
+    it('surfaces POST failure when every shortcode doc id GET is empty', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+        }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/forbidden1/',
+      })) as { media: undefined; error: string };
+
+      expect(result.media).toBeUndefined();
+      expect(result.error).toBe('GraphQL failed: 403');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+    });
+
     it('surfaces malformed shortcode responses when every fallback is empty', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
       globalThis.fetch = vi
         .fn()
         .mockResolvedValueOnce({

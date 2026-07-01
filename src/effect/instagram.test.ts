@@ -20,6 +20,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
+  document.body.innerHTML = '';
 });
 
 describe('graphqlFetch', () => {
@@ -160,6 +162,7 @@ describe('graphqlPost', () => {
       json: async () => mockData,
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
+    document.body.innerHTML = '<input name="lsd" value="token123" />';
 
     const result = await Effect.runPromise(
       graphqlPost(TEST_URL, '12345', vars, { 'X-IG-App-ID': '936619743392459' })
@@ -184,7 +187,117 @@ describe('graphqlPost', () => {
     expect(body.get('variables')).toBe(JSON.stringify(vars));
   });
 
+  it('includes an available lsd token in the POST body and header', async () => {
+    const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => mockData,
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    document.body.innerHTML = '<input name="lsd" value="token123" />';
+
+    const result = await Effect.runPromise(graphqlPost(TEST_URL, '12345', vars, {}));
+
+    expect(result).toEqual(mockData);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual(
+      expect.objectContaining({ 'X-FB-LSD': 'token123' })
+    );
+    const body = fetchMock.mock.calls[0]?.[1]?.body;
+    expect(body.get('lsd')).toBe('token123');
+  });
+
+  it('fetches an lsd token from Instagram HTML when running without a document', async () => {
+    const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => '<script>require("LSD",[],{"token":"htmltoken123"},null)</script>',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockData,
+      });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    vi.stubGlobal('document', undefined);
+
+    const result = await Effect.runPromise(graphqlPost(TEST_URL, '12345', vars, {}));
+
+    expect(result).toEqual(mockData);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://www.instagram.com/',
+      expect.objectContaining({ credentials: 'include' })
+    );
+    expect(fetchMock.mock.calls[1]?.[1]?.headers).toEqual(
+      expect.objectContaining({ 'X-FB-LSD': 'htmltoken123' })
+    );
+    const body = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(body.get('lsd')).toBe('htmltoken123');
+  });
+
+  it('fetches an lsd token from Instagram HTML when local document has no token', async () => {
+    const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => '{"lsd":"htmltoken456"}',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockData,
+      });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    document.body.innerHTML = '<main></main>';
+
+    const result = await Effect.runPromise(graphqlPost(TEST_URL, '12345', vars, {}));
+
+    expect(result).toEqual(mockData);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://www.instagram.com/',
+      expect.objectContaining({ credentials: 'include' })
+    );
+    expect(fetchMock.mock.calls[1]?.[1]?.headers).toEqual(
+      expect.objectContaining({ 'X-FB-LSD': 'htmltoken456' })
+    );
+    const body = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(body.get('lsd')).toBe('htmltoken456');
+  });
+
+  it('posts without lsd fields when background-safe token lookup finds none', async () => {
+    const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => '<html></html>',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockData,
+      });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    vi.stubGlobal('document', undefined);
+
+    const result = await Effect.runPromise(graphqlPost(TEST_URL, '12345', vars, {}));
+
+    expect(result).toEqual(mockData);
+    expect(fetchMock.mock.calls[1]?.[1]?.headers).not.toHaveProperty('X-FB-LSD');
+    const body = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(body.get('lsd')).toBeNull();
+  });
+
   it('fails with GraphQLRequestFailed on non-ok non-429 response', async () => {
+    document.body.innerHTML = '<input name="lsd" value="token123" />';
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 403,
