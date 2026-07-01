@@ -22,7 +22,7 @@ export default defineConfig({
   run: {
     cache: {
       scripts: false, // Keep caching on explicit tasks so inputs/outputs stay well-defined.
-      tasks: true, // Cache task definitions (default: true)
+      tasks: false, // Build outputs are loaded directly by browsers; stale task cache is too risky.
     },
     tasks: {
       'build-chromium': {
