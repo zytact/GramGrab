@@ -46,10 +46,6 @@ This project vendors external repositories under @repos/
 - Do not import from @repos/ - application code should continue importing from normal package dependencies
 - When writing Effect code, inspect @repos/effect/ for examples of idiomatic usage, tests, module structure, and API design. Treat it as the source of truth for Effect patterns.
 
-## Effect Migration (in progress)
-
-Phases 1–5 complete. `src/effect/` uses `.ts` import extensions (e.g. `./errors.ts`). Legacy `src/` files use extensionless imports. `FETCH_MEDIA` and `DOWNLOAD` both use the shared `resolveMediaEffect` in `background.ts`. See `EFFECT_MIGRATION.md`.
-
 ## TypeScript & Style
 
 - `moduleResolution: bundler`, `verbatimModuleSyntax: true`, `allowImportingTsExtensions: true`, `noUncheckedIndexedAccess: true` — array/object access may return `undefined`.
