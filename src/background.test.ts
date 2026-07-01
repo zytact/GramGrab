@@ -240,6 +240,11 @@ describe('background dispatcher', () => {
       expect(result.media[0]?.type).toBe('video');
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/fallback.mp4');
       expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      expect(globalThis.fetch).toHaveBeenNthCalledWith(
+        2,
+        'https://www.instagram.com/api/graphql/',
+        expect.objectContaining({ method: 'POST', body: expect.any(URLSearchParams) })
+      );
     });
 
     it('tries the newer shortcode doc id when the older doc id returns no media', async () => {
