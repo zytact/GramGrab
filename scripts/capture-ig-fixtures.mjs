@@ -7,22 +7,22 @@
 // Wrapped in a block so re-pasting in DevTools doesn't trip "redeclaration of const".
 {
   const HIGHLIGHT_ID = '__LOCAL_HIGHLIGHT_ID__'; // from /stories/highlights/<ID>/
-  const STORY_USERNAME = 'povofpriya_'; // someone with an ACTIVE story right now
-  const AVATAR_USERNAME = 'p_ooja4.7'; // any username
+  const STORY_USERNAME = '__LOCAL_STORY_USERNAME__'; // someone with an ACTIVE story right now
+  const AVATAR_USERNAME = '__LOCAL_AVATAR_USERNAME__'; // any username; endpoint may return empty user
   const TRAY_USERNAME = '__LOCAL_TRAY_USERNAME__'; // user whose highlights tray to fetch
   const PROFILE_USERNAME = '__LOCAL_PROFILE_USERNAME__'; // user for web_profile_info
   // Shortcodes for each branch of the ShortcodeMedia union — one per __typename.
   // Find one of each by browsing instagram.com: /p/<code>/ for image+sidecar, /reel/<code>/ for video.
-  const POST_IMAGE_SHORTCODE = 'DTcTRAhD193CeTqoVzSE83w8-uk_kVg9JpIKGg0'; // single-image post → GraphImage / XDTGraphImage
-  const POST_VIDEO_SHORTCODE = 'DTriwtBEsgUGtjY0-yVkrCWvMTE2cQqfDya3aE0'; // single-video reel → GraphVideo / XDTGraphVideo
-  const POST_SIDECAR_SHORTCODE = 'DU3LlIqkgBxSA8STfocQ8RWKm82CIBpTpfb5kg0'; // carousel post → GraphSidecar / XDTGraphSidecar
+  const POST_IMAGE = '__LOCAL_POST_IMAGE__'; // single-image post URL or shortcode
+  const POST_VIDEO = '__LOCAL_POST_VIDEO__'; // single-video reel URL or shortcode
+  const POST_SIDECAR = '__LOCAL_POST_SIDECAR__'; // mixed image/video sidecar URL or shortcode
 
   // ---------------------------------------------------------------------------
 
   (async () => {
     const APP_ID = '936619743392459';
     const REELS_QUERY_HASH = '45246d3fe16ccc6577e0bd297a5db1ab';
-    const SHORTCODE_DOC_ID = '8845758582119845';
+    const SHORTCODE_DOC_IDS = ['8845758582119845', '10015901848480474'];
 
     // Arrays under these keys hold tagged-union variants (story items can be
     // video vs image, sidecar children can be video vs image, tray lists every
@@ -53,12 +53,54 @@
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
 
+    function assertOkResponse(name, status, json, hasRequiredData) {
+      if (status && (status < 200 || status >= 300)) {
+        throw new Error(`${name} failed with HTTP ${status}`);
+      }
+      if (!hasRequiredData(json)) {
+        const errors = json?.errors?.length ? ` errors: ${JSON.stringify(json.errors)}` : '';
+        throw new Error(`${name} returned no required data.${errors}`);
+      }
+      if (json?.errors?.length) console.warn(`  ${name} partial errors:`, json.errors);
+      return json;
+    }
+
+    async function readJsonResponse(r) {
+      const text = await r.text();
+      try {
+        return { status: r.status, json: JSON.parse(text) };
+      } catch {
+        return { status: r.status, json: null, text: text.slice(0, 200) };
+      }
+    }
+
+    function shortcodeFrom(input, kind) {
+      const raw = String(input ?? '').trim();
+      if (!raw) throw new Error(`Set a public ${kind} URL or shortcode`);
+      const urlMatch = raw.match(/instagram\.com\/(?:[^/]+\/)?(?:p|reel|tv)\/([^/?#]+)/i);
+      const shortcode = urlMatch?.[1] ?? raw.replace(/^\/+|\/+$/g, '');
+      if (!/^[A-Za-z0-9_-]+$/.test(shortcode)) {
+        throw new Error(`Invalid ${kind} shortcode: "${raw}"`);
+      }
+      return shortcode;
+    }
+
+    function getLsdToken() {
+      return (
+        document.querySelector('input[name="lsd"]')?.value ??
+        document.cookie.match(/(?:^|;\s*)lsd=([^;]+)/)?.[1] ??
+        document.documentElement.innerHTML.match(/"LSD",\[\],{"token":"([^"]+)"/)?.[1] ??
+        ''
+      );
+    }
+
     async function webProfileInfo(username) {
+      const normalizedUsername = String(username).trim();
       const r = await fetch(
-        `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`,
+        `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(normalizedUsername)}`,
         { credentials: 'include', headers: { 'X-IG-App-ID': APP_ID } }
       );
-      return { status: r.status, json: await r.json() };
+      return readJsonResponse(r);
     }
 
     async function userIdFromUsername(username) {
@@ -74,11 +116,73 @@
         credentials: 'include',
         headers: { 'X-IG-App-ID': APP_ID },
       });
-      return r.json();
+      return readJsonResponse(r);
+    }
+
+    async function apiGraphqlFetch(docId, vars) {
+      const lsd = getLsdToken();
+      const body = new URLSearchParams({
+        doc_id: docId,
+        variables: JSON.stringify(vars),
+      });
+      if (lsd) body.set('lsd', lsd);
+      const r = await fetch('https://www.instagram.com/api/graphql/', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-IG-App-ID': APP_ID,
+          'X-ASBD-ID': '129477',
+          ...(lsd ? { 'X-FB-LSD': lsd } : {}),
+        },
+        body,
+      });
+      return readJsonResponse(r);
+    }
+
+    async function shortcodeFetch(shortcode) {
+      const vars = { shortcode };
+      const failures = [];
+      for (const docId of SHORTCODE_DOC_IDS) {
+        for (const fetcher of [
+          () => graphqlFetch({ doc_id: docId, variables: JSON.stringify(vars) }),
+          () => apiGraphqlFetch(docId, vars),
+        ]) {
+          try {
+            const { status, json, text } = await fetcher();
+            const node = jNode(json);
+            if (status >= 200 && status < 300 && node) return json;
+            failures.push({ docId, status, errors: json?.errors ?? null, text: text ?? null });
+          } catch (e) {
+            failures.push({ docId, error: String(e) });
+          }
+        }
+      }
+      throw new Error(`No shortcode media for "${shortcode}": ${JSON.stringify(failures)}`);
+    }
+
+    function jNode(j) {
+      return (
+        j?.data?.xdt_shortcode_media ??
+        j?.data?.shortcode_media ??
+        j?.data?.media ??
+        j?.xdt_shortcode_media ??
+        j?.shortcode_media ??
+        j?.media
+      );
     }
 
     async function reelsFetch(vars) {
-      return graphqlFetch({ query_hash: REELS_QUERY_HASH, variables: JSON.stringify(vars) });
+      const { status, json } = await graphqlFetch({
+        query_hash: REELS_QUERY_HASH,
+        variables: JSON.stringify(vars),
+      });
+      return assertOkResponse(
+        'reels_media',
+        status,
+        json,
+        j => Array.isArray(j?.data?.reels_media) && j.data.reels_media.length > 0
+      );
     }
 
     const steps = [
@@ -155,22 +259,29 @@
         },
       },
       ...[
-        ['shortcode-image.json', POST_IMAGE_SHORTCODE, 'image post'],
-        ['shortcode-video.json', POST_VIDEO_SHORTCODE, 'video reel'],
-        ['shortcode-sidecar.json', POST_SIDECAR_SHORTCODE, 'sidecar carousel'],
-      ].map(([file, shortcode, kind]) => ({
+        ['shortcode-image.json', POST_IMAGE, 'image post', /Image/],
+        ['shortcode-video.json', POST_VIDEO, 'video reel', /Video|ClipsShareVideo/],
+        ['shortcode-sidecar.json', POST_SIDECAR, 'sidecar post', /Sidecar|Album/],
+      ].map(([file, shortcode, kind, typenamePattern]) => ({
         label: `${file} (xdt_shortcode_media, ${kind}) for /p/${shortcode}/`,
         run: async () => {
-          const j = await graphqlFetch({
-            doc_id: SHORTCODE_DOC_ID,
-            variables: JSON.stringify({ shortcode }),
-          });
-          const node = j?.data?.xdt_shortcode_media ?? j?.data?.shortcode_media;
-          if (!node) {
-            console.warn(`  shortcode "${shortcode}" returned no media — pick a public ${kind}`);
-          } else {
-            console.log('  __typename:', node.__typename);
+          const code = shortcodeFrom(shortcode, kind);
+          const j = await shortcodeFetch(code);
+          const node = jNode(j);
+          if (!node) throw new Error(`shortcode "${code}" returned no media`);
+          if (!typenamePattern.test(node.__typename ?? '')) {
+            throw new Error(
+              `shortcode "${code}" returned ${node.__typename ?? 'unknown'}, expected ${kind}`
+            );
           }
+          if (
+            kind === 'sidecar post' &&
+            !node.edge_sidecar_to_children?.edges?.some(edge => edge.node?.is_video === true)
+          ) {
+            throw new Error(`shortcode "${code}" sidecar has no video child`);
+          }
+          console.log('  shortcode:', code);
+          console.log('  __typename:', node.__typename);
           dl(file, { data: trim(j.data), errors: j.errors ?? null });
         },
       })),

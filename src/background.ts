@@ -9,6 +9,7 @@ import {
   fetchReelsMedia,
   fetchWebProfileInfoUser,
   graphqlFetch as graphqlFetchEffect,
+  graphqlPost as graphqlPostEffect,
 } from './effect/instagram.ts';
 import { ShortcodeMediaResponseSchema } from './effect/schemas.ts';
 import type {
@@ -41,6 +42,7 @@ const DOWNLOAD_CONCURRENCY = 3;
 const OPERATIONS = {
   MEDIA_BY_SHORTCODE: {
     doc_id: '8845758582119845',
+    apiUrl: 'https://www.instagram.com/api/graphql/',
     url: 'https://www.instagram.com/graphql/query/',
   },
   REELS_MEDIA: {
@@ -580,6 +582,10 @@ function createStoryImageItem(reelId: string, item: StoryImageItem): MediaItem |
 // ---------------------------------------------------------------------------
 
 const IG_GRAPHQL_HEADERS = { ...IG_HEADERS, Origin: 'https://www.instagram.com' } as const;
+const IG_API_GRAPHQL_HEADERS = {
+  ...IG_GRAPHQL_HEADERS,
+  Referer: 'https://www.instagram.com/',
+} as const;
 
 function resolveShortcodeResponseNode(decoded: ShortcodeMediaResponse) {
   return (
@@ -592,10 +598,26 @@ function resolveShortcodeResponseNode(decoded: ShortcodeMediaResponse) {
   );
 }
 
-const fetchShortcodeMediaItems = (
+function decodeShortcodeResponse(raw: unknown) {
+  return Schema.decodeUnknown(ShortcodeMediaResponseSchema)(raw).pipe(
+    Effect.mapError(() => new ResponseShapeUnknown({ context: 'shortcode_media' }))
+  );
+}
+
+function responseHasShortcodeNode(raw: Record<string, unknown>) {
+  return decodeShortcodeResponse(raw).pipe(
+    Effect.flatMap(decoded =>
+      resolveShortcodeResponseNode(decoded)
+        ? Effect.succeed(raw)
+        : Effect.fail(new ResponseShapeUnknown({ context: 'shortcode_media' }))
+    )
+  );
+}
+
+const fetchShortcodeMediaRaw = (
   shortcode: string
 ): Effect.Effect<
-  MediaItem[],
+  Record<string, unknown>,
   GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
 > =>
   graphqlFetchEffect(
@@ -605,11 +627,27 @@ const fetchShortcodeMediaItems = (
     { shortcode },
     IG_GRAPHQL_HEADERS
   ).pipe(
-    Effect.flatMap(raw =>
-      Schema.decodeUnknown(ShortcodeMediaResponseSchema)(raw).pipe(
-        Effect.mapError(() => new ResponseShapeUnknown({ context: 'shortcode_media' }))
-      )
-    ),
+    Effect.flatMap(responseHasShortcodeNode),
+    Effect.catchAll(err =>
+      err._tag === 'RateLimited'
+        ? Effect.fail(err)
+        : graphqlPostEffect(
+            OPERATIONS.MEDIA_BY_SHORTCODE.apiUrl,
+            OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
+            { shortcode },
+            IG_API_GRAPHQL_HEADERS
+          )
+    )
+  );
+
+const fetchShortcodeMediaItems = (
+  shortcode: string
+): Effect.Effect<
+  MediaItem[],
+  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> =>
+  fetchShortcodeMediaRaw(shortcode).pipe(
+    Effect.flatMap(decodeShortcodeResponse),
     Effect.map(resolveShortcodeResponseNode),
     Effect.map(normalizeShortcodeMedia)
   );
@@ -949,13 +987,7 @@ async function handleDebugShape(msg: DebugShapeMsg): Promise<{ raw?: unknown; er
     return { error: 'Use a post or reel URL for debug' };
   }
   return Effect.runPromise(
-    graphqlFetchEffect(
-      OPERATIONS.MEDIA_BY_SHORTCODE.url,
-      'doc_id',
-      OPERATIONS.MEDIA_BY_SHORTCODE.doc_id,
-      { shortcode: parsed.shortcode! },
-      IG_GRAPHQL_HEADERS
-    ).pipe(
+    fetchShortcodeMediaRaw(parsed.shortcode!).pipe(
       Effect.map(raw => ({ raw })),
       Effect.catchAll(err => Effect.succeed({ error: formatError(err) }))
     )

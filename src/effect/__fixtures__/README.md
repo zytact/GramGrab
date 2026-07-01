@@ -4,16 +4,16 @@ Real Instagram API responses captured for schema regression testing.
 
 ## Files
 
-| File                     | Endpoint                                                          | What it covers                                                                                             |
-| ------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `highlights.json`        | `graphql/query/?query_hash=452...` with `highlight_reel_ids`      | `ReelsMediaResponseSchema` — `GraphHighlightReel` envelope, `GraphStoryVideo` items                        |
-| `story.json`             | `graphql/query/?query_hash=452...` with `reel_ids`                | `ReelsMediaResponseSchema` — `GraphReel` envelope, `GraphStoryVideo` items                                 |
-| `avatar.json`            | `i.instagram.com/api/v1/users/{id}/info/`                         | `HdAvatarResponseSchema` — `hd_profile_pic_url_info`, `hd_profile_pic_versions`                            |
-| `highlights-tray.json`   | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/`         | `HighlightsTrayResponseSchema` — `tray[]` listing with `cover_media`                                       |
-| `web-profile-info.json`  | `api/v1/users/web_profile_info/?username=`                        | `WebProfileInfoResponseSchema` — `data.user.id` used to bridge username → user-id                          |
-| `shortcode-image.json`   | `graphql/query/?doc_id=8845...` with `{ shortcode }` (image post) | `ShortcodeMediaResponseSchema` — `GraphImage` / `XDTGraphImage` branch                                     |
-| `shortcode-video.json`   | `graphql/query/?doc_id=8845...` with `{ shortcode }` (video reel) | `ShortcodeMediaResponseSchema` — `GraphVideo` / `XDTGraphVideo` branch                                     |
-| `shortcode-sidecar.json` | `graphql/query/?doc_id=8845...` with `{ shortcode }` (carousel)   | `ShortcodeMediaResponseSchema` — `GraphSidecar` / `XDTGraphSidecar` branch with mixed image/video children |
+| File                     | Endpoint                                                          | What it covers                                                                                               |
+| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `highlights.json`        | `graphql/query/?query_hash=452...` with `highlight_reel_ids`      | `ReelsMediaResponseSchema` — `GraphHighlightReel` envelope, `GraphStoryVideo` items                          |
+| `story.json`             | `graphql/query/?query_hash=452...` with `reel_ids`                | `ReelsMediaResponseSchema` — `GraphReel` envelope, `GraphStoryVideo` items                                   |
+| `avatar.json`            | `i.instagram.com/api/v1/users/{id}/info/`                         | `HdAvatarResponseSchema` — current empty `user` response; usable avatar URL falls back to `web_profile_info` |
+| `highlights-tray.json`   | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/`         | `HighlightsTrayResponseSchema` — `tray[]` listing with `cover_media`                                         |
+| `web-profile-info.json`  | `api/v1/users/web_profile_info/?username=`                        | `WebProfileInfoResponseSchema` — `data.user.id` used to bridge username → user-id                            |
+| `shortcode-image.json`   | `graphql/query/?doc_id=8845...` with `{ shortcode }` (image post) | `ShortcodeMediaResponseSchema` — `GraphImage` / `XDTGraphImage` branch                                       |
+| `shortcode-video.json`   | `graphql/query/?doc_id=8845...` with `{ shortcode }` (video reel) | `ShortcodeMediaResponseSchema` — `GraphVideo` / `XDTGraphVideo` branch                                       |
+| `shortcode-sidecar.json` | `graphql/query/?doc_id=8845...` with `{ shortcode }` (carousel)   | `ShortcodeMediaResponseSchema` — `GraphSidecar` / `XDTGraphSidecar` branch with mixed image/video children   |
 
 ## Notes
 
