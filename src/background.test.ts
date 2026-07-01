@@ -239,6 +239,61 @@ describe('background dispatcher', () => {
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/fallback.mp4');
       expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     });
+
+    it('tries the newer shortcode doc id when the older doc id returns no media', async () => {
+      const fallbackMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphSidecar',
+            shortcode: 'newdoc1',
+            edge_sidecar_to_children: {
+              edges: [
+                {
+                  node: {
+                    __typename: 'XDTGraphImage',
+                    shortcode: 'newdoc1child',
+                    display_url: 'https://cdn.instagram.com/newdoc.jpg',
+                  },
+                },
+              ],
+            },
+          },
+        },
+      };
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => fallbackMedia,
+        }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/newdoc1/',
+      })) as {
+        media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
+        error: undefined;
+      };
+
+      expect(result.error).toBeUndefined();
+      expect(result.media[0]?.url).toBe('https://cdn.instagram.com/newdoc.jpg');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+      expect(
+        String((globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[2]?.[0])
+      ).toContain('doc_id=10015901848480474');
+    });
   });
 
   // ── DOWNLOAD_DEBUG_JSON ───────────────────────────────────────────────────
