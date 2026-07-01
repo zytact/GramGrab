@@ -19,6 +19,11 @@ const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
   Schedule.compose(Schedule.recurs(3))
 );
 
+const shouldRetryGraphqlError = (err: NetworkError | GraphQLRequestFailed | RateLimited): boolean =>
+  (err._tag === 'NetworkError' && !(err.cause instanceof SyntaxError)) ||
+  err._tag === 'RateLimited' ||
+  (err._tag === 'GraphQLRequestFailed' && err.status >= 500);
+
 const parseInstagramLsdToken = (html: string): string | undefined =>
   html.match(/"LSD",\[\],\{"token":"([^"]+)"/)?.[1] ??
   html.match(/"lsd":"([^"]+)"/)?.[1] ??
@@ -74,10 +79,7 @@ export const graphqlFetch = (
   return attempt.pipe(
     Effect.retry({
       schedule: GRAPHQL_RETRY_SCHEDULE,
-      while: err =>
-        err._tag === 'NetworkError' ||
-        err._tag === 'RateLimited' ||
-        (err._tag === 'GraphQLRequestFailed' && err.status >= 500),
+      while: shouldRetryGraphqlError,
     })
   );
 };
@@ -123,10 +125,7 @@ export const graphqlPost = (
   return attempt.pipe(
     Effect.retry({
       schedule: GRAPHQL_RETRY_SCHEDULE,
-      while: err =>
-        err._tag === 'NetworkError' ||
-        err._tag === 'RateLimited' ||
-        (err._tag === 'GraphQLRequestFailed' && err.status >= 500),
+      while: shouldRetryGraphqlError,
     })
   );
 };
