@@ -1,6 +1,11 @@
 import { Effect } from 'effect';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { fetchBlobAsDataUrl, fetchWebProfileInfoUser, graphqlFetch } from './instagram.ts';
+import {
+  fetchBlobAsDataUrl,
+  fetchWebProfileInfoUser,
+  graphqlFetch,
+  graphqlPost,
+} from './instagram.ts';
 import {
   GraphQLRequestFailed,
   HttpError,
@@ -139,6 +144,59 @@ describe('graphqlFetch', () => {
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(NetworkError);
+    }
+  });
+});
+
+describe('graphqlPost', () => {
+  const TEST_URL = 'https://www.instagram.com/api/graphql/';
+  const vars = { shortcode: 'abc123' };
+
+  it('posts form-encoded doc_id variables and returns parsed JSON', async () => {
+    const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => mockData,
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await Effect.runPromise(
+      graphqlPost(TEST_URL, '12345', vars, { 'X-IG-App-ID': '936619743392459' })
+    );
+
+    expect(result).toEqual(mockData);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      TEST_URL,
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-ASBD-ID': '129477',
+          'X-IG-App-ID': '936619743392459',
+        }),
+        body: expect.any(URLSearchParams),
+      })
+    );
+    const body = fetchMock.mock.calls[0]?.[1]?.body;
+    expect(body.get('doc_id')).toBe('12345');
+    expect(body.get('variables')).toBe(JSON.stringify(vars));
+  });
+
+  it('fails with GraphQLRequestFailed on non-ok non-429 response', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+    }) as unknown as typeof fetch;
+
+    const result = await Effect.runPromise(
+      graphqlPost(TEST_URL, '12345', vars, {}).pipe(Effect.either)
+    );
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') {
+      expect(result.left).toBeInstanceOf(GraphQLRequestFailed);
+      expect((result.left as GraphQLRequestFailed).status).toBe(403);
     }
   });
 });

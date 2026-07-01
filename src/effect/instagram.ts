@@ -56,6 +56,52 @@ export const graphqlFetch = (
   );
 };
 
+export const graphqlPost = (
+  url: string,
+  docId: string,
+  variables: Record<string, unknown>,
+  headers: Record<string, string>
+): Effect.Effect<Record<string, unknown>, NetworkError | GraphQLRequestFailed | RateLimited> => {
+  const attempt = Effect.gen(function* () {
+    const body = new URLSearchParams({
+      doc_id: docId,
+      variables: JSON.stringify(variables),
+    });
+    const res = yield* Effect.tryPromise({
+      try: () =>
+        fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-ASBD-ID': '129477',
+          },
+          body,
+        }),
+      catch: cause => new NetworkError({ cause }),
+    });
+    if (!res.ok) {
+      if (res.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
+      return yield* Effect.fail(new GraphQLRequestFailed({ status: res.status }));
+    }
+    return yield* Effect.tryPromise({
+      try: () => res.json() as Promise<Record<string, unknown>>,
+      catch: cause => new NetworkError({ cause }),
+    });
+  });
+
+  return attempt.pipe(
+    Effect.retry({
+      schedule: GRAPHQL_RETRY_SCHEDULE,
+      while: err =>
+        err._tag === 'NetworkError' ||
+        err._tag === 'RateLimited' ||
+        (err._tag === 'GraphQLRequestFailed' && err.status >= 500),
+    })
+  );
+};
+
 export const fetchBlobAsDataUrl = (url: string) =>
   Effect.gen(function* () {
     const res = yield* Effect.tryPromise({
