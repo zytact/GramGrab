@@ -154,6 +154,251 @@ describe('background dispatcher', () => {
     });
   });
 
+  // ── FETCH_MEDIA (shortcode fallback) ─────────────────────────────────────
+
+  describe('FETCH_MEDIA — shortcode fallback', () => {
+    it('falls back to /api/graphql/ POST when the old shortcode route has no node', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
+      const fallbackMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphImage',
+            shortcode: 'fallback1',
+            display_url: 'https://cdn.instagram.com/fallback.jpg',
+          },
+        },
+      };
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => fallbackMedia,
+        }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/fallback1/',
+      })) as {
+        media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
+        error: undefined;
+      };
+
+      expect(result.error).toBeUndefined();
+      expect(result.media).toHaveLength(1);
+      expect(result.media[0]?.url).toBe('https://cdn.instagram.com/fallback.jpg');
+      expect(globalThis.fetch).toHaveBeenNthCalledWith(
+        2,
+        'https://www.instagram.com/api/graphql/',
+        expect.objectContaining({ method: 'POST', body: expect.any(URLSearchParams) })
+      );
+    });
+
+    it('falls back to /api/graphql/ POST when the old shortcode route is non-json', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
+      const fallbackMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphVideo',
+            shortcode: 'fallback2',
+            video_url: 'https://cdn.instagram.com/fallback.mp4',
+            display_url: 'https://cdn.instagram.com/fallback.jpg',
+          },
+        },
+      };
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new SyntaxError('Unexpected token <');
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => fallbackMedia,
+        }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/reel/fallback2/',
+      })) as {
+        media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
+        error: undefined;
+      };
+
+      expect(result.error).toBeUndefined();
+      expect(result.media[0]?.type).toBe('video');
+      expect(result.media[0]?.url).toBe('https://cdn.instagram.com/fallback.mp4');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      expect(globalThis.fetch).toHaveBeenNthCalledWith(
+        2,
+        'https://www.instagram.com/api/graphql/',
+        expect.objectContaining({ method: 'POST', body: expect.any(URLSearchParams) })
+      );
+    });
+
+    it('tries the newer shortcode doc id when the older doc id returns no media', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
+      const fallbackMedia = {
+        data: {
+          xdt_shortcode_media: {
+            __typename: 'XDTGraphSidecar',
+            shortcode: 'newdoc1',
+            edge_sidecar_to_children: {
+              edges: [
+                {
+                  node: {
+                    __typename: 'XDTGraphImage',
+                    shortcode: 'newdoc1child',
+                    display_url: 'https://cdn.instagram.com/newdoc.jpg',
+                  },
+                },
+              ],
+            },
+          },
+        },
+      };
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => fallbackMedia,
+        }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/newdoc1/',
+      })) as {
+        media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
+        error: undefined;
+      };
+
+      expect(result.error).toBeUndefined();
+      expect(result.media[0]?.url).toBe('https://cdn.instagram.com/newdoc.jpg');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+      expect(
+        String((globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[2]?.[0])
+      ).toContain('doc_id=10015901848480474');
+    });
+
+    it('surfaces POST failure when every shortcode doc id GET is empty', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+        }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/forbidden1/',
+      })) as { media: undefined; error: string };
+
+      expect(result.media).toBeUndefined();
+      expect(result.error).toBe('GraphQL failed: 403');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('surfaces malformed shortcode responses when every fallback is empty', async () => {
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/broken1/',
+      })) as { media: undefined; error: string };
+
+      expect(result.media).toBeUndefined();
+      expect(result.error).toContain('Instagram changed their response format');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('surfaces known shortcode nodes that have no usable media url', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            xdt_shortcode_media: {
+              __typename: 'XDTGraphImage',
+              shortcode: 'emptyimage1',
+            },
+          },
+        }),
+      }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/emptyimage1/',
+      })) as { media: undefined; error: string };
+
+      expect(result.media).toBeUndefined();
+      expect(result.error).toContain('Instagram changed their response format');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
   // ── DOWNLOAD_DEBUG_JSON ───────────────────────────────────────────────────
 
   describe('DOWNLOAD_DEBUG_JSON', () => {
