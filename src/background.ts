@@ -334,6 +334,16 @@ function normalizeShortcodeMedia(candidate: ShortcodeNode | undefined): MediaIte
   return collectShortcodeMediaItems(node, typename, context);
 }
 
+const normalizeKnownShortcodeMedia = (
+  candidate: ShortcodeNode | undefined
+): Effect.Effect<MediaItem[], ResponseShapeUnknown> => {
+  const items = normalizeShortcodeMedia(candidate);
+  if (candidate && isKnownShortcodeTypename(candidate.__typename) && items.length === 0) {
+    return Effect.fail(new ResponseShapeUnknown({ context: 'shortcode_media' }));
+  }
+  return Effect.succeed(items);
+};
+
 function normalizeReelsMediaItems(reels: readonly ReelItem[]): MediaItem[] {
   return reels.flatMap(reel =>
     reel.items.flatMap(item => normalizeReelItem(String(reel.id), item))
@@ -604,16 +614,6 @@ function decodeShortcodeResponse(raw: unknown) {
   );
 }
 
-function responseHasShortcodeNode(raw: Record<string, unknown>) {
-  return decodeShortcodeResponse(raw).pipe(
-    Effect.flatMap(decoded =>
-      resolveShortcodeResponseNode(decoded)
-        ? Effect.succeed(raw)
-        : Effect.fail(new ResponseShapeUnknown({ context: 'shortcode_media' }))
-    )
-  );
-}
-
 type ShortcodeFetchAttempt =
   | { readonly _tag: 'Found'; readonly raw: Record<string, unknown> }
   | { readonly _tag: 'Missing'; readonly raw: Record<string, unknown> }
@@ -622,16 +622,12 @@ type ShortcodeFetchAttempt =
       readonly error: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown;
     };
 
-const rawHasShortcodeNode = (raw: Record<string, unknown>) =>
-  responseHasShortcodeNode(raw).pipe(
-    Effect.as(true),
-    Effect.catchAll(() => Effect.succeed(false))
-  );
-
 const classifyShortcodeRaw = (raw: Record<string, unknown>) =>
-  rawHasShortcodeNode(raw).pipe(
-    Effect.map(hasNode =>
-      hasNode ? ({ _tag: 'Found', raw } as const) : ({ _tag: 'Missing', raw } as const)
+  decodeShortcodeResponse(raw).pipe(
+    Effect.map(decoded =>
+      resolveShortcodeResponseNode(decoded)
+        ? ({ _tag: 'Found', raw } as const)
+        : ({ _tag: 'Missing', raw } as const)
     )
   );
 
@@ -652,6 +648,9 @@ function pickShortcodeAttempt(
   postAttempt: ShortcodeFetchAttempt
 ): ShortcodeFetchAttempt {
   if (postAttempt._tag === 'Found') return postAttempt;
+  if (getAttempt._tag === 'Failed' && getAttempt.error._tag === 'ResponseShapeUnknown') {
+    return getAttempt;
+  }
   if (getAttempt._tag === 'Missing') return getAttempt;
   return postAttempt;
 }
@@ -697,6 +696,7 @@ const fetchShortcodeMediaRaw = (
       else lastError = result.error;
     }
 
+    if (lastError?._tag === 'ResponseShapeUnknown') return yield* Effect.fail(lastError);
     if (lastRawWithoutNode) return lastRawWithoutNode;
     return yield* Effect.fail(
       lastError ?? new ResponseShapeUnknown({ context: 'shortcode_media' })
@@ -713,7 +713,7 @@ const fetchShortcodeMediaItems = (
   fetchShortcodeMediaRaw(shortcode).pipe(
     Effect.flatMap(decodeShortcodeResponse),
     Effect.map(resolveShortcodeResponseNode),
-    Effect.map(normalizeShortcodeMedia)
+    Effect.flatMap(normalizeKnownShortcodeMedia)
   );
 
 function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
