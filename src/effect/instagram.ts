@@ -19,6 +19,37 @@ const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
   Schedule.compose(Schedule.recurs(3))
 );
 
+const shouldRetryGraphqlError = (err: NetworkError | GraphQLRequestFailed | RateLimited): boolean =>
+  (err._tag === 'NetworkError' && !(err.cause instanceof SyntaxError)) ||
+  err._tag === 'RateLimited' ||
+  (err._tag === 'GraphQLRequestFailed' && err.status >= 500);
+
+const parseInstagramLsdToken = (html: string): string | undefined =>
+  html.match(/"LSD",\[\],\{"token":"([^"]+)"/)?.[1] ??
+  html.match(/"lsd":"([^"]+)"/)?.[1] ??
+  html.match(/name="lsd"\s+value="([^"]+)"/)?.[1];
+
+const getInstagramLsdToken = (): Effect.Effect<string | undefined> => {
+  const inputToken =
+    globalThis.document?.querySelector<HTMLInputElement>('input[name="lsd"]')?.value;
+  if (inputToken) return Effect.succeed(inputToken);
+
+  const cookieToken = globalThis.document?.cookie.match(/(?:^|;\s*)lsd=([^;]+)/)?.[1];
+  if (cookieToken) return Effect.succeed(cookieToken);
+
+  return Effect.tryPromise({
+    try: async () => {
+      const res = await fetch('https://www.instagram.com/', {
+        credentials: 'include',
+        headers: { Accept: 'text/html' },
+      });
+      if (!res.ok) return undefined;
+      return parseInstagramLsdToken(await res.text());
+    },
+    catch: () => undefined,
+  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+};
+
 export const graphqlFetch = (
   url: string,
   operationKey: 'doc_id' | 'query_hash',
@@ -48,10 +79,53 @@ export const graphqlFetch = (
   return attempt.pipe(
     Effect.retry({
       schedule: GRAPHQL_RETRY_SCHEDULE,
-      while: err =>
-        err._tag === 'NetworkError' ||
-        err._tag === 'RateLimited' ||
-        (err._tag === 'GraphQLRequestFailed' && err.status >= 500),
+      while: shouldRetryGraphqlError,
+    })
+  );
+};
+
+export const graphqlPost = (
+  url: string,
+  docId: string,
+  variables: Record<string, unknown>,
+  headers: Record<string, string>
+): Effect.Effect<Record<string, unknown>, NetworkError | GraphQLRequestFailed | RateLimited> => {
+  const attempt = Effect.gen(function* () {
+    const lsd = yield* getInstagramLsdToken();
+    const body = new URLSearchParams({
+      doc_id: docId,
+      variables: JSON.stringify(variables),
+    });
+    if (lsd) body.set('lsd', lsd);
+    const res = yield* Effect.tryPromise({
+      try: () =>
+        fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-ASBD-ID': '129477',
+            ...(lsd ? { 'X-FB-LSD': lsd } : {}),
+          },
+          body,
+        }),
+      catch: cause => new NetworkError({ cause }),
+    });
+    if (!res.ok) {
+      if (res.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
+      return yield* Effect.fail(new GraphQLRequestFailed({ status: res.status }));
+    }
+    return yield* Effect.tryPromise({
+      try: () => res.json() as Promise<Record<string, unknown>>,
+      catch: cause => new NetworkError({ cause }),
+    });
+  });
+
+  return attempt.pipe(
+    Effect.retry({
+      schedule: GRAPHQL_RETRY_SCHEDULE,
+      while: shouldRetryGraphqlError,
     })
   );
 };
