@@ -294,6 +294,66 @@ describe('background dispatcher', () => {
         String((globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[2]?.[0])
       ).toContain('doc_id=10015901848480474');
     });
+
+    it('surfaces malformed shortcode responses when every fallback is empty', async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: {}, errors: [{ message: 'not found' }] }),
+        }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/broken1/',
+      })) as { media: undefined; error: string };
+
+      expect(result.media).toBeUndefined();
+      expect(result.error).toContain('Instagram changed their response format');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('surfaces known shortcode nodes that have no usable media url', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            xdt_shortcode_media: {
+              __typename: 'XDTGraphImage',
+              shortcode: 'emptyimage1',
+            },
+          },
+        }),
+      }) as unknown as typeof fetch;
+
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/emptyimage1/',
+      })) as { media: undefined; error: string };
+
+      expect(result.media).toBeUndefined();
+      expect(result.error).toContain('Instagram changed their response format');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ── DOWNLOAD_DEBUG_JSON ───────────────────────────────────────────────────
