@@ -640,19 +640,7 @@ async function exportSelectedFrames(
   return standardItems;
 }
 
-function MediaItemRow({
-  item,
-  workspaceMode,
-  intrinsicDimensions,
-  fallbackLoading,
-  fallbackFailed,
-  onError,
-  onToggle,
-  exportFrame,
-  onToggleExportFrame,
-  onVideoRef,
-  onIntrinsicDimensions,
-}: {
+interface MediaItemRowProps {
   item: MediaItem;
   workspaceMode: boolean;
   intrinsicDimensions?: { width: number; height: number };
@@ -664,8 +652,18 @@ function MediaItemRow({
   onToggleExportFrame: () => void;
   onVideoRef: (el: HTMLVideoElement | null) => void;
   onIntrinsicDimensions: (width: number, height: number) => void;
-}) {
-  const num = String(item.index + 1).padStart(2, '0');
+}
+
+function MediaPreview({
+  item,
+  workspaceMode,
+  intrinsicDimensions,
+  fallbackLoading,
+  fallbackFailed,
+  onError,
+  onVideoRef,
+  onIntrinsicDimensions,
+}: Omit<MediaItemRowProps, 'onToggle' | 'exportFrame' | 'onToggleExportFrame'>) {
   const ratio = resolveMediaRatio(
     item.width,
     item.height,
@@ -675,77 +673,151 @@ function MediaItemRow({
   const previewStyle = workspaceMode ? ({ '--media-ratio': ratio } as CSSProperties) : undefined;
 
   return (
+    <div className="media-thumb" style={previewStyle}>
+      {item.type === 'video' ? (
+        <VideoPreview
+          item={item}
+          onVideoRef={onVideoRef}
+          onIntrinsicDimensions={onIntrinsicDimensions}
+        />
+      ) : (
+        <ImagePreview
+          item={item}
+          fallbackFailed={fallbackFailed}
+          onError={onError}
+          onIntrinsicDimensions={onIntrinsicDimensions}
+        />
+      )}
+      {fallbackLoading && !item.previewUrl && <span className="thumb-loading">···</span>}
+    </div>
+  );
+}
+
+function VideoPreview({
+  item,
+  onVideoRef,
+  onIntrinsicDimensions,
+}: Pick<MediaItemRowProps, 'item' | 'onVideoRef' | 'onIntrinsicDimensions'>) {
+  return (
+    <>
+      <video
+        src={item.url}
+        muted
+        playsInline
+        ref={onVideoRef}
+        onLoadedMetadata={event =>
+          onIntrinsicDimensions(event.currentTarget.videoWidth, event.currentTarget.videoHeight)
+        }
+      />
+      <div className="play-overlay">
+        <div className="play-triangle" />
+      </div>
+    </>
+  );
+}
+
+function ImagePreview({
+  item,
+  fallbackFailed,
+  onError,
+  onIntrinsicDimensions,
+}: Pick<MediaItemRowProps, 'item' | 'fallbackFailed' | 'onError' | 'onIntrinsicDimensions'>) {
+  if (fallbackFailed) {
+    return (
+      <div className="thumb-placeholder">
+        <span className="thumb-icon">◻</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={item.previewUrl ?? item.url}
+      alt="Preview"
+      onLoad={event =>
+        onIntrinsicDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
+      }
+      onError={onError}
+    />
+  );
+}
+
+function MediaControls({
+  item,
+  exportFrame,
+  onToggle,
+  onToggleExportFrame,
+}: Pick<MediaItemRowProps, 'item' | 'exportFrame' | 'onToggle' | 'onToggleExportFrame'>) {
+  return (
+    <div className="media-controls">
+      {item.type === 'video' && (
+        <label
+          className="frame-toggle"
+          title="Export frame on download"
+          onClick={event => event.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={exportFrame}
+            onChange={onToggleExportFrame}
+            className="frame-toggle-checkbox"
+          />
+          Frame
+        </label>
+      )}
+      <input
+        className="item-checkbox"
+        type="checkbox"
+        checked={item.selected}
+        onChange={onToggle}
+        onClick={event => event.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+function MediaItemRow(props: MediaItemRowProps) {
+  const {
+    item,
+    workspaceMode,
+    intrinsicDimensions,
+    fallbackLoading,
+    fallbackFailed,
+    onError,
+    onToggle,
+    exportFrame,
+    onToggleExportFrame,
+    onVideoRef,
+    onIntrinsicDimensions,
+  } = props;
+  const num = String(item.index + 1).padStart(2, '0');
+
+  return (
     <label className={`media-item${item.selected ? ' selected' : ''}`}>
       <span className="item-number">{num}</span>
 
-      <div className="media-thumb" style={previewStyle}>
-        {item.type === 'video' ? (
-          <>
-            <video
-              src={item.url}
-              muted
-              playsInline
-              ref={onVideoRef}
-              onLoadedMetadata={event =>
-                onIntrinsicDimensions(
-                  event.currentTarget.videoWidth,
-                  event.currentTarget.videoHeight
-                )
-              }
-            />
-            <div className="play-overlay">
-              <div className="play-triangle" />
-            </div>
-          </>
-        ) : fallbackFailed ? (
-          <div className="thumb-placeholder">
-            <span className="thumb-icon">◻</span>
-          </div>
-        ) : (
-          <img
-            src={item.previewUrl ?? item.url}
-            alt="Preview"
-            onLoad={event =>
-              onIntrinsicDimensions(
-                event.currentTarget.naturalWidth,
-                event.currentTarget.naturalHeight
-              )
-            }
-            onError={onError}
-          />
-        )}
-        {fallbackLoading && !item.previewUrl && <span className="thumb-loading">···</span>}
-      </div>
+      <MediaPreview
+        item={item}
+        workspaceMode={workspaceMode}
+        intrinsicDimensions={intrinsicDimensions}
+        fallbackLoading={fallbackLoading}
+        fallbackFailed={fallbackFailed}
+        onError={onError}
+        onVideoRef={onVideoRef}
+        onIntrinsicDimensions={onIntrinsicDimensions}
+      />
 
       <div className="item-info">
         <span className={`item-type-badge ${item.type}`}>{item.type}</span>
         <span className="item-filename">{item.filenameHint}</span>
       </div>
 
-      <div className="media-controls">
-        {item.type === 'video' && (
-          <label
-            className="frame-toggle"
-            title="Export frame on download"
-            onClick={event => event.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              checked={exportFrame}
-              onChange={onToggleExportFrame}
-              className="frame-toggle-checkbox"
-            />
-            Frame
-          </label>
-        )}
-        <input
-          className="item-checkbox"
-          type="checkbox"
-          checked={item.selected}
-          onChange={onToggle}
-          onClick={e => e.stopPropagation()}
-        />
-      </div>
+      <MediaControls
+        item={item}
+        exportFrame={exportFrame}
+        onToggle={onToggle}
+        onToggleExportFrame={onToggleExportFrame}
+      />
     </label>
   );
 }
