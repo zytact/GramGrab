@@ -302,14 +302,24 @@ export default function Popup() {
 
   const handleOpenWorkspace = useCallback(async () => {
     if (isBusy) return;
-    const result = await openWorkspace(snapshot());
-    setWorkspaceExists(true);
-    if (result === 'focused') setMessage('GramGrab workspace focused.');
+    try {
+      const result = await openWorkspace(snapshot());
+      setWorkspaceExists(true);
+      if (result === 'focused') setMessage('GramGrab workspace focused.');
+    } catch (err) {
+      setStatus('error');
+      setMessage(`Could not open the workspace: ${String(err)}`);
+    }
   }, [isBusy, snapshot]);
 
   const handleReplaceWorkspace = useCallback(async () => {
-    await replaceWorkspace(snapshot());
-    setConfirmReplace(false);
+    try {
+      await replaceWorkspace(snapshot());
+      setConfirmReplace(false);
+    } catch (err) {
+      setStatus('error');
+      setMessage(`Could not replace the workspace session: ${String(err)}`);
+    }
   }, [snapshot]);
 
   const hasTransferableSession = isInstagramSource(url) || mediaItems.length > 0;
