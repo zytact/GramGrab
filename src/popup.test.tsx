@@ -331,4 +331,35 @@ describe('Popup', () => {
       expect(screen.getByText('Download Selected')).toBeDefined();
     });
   });
+
+  it('toggles video selection when its preview is clicked without toggling Frame', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [{ url: 'https://instagram.com/video.mp4', type: 'video', filenameHint: 'clip' }],
+      error: undefined,
+    });
+
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Frame')).toBeDefined();
+    });
+
+    const row = screen.getByText('clip').closest('.media-item');
+    const preview = row?.querySelector('video');
+    const frameCheckbox = screen.getByLabelText('Frame') as HTMLInputElement;
+    const selectionCheckbox = row?.querySelector('.item-checkbox') as HTMLInputElement;
+
+    expect(preview).not.toBeNull();
+    expect(frameCheckbox.checked).toBe(false);
+    expect(selectionCheckbox.checked).toBe(true);
+
+    await user.click(preview!);
+
+    expect(frameCheckbox.checked).toBe(false);
+    expect(selectionCheckbox.checked).toBe(false);
+  });
 });
