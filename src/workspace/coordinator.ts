@@ -24,6 +24,12 @@ async function focusWorkspace(tab: { id?: number; windowId?: number }): Promise<
   if (tab.id !== undefined) await browser.tabs.update(tab.id, { active: true });
 }
 
+async function createWorkspace(snapshot: WorkspaceSnapshot): Promise<'created'> {
+  await browser.storage.set({ [WORKSPACE_TRANSFER_KEY]: sanitizeSnapshot(snapshot) });
+  await browser.tabs.create({ url: workspaceUrl(snapshot.url), active: true });
+  return 'created';
+}
+
 export async function openWorkspace(snapshot: WorkspaceSnapshot): Promise<'created' | 'focused'> {
   if (openingWorkspace) return openingWorkspace;
   openingWorkspace = (async () => {
@@ -32,9 +38,7 @@ export async function openWorkspace(snapshot: WorkspaceSnapshot): Promise<'creat
       await focusWorkspace(existing);
       return 'focused' as const;
     }
-    await browser.storage.set({ [WORKSPACE_TRANSFER_KEY]: sanitizeSnapshot(snapshot) });
-    await browser.tabs.create({ url: workspaceUrl(snapshot.url), active: true });
-    return 'created' as const;
+    return createWorkspace(snapshot);
   })();
   try {
     return await openingWorkspace;
@@ -43,12 +47,19 @@ export async function openWorkspace(snapshot: WorkspaceSnapshot): Promise<'creat
   }
 }
 
-export async function replaceWorkspace(snapshot: WorkspaceSnapshot): Promise<void> {
+export async function replaceWorkspace(
+  snapshot: WorkspaceSnapshot
+): Promise<'replaced' | 'created'> {
   const existing = await findWorkspaceTab();
-  if (!existing?.id) return;
+  if (!existing?.id) return createWorkspace(snapshot);
   await browser.storage.set({ [WORKSPACE_TRANSFER_KEY]: sanitizeSnapshot(snapshot) });
-  await browser.tabs.update(existing.id, { url: workspaceUrl(snapshot.url), active: true });
-  await focusWorkspace(existing);
+  try {
+    await browser.tabs.update(existing.id, { url: workspaceUrl(snapshot.url), active: true });
+    await focusWorkspace(existing);
+    return 'replaced';
+  } catch {
+    return createWorkspace(snapshot);
+  }
 }
 
 export async function claimWorkspaceTransfer(): Promise<WorkspaceSnapshot | undefined> {
