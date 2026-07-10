@@ -748,22 +748,29 @@ body:has(.workspace-container) {
   padding: 20px clamp(12px, 2vw, 20px);
 }
 .workspace-container .media-list {
-  columns: 220px;
-  column-gap: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   max-height: none;
   overflow: visible;
   padding: 0;
   margin: 0;
 }
 .workspace-container .media-empty {
-  break-inside: avoid;
+  width: 100%;
+}
+.workspace-container .workspace-masonry-column {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 12px;
 }
 .workspace-container .media-item {
-  break-inside: avoid;
   display: grid;
   width: 100%;
-  margin: 0 0 12px;
-  grid-template-columns: 28px 1fr 24px;
+  margin: 0;
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: start;
   min-height: 142px;
   border: 1px solid var(--rule-strong);
@@ -790,9 +797,14 @@ body:has(.workspace-container) {
   grid-row: 2;
   padding-top: 8px;
 }
-.workspace-container .media-item > div:last-child {
-  grid-column: 3;
-  grid-row: 1 / span 2;
+.workspace-container .media-controls {
+  grid-column: 2;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
 }
 .workspace-container .workspace-action-bar {
   position: sticky;
@@ -866,7 +878,10 @@ body:has(.workspace-container) {
     border-right: 0;
   }
   .workspace-container .media-list {
-    columns: 1;
+    display: block;
+  }
+  .workspace-container .workspace-masonry-column + .workspace-masonry-column {
+    margin-top: 12px;
   }
 }
 
