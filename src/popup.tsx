@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { Effect, Either } from 'effect';
 import './styles.css';
 import { browser } from './lib/browser';
@@ -6,6 +6,8 @@ import { captureFrameFromVideoEffect } from './effect/frame-extraction';
 import { isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
+import { isPositiveFinitePair, resolveMediaRatio } from './workspace/media-ratio';
+import { distributeMasonryItems } from './workspace/masonry';
 
 interface MediaItem {
   index: number;
@@ -14,6 +16,8 @@ interface MediaItem {
   filenameHint: string;
   selected: boolean;
   previewUrl?: string;
+  width?: number;
+  height?: number;
 }
 
 interface PreviewResponse {
@@ -38,17 +42,38 @@ export default function Popup() {
   const [exportFrameSet, setExportFrameSet] = useState<Set<number>>(new Set());
   const [fallbackLoading, setFallbackLoading] = useState<Set<number>>(new Set());
   const [fallbackFailed, setFallbackFailed] = useState<Set<number>>(new Set());
+  const [intrinsicDimensions, setIntrinsicDimensions] = useState<
+    Record<number, { width: number; height: number }>
+  >({});
   const [autoDetected, setAutoDetected] = useState(false);
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
+
+  const replaceMediaItems = useCallback<typeof setMediaItems>(action => {
+    setIntrinsicDimensions({});
+    setMediaItems(action);
+  }, []);
 
   const handleFetch = useMediaFetch({
     url,
     setFetchedUrl,
-    setMediaItems,
+    setMediaItems: replaceMediaItems,
     setExportFrameSet,
     setStatus,
     setMessage,
   });
+
+  const handleIntrinsicDimensions = useCallback(
+    (item: MediaItem, width: number, height: number) => {
+      if (isPositiveFinitePair(item.width, item.height) || !isPositiveFinitePair(width, height))
+        return;
+      setIntrinsicDimensions(previous => {
+        const existing = previous[item.index];
+        if (existing?.width === width && existing.height === height) return previous;
+        return { ...previous, [item.index]: { width, height } };
+      });
+    },
+    []
+  );
 
   const toggleItem = useCallback((index: number) => {
     setMediaItems(prev =>
@@ -254,6 +279,8 @@ export default function Popup() {
 
         <MediaListSection
           mediaItems={mediaItems}
+          workspaceMode={workspaceMode}
+          intrinsicDimensions={intrinsicDimensions}
           allSelected={allSelected}
           fallbackLoading={fallbackLoading}
           fallbackFailed={fallbackFailed}
@@ -263,6 +290,7 @@ export default function Popup() {
           onToggleAll={toggleAll}
           onToggleExportFrame={toggleExportFrame}
           onVideoRef={handleVideoRef}
+          onIntrinsicDimensions={handleIntrinsicDimensions}
         />
 
         <div className="ext-section">
@@ -453,6 +481,8 @@ function renderFetchButtonLabel(status: Status) {
 
 function MediaListSection({
   mediaItems,
+  workspaceMode,
+  intrinsicDimensions,
   allSelected,
   fallbackLoading,
   fallbackFailed,
@@ -462,8 +492,11 @@ function MediaListSection({
   onToggleAll,
   onToggleExportFrame,
   onVideoRef,
+  onIntrinsicDimensions,
 }: {
   mediaItems: MediaItem[];
+  workspaceMode: boolean;
+  intrinsicDimensions: Record<number, { width: number; height: number }>;
   allSelected: boolean;
   fallbackLoading: Set<number>;
   fallbackFailed: Set<number>;
@@ -473,7 +506,49 @@ function MediaListSection({
   onToggleAll: () => void;
   onToggleExportFrame: (index: number) => void;
   onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
+  onIntrinsicDimensions: (item: MediaItem, width: number, height: number) => void;
 }) {
+  const masonryRef = useRef<HTMLDivElement>(null);
+  const [masonryWidth, setMasonryWidth] = useState(0);
+  const columnCount = Math.max(1, Math.floor((masonryWidth + 12) / 232));
+  const masonryColumns = useMemo(() => {
+    const columnWidth = Math.max(220, (masonryWidth - (columnCount - 1) * 12) / columnCount);
+    return distributeMasonryItems(mediaItems, workspaceMode ? columnCount : 1, item => {
+      const intrinsic = intrinsicDimensions[item.index];
+      const ratio = resolveMediaRatio(item.width, item.height, intrinsic?.width, intrinsic?.height);
+      return columnWidth / ratio + 104;
+    });
+  }, [columnCount, intrinsicDimensions, masonryWidth, mediaItems, workspaceMode]);
+
+  useEffect(() => {
+    const element = masonryRef.current;
+    if (!workspaceMode || !element || typeof ResizeObserver === 'undefined') return;
+    setMasonryWidth(Math.round(element.getBoundingClientRect().width));
+    const observer = new ResizeObserver(entries => {
+      const width = Math.round(entries[0]?.contentRect.width ?? 0);
+      setMasonryWidth(previous => (previous === width ? previous : width));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [workspaceMode]);
+
+  const renderItem = (item: MediaItem) => (
+    <MediaItemRow
+      key={item.index}
+      item={item}
+      workspaceMode={workspaceMode}
+      intrinsicDimensions={intrinsicDimensions[item.index]}
+      fallbackLoading={fallbackLoading.has(item.index)}
+      fallbackFailed={fallbackFailed.has(item.index)}
+      onError={() => onPreviewError(item)}
+      onToggle={() => onToggle(item.index)}
+      exportFrame={exportFrameSet.has(item.index)}
+      onToggleExportFrame={() => onToggleExportFrame(item.index)}
+      onVideoRef={el => onVideoRef(item.index, el)}
+      onIntrinsicDimensions={(width, height) => onIntrinsicDimensions(item, width, height)}
+    />
+  );
+
   return (
     <div className="ext-section" style={{ flex: 1 }}>
       {mediaItems.length > 0 && (
@@ -488,23 +563,17 @@ function MediaListSection({
         </div>
       )}
 
-      <div className="media-list">
+      <div ref={masonryRef} className={`media-list${workspaceMode ? ' workspace-media-list' : ''}`}>
         {mediaItems.length === 0 ? (
           <p className="media-empty">No media yet.</p>
-        ) : (
-          mediaItems.map(item => (
-            <MediaItemRow
-              key={item.index}
-              item={item}
-              fallbackLoading={fallbackLoading.has(item.index)}
-              fallbackFailed={fallbackFailed.has(item.index)}
-              onError={() => onPreviewError(item)}
-              onToggle={() => onToggle(item.index)}
-              exportFrame={exportFrameSet.has(item.index)}
-              onToggleExportFrame={() => onToggleExportFrame(item.index)}
-              onVideoRef={el => onVideoRef(item.index, el)}
-            />
+        ) : workspaceMode ? (
+          masonryColumns.map((column, index) => (
+            <div className="workspace-masonry-column" key={index}>
+              {column.map(renderItem)}
+            </div>
           ))
+        ) : (
+          mediaItems.map(renderItem)
         )}
       </div>
     </div>
@@ -571,17 +640,10 @@ async function exportSelectedFrames(
   return standardItems;
 }
 
-function MediaItemRow({
-  item,
-  fallbackLoading,
-  fallbackFailed,
-  onError,
-  onToggle,
-  exportFrame,
-  onToggleExportFrame,
-  onVideoRef,
-}: {
+interface MediaItemRowProps {
   item: MediaItem;
+  workspaceMode: boolean;
+  intrinsicDimensions?: { width: number; height: number };
   fallbackLoading: boolean;
   fallbackFailed: boolean;
   onError: () => void;
@@ -589,60 +651,173 @@ function MediaItemRow({
   exportFrame: boolean;
   onToggleExportFrame: () => void;
   onVideoRef: (el: HTMLVideoElement | null) => void;
-}) {
+  onIntrinsicDimensions: (width: number, height: number) => void;
+}
+
+function MediaPreview({
+  item,
+  workspaceMode,
+  intrinsicDimensions,
+  fallbackLoading,
+  fallbackFailed,
+  onError,
+  onVideoRef,
+  onIntrinsicDimensions,
+}: Omit<MediaItemRowProps, 'onToggle' | 'exportFrame' | 'onToggleExportFrame'>) {
+  const ratio = resolveMediaRatio(
+    item.width,
+    item.height,
+    intrinsicDimensions?.width,
+    intrinsicDimensions?.height
+  );
+  const previewStyle = workspaceMode ? ({ '--media-ratio': ratio } as CSSProperties) : undefined;
+
+  return (
+    <div className="media-thumb" style={previewStyle}>
+      {item.type === 'video' ? (
+        <VideoPreview
+          item={item}
+          onVideoRef={onVideoRef}
+          onIntrinsicDimensions={onIntrinsicDimensions}
+        />
+      ) : (
+        <ImagePreview
+          item={item}
+          fallbackFailed={fallbackFailed}
+          onError={onError}
+          onIntrinsicDimensions={onIntrinsicDimensions}
+        />
+      )}
+      {fallbackLoading && !item.previewUrl && <span className="thumb-loading">···</span>}
+    </div>
+  );
+}
+
+function VideoPreview({
+  item,
+  onVideoRef,
+  onIntrinsicDimensions,
+}: Pick<MediaItemRowProps, 'item' | 'onVideoRef' | 'onIntrinsicDimensions'>) {
+  return (
+    <>
+      <video
+        src={item.url}
+        muted
+        playsInline
+        ref={onVideoRef}
+        onLoadedMetadata={event =>
+          onIntrinsicDimensions(event.currentTarget.videoWidth, event.currentTarget.videoHeight)
+        }
+      />
+      <div className="play-overlay">
+        <div className="play-triangle" />
+      </div>
+    </>
+  );
+}
+
+function ImagePreview({
+  item,
+  fallbackFailed,
+  onError,
+  onIntrinsicDimensions,
+}: Pick<MediaItemRowProps, 'item' | 'fallbackFailed' | 'onError' | 'onIntrinsicDimensions'>) {
+  if (fallbackFailed) {
+    return (
+      <div className="thumb-placeholder">
+        <span className="thumb-icon">◻</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={item.previewUrl ?? item.url}
+      alt="Preview"
+      onLoad={event =>
+        onIntrinsicDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
+      }
+      onError={onError}
+    />
+  );
+}
+
+function MediaControls({
+  item,
+  exportFrame,
+  onToggle,
+  onToggleExportFrame,
+}: Pick<MediaItemRowProps, 'item' | 'exportFrame' | 'onToggle' | 'onToggleExportFrame'>) {
+  return (
+    <div className="media-controls">
+      {item.type === 'video' && (
+        <label
+          className="frame-toggle"
+          title="Export frame on download"
+          onClick={event => event.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={exportFrame}
+            onChange={onToggleExportFrame}
+            className="frame-toggle-checkbox"
+          />
+          Frame
+        </label>
+      )}
+      <input
+        className="item-checkbox"
+        type="checkbox"
+        checked={item.selected}
+        onChange={onToggle}
+        onClick={event => event.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+function MediaItemRow(props: MediaItemRowProps) {
+  const {
+    item,
+    workspaceMode,
+    intrinsicDimensions,
+    fallbackLoading,
+    fallbackFailed,
+    onError,
+    onToggle,
+    exportFrame,
+    onToggleExportFrame,
+    onVideoRef,
+    onIntrinsicDimensions,
+  } = props;
   const num = String(item.index + 1).padStart(2, '0');
 
   return (
     <label className={`media-item${item.selected ? ' selected' : ''}`}>
       <span className="item-number">{num}</span>
 
-      <div className="media-thumb">
-        {item.type === 'video' ? (
-          <>
-            <video src={item.url} muted playsInline ref={onVideoRef} />
-            <div className="play-overlay">
-              <div className="play-triangle" />
-            </div>
-          </>
-        ) : fallbackFailed ? (
-          <div className="thumb-placeholder">
-            <span className="thumb-icon">◻</span>
-          </div>
-        ) : (
-          <img src={item.previewUrl ?? item.url} alt="Preview" onError={onError} />
-        )}
-        {fallbackLoading && !item.previewUrl && <span className="thumb-loading">···</span>}
-      </div>
+      <MediaPreview
+        item={item}
+        workspaceMode={workspaceMode}
+        intrinsicDimensions={intrinsicDimensions}
+        fallbackLoading={fallbackLoading}
+        fallbackFailed={fallbackFailed}
+        onError={onError}
+        onVideoRef={onVideoRef}
+        onIntrinsicDimensions={onIntrinsicDimensions}
+      />
 
       <div className="item-info">
         <span className={`item-type-badge ${item.type}`}>{item.type}</span>
         <span className="item-filename">{item.filenameHint}</span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
-        {item.type === 'video' && (
-          <label
-            className="frame-toggle"
-            title="Export frame on download"
-            onClick={event => event.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              checked={exportFrame}
-              onChange={onToggleExportFrame}
-              className="frame-toggle-checkbox"
-            />
-            Frame
-          </label>
-        )}
-        <input
-          className="item-checkbox"
-          type="checkbox"
-          checked={item.selected}
-          onChange={onToggle}
-          onClick={e => e.stopPropagation()}
-        />
-      </div>
+      <MediaControls
+        item={item}
+        exportFrame={exportFrame}
+        onToggle={onToggle}
+        onToggleExportFrame={onToggleExportFrame}
+      />
     </label>
   );
 }
