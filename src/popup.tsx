@@ -1,20 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Effect, Either } from 'effect';
 import './styles.css';
 import { browser } from './lib/browser';
 import { captureFrameFromVideoEffect } from './effect/frame-extraction';
-import {
-  claimWorkspaceTransfer,
-  findWorkspaceTab,
-  openWorkspace,
-  replaceWorkspace,
-} from './workspace/coordinator';
-import {
-  isBusy as isWorkspaceBusy,
-  isInstagramSource,
-  WORKSPACE_TRANSFER_TTL_MS,
-  type WorkspaceSnapshot,
-} from './workspace/contracts';
+import { isBusy as isWorkspaceBusy } from './workspace/contracts';
+import { useMediaFetch } from './workspace/use-media-fetch';
+import { useWorkspaceSurface } from './workspace/use-workspace-surface';
 
 interface MediaItem {
   index: number;
@@ -23,11 +14,6 @@ interface MediaItem {
   filenameHint: string;
   selected: boolean;
   previewUrl?: string;
-}
-
-interface MediaResponse {
-  media?: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
-  error?: string;
 }
 
 interface PreviewResponse {
@@ -40,9 +26,10 @@ type VideoBlobResponse = { dataUrl?: string; error?: string };
 type DownloadMediaResponse = { error?: string; failures?: { url: string; reason: string }[] };
 
 export default function Popup() {
-  const workspaceMode = new URLSearchParams(window.location.search).get('surface') === 'workspace';
+  const initialWorkspaceMode =
+    new URLSearchParams(window.location.search).get('surface') === 'workspace';
   const [url, setUrl] = useState(() =>
-    workspaceMode ? (new URLSearchParams(window.location.search).get('source') ?? '') : ''
+    initialWorkspaceMode ? (new URLSearchParams(window.location.search).get('source') ?? '') : ''
   );
   const [fetchedUrl, setFetchedUrl] = useState('');
   const [status, setStatus] = useState<Status>('idle');
@@ -52,90 +39,16 @@ export default function Popup() {
   const [fallbackLoading, setFallbackLoading] = useState<Set<number>>(new Set());
   const [fallbackFailed, setFallbackFailed] = useState<Set<number>>(new Set());
   const [autoDetected, setAutoDetected] = useState(false);
-  const [workspaceExists, setWorkspaceExists] = useState(false);
-  const [confirmReplace, setConfirmReplace] = useState(false);
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
 
-  useEffect(() => {
-    if (workspaceMode) {
-      void claimWorkspaceTransfer().then(snapshot => {
-        if (snapshot) {
-          setUrl(snapshot.url);
-          setFetchedUrl(snapshot.fetchedUrl);
-          setStatus(snapshot.status);
-          setMessage(snapshot.message);
-          setMediaItems(snapshot.mediaItems);
-          setExportFrameSet(new Set(snapshot.exportFrameIndexes));
-          return;
-        }
-        const source = new URLSearchParams(window.location.search).get('source') ?? '';
-        if (source) {
-          setUrl(source);
-          setMessage('Source restored - fetch media to refresh results.');
-        }
-      });
-      return;
-    }
-    browser.tabs
-      .query({ active: true, currentWindow: true })
-      .then(tabs => {
-        const active = tabs[0];
-        const currentUrl = active?.url ?? '';
-        if (currentUrl.includes('instagram.com')) {
-          setUrl(currentUrl);
-          setAutoDetected(true);
-          setMessage('Instagram URL detected — ready to fetch.');
-        }
-      })
-      .catch(() => {});
-  }, [workspaceMode]);
-
-  useEffect(() => {
-    if (!workspaceMode) {
-      void findWorkspaceTab()
-        .then(tab => setWorkspaceExists(Boolean(tab)))
-        .catch(() => {});
-    }
-  }, [workspaceMode]);
-
-  useEffect(() => {
-    if (!workspaceMode) return;
-    const page = new URL(window.location.href);
-    if (url) page.searchParams.set('source', url);
-    else page.searchParams.delete('source');
-    window.history.replaceState({}, '', page);
-  }, [url, workspaceMode]);
-
-  const handleFetch = useCallback(async () => {
-    const trimmedUrl = url.trim();
-    if (!trimmedUrl) {
-      setMessage('No URL provided.');
-      setStatus('error');
-      return;
-    }
-
-    setStatus('fetching');
-    setMessage('Fetching media…');
-
-    try {
-      const res = (await browser.runtime.sendMessage({
-        type: 'FETCH_MEDIA',
-        url: trimmedUrl,
-      })) as MediaResponse;
-
-      if (res?.error) {
-        setMessage(res.error);
-        setStatus('error');
-        return;
-      }
-
-      setFetchedUrl(trimmedUrl);
-      applyFetchSuccess(res?.media ?? [], setMediaItems, setExportFrameSet, setStatus, setMessage);
-    } catch (err) {
-      setMessage(String(err));
-      setStatus('error');
-    }
-  }, [url]);
+  const handleFetch = useMediaFetch({
+    url,
+    setFetchedUrl,
+    setMediaItems,
+    setExportFrameSet,
+    setStatus,
+    setMessage,
+  });
 
   const toggleItem = useCallback((index: number) => {
     setMediaItems(prev =>
@@ -285,74 +198,39 @@ export default function Popup() {
     videoRefs.current[index] = el;
   }, []);
 
-  const snapshot = useCallback((): WorkspaceSnapshot => {
-    const createdAt = Date.now();
-    const resultsMatchDraftSource = fetchedUrl === url.trim();
-    return {
-      version: 1,
-      createdAt,
-      expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
-      url,
-      fetchedUrl: resultsMatchDraftSource ? fetchedUrl : '',
-      status: resultsMatchDraftSource
-        ? status === 'error'
-          ? 'error'
-          : status === 'done'
-            ? 'done'
-            : 'idle'
-        : 'idle',
-      message: resultsMatchDraftSource ? message : 'Ready to fetch media.',
-      mediaItems: resultsMatchDraftSource ? mediaItems : [],
-      exportFrameIndexes: resultsMatchDraftSource ? [...exportFrameSet] : [],
-    };
-  }, [exportFrameSet, fetchedUrl, mediaItems, message, status, url]);
-
-  const handleOpenWorkspace = useCallback(async () => {
-    if (isBusy) return;
-    try {
-      const result = await openWorkspace(snapshot());
-      setWorkspaceExists(true);
-      if (result === 'focused') setMessage('GramGrab workspace focused.');
-    } catch (err) {
-      setStatus('error');
-      setMessage(`Could not open the workspace: ${String(err)}`);
-    }
-  }, [isBusy, snapshot]);
-
-  const handleReplaceWorkspace = useCallback(async () => {
-    try {
-      await replaceWorkspace(snapshot());
-      setConfirmReplace(false);
-    } catch (err) {
-      setStatus('error');
-      setMessage(`Could not replace the workspace session: ${String(err)}`);
-    }
-  }, [snapshot]);
-
-  const hasTransferableSession = isInstagramSource(url) || mediaItems.length > 0;
+  const {
+    workspaceMode,
+    workspaceExists,
+    confirmReplace,
+    setConfirmReplace,
+    handleOpenWorkspace,
+    handleReplaceWorkspace,
+    hasTransferableSession,
+  } = useWorkspaceSurface({
+    url,
+    setUrl,
+    fetchedUrl,
+    setFetchedUrl,
+    status,
+    setStatus,
+    message,
+    setMessage,
+    mediaItems,
+    setMediaItems,
+    exportFrameSet,
+    setExportFrameSet,
+    setAutoDetected,
+  });
 
   return (
     <div className={`container${workspaceMode ? ' workspace-container' : ''}`}>
       <header className="ext-header">
-        <div className="ext-logo">
-          Gram<em>Grab</em>
-        </div>
-        <div className="ext-meta">
-          <span className="ext-subtitle">Media Extractor</span>
-          {!workspaceMode && (
-            <button
-              className="workspace-launch"
-              type="button"
-              onClick={() => void handleOpenWorkspace()}
-              disabled={isBusy}
-              title={
-                isBusy ? 'Finish the current operation before opening the workspace.' : undefined
-              }
-            >
-              {workspaceExists ? 'Go to tab' : 'Open in tab'}
-            </button>
-          )}
-        </div>
+        <PopupHeader
+          workspaceMode={workspaceMode}
+          workspaceExists={workspaceExists}
+          isBusy={isBusy}
+          onOpenWorkspace={handleOpenWorkspace}
+        />
       </header>
 
       <div className="ext-body">
@@ -370,14 +248,7 @@ export default function Popup() {
 
         <div className="ext-section">
           <button className="btn" onClick={handleFetch} disabled={isBusy}>
-            {status === 'fetching' ? (
-              <>
-                <span className="btn-spinner" />
-                Fetching…
-              </>
-            ) : (
-              'Fetch Media'
-            )}
+            {renderFetchButtonLabel(status)}
           </button>
         </div>
 
@@ -406,56 +277,140 @@ export default function Popup() {
         <span className={`status-text ${status}`}>{message}</span>
       </div>
 
-      {workspaceMode && (
-        <div className="workspace-action-bar">
-          <span>{selectedCount} selected</span>
-          <button
-            type="button"
-            className="workspace-secondary"
-            onClick={toggleAll}
-            disabled={!mediaItems.length}
-          >
-            {allSelected ? 'Clear all' : 'Select all'}
-          </button>
-          <button
-            type="button"
-            className="workspace-download"
-            onClick={handleDownload}
-            disabled={selectedCount === 0 || isBusy}
-          >
-            {status === 'downloading' ? 'Downloading…' : 'Download selected'}
-          </button>
-        </div>
-      )}
-
-      {!workspaceMode && workspaceExists && hasTransferableSession && (
-        <div className="workspace-replace">
-          {confirmReplace ? (
-            <div
-              role="alertdialog"
-              aria-label="Replace workspace session"
-              onKeyDown={event => event.key === 'Escape' && setConfirmReplace(false)}
-            >
-              <span>Replace the current workspace session?</span>
-              <button type="button" onClick={() => void handleReplaceWorkspace()}>
-                Replace
-              </button>
-              <button type="button" onClick={() => setConfirmReplace(false)}>
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => setConfirmReplace(true)} disabled={isBusy}>
-              Replace tab session
-            </button>
-          )}
-        </div>
-      )}
+      <WorkspaceActions
+        workspaceMode={workspaceMode}
+        selectedCount={selectedCount}
+        mediaCount={mediaItems.length}
+        allSelected={allSelected}
+        isBusy={isBusy}
+        isDownloading={status === 'downloading'}
+        onToggleAll={toggleAll}
+        onDownload={handleDownload}
+        workspaceExists={workspaceExists}
+        hasTransferableSession={hasTransferableSession}
+        confirmReplace={confirmReplace}
+        setConfirmReplace={setConfirmReplace}
+        onReplace={handleReplaceWorkspace}
+      />
 
       <footer className="ext-footer">
         <span className="footer-brand">GramGrab</span>
         <span className="footer-tagline">Posts · Reels · Stories</span>
       </footer>
+    </div>
+  );
+}
+
+function PopupHeader({
+  workspaceMode,
+  workspaceExists,
+  isBusy,
+  onOpenWorkspace,
+}: {
+  workspaceMode: boolean;
+  workspaceExists: boolean;
+  isBusy: boolean;
+  onOpenWorkspace: () => Promise<void>;
+}) {
+  return (
+    <>
+      <div className="ext-logo">
+        Gram<em>Grab</em>
+      </div>
+      <div className="ext-meta">
+        <span className="ext-subtitle">Media Extractor</span>
+        {!workspaceMode && (
+          <button
+            className="workspace-launch"
+            type="button"
+            onClick={() => void onOpenWorkspace()}
+            disabled={isBusy}
+            title={
+              isBusy ? 'Finish the current operation before opening the workspace.' : undefined
+            }
+          >
+            {workspaceExists ? 'Go to tab' : 'Open in tab'}
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+function WorkspaceActions({
+  workspaceMode,
+  selectedCount,
+  mediaCount,
+  allSelected,
+  isBusy,
+  isDownloading,
+  onToggleAll,
+  onDownload,
+  workspaceExists,
+  hasTransferableSession,
+  confirmReplace,
+  setConfirmReplace,
+  onReplace,
+}: {
+  workspaceMode: boolean;
+  selectedCount: number;
+  mediaCount: number;
+  allSelected: boolean;
+  isBusy: boolean;
+  isDownloading: boolean;
+  onToggleAll: () => void;
+  onDownload: () => Promise<void>;
+  workspaceExists: boolean;
+  hasTransferableSession: boolean;
+  confirmReplace: boolean;
+  setConfirmReplace: (value: boolean) => void;
+  onReplace: () => Promise<void>;
+}) {
+  if (workspaceMode) {
+    return (
+      <div className="workspace-action-bar">
+        <span>{selectedCount} selected</span>
+        <button
+          type="button"
+          className="workspace-secondary"
+          onClick={onToggleAll}
+          disabled={!mediaCount}
+        >
+          {allSelected ? 'Clear all' : 'Select all'}
+        </button>
+        <button
+          type="button"
+          className="workspace-download"
+          onClick={() => void onDownload()}
+          disabled={selectedCount === 0 || isBusy}
+        >
+          {isDownloading ? 'Downloading…' : 'Download selected'}
+        </button>
+      </div>
+    );
+  }
+  if (!workspaceExists || !hasTransferableSession) return null;
+  return (
+    <div className="workspace-replace">
+      {confirmReplace ? (
+        <div
+          role="alertdialog"
+          aria-label="Replace workspace session"
+          onKeyDown={event => event.key === 'Escape' && setConfirmReplace(false)}
+        >
+          <span>Replace the current workspace session?</span>
+          <button type="button" onClick={() => void onReplace()}>
+            Replace
+          </button>
+          <button type="button" onClick={() => setConfirmReplace(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setConfirmReplace(true)} disabled={isBusy}>
+          Replace tab session
+        </button>
+      )}
     </div>
   );
 }
@@ -483,6 +438,17 @@ function renderDownloadButtonLabel(status: Status, selectedCount: number) {
   }
 
   return selectedCount > 0 ? `Download ${selectedCount} Selected` : 'Download Selected';
+}
+
+function renderFetchButtonLabel(status: Status) {
+  return status === 'fetching' ? (
+    <>
+      <span className="btn-spinner" />
+      Fetching…
+    </>
+  ) : (
+    'Fetch Media'
+  );
 }
 
 function MediaListSection({
@@ -542,32 +508,6 @@ function MediaListSection({
         )}
       </div>
     </div>
-  );
-}
-
-function applyFetchSuccess(
-  media: NonNullable<MediaResponse['media']>,
-  setMediaItems: React.Dispatch<React.SetStateAction<MediaItem[]>>,
-  setExportFrameSet: React.Dispatch<React.SetStateAction<Set<number>>>,
-  setStatus: React.Dispatch<React.SetStateAction<Status>>,
-  setMessage: React.Dispatch<React.SetStateAction<string>>
-) {
-  const items = media.map((item, i) => ({
-    index: i,
-    type: item.type,
-    url: item.url,
-    filenameHint: item.filenameHint,
-    selected: true,
-    previewUrl: item.previewUrl,
-  }));
-
-  setMediaItems(items);
-  setExportFrameSet(new Set());
-  setStatus(items.length > 0 ? 'done' : 'error');
-  setMessage(
-    items.length > 0
-      ? `${items.length} item${items.length !== 1 ? 's' : ''} found — select and download.`
-      : 'No downloadable media found.'
   );
 }
 
