@@ -20,8 +20,8 @@ export async function findWorkspaceTab() {
 }
 
 async function focusWorkspace(tab: { id?: number; windowId?: number }): Promise<void> {
-  if (tab.windowId !== undefined) await browser.windows.update(tab.windowId, { focused: true });
   if (tab.id !== undefined) await browser.tabs.update(tab.id, { active: true });
+  if (tab.windowId !== undefined) await browser.windows.update(tab.windowId, { focused: true });
 }
 
 async function createWorkspace(snapshot: WorkspaceSnapshot): Promise<'created'> {
