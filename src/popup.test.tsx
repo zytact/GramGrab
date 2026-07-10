@@ -12,9 +12,18 @@ const mockBrowser = {
       .mockResolvedValue([
         { id: 1, url: 'https://www.instagram.com/p/abc123/', active: true, currentWindow: true },
       ]),
+    create: vi.fn().mockResolvedValue({ id: 2 }),
+    update: vi.fn().mockResolvedValue(undefined),
   },
   runtime: {
     sendMessage: vi.fn(),
+    getURL: vi.fn().mockReturnValue('chrome-extension://test/popup.html'),
+  },
+  windows: { update: vi.fn().mockResolvedValue(undefined) },
+  storage: {
+    get: vi.fn().mockResolvedValue({}),
+    set: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
   },
 };
 
@@ -31,6 +40,62 @@ describe('Popup', () => {
     });
     expect(screen.getByPlaceholderText(/Paste an Instagram URL/i)).toBeDefined();
     expect(screen.getByText('Fetch Media')).toBeDefined();
+  });
+
+  it('opens a workspace tab from the header action', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByRole('button', { name: 'Open in tab' }));
+    await waitFor(() => {
+      expect(mockBrowser.tabs.create).toHaveBeenCalledWith({
+        active: true,
+        url: 'chrome-extension://test/popup.html?surface=workspace&source=https%3A%2F%2Fwww.instagram.com%2Fp%2Fabc123%2F',
+      });
+    });
+  });
+
+  it('shows a useful error when the workspace cannot be opened', async () => {
+    const user = userEvent.setup();
+    mockBrowser.tabs.create.mockRejectedValueOnce(new Error('tabs.create failed'));
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByRole('button', { name: 'Open in tab' }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Could not open the workspace: Error: tabs.create failed/)
+      ).toBeDefined();
+    });
+  });
+
+  it('does not transfer previous results after the draft source changes', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [{ url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'a' }],
+    });
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    await waitFor(() => expect(screen.getByText(/1 item found/i)).toBeDefined());
+
+    const input = screen.getByPlaceholderText(/Paste an Instagram URL/i);
+    await user.clear(input);
+    await user.type(input, 'https://www.instagram.com/p/new-source/');
+    await user.click(screen.getByRole('button', { name: 'Open in tab' }));
+
+    await waitFor(() => {
+      expect(mockBrowser.storage.set).toHaveBeenLastCalledWith({
+        'workspace-transfer-v1': expect.objectContaining({
+          url: 'https://www.instagram.com/p/new-source/',
+          fetchedUrl: '',
+          mediaItems: [],
+          exportFrameIndexes: [],
+        }),
+      });
+    });
   });
 
   it('auto-detects Instagram URL from active tab', async () => {
