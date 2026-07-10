@@ -283,7 +283,8 @@ function createHighlightCoverItem(
     type: 'image',
     url: downloadUrl,
     previewUrl: buildHighlightPreviewUrl(versions.cropped?.url, downloadUrl),
-    ...pickMediaDimensions(versions.full, versions.cropped),
+    // The workspace renders the cropped URL when available, so its geometry must drive preview sizing.
+    ...pickMediaDimensions(versions.cropped, versions.full),
     filenameHint: buildHighlightFilenameHint(entry, username),
   };
 }
@@ -947,8 +948,28 @@ interface FetchMediaMsg {
   url: string;
 }
 
+function hasValidMediaDimensions(
+  item: MediaItem
+): item is MediaItem & { width: number; height: number } {
+  return (
+    Number.isFinite(item.width) &&
+    Number.isFinite(item.height) &&
+    item.width! > 0 &&
+    item.height! > 0
+  );
+}
+
 async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
-  media: { url: string; type: string; filenameHint: string; previewUrl?: string }[] | undefined;
+  media:
+    | {
+        url: string;
+        type: string;
+        filenameHint: string;
+        previewUrl?: string;
+        width?: number;
+        height?: number;
+      }[]
+    | undefined;
   error: string | undefined;
 }> {
   return runHandler(
@@ -959,6 +980,7 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
           type: item.type,
           filenameHint: item.filenameHint,
           previewUrl: item.previewUrl,
+          ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
         })),
       }))
     ),
