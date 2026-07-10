@@ -24,6 +24,7 @@ export type OnMessageCallback = (
 
 export interface BrowserShim {
   runtime: {
+    getURL: (path: string) => string;
     sendMessage: (msg: unknown) => Promise<unknown>;
     onMessage: {
       addListener: (callback: OnMessageCallback) => void;
@@ -33,7 +34,10 @@ export interface BrowserShim {
     query: (queryInfo: {
       active?: boolean;
       currentWindow?: boolean;
-    }) => Promise<{ id?: number; url?: string }[]>;
+      url?: string;
+    }) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
+    create: (createProperties: { url: string; active?: boolean }) => Promise<{ id?: number }>;
+    update: (tabId: number, updateProperties: { active?: boolean; url?: string }) => Promise<void>;
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
@@ -41,7 +45,9 @@ export interface BrowserShim {
   storage: {
     get: (keys?: unknown) => Promise<Record<string, unknown>>;
     set: (items: Record<string, unknown>) => Promise<void>;
+    remove: (keys: string | string[]) => Promise<void>;
   };
+  windows: { update: (windowId: number, updateInfo: { focused: boolean }) => Promise<void> };
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +55,7 @@ export interface BrowserShim {
 // ---------------------------------------------------------------------------
 
 interface ChromeRuntime {
+  getURL: (path: string) => string;
   lastError?: { message?: string };
   sendMessage: (msg: unknown, callback: (response: unknown) => void) => void;
   onMessage: { addListener: (callback: OnMessageCallback) => void };
@@ -56,7 +63,12 @@ interface ChromeRuntime {
 
 interface ChromeGlobal {
   runtime: ChromeRuntime;
-  tabs: { query: (q: unknown, cb: (tabs: unknown[]) => void) => void };
+  tabs: {
+    query: (q: unknown, cb: (tabs: unknown[]) => void) => void;
+    create: (q: unknown, cb: (tab: unknown) => void) => void;
+    update: (id: number, q: unknown, cb: () => void) => void;
+  };
+  windows: { update: (id: number, q: unknown, cb: () => void) => void };
   downloads: {
     download: (
       opts: { url: string; filename?: string; saveAs?: boolean },
@@ -67,6 +79,7 @@ interface ChromeGlobal {
     local: {
       get: (keys: unknown, cb: (result: Record<string, unknown>) => void) => void;
       set: (items: Record<string, unknown>, cb?: () => void) => void;
+      remove: (keys: string | string[], cb?: () => void) => void;
     };
   };
 }
@@ -82,6 +95,7 @@ function lastError(cr: ChromeRuntime): Error | undefined {
 function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
   return {
     runtime: {
+      getURL: path => chrome.runtime.getURL(path),
       sendMessage: msg =>
         new Promise((resolve, reject) => {
           chrome.runtime.sendMessage(msg, response => {
@@ -100,7 +114,23 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
           chrome.tabs.query(queryInfo, tabs => {
             const err = lastError(chrome.runtime);
             if (err) reject(err);
-            else resolve(tabs as { id?: number; url?: string }[]);
+            else resolve(tabs as { id?: number; url?: string; windowId?: number }[]);
+          });
+        }),
+      create: createProperties =>
+        new Promise((resolve, reject) => {
+          chrome.tabs.create(createProperties, tab => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve(tab as { id?: number });
+          });
+        }),
+      update: (tabId, updateProperties) =>
+        new Promise((resolve, reject) => {
+          chrome.tabs.update(tabId, updateProperties, () => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve();
           });
         }),
     },
@@ -131,6 +161,24 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             else resolve();
           });
         }),
+      remove: keys =>
+        new Promise((resolve, reject) => {
+          chrome.storage.local.remove(keys, () => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve();
+          });
+        }),
+    },
+    windows: {
+      update: (windowId, updateInfo) =>
+        new Promise((resolve, reject) => {
+          chrome.windows.update(windowId, updateInfo, () => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve();
+          });
+        }),
     },
   };
 }
@@ -141,15 +189,22 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
 
 const noopShim: BrowserShim = {
   runtime: {
+    getURL: path => path,
     sendMessage: () => Promise.resolve(undefined),
     onMessage: { addListener: () => {} },
   },
-  tabs: { query: () => Promise.resolve([]) },
+  tabs: {
+    query: () => Promise.resolve([]),
+    create: () => Promise.resolve({}),
+    update: () => Promise.resolve(),
+  },
   downloads: { download: () => Promise.resolve(0) },
   storage: {
     get: () => Promise.resolve({}),
     set: () => Promise.resolve(),
+    remove: () => Promise.resolve(),
   },
+  windows: { update: () => Promise.resolve() },
 };
 
 // ---------------------------------------------------------------------------
