@@ -10,4 +10,19 @@ describe('distributeMasonryItems', () => {
   it('keeps every item in a single column when space is limited', () => {
     expect(distributeMasonryItems(['a', 'b'], 1, () => 1)).toEqual([['a', 'b']]);
   });
+
+  it('falls back to one column when the requested count is not positive', () => {
+    expect(distributeMasonryItems(['a', 'b'], 0, () => 1)).toEqual([['a', 'b']]);
+  });
+
+  it('preserves source order when columns have equal estimated heights', () => {
+    expect(distributeMasonryItems(['a', 'b', 'c', 'd'], 2, () => 1)).toEqual([
+      ['a', 'c'],
+      ['b', 'd'],
+    ]);
+  });
+
+  it('returns the requested empty columns when there are no items', () => {
+    expect(distributeMasonryItems([], 3, () => 1)).toEqual([[], [], []]);
+  });
 });
