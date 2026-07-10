@@ -84,6 +84,33 @@ interface ChromeGlobal {
   };
 }
 
+interface NativeBrowserGlobal {
+  runtime: {
+    getURL: (path: string) => string;
+    sendMessage: (msg: unknown) => Promise<unknown>;
+    onMessage: { addListener: (callback: OnMessageCallback) => void };
+  };
+  tabs: {
+    query: (queryInfo: unknown) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
+    create: (createProperties: { url: string; active?: boolean }) => Promise<{ id?: number }>;
+    update: (
+      tabId: number,
+      updateProperties: { active?: boolean; url?: string }
+    ) => Promise<unknown>;
+  };
+  downloads: {
+    download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
+  };
+  storage: {
+    local: {
+      get: (keys?: unknown) => Promise<Record<string, unknown>>;
+      set: (items: Record<string, unknown>) => Promise<void>;
+      remove: (keys: string | string[]) => Promise<void>;
+    };
+  };
+  windows: { update: (windowId: number, updateInfo: { focused: boolean }) => Promise<unknown> };
+}
+
 // ---------------------------------------------------------------------------
 // Chrome shim builder
 // ---------------------------------------------------------------------------
@@ -183,6 +210,31 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
   };
 }
 
+function hasNativeStorageLocal(value: unknown): value is NativeBrowserGlobal {
+  const storage = (value as { storage?: { local?: unknown } } | undefined)?.storage;
+  return typeof storage?.local === 'object' && storage.local !== null;
+}
+
+function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
+  return {
+    runtime: native.runtime,
+    tabs: {
+      query: queryInfo => native.tabs.query(queryInfo),
+      create: createProperties => native.tabs.create(createProperties),
+      update: async (tabId, updateProperties) => {
+        await native.tabs.update(tabId, updateProperties);
+      },
+    },
+    downloads: native.downloads,
+    storage: native.storage.local,
+    windows: {
+      update: async (windowId, updateInfo) => {
+        await native.windows.update(windowId, updateInfo);
+      },
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Fallback stub (tests / environments without either global)
 // ---------------------------------------------------------------------------
@@ -219,9 +271,12 @@ const noopShim: BrowserShim = {
  */
 function getActiveBrowser(): BrowserShim {
   const g = globalThis as Record<string, unknown>;
-  const nativeBrowser = g['browser'] as BrowserShim | undefined;
+  const nativeBrowser = g['browser'];
   const chrome = g['chrome'] as ChromeGlobal | undefined;
-  return nativeBrowser ?? (chrome ? buildChromeShim(chrome) : noopShim);
+  if (hasNativeStorageLocal(nativeBrowser)) return buildNativeShim(nativeBrowser);
+  return (
+    (nativeBrowser as BrowserShim | undefined) ?? (chrome ? buildChromeShim(chrome) : noopShim)
+  );
 }
 
 export const browser: BrowserShim = new Proxy({} as BrowserShim, {
