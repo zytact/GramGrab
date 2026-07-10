@@ -56,6 +56,20 @@ describe('Popup', () => {
     });
   });
 
+  it('shows a useful error when the workspace cannot be opened', async () => {
+    const user = userEvent.setup();
+    mockBrowser.tabs.create.mockRejectedValueOnce(new Error('tabs.create failed'));
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByRole('button', { name: 'Open in tab' }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Could not open the workspace: Error: tabs.create failed/)
+      ).toBeDefined();
+    });
+  });
+
   it('auto-detects Instagram URL from active tab', async () => {
     await act(async () => {
       render(<Popup />);
