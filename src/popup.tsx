@@ -793,7 +793,7 @@ function MediaItemRow(props: MediaItemRowProps) {
   const num = String(item.index + 1).padStart(2, '0');
 
   return (
-    <label className={`media-item${item.selected ? ' selected' : ''}`}>
+    <div className={`media-item${item.selected ? ' selected' : ''}`} onClick={onToggle}>
       <span className="item-number">{num}</span>
 
       <MediaPreview
@@ -818,6 +818,6 @@ function MediaItemRow(props: MediaItemRowProps) {
         onToggle={onToggle}
         onToggleExportFrame={onToggleExportFrame}
       />
-    </label>
+    </div>
   );
 }
