@@ -287,16 +287,23 @@ export default function Popup() {
 
   const snapshot = useCallback((): WorkspaceSnapshot => {
     const createdAt = Date.now();
+    const resultsMatchDraftSource = fetchedUrl === url.trim();
     return {
       version: 1,
       createdAt,
       expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
       url,
-      fetchedUrl,
-      status: status === 'error' ? 'error' : status === 'done' ? 'done' : 'idle',
-      message,
-      mediaItems,
-      exportFrameIndexes: [...exportFrameSet],
+      fetchedUrl: resultsMatchDraftSource ? fetchedUrl : '',
+      status: resultsMatchDraftSource
+        ? status === 'error'
+          ? 'error'
+          : status === 'done'
+            ? 'done'
+            : 'idle'
+        : 'idle',
+      message: resultsMatchDraftSource ? message : 'Ready to fetch media.',
+      mediaItems: resultsMatchDraftSource ? mediaItems : [],
+      exportFrameIndexes: resultsMatchDraftSource ? [...exportFrameSet] : [],
     };
   }, [exportFrameSet, fetchedUrl, mediaItems, message, status, url]);
 
