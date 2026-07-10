@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type CSSProperties } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { Effect, Either } from 'effect';
 import './styles.css';
 import { browser } from './lib/browser';
@@ -7,6 +7,7 @@ import { isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
 import { isPositiveFinitePair, resolveMediaRatio } from './workspace/media-ratio';
+import { distributeMasonryItems } from './workspace/masonry';
 
 interface MediaItem {
   index: number;
@@ -507,6 +508,47 @@ function MediaListSection({
   onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
   onIntrinsicDimensions: (item: MediaItem, width: number, height: number) => void;
 }) {
+  const masonryRef = useRef<HTMLDivElement>(null);
+  const [masonryWidth, setMasonryWidth] = useState(0);
+  const columnCount = Math.max(1, Math.floor((masonryWidth + 12) / 232));
+  const masonryColumns = useMemo(() => {
+    const columnWidth = Math.max(220, (masonryWidth - (columnCount - 1) * 12) / columnCount);
+    return distributeMasonryItems(mediaItems, workspaceMode ? columnCount : 1, item => {
+      const intrinsic = intrinsicDimensions[item.index];
+      const ratio = resolveMediaRatio(item.width, item.height, intrinsic?.width, intrinsic?.height);
+      return columnWidth / ratio + 104;
+    });
+  }, [columnCount, intrinsicDimensions, masonryWidth, mediaItems, workspaceMode]);
+
+  useEffect(() => {
+    const element = masonryRef.current;
+    if (!workspaceMode || !element || typeof ResizeObserver === 'undefined') return;
+    setMasonryWidth(Math.round(element.getBoundingClientRect().width));
+    const observer = new ResizeObserver(entries => {
+      const width = Math.round(entries[0]?.contentRect.width ?? 0);
+      setMasonryWidth(previous => (previous === width ? previous : width));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [workspaceMode]);
+
+  const renderItem = (item: MediaItem) => (
+    <MediaItemRow
+      key={item.index}
+      item={item}
+      workspaceMode={workspaceMode}
+      intrinsicDimensions={intrinsicDimensions[item.index]}
+      fallbackLoading={fallbackLoading.has(item.index)}
+      fallbackFailed={fallbackFailed.has(item.index)}
+      onError={() => onPreviewError(item)}
+      onToggle={() => onToggle(item.index)}
+      exportFrame={exportFrameSet.has(item.index)}
+      onToggleExportFrame={() => onToggleExportFrame(item.index)}
+      onVideoRef={el => onVideoRef(item.index, el)}
+      onIntrinsicDimensions={(width, height) => onIntrinsicDimensions(item, width, height)}
+    />
+  );
+
   return (
     <div className="ext-section" style={{ flex: 1 }}>
       {mediaItems.length > 0 && (
@@ -521,26 +563,17 @@ function MediaListSection({
         </div>
       )}
 
-      <div className={`media-list${workspaceMode ? ' workspace-media-list' : ''}`}>
+      <div ref={masonryRef} className={`media-list${workspaceMode ? ' workspace-media-list' : ''}`}>
         {mediaItems.length === 0 ? (
           <p className="media-empty">No media yet.</p>
-        ) : (
-          mediaItems.map(item => (
-            <MediaItemRow
-              key={item.index}
-              item={item}
-              workspaceMode={workspaceMode}
-              intrinsicDimensions={intrinsicDimensions[item.index]}
-              fallbackLoading={fallbackLoading.has(item.index)}
-              fallbackFailed={fallbackFailed.has(item.index)}
-              onError={() => onPreviewError(item)}
-              onToggle={() => onToggle(item.index)}
-              exportFrame={exportFrameSet.has(item.index)}
-              onToggleExportFrame={() => onToggleExportFrame(item.index)}
-              onVideoRef={el => onVideoRef(item.index, el)}
-              onIntrinsicDimensions={(width, height) => onIntrinsicDimensions(item, width, height)}
-            />
+        ) : workspaceMode ? (
+          masonryColumns.map((column, index) => (
+            <div className="workspace-masonry-column" key={index}>
+              {column.map(renderItem)}
+            </div>
           ))
+        ) : (
+          mediaItems.map(renderItem)
         )}
       </div>
     </div>
@@ -689,7 +722,7 @@ function MediaItemRow({
         <span className="item-filename">{item.filenameHint}</span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+      <div className="media-controls">
         {item.type === 'video' && (
           <label
             className="frame-toggle"
