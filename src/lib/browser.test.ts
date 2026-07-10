@@ -64,6 +64,39 @@ describe('browser shim', () => {
       const tabs = await shim.tabs.query({ active: true });
       expect(tabs).toEqual([{ id: 99 }]);
     });
+
+    it('maps native browser.storage.local to the shim storage interface', async () => {
+      const native = {
+        runtime: {
+          getURL: vi.fn(path => `moz-extension://test/${path}`),
+          sendMessage: vi.fn().mockResolvedValue({}),
+          onMessage: { addListener: vi.fn() },
+        },
+        tabs: {
+          query: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockResolvedValue({ id: 4 }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        downloads: { download: vi.fn().mockResolvedValue(1) },
+        storage: {
+          local: {
+            get: vi.fn().mockResolvedValue({ saved: true }),
+            set: vi.fn().mockResolvedValue(undefined),
+            remove: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+        windows: { update: vi.fn().mockResolvedValue({}) },
+      };
+      (globalThis as G)['browser'] = native;
+      (globalThis as G)['chrome'] = undefined;
+
+      const shim = await loadShim();
+      await shim.storage.set({ workspace: true });
+      await shim.storage.remove('workspace');
+      expect(await shim.storage.get('workspace')).toEqual({ saved: true });
+      expect(native.storage.local.set).toHaveBeenCalledWith({ workspace: true });
+      expect(native.storage.local.remove).toHaveBeenCalledWith('workspace');
+    });
   });
 
   // ── 2. Chrome fallback ───────────────────────────────────────────────────
