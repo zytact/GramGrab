@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { replaceWorkspace } from './coordinator';
+import { openWorkspace, replaceWorkspace } from './coordinator';
 import type { WorkspaceSnapshot } from './contracts';
 
 const snapshot: WorkspaceSnapshot = {
@@ -56,5 +56,27 @@ describe('replaceWorkspace', () => {
 
     await expect(replaceWorkspace(snapshot)).resolves.toBe('created');
     expect(mockBrowser.tabs.create).toHaveBeenCalledOnce();
+  });
+});
+
+describe('openWorkspace', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockBrowser.tabs.update.mockResolvedValue(undefined);
+    mockBrowser.windows.update.mockResolvedValue(undefined);
+  });
+
+  it('activates an existing workspace tab before focusing its window', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 5, windowId: 2, url: 'chrome-extension://test/popup.html?surface=workspace' },
+    ]);
+
+    await expect(openWorkspace(snapshot)).resolves.toBe('focused');
+
+    expect(mockBrowser.tabs.update).toHaveBeenCalledWith(5, { active: true });
+    expect(mockBrowser.windows.update).toHaveBeenCalledWith(2, { focused: true });
+    expect(mockBrowser.tabs.update.mock.invocationCallOrder[0]).toBeLessThan(
+      mockBrowser.windows.update.mock.invocationCallOrder[0]!
+    );
   });
 });
