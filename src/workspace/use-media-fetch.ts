@@ -5,7 +5,14 @@ import type { WorkspaceMediaItem } from './contracts';
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
 interface MediaResponse {
-  media?: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
+  media?: {
+    url: string;
+    type: string;
+    filenameHint: string;
+    previewUrl?: string;
+    width?: number;
+    height?: number;
+  }[];
   error?: string;
 }
 

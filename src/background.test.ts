@@ -533,8 +533,16 @@ describe('background dispatcher', () => {
               id: 'highlight:17900123',
               title: 'Travel',
               cover_media: {
-                full_image_version: { url: 'https://cdn.instagram.com/full1.jpg' },
-                cropped_image_version: { url: 'https://cdn.instagram.com/crop1.jpg' },
+                full_image_version: {
+                  url: 'https://cdn.instagram.com/full1.jpg',
+                  width: 1080,
+                  height: 1920,
+                },
+                cropped_image_version: {
+                  url: 'https://cdn.instagram.com/crop1.jpg',
+                  width: 1080,
+                  height: 1080,
+                },
               },
             },
             {
@@ -559,8 +567,10 @@ describe('background dispatcher', () => {
       expect(result.error).toBeUndefined();
       expect(result.media).toHaveLength(3);
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/pic_hd.jpg');
+      expect(result.media[0]).toMatchObject({ width: 320, height: 320 });
       expect(result.media[1]?.url).toBe('https://cdn.instagram.com/full1.jpg');
       expect(result.media[1]?.previewUrl).toBe('https://cdn.instagram.com/crop1.jpg');
+      expect(result.media[1]).toMatchObject({ width: 1080, height: 1080 });
       expect(result.media[1]?.filenameHint).toBe('someuser_highlight_travel_17900123');
       expect(result.media[2]?.url).toBe('https://cdn.instagram.com/crop2.jpg');
       expect(result.media[2]?.previewUrl).toBeUndefined();

@@ -17,6 +17,8 @@ const snapshot: WorkspaceSnapshot = {
       filenameHint: 'image',
       selected: true,
       previewUrl: 'data:image/png;base64,preview',
+      width: 1080,
+      height: 1920,
     },
   ],
   exportFrameIndexes: [],
@@ -31,6 +33,17 @@ describe('workspace contracts', () => {
   });
 
   it('removes transient data URL previews from transfers', () => {
-    expect(sanitizeSnapshot(snapshot).mediaItems[0]?.previewUrl).toBeUndefined();
+    const item = sanitizeSnapshot(snapshot).mediaItems[0];
+    expect(item?.previewUrl).toBeUndefined();
+    expect(item).toMatchObject({ width: 1080, height: 1920 });
+  });
+
+  it('keeps older geometry-free snapshots valid', () => {
+    const olderSnapshot = sanitizeSnapshot({
+      ...snapshot,
+      mediaItems: [{ ...snapshot.mediaItems[0]!, width: undefined, height: undefined }],
+    });
+    expect(olderSnapshot.mediaItems[0]).not.toHaveProperty('width');
+    expect(olderSnapshot.mediaItems[0]).not.toHaveProperty('height');
   });
 });
