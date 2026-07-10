@@ -7,6 +7,8 @@ export interface WorkspaceMediaItem {
   filenameHint: string;
   selected: boolean;
   previewUrl?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface WorkspaceSnapshot {
@@ -57,9 +59,16 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
       ...(item.previewUrl && !item.previewUrl.startsWith('data:')
         ? { previewUrl: item.previewUrl }
         : {}),
+      ...(isPositiveFinitePair(item.width, item.height)
+        ? { width: item.width, height: item.height }
+        : {}),
     })),
     exportFrameIndexes: [...snapshot.exportFrameIndexes],
   };
+}
+
+function isPositiveFinitePair(width: number | undefined, height: number | undefined): boolean {
+  return Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0;
 }
 
 export function isValidSnapshot(value: unknown): value is WorkspaceSnapshot {
