@@ -59,11 +59,21 @@ const mockMessageCallbacks: Map<string, (msg: unknown) => unknown> = new Map();
 type MockBrowser = {
   runtime: {
     sendMessage: ReturnType<typeof vi.fn>;
+    getURL: ReturnType<typeof vi.fn>;
     onMessage: { addListener: ReturnType<typeof vi.fn> };
   };
-  tabs: { query: ReturnType<typeof vi.fn> };
+  tabs: {
+    query: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
   downloads: typeof mockDownloads;
-  storage: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
+  storage: {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
+  };
+  windows: { update: ReturnType<typeof vi.fn> };
 };
 
 const mockBrowserInstance: MockBrowser = {
@@ -76,6 +86,7 @@ const mockBrowserInstance: MockBrowser = {
       }
       return Promise.resolve({});
     }),
+    getURL: vi.fn().mockImplementation((path: string) => `chrome-extension://test/${path}`),
     onMessage: {
       addListener: vi.fn().mockImplementation((callback: (msg: unknown) => void) => {
         const type = (msg: unknown) => {
@@ -105,12 +116,16 @@ const mockBrowserInstance: MockBrowser = {
   },
   tabs: {
     query: vi.fn().mockImplementation(() => Promise.resolve(mockTabs)),
+    create: vi.fn().mockResolvedValue({ id: 2 }),
+    update: vi.fn().mockResolvedValue(undefined),
   },
   downloads: mockDownloads,
   storage: {
     get: vi.fn().mockResolvedValue({}),
     set: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
   },
+  windows: { update: vi.fn().mockResolvedValue(undefined) },
 };
 
 globalThis.browser = mockBrowserInstance;
