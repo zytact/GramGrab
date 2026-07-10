@@ -70,6 +70,34 @@ describe('Popup', () => {
     });
   });
 
+  it('does not transfer previous results after the draft source changes', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [{ url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'a' }],
+    });
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    await waitFor(() => expect(screen.getByText(/1 item found/i)).toBeDefined());
+
+    const input = screen.getByPlaceholderText(/Paste an Instagram URL/i);
+    await user.clear(input);
+    await user.type(input, 'https://www.instagram.com/p/new-source/');
+    await user.click(screen.getByRole('button', { name: 'Open in tab' }));
+
+    await waitFor(() => {
+      expect(mockBrowser.storage.set).toHaveBeenLastCalledWith({
+        'workspace-transfer-v1': expect.objectContaining({
+          url: 'https://www.instagram.com/p/new-source/',
+          fetchedUrl: '',
+          mediaItems: [],
+          exportFrameIndexes: [],
+        }),
+      });
+    });
+  });
+
   it('auto-detects Instagram URL from active tab', async () => {
     await act(async () => {
       render(<Popup />);
