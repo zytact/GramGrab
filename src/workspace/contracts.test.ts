@@ -46,4 +46,20 @@ describe('workspace contracts', () => {
     expect(olderSnapshot.mediaItems[0]).not.toHaveProperty('width');
     expect(olderSnapshot.mediaItems[0]).not.toHaveProperty('height');
   });
+
+  it.each([
+    { width: 0, height: 1920 },
+    { width: 1080, height: -1 },
+    { width: Number.NaN, height: 1920 },
+    { width: 1080, height: Number.POSITIVE_INFINITY },
+    { width: 1080, height: undefined },
+  ])('removes invalid or incomplete geometry from transfers: %o', dimensions => {
+    const sanitized = sanitizeSnapshot({
+      ...snapshot,
+      mediaItems: [{ ...snapshot.mediaItems[0]!, ...dimensions }],
+    });
+
+    expect(sanitized.mediaItems[0]).not.toHaveProperty('width');
+    expect(sanitized.mediaItems[0]).not.toHaveProperty('height');
+  });
 });
