@@ -748,8 +748,9 @@ body:has(.workspace-container) {
   padding: 20px clamp(12px, 2vw, 20px);
 }
 .workspace-container .media-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
   gap: 12px;
   max-height: none;
   overflow: visible;
@@ -757,10 +758,20 @@ body:has(.workspace-container) {
   margin: 0;
 }
 .workspace-container .media-empty {
-  grid-column: 1 / -1;
+  width: 100%;
+}
+.workspace-container .workspace-masonry-column {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 12px;
 }
 .workspace-container .media-item {
-  grid-template-columns: 28px 1fr 24px;
+  display: grid;
+  width: 100%;
+  margin: 0;
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: start;
   min-height: 142px;
   border: 1px solid var(--rule-strong);
@@ -769,16 +780,32 @@ body:has(.workspace-container) {
 .workspace-container .media-thumb {
   grid-column: 2;
   width: 100%;
-  height: 100px;
+  height: auto;
+  aspect-ratio: var(--media-ratio, 4 / 3);
+  max-height: min(70vh, 520px);
+  overflow: hidden;
+  transition: aspect-ratio 180ms ease;
+}
+.workspace-container .media-thumb img,
+.workspace-container .media-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 .workspace-container .item-info {
   grid-column: 2;
   grid-row: 2;
   padding-top: 8px;
 }
-.workspace-container .media-item > div:last-child {
-  grid-column: 3;
-  grid-row: 1 / span 2;
+.workspace-container .media-controls {
+  grid-column: 2;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
 }
 .workspace-container .workspace-action-bar {
   position: sticky;
@@ -852,7 +879,16 @@ body:has(.workspace-container) {
     border-right: 0;
   }
   .workspace-container .media-list {
-    grid-template-columns: 1fr;
+    display: block;
+  }
+  .workspace-container .workspace-masonry-column + .workspace-masonry-column {
+    margin-top: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-container .media-thumb {
+    transition: none;
   }
 }
 
