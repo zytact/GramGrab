@@ -91,9 +91,7 @@ const mockBrowserInstance: MockBrowser = {
       addListener: vi.fn().mockImplementation((callback: (msg: unknown) => void) => {
         const type = (msg: unknown) => {
           const msgType = (msg as { type: string }).type;
-          if (msgType === 'DOWNLOAD') {
-            mockMessageCallbacks.set('DOWNLOAD', () => ({ media: [], error: undefined }));
-          } else if (msgType === 'FETCH_MEDIA') {
+          if (msgType === 'FETCH_MEDIA') {
             mockMessageCallbacks.set('FETCH_MEDIA', () => ({ media: [], error: undefined }));
           } else if (msgType === 'GET_PREVIEW_URL') {
             mockMessageCallbacks.set('GET_PREVIEW_URL', () => ({

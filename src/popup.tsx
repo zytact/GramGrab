@@ -3,7 +3,15 @@ import { Effect, Either } from 'effect';
 import './styles.css';
 import { browser } from './lib/browser';
 import { captureFrameFromVideoEffect } from './effect/frame-extraction';
-import { runFrameExportBatch } from './frame-export/batch';
+import {
+  DownloadAcceptedResult,
+  DownloadFailedResult,
+  createRequestId,
+  type DownloadOperation,
+  type DownloadOperationResult,
+} from './download/contracts';
+import { type AttemptEntry, type AttemptOperation } from './download/attempt';
+import { useDownloadAttempt } from './download/use-download-attempt';
 import {
   clampFrameSecond,
   defaultFrameSecond,
@@ -47,11 +55,6 @@ type FrameRuntime = {
   error?: string;
   warning?: string;
 };
-type DownloadMediaResponse = {
-  error?: string;
-  failures?: { url: string; reason: string }[];
-  acceptedItemIndexes?: number[];
-};
 type HistoryEntry = {
   id: string;
   sourceUrl: string;
@@ -90,6 +93,7 @@ export default function Popup() {
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
   const resultsGeneration = useRef(0);
   const pendingFrameDefaults = useRef(new Set<number>());
+  const clearAttemptRef = useRef<() => void>(() => {});
 
   const replaceMediaItems = useCallback<typeof setMediaItems>(action => {
     resultsGeneration.current++;
@@ -106,6 +110,7 @@ export default function Popup() {
     setFrameExportSettings,
     setStatus,
     setMessage,
+    onSuccess: () => clearAttemptRef.current(),
   });
   const handleFetchRef = useRef(handleFetch);
 
@@ -297,136 +302,193 @@ export default function Popup() {
     [captureFrameFromVideo]
   );
 
-  const handleExportFrame = useCallback(
+  const executeFrameAttempt = useCallback(
     // fallow-ignore-next-line complexity
-    async (index: number) => {
-      const item = mediaItems[index];
-      const setting = frameExportSettings[index];
-      const runtime = frameRuntime[index];
-      if (!item || !setting?.enabled || !runtime?.durationSeconds) {
-        throw new Error('Frame metadata is not ready.');
-      }
-      const timestampSeconds = clampFrameSecond(setting.timestampSeconds, runtime.durationSeconds);
+    async (operation: AttemptOperation): Promise<DownloadOperationResult> => {
+      const runtime = frameRuntime[operation.displayIndex];
+      if (!runtime?.durationSeconds || operation.frameTimestampSeconds === undefined)
+        return DownloadFailedResult.make({
+          requestId: operation.requestId,
+          status: 'failed',
+          reason: 'Frame metadata is not ready.',
+        });
       setFrameRuntime(previous => ({
         ...previous,
-        [index]: { ...previous[index], status: 'exporting', error: undefined },
+        [operation.displayIndex]: {
+          ...previous[operation.displayIndex],
+          status: 'exporting',
+          error: undefined,
+        },
       }));
       try {
         const response = runtime.dataUrl
           ? { dataUrl: runtime.dataUrl }
           : ((await browser.runtime.sendMessage({
               type: 'FETCH_VIDEO_BLOB',
-              url: item.url,
+              url: operation.url,
             })) as VideoBlobResponse);
         const dataUrl = getVideoBlobDataUrl(response);
-        let result = await captureFrameFromDataUrl(dataUrl, timestampSeconds);
-        if (Either.isLeft(result) && result.left.reason === 'timeout') {
-          result = await captureFrameFromDataUrl(dataUrl, timestampSeconds);
-        }
-        if (Either.isLeft(result)) {
-          throw new Error(frameExportErrorMessage(result.left.reason));
-        }
-        downloadBlobAsFile(result.right, frameFilename(item.filenameHint, timestampSeconds));
+        let captured = await captureFrameFromDataUrl(dataUrl, operation.frameTimestampSeconds);
+        if (Either.isLeft(captured) && captured.left.reason === 'timeout')
+          captured = await captureFrameFromDataUrl(dataUrl, operation.frameTimestampSeconds);
+        if (Either.isLeft(captured))
+          return DownloadFailedResult.make({
+            requestId: operation.requestId,
+            status: 'failed',
+            reason: frameExportErrorMessage(captured.left.reason),
+          });
+        downloadBlobAsFile(captured.right, operation.filename);
         const recorded = (await browser.runtime.sendMessage({
           type: 'RECORD_FRAME_EXPORT',
           sourceUrl: fetchedUrl || url,
           item: {
-            itemIndex: item.itemIndex ?? item.index,
-            ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-            url: item.url,
-            filenameHint: item.filenameHint,
+            itemIndex: operation.itemIndex,
+            ...(operation.mediaId ? { mediaId: operation.mediaId } : {}),
+            url: operation.url,
+            filename: operation.filename,
             mediaType: 'video',
-            frameTimestampSeconds: timestampSeconds,
+            frameTimestampSeconds: operation.frameTimestampSeconds,
           },
         })) as { error?: string };
         setFrameRuntime(previous => ({
           ...previous,
-          [index]: {
-            ...previous[index],
+          [operation.displayIndex]: {
+            ...previous[operation.displayIndex],
             status: 'ready',
             ...(recorded.error ? { warning: recorded.error } : {}),
           },
         }));
-      } catch (error) {
-        const message = String(error).replace(/^Error: /, '');
+        return DownloadAcceptedResult.make({
+          requestId: operation.requestId,
+          status: 'accepted',
+          ...(recorded.error ? { warning: recorded.error } : {}),
+        });
+      } catch {
         setFrameRuntime(previous => ({
           ...previous,
-          [index]: { ...previous[index], status: 'failed', error: message },
+          [operation.displayIndex]: {
+            ...previous[operation.displayIndex],
+            status: 'failed',
+            error: 'Frame export failed.',
+          },
         }));
-        throw error;
+        return DownloadFailedResult.make({
+          requestId: operation.requestId,
+          status: 'failed',
+          reason: 'Frame export failed.',
+        });
       }
     },
-    [captureFrameFromDataUrl, fetchedUrl, frameExportSettings, frameRuntime, mediaItems, url]
+    [captureFrameFromDataUrl, fetchedUrl, frameRuntime, url]
   );
 
-  // fallow-ignore-next-line complexity
+  const executeDirect = useCallback(
+    (operations: readonly DownloadOperation[]) =>
+      browser.runtime.sendMessage({
+        type: 'DOWNLOAD_MEDIA',
+        sourceUrl: fetchedUrl || url,
+        operations,
+      }),
+    [fetchedUrl, url]
+  );
+
+  const downloadAttempt = useDownloadAttempt({
+    executeFrame: executeFrameAttempt,
+    executeDirect,
+    onAccepted: operations =>
+      setMediaItems(previous =>
+        previous.map(item =>
+          operations.some(operation => operation.displayIndex === item.index)
+            ? {
+                ...item,
+                history: {
+                  downloaded: true,
+                  count: (item.history?.count ?? 0) + 1,
+                  latestDownloadedAt: Date.now(),
+                },
+              }
+            : item
+        )
+      ),
+    onSettled: next => {
+      const summary = next.entries.reduce(
+        (counts, entry) => ({
+          pending: counts.pending + Number(entry.outcome.status === 'pending'),
+          succeeded: counts.succeeded + Number(entry.outcome.status === 'accepted'),
+          failed: counts.failed + Number(entry.outcome.status === 'failed'),
+        }),
+        { pending: 0, succeeded: 0, failed: 0 }
+      );
+      if (summary.pending > 0) {
+        setStatus('downloading');
+        setMessage('Downloading…');
+        return;
+      }
+      setStatus(summary.failed ? 'error' : 'done');
+      setMessage(
+        summary.failed
+          ? `${summary.succeeded} succeeded, ${summary.failed} failed.`
+          : `${summary.succeeded} item${summary.succeeded === 1 ? '' : 's'} succeeded.`
+      );
+    },
+  });
+  clearAttemptRef.current = downloadAttempt.clear;
+
+  const handleExportFrame = useCallback(
+    async (index: number) => {
+      const item = mediaItems[index];
+      const setting = frameExportSettings[index];
+      const runtime = frameRuntime[index];
+      if (!item || !setting?.enabled || !runtime?.durationSeconds) return;
+      const timestampSeconds = clampFrameSecond(setting.timestampSeconds, runtime.durationSeconds);
+      await executeFrameAttempt({
+        requestId: createRequestId(),
+        itemIndex: item.itemIndex ?? item.index,
+        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+        url: item.url,
+        filename: frameFilename(item.filenameHint, timestampSeconds),
+        mediaType: 'video',
+        mode: 'frame',
+        displayIndex: index,
+        frameTimestampSeconds: timestampSeconds,
+      });
+    },
+    [executeFrameAttempt, frameExportSettings, frameRuntime, mediaItems]
+  );
+
   const handleDownload = useCallback(async () => {
-    const selected = mediaItems.filter(m => m.selected);
+    const selected = mediaItems.filter(item => item.selected);
     if (selected.length === 0) {
       setMessage('No items selected.');
       setStatus('error');
       return;
     }
-
+    // fallow-ignore-next-line complexity
+    const operations = selected.map<AttemptOperation>(item => {
+      const setting = frameExportSettings[item.index];
+      const duration = frameRuntime[item.index]?.durationSeconds;
+      const exportFrame = item.type === 'video' && setting?.enabled;
+      const timestampSeconds = exportFrame
+        ? clampFrameSecond(setting.timestampSeconds, duration ?? setting.timestampSeconds + 1)
+        : undefined;
+      return {
+        requestId: createRequestId(),
+        itemIndex: item.itemIndex ?? item.index,
+        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+        url: item.url,
+        filename: exportFrame
+          ? frameFilename(item.filenameHint, timestampSeconds ?? 0)
+          : `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
+        mediaType: item.type === 'video' ? 'video' : 'image',
+        mode: exportFrame ? 'frame' : 'direct',
+        displayIndex: item.index,
+        ...(timestampSeconds !== undefined ? { frameTimestampSeconds: timestampSeconds } : {}),
+      };
+    });
     setStatus('downloading');
-    setMessage(`Downloading ${selected.length} item${selected.length !== 1 ? 's' : ''}…`);
-
-    try {
-      const frameIndexes = selected
-        .filter(item => item.type === 'video' && frameExportSettings[item.index]?.enabled)
-        .map(item => item.index);
-      const frameResults = await runFrameExportBatch(frameIndexes, handleExportFrame);
-      const standardItems = selected.filter(item => !frameIndexes.includes(item.index));
-
-      let directSuccessful = 0;
-      let directFailures = 0;
-      if (standardItems.length > 0) {
-        const res = (await browser.runtime.sendMessage({
-          type: 'DOWNLOAD_MEDIA',
-          sourceUrl: fetchedUrl || url,
-          items: standardItems.map(item => ({
-            itemIndex: item.itemIndex ?? item.index,
-            ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-            url: item.url,
-            filenameHint: item.filenameHint,
-            mediaType: item.type === 'video' ? 'video' : 'image',
-          })),
-        })) as DownloadMediaResponse;
-
-        directSuccessful =
-          res?.acceptedItemIndexes?.length ?? (res?.error ? 0 : standardItems.length);
-        directFailures = res?.failures?.length ?? (res?.error ? standardItems.length : 0);
-        if (res?.acceptedItemIndexes?.length)
-          setMediaItems(previous =>
-            previous.map(item =>
-              res.acceptedItemIndexes!.includes(item.itemIndex ?? item.index)
-                ? {
-                    ...item,
-                    history: {
-                      downloaded: true,
-                      count: (item.history?.count ?? 0) + 1,
-                      latestDownloadedAt: Date.now(),
-                    },
-                  }
-                : item
-            )
-          );
-      }
-
-      const failedFrames = frameResults.filter(result => result.error).length;
-      const failures = directFailures + failedFrames;
-      const successful = directSuccessful + frameResults.length - failedFrames;
-      setMessage(
-        failures
-          ? `${successful} downloaded, ${failures} failed. Retry the failed items.`
-          : `Downloaded ${successful} item${successful !== 1 ? 's' : ''} successfully.`
-      );
-      setStatus(failures ? 'error' : 'done');
-    } catch (err) {
-      setMessage(String(err));
-      setStatus('error');
-    }
-  }, [fetchedUrl, frameExportSettings, handleExportFrame, mediaItems, url]);
+    setMessage(`Starting ${operations.length} item${operations.length === 1 ? '' : 's'}…`);
+    await downloadAttempt.start(operations);
+  }, [downloadAttempt, frameExportSettings, frameRuntime, mediaItems]);
 
   const selectedCount = mediaItems.filter(m => m.selected).length;
   const allSelected = mediaItems.length > 0 && selectedCount === mediaItems.length;
@@ -436,7 +498,7 @@ export default function Popup() {
     setMediaItems(prev => prev.map(item => ({ ...item, selected: newSelected })));
   }, [allSelected]);
 
-  const isBusy = isWorkspaceBusy(status);
+  const isBusy = isWorkspaceBusy(status) || downloadAttempt.busy;
   const handleUrlChange = useCallback((nextUrl: string) => {
     setUrl(nextUrl);
     setAutoDetected(false);
@@ -481,6 +543,7 @@ export default function Popup() {
         entryId,
       })) as {
         error?: string;
+        results?: { status: 'accepted' | 'failed'; reason?: string }[];
         frame?: {
           itemIndex: number;
           mediaId?: string;
@@ -515,7 +578,7 @@ export default function Popup() {
               itemIndex: response.frame.itemIndex,
               ...(response.frame.mediaId ? { mediaId: response.frame.mediaId } : {}),
               url: response.frame.url,
-              filenameHint: response.frame.filenameHint,
+              filename: frameFilename(response.frame.filenameHint, timestampSeconds),
               mediaType: 'video',
               frameTimestampSeconds: timestampSeconds,
             },
@@ -529,7 +592,8 @@ export default function Popup() {
           setMessage(String(error).replace(/^Error: /, ''));
         }
       } else {
-        setMessage(response.error ?? 'Download started.');
+        const failed = response.results?.find(result => result.status === 'failed');
+        setMessage(response.error ?? failed?.reason ?? 'Download started.');
       }
       setHistoryBusy(null);
       if (!response.error) void loadHistory();
@@ -629,6 +693,7 @@ export default function Popup() {
                 type="url"
                 placeholder="Paste an Instagram URL…"
                 value={url}
+                disabled={isBusy}
                 onChange={e => handleUrlChange(e.currentTarget.value)}
                 onBlur={() => setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)}
                 onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
@@ -650,6 +715,8 @@ export default function Popup() {
               fallbackFailed={fallbackFailed}
               frameExportSettings={frameExportSettings}
               frameRuntime={frameRuntime}
+              attempt={downloadAttempt.attempt}
+              disabled={isBusy}
               onPreviewError={handlePreviewError}
               onToggle={toggleItem}
               onToggleAll={toggleAll}
@@ -663,6 +730,43 @@ export default function Popup() {
             />
 
             <div className="ext-section">
+              {downloadAttempt.attempt && (
+                <section
+                  className="download-attempt-summary"
+                  ref={downloadAttempt.summaryRef}
+                  tabIndex={-1}
+                  aria-live="polite"
+                  aria-busy={downloadAttempt.busy}
+                >
+                  <strong>
+                    {downloadAttempt.summary.succeeded} succeeded, {downloadAttempt.summary.failed}{' '}
+                    failed
+                  </strong>
+                  {downloadAttempt.summary.warnings > 0 && (
+                    <span> {downloadAttempt.summary.warnings} started with a history warning.</span>
+                  )}
+                  {downloadAttempt.retryable.length > 0 && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={() => void downloadAttempt.retry()}
+                      disabled={isBusy}
+                    >
+                      Retry {downloadAttempt.retryable.length} failed
+                    </button>
+                  )}
+                  {downloadAttempt.attempt.retryCount > 0 && downloadAttempt.summary.failed > 0 && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={() => void handleFetch()}
+                      disabled={isBusy}
+                    >
+                      Fetch source again
+                    </button>
+                  )}
+                </section>
+              )}
               <button
                 className="btn"
                 onClick={handleDownload}
@@ -957,6 +1061,8 @@ function MediaListSection({
   fallbackFailed,
   frameExportSettings,
   frameRuntime,
+  attempt,
+  disabled,
   onPreviewError,
   onToggle,
   onToggleAll,
@@ -976,6 +1082,8 @@ function MediaListSection({
   fallbackFailed: Set<number>;
   frameExportSettings: Record<number, FrameExportSetting>;
   frameRuntime: Record<number, FrameRuntime>;
+  attempt: ReturnType<typeof useDownloadAttempt>['attempt'];
+  disabled: boolean;
   onPreviewError: (item: MediaItem) => void;
   onToggle: (index: number) => void;
   onToggleAll: () => void;
@@ -1023,6 +1131,8 @@ function MediaListSection({
       onToggle={() => onToggle(item.index)}
       frameSetting={frameExportSettings[item.index]}
       frameRuntime={frameRuntime[item.index]}
+      attemptEntry={attempt?.entries.find(entry => entry.operation.displayIndex === item.index)}
+      disabled={disabled}
       onToggleExportFrame={() => onToggleExportFrame(item.index)}
       onChangeFrameTimestamp={timestampSeconds =>
         onChangeFrameTimestamp(item.index, timestampSeconds)
@@ -1043,7 +1153,12 @@ function MediaListSection({
             <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
           </span>
           <label className="select-all-label">
-            <input type="checkbox" checked={allSelected} onChange={onToggleAll} />
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={onToggleAll}
+              disabled={disabled}
+            />
             Select all
           </label>
         </div>
@@ -1155,6 +1270,8 @@ interface MediaItemRowProps {
   onVideoRef: (el: HTMLVideoElement | null) => void;
   onVideoMetadata: (durationSeconds: number) => void;
   onIntrinsicDimensions: (width: number, height: number) => void;
+  disabled: boolean;
+  attemptEntry?: AttemptEntry;
 }
 
 function MediaPreview({
@@ -1176,6 +1293,8 @@ function MediaPreview({
   | 'onChangeFrameTimestamp'
   | 'onRetryFrameMetadata'
   | 'onRetryFrameExport'
+  | 'disabled'
+  | 'attemptEntry'
 >) {
   const ratio = resolveMediaRatio(
     item.width,
@@ -1268,6 +1387,8 @@ function MediaControls({
   onChangeFrameTimestamp,
   onRetryFrameMetadata,
   onRetryFrameExport,
+  disabled,
+  failureDescriptionId,
 }: Pick<
   MediaItemRowProps,
   | 'item'
@@ -1278,7 +1399,8 @@ function MediaControls({
   | 'onChangeFrameTimestamp'
   | 'onRetryFrameMetadata'
   | 'onRetryFrameExport'
->) {
+  | 'disabled'
+> & { failureDescriptionId?: string }) {
   const duration = frameRuntime?.durationSeconds;
   const maximum = duration === undefined ? undefined : maximumFrameSecond(duration);
   const timestampSeconds = frameSetting?.timestampSeconds ?? 0;
@@ -1291,6 +1413,7 @@ function MediaControls({
               type="checkbox"
               checked={frameSetting?.enabled ?? false}
               onChange={onToggleExportFrame}
+              disabled={disabled}
               className="frame-toggle-checkbox"
             />
             Frame
@@ -1303,7 +1426,7 @@ function MediaControls({
                 max={maximum ?? 0}
                 step="1"
                 value={timestampSeconds}
-                disabled={frameRuntime?.status !== 'ready' || maximum === undefined}
+                disabled={disabled || frameRuntime?.status !== 'ready' || maximum === undefined}
                 aria-label={`Frame timestamp for item ${String(item.index + 1).padStart(2, '0')}`}
                 aria-valuetext={frameTimestampAriaValue(timestampSeconds)}
                 onChange={event => onChangeFrameTimestamp(Number(event.currentTarget.value))}
@@ -1315,6 +1438,7 @@ function MediaControls({
                   type="button"
                   className="frame-retry"
                   onClick={frameRuntime.durationSeconds ? onRetryFrameExport : onRetryFrameMetadata}
+                  disabled={disabled}
                 >
                   Retry
                 </button>
@@ -1331,6 +1455,8 @@ function MediaControls({
         checked={item.selected}
         onChange={onToggle}
         onClick={event => event.stopPropagation()}
+        disabled={disabled}
+        aria-describedby={failureDescriptionId}
       />
     </div>
   );
@@ -1354,11 +1480,16 @@ function MediaItemRow(props: MediaItemRowProps) {
     onVideoRef,
     onVideoMetadata,
     onIntrinsicDimensions,
+    disabled,
+    attemptEntry,
   } = props;
   const num = String(item.index + 1).padStart(2, '0');
 
   return (
-    <div className={`media-item${item.selected ? ' selected' : ''}`} onClick={onToggle}>
+    <div
+      className={`media-item${item.selected ? ' selected' : ''}`}
+      onClick={() => !disabled && onToggle()}
+    >
       <span className="item-number">{num}</span>
 
       <MediaPreview
@@ -1384,6 +1515,24 @@ function MediaItemRow(props: MediaItemRowProps) {
           </span>
         )}
         <span className="item-filename">{item.filenameHint}</span>
+        {attemptEntry?.outcome.status === 'pending' && (
+          <span className="download-item-status pending">
+            {attemptEntry.operation.mode === 'frame' ? 'Exporting…' : 'Starting…'}
+          </span>
+        )}
+        {attemptEntry?.outcome.status === 'accepted' && (
+          <span className="download-item-status accepted">
+            {attemptEntry.operation.mode === 'frame' ? 'Frame exported' : 'Download started'}
+          </span>
+        )}
+        {attemptEntry?.outcome.status === 'accepted' && attemptEntry.outcome.warning && (
+          <span className="download-item-status warning">{attemptEntry.outcome.warning}</span>
+        )}
+        {attemptEntry?.outcome.status === 'failed' && (
+          <span className="download-item-status failed" id={`download-result-${item.index}`}>
+            Failed: {attemptEntry.outcome.reason}
+          </span>
+        )}
       </div>
 
       <MediaControls
@@ -1395,6 +1544,10 @@ function MediaItemRow(props: MediaItemRowProps) {
         onChangeFrameTimestamp={onChangeFrameTimestamp}
         onRetryFrameMetadata={onRetryFrameMetadata}
         onRetryFrameExport={onRetryFrameExport}
+        disabled={disabled}
+        failureDescriptionId={
+          attemptEntry?.outcome.status === 'failed' ? `download-result-${item.index}` : undefined
+        }
       />
     </div>
   );

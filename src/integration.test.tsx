@@ -60,7 +60,7 @@ describe('integration: user-facing flows', () => {
     expect(calls[0]).toMatchObject({ url: CANNED_MEDIA[0]!.url, filename: 'post_abc_image_1.jpg' });
     expect(calls[1]).toMatchObject({ url: CANNED_MEDIA[1]!.url, filename: 'post_abc_video_2.mp4' });
 
-    expect(screen.getByText(/Downloaded 2 items successfully/i)).toBeDefined();
+    expect(screen.getByText(/2 items succeeded/i)).toBeDefined();
   });
 
   // ── Flow 2: Fetch media from active tab URL ─────────────────────────────────
