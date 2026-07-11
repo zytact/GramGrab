@@ -7,6 +7,9 @@ type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 interface MediaResponse {
   media?: {
     url: string;
+    itemIndex: number;
+    mediaId?: string;
+    history: { downloaded: boolean; count: number; latestDownloadedAt?: number };
     type: string;
     filenameHint: string;
     previewUrl?: string;

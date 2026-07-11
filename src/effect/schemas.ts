@@ -23,6 +23,7 @@ const DimensionsSchema = Schema.Struct({
 // Image vs video within a sidecar is determined at runtime by is_video.
 const SidecarChildNodeSchema = Schema.Struct({
   __typename: Schema.optional(Schema.String),
+  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   is_video: Schema.optional(Schema.Boolean),
   display_url: Schema.optional(Schema.String),
   display_resources: Schema.optional(Schema.Array(MediaResourceSchema)),

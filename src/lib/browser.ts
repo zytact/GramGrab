@@ -252,8 +252,8 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
       update: (id, properties) =>
         callbackPromise(chrome, callback => contextMenus.update(id, properties, callback)),
       refresh: () => callbackPromise(chrome, callback => contextMenus.refresh(callback)),
-      onClicked: contextMenus.onClicked,
-      onShown: contextMenus.onShown,
+      onClicked: contextMenus.onClicked ?? noopContextMenus.onClicked,
+      onShown: contextMenus.onShown ?? noopContextMenus.onShown,
     },
   };
 }
@@ -293,7 +293,12 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
         await native.windows.update(windowId, updateInfo);
       },
     },
-    contextMenus: native.contextMenus ?? noopContextMenus,
+    contextMenus: {
+      ...noopContextMenus,
+      ...native.contextMenus,
+      onClicked: native.contextMenus?.onClicked ?? noopContextMenus.onClicked,
+      onShown: native.contextMenus?.onShown ?? noopContextMenus.onShown,
+    },
   };
 }
 
