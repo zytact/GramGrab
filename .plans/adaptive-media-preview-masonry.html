@@ -21,15 +21,20 @@
         --error: #d45d5d;
       }
 
-      * { box-sizing: border-box; }
-      html { scroll-behavior: smooth; }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
       body {
         margin: 0;
         color: var(--text);
         background:
-          radial-gradient(circle at 92% 2%, rgba(212, 135, 58, 0.13), transparent 28rem),
-          var(--bg);
-        font: 400 14px/1.65 'DM Mono', monospace;
+          radial-gradient(circle at 92% 2%, rgba(212, 135, 58, 0.13), transparent 28rem), var(--bg);
+        font:
+          400 14px/1.65 'DM Mono',
+          monospace;
       }
       body::before {
         content: '';
@@ -39,80 +44,370 @@
         background: linear-gradient(90deg, var(--brand), var(--accent), var(--brand));
         z-index: 10;
       }
-      a { color: var(--accent); }
-      code { color: var(--accent); font-family: inherit; }
-      .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 58px 0 80px; }
-      .eyebrow, .stamp, .label {
+      a {
+        color: var(--accent);
+      }
+      code {
+        color: var(--accent);
+        font-family: inherit;
+      }
+      .shell {
+        width: min(1180px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 58px 0 80px;
+      }
+      .eyebrow,
+      .stamp,
+      .label {
         color: var(--brand);
         font-size: 10px;
-        letter-spacing: .15em;
+        letter-spacing: 0.15em;
         text-transform: uppercase;
       }
-      h1, h2, h3 { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; }
-      h1 { max-width: 850px; margin: 12px 0 18px; font-size: clamp(48px, 7vw, 86px); line-height: .94; }
-      h1 em { color: var(--accent); font-weight: 400; }
-      h2 { margin: 0 0 20px; font-size: 38px; line-height: 1; }
-      h3 { margin: 0 0 8px; font-size: 24px; }
-      p { margin: 0; color: var(--mid); }
-      .lede { max-width: 760px; font-size: 16px; color: var(--text); }
-      .hero-meta { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--rule); }
-      .hero-meta span:last-child { color: var(--mid); }
-      .nav { position: sticky; top: 14px; z-index: 5; display: flex; gap: 8px; flex-wrap: wrap; margin: 34px 0; padding: 10px; background: rgba(28, 26, 23, .92); border: 1px solid var(--rule); backdrop-filter: blur(12px); }
-      .nav a { padding: 5px 9px; color: var(--mid); text-decoration: none; font-size: 11px; }
-      .nav a:hover { color: var(--accent); background: rgba(212, 135, 58, .1); }
-      section { margin-top: 62px; scroll-margin-top: 90px; }
-      .section-head { display: grid; grid-template-columns: 160px 1fr; gap: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--rule); }
-      .section-head p { max-width: 720px; }
-      .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; margin-top: 18px; }
-      .card { grid-column: span 4; padding: 20px; background: var(--surface); border: 1px solid var(--rule); }
-      .card.wide { grid-column: span 6; }
-      .card.full { grid-column: 1 / -1; }
-      .card p + p { margin-top: 10px; }
-      .decision { border-left: 3px solid var(--brand); }
-      .number { display: block; margin-bottom: 22px; color: var(--muted); font-family: 'Instrument Serif', serif; font-size: 30px; }
-      .pill { display: inline-block; margin: 12px 6px 0 0; padding: 3px 7px; border: 1px solid var(--rule); color: var(--mid); font-size: 10px; text-transform: uppercase; }
-      .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 18px; }
-      .flow-step { position: relative; padding: 18px; min-height: 135px; background: var(--surface); border: 1px solid var(--rule); }
-      .flow-step:not(:last-child)::after { content: '→'; position: absolute; right: -12px; top: 50%; z-index: 2; color: var(--accent); font-size: 20px; }
-      .flow-step strong { display: block; margin: 8px 0; font-family: 'Instrument Serif', serif; font-size: 21px; font-weight: 400; }
-      .flow-step small { color: var(--mid); }
-      .mock-shell { padding: 18px; background: #11100e; border: 1px solid var(--rule); }
-      .mock-title { display: flex; justify-content: space-between; margin-bottom: 14px; color: var(--mid); font-size: 10px; text-transform: uppercase; }
-      .masonry { columns: 4 180px; column-gap: 10px; }
-      .tile { break-inside: avoid; display: inline-block; width: 100%; margin: 0 0 10px; padding: 8px; vertical-align: top; background: linear-gradient(145deg, #32291f, #221d18); border: 1px solid var(--rule); }
-      .tile .media { display: grid; place-items: center; width: 100%; background: #0d0c0b; color: rgba(255,255,255,.68); font-family: 'Instrument Serif', serif; font-size: 21px; }
-      .landscape { aspect-ratio: 16 / 9; }
-      .portrait { aspect-ratio: 9 / 16; background: linear-gradient(160deg, #543a27, #151d1f) !important; }
-      .square { aspect-ratio: 1; background: linear-gradient(160deg, #273b33, #171514) !important; }
-      .classic { aspect-ratio: 4 / 3; background: linear-gradient(160deg, #40362b, #1b1714) !important; }
-      .tile footer { display: flex; justify-content: space-between; margin-top: 8px; color: var(--mid); font-size: 9px; }
-      .check { color: var(--accent); }
-      .file-list { list-style: none; padding: 0; margin: 0; }
-      .file-list li { display: grid; grid-template-columns: minmax(190px, .75fr) 1.5fr; gap: 18px; padding: 13px 0; border-bottom: 1px solid var(--rule); }
-      .file-list li:last-child { border: 0; }
-      .file-list span { color: var(--mid); }
-      .steps { counter-reset: step; list-style: none; padding: 0; margin: 18px 0 0; }
-      .steps li { counter-increment: step; display: grid; grid-template-columns: 54px 1fr; gap: 18px; padding: 20px 0; border-top: 1px solid var(--rule); }
-      .steps li::before { content: counter(step, decimal-leading-zero); color: var(--brand); font-family: 'Instrument Serif', serif; font-size: 30px; line-height: 1; }
-      .steps strong { display: block; margin-bottom: 5px; color: var(--text); font-weight: 500; }
-      .acceptance { list-style: none; padding: 0; margin: 12px 0 0; }
-      .acceptance li { position: relative; padding: 9px 0 9px 26px; color: var(--mid); border-bottom: 1px solid rgba(232,167,86,.08); }
-      .acceptance li::before { content: '□'; position: absolute; left: 0; color: var(--accent); }
-      .risk { display: grid; grid-template-columns: 110px 1fr 1fr; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
-      .risk strong { color: var(--error); font-size: 10px; text-transform: uppercase; }
-      .risk span { color: var(--mid); }
-      .risk .mitigation { color: var(--success); }
-      .command { margin-top: 8px; padding: 10px 12px; overflow-x: auto; color: var(--accent); background: #11100e; border: 1px solid var(--rule); white-space: nowrap; }
-      .outcome { padding: 28px; border: 1px solid var(--brand); background: rgba(212,135,58,.08); }
-      .outcome p { max-width: 800px; color: var(--text); }
+      h1,
+      h2,
+      h3 {
+        font-family: 'Instrument Serif', Georgia, serif;
+        font-weight: 400;
+      }
+      h1 {
+        max-width: 850px;
+        margin: 12px 0 18px;
+        font-size: clamp(48px, 7vw, 86px);
+        line-height: 0.94;
+      }
+      h1 em {
+        color: var(--accent);
+        font-weight: 400;
+      }
+      h2 {
+        margin: 0 0 20px;
+        font-size: 38px;
+        line-height: 1;
+      }
+      h3 {
+        margin: 0 0 8px;
+        font-size: 24px;
+      }
+      p {
+        margin: 0;
+        color: var(--mid);
+      }
+      .lede {
+        max-width: 760px;
+        font-size: 16px;
+        color: var(--text);
+      }
+      .hero-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 28px;
+        margin-top: 30px;
+        padding-top: 16px;
+        border-top: 1px solid var(--rule);
+      }
+      .hero-meta span:last-child {
+        color: var(--mid);
+      }
+      .nav {
+        position: sticky;
+        top: 14px;
+        z-index: 5;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 34px 0;
+        padding: 10px;
+        background: rgba(28, 26, 23, 0.92);
+        border: 1px solid var(--rule);
+        backdrop-filter: blur(12px);
+      }
+      .nav a {
+        padding: 5px 9px;
+        color: var(--mid);
+        text-decoration: none;
+        font-size: 11px;
+      }
+      .nav a:hover {
+        color: var(--accent);
+        background: rgba(212, 135, 58, 0.1);
+      }
+      section {
+        margin-top: 62px;
+        scroll-margin-top: 90px;
+      }
+      .section-head {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 24px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--rule);
+      }
+      .section-head p {
+        max-width: 720px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+        margin-top: 18px;
+      }
+      .card {
+        grid-column: span 4;
+        padding: 20px;
+        background: var(--surface);
+        border: 1px solid var(--rule);
+      }
+      .card.wide {
+        grid-column: span 6;
+      }
+      .card.full {
+        grid-column: 1 / -1;
+      }
+      .card p + p {
+        margin-top: 10px;
+      }
+      .decision {
+        border-left: 3px solid var(--brand);
+      }
+      .number {
+        display: block;
+        margin-bottom: 22px;
+        color: var(--muted);
+        font-family: 'Instrument Serif', serif;
+        font-size: 30px;
+      }
+      .pill {
+        display: inline-block;
+        margin: 12px 6px 0 0;
+        padding: 3px 7px;
+        border: 1px solid var(--rule);
+        color: var(--mid);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0;
+        margin-top: 18px;
+      }
+      .flow-step {
+        position: relative;
+        padding: 18px;
+        min-height: 135px;
+        background: var(--surface);
+        border: 1px solid var(--rule);
+      }
+      .flow-step:not(:last-child)::after {
+        content: '→';
+        position: absolute;
+        right: -12px;
+        top: 50%;
+        z-index: 2;
+        color: var(--accent);
+        font-size: 20px;
+      }
+      .flow-step strong {
+        display: block;
+        margin: 8px 0;
+        font-family: 'Instrument Serif', serif;
+        font-size: 21px;
+        font-weight: 400;
+      }
+      .flow-step small {
+        color: var(--mid);
+      }
+      .mock-shell {
+        padding: 18px;
+        background: #11100e;
+        border: 1px solid var(--rule);
+      }
+      .mock-title {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 14px;
+        color: var(--mid);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .masonry {
+        columns: 4 180px;
+        column-gap: 10px;
+      }
+      .tile {
+        break-inside: avoid;
+        display: inline-block;
+        width: 100%;
+        margin: 0 0 10px;
+        padding: 8px;
+        vertical-align: top;
+        background: linear-gradient(145deg, #32291f, #221d18);
+        border: 1px solid var(--rule);
+      }
+      .tile .media {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        background: #0d0c0b;
+        color: rgba(255, 255, 255, 0.68);
+        font-family: 'Instrument Serif', serif;
+        font-size: 21px;
+      }
+      .landscape {
+        aspect-ratio: 16 / 9;
+      }
+      .portrait {
+        aspect-ratio: 9 / 16;
+        background: linear-gradient(160deg, #543a27, #151d1f) !important;
+      }
+      .square {
+        aspect-ratio: 1;
+        background: linear-gradient(160deg, #273b33, #171514) !important;
+      }
+      .classic {
+        aspect-ratio: 4 / 3;
+        background: linear-gradient(160deg, #40362b, #1b1714) !important;
+      }
+      .tile footer {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        color: var(--mid);
+        font-size: 9px;
+      }
+      .check {
+        color: var(--accent);
+      }
+      .file-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .file-list li {
+        display: grid;
+        grid-template-columns: minmax(190px, 0.75fr) 1.5fr;
+        gap: 18px;
+        padding: 13px 0;
+        border-bottom: 1px solid var(--rule);
+      }
+      .file-list li:last-child {
+        border: 0;
+      }
+      .file-list span {
+        color: var(--mid);
+      }
+      .steps {
+        counter-reset: step;
+        list-style: none;
+        padding: 0;
+        margin: 18px 0 0;
+      }
+      .steps li {
+        counter-increment: step;
+        display: grid;
+        grid-template-columns: 54px 1fr;
+        gap: 18px;
+        padding: 20px 0;
+        border-top: 1px solid var(--rule);
+      }
+      .steps li::before {
+        content: counter(step, decimal-leading-zero);
+        color: var(--brand);
+        font-family: 'Instrument Serif', serif;
+        font-size: 30px;
+        line-height: 1;
+      }
+      .steps strong {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--text);
+        font-weight: 500;
+      }
+      .acceptance {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+      }
+      .acceptance li {
+        position: relative;
+        padding: 9px 0 9px 26px;
+        color: var(--mid);
+        border-bottom: 1px solid rgba(232, 167, 86, 0.08);
+      }
+      .acceptance li::before {
+        content: '□';
+        position: absolute;
+        left: 0;
+        color: var(--accent);
+      }
+      .risk {
+        display: grid;
+        grid-template-columns: 110px 1fr 1fr;
+        gap: 14px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--rule);
+      }
+      .risk strong {
+        color: var(--error);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .risk span {
+        color: var(--mid);
+      }
+      .risk .mitigation {
+        color: var(--success);
+      }
+      .command {
+        margin-top: 8px;
+        padding: 10px 12px;
+        overflow-x: auto;
+        color: var(--accent);
+        background: #11100e;
+        border: 1px solid var(--rule);
+        white-space: nowrap;
+      }
+      .outcome {
+        padding: 28px;
+        border: 1px solid var(--brand);
+        background: rgba(212, 135, 58, 0.08);
+      }
+      .outcome p {
+        max-width: 800px;
+        color: var(--text);
+      }
       @media (max-width: 800px) {
-        .shell { width: min(100% - 24px, 1180px); padding-top: 40px; }
-        .section-head { grid-template-columns: 1fr; gap: 4px; }
-        .card, .card.wide { grid-column: 1 / -1; }
-        .flow { grid-template-columns: 1fr; gap: 10px; }
-        .flow-step:not(:last-child)::after { content: '↓'; right: 18px; top: auto; bottom: -18px; }
-        .risk { grid-template-columns: 1fr; gap: 5px; }
-        .file-list li { grid-template-columns: 1fr; gap: 4px; }
+        .shell {
+          width: min(100% - 24px, 1180px);
+          padding-top: 40px;
+        }
+        .section-head {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+        .card,
+        .card.wide {
+          grid-column: 1 / -1;
+        }
+        .flow {
+          grid-template-columns: 1fr;
+          gap: 10px;
+        }
+        .flow-step:not(:last-child)::after {
+          content: '↓';
+          right: 18px;
+          top: auto;
+          bottom: -18px;
+        }
+        .risk {
+          grid-template-columns: 1fr;
+          gap: 5px;
+        }
+        .file-list li {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
       }
     </style>
   </head>
@@ -121,105 +416,443 @@
       <header>
         <div class="eyebrow">Implementation plan / workspace previews</div>
         <h1>Let the media choose its <em>frame.</em></h1>
-        <p class="lede">Replace the workspace's fixed landscape thumbnails with full-frame, aspect-aware previews arranged in a tightly packed responsive masonry layout. The compact popup remains deliberately unchanged.</p>
-        <div class="hero-meta"><span class="stamp">Created 2026-07-10 18:33 IST</span><span>Status: design decisions resolved, implementation not started</span></div>
+        <p class="lede">
+          Replace the workspace's fixed landscape thumbnails with full-frame, aspect-aware previews
+          arranged in a tightly packed responsive masonry layout. The compact popup remains
+          deliberately unchanged.
+        </p>
+        <div class="hero-meta">
+          <span class="stamp">Created 2026-07-10 18:33 IST</span
+          ><span>Status: design decisions resolved, implementation not started</span>
+        </div>
       </header>
 
       <nav class="nav" aria-label="Plan sections">
-        <a href="#intent">Intent</a><a href="#visual">Visual model</a><a href="#data">Data flow</a><a href="#implementation">Implementation</a><a href="#files">Files</a><a href="#testing">Testing</a><a href="#risks">Risks</a><a href="#done">Done</a>
+        <a href="#intent">Intent</a><a href="#visual">Visual model</a><a href="#data">Data flow</a
+        ><a href="#implementation">Implementation</a><a href="#files">Files</a
+        ><a href="#testing">Testing</a><a href="#risks">Risks</a><a href="#done">Done</a>
       </nav>
 
       <section id="intent">
-        <div class="section-head"><span class="label">01 / Intent</span><div><h2>Resolved product contract</h2><p>The feature follows media geometry rather than Instagram route labels. Stories and Highlights benefit immediately, while Reels and portrait posts receive the same correct behavior.</p></div></div>
+        <div class="section-head">
+          <span class="label">01 / Intent</span>
+          <div>
+            <h2>Resolved product contract</h2>
+            <p>
+              The feature follows media geometry rather than Instagram route labels. Stories and
+              Highlights benefit immediately, while Reels and portrait posts receive the same
+              correct behavior.
+            </p>
+          </div>
+        </div>
         <div class="grid">
-          <article class="card decision"><span class="number">01</span><h3>Actual ratio</h3><p>Use trusted width and height metadata for every media type. Never infer portrait behavior from a URL type alone.</p><span class="pill">all media</span><span class="pill">workspace only</span></article>
-          <article class="card decision"><span class="number">02</span><h3>Full frame</h3><p>Do not crop. Normal media fills a box matching its ratio. Unusually tall media is contained and centered within the height cap.</p><span class="pill">object-fit: contain</span></article>
-          <article class="card decision"><span class="number">03</span><h3>Tight masonry</h3><p>Pack cards by height. Dense use of space takes priority over maintaining strict left-to-right numerical order.</p><span class="pill">~220px minimum</span></article>
-          <article class="card wide"><h3>Fallback contract</h3><p>When dimensions are absent or invalid, begin at <code>4:3</code>. Read intrinsic image or video dimensions after load, then smoothly reflow the card. If intrinsic detection also fails, retain <code>4:3</code>.</p></article>
-          <article class="card wide"><h3>Responsive bound</h3><p>Preview height is capped at <code>min(70vh, 520px)</code>. The workspace targets roughly four, three, two, then one column as width decreases. The popup keeps its existing uniform <code>56 × 42px</code> thumbnails.</p></article>
+          <article class="card decision">
+            <span class="number">01</span>
+            <h3>Actual ratio</h3>
+            <p>
+              Use trusted width and height metadata for every media type. Never infer portrait
+              behavior from a URL type alone.
+            </p>
+            <span class="pill">all media</span><span class="pill">workspace only</span>
+          </article>
+          <article class="card decision">
+            <span class="number">02</span>
+            <h3>Full frame</h3>
+            <p>
+              Do not crop. Normal media fills a box matching its ratio. Unusually tall media is
+              contained and centered within the height cap.
+            </p>
+            <span class="pill">object-fit: contain</span>
+          </article>
+          <article class="card decision">
+            <span class="number">03</span>
+            <h3>Tight masonry</h3>
+            <p>
+              Pack cards by height. Dense use of space takes priority over maintaining strict
+              left-to-right numerical order.
+            </p>
+            <span class="pill">~220px minimum</span>
+          </article>
+          <article class="card wide">
+            <h3>Fallback contract</h3>
+            <p>
+              When dimensions are absent or invalid, begin at <code>4:3</code>. Read intrinsic image
+              or video dimensions after load, then smoothly reflow the card. If intrinsic detection
+              also fails, retain <code>4:3</code>.
+            </p>
+          </article>
+          <article class="card wide">
+            <h3>Responsive bound</h3>
+            <p>
+              Preview height is capped at <code>min(70vh, 520px)</code>. The workspace targets
+              roughly four, three, two, then one column as width decreases. The popup keeps its
+              existing uniform <code>56 × 42px</code> thumbnails.
+            </p>
+          </article>
         </div>
       </section>
 
       <section id="visual">
-        <div class="section-head"><span class="label">02 / Visual model</span><div><h2>Mixed formats, one coherent wall</h2><p>This schematic shows the intended density and varying card heights. It is a behavioral visualization, not a pixel-perfect UI redesign.</p></div></div>
+        <div class="section-head">
+          <span class="label">02 / Visual model</span>
+          <div>
+            <h2>Mixed formats, one coherent wall</h2>
+            <p>
+              This schematic shows the intended density and varying card heights. It is a behavioral
+              visualization, not a pixel-perfect UI redesign.
+            </p>
+          </div>
+        </div>
         <div class="mock-shell">
           <div class="mock-title"><span>15 items found</span><span>all selected</span></div>
           <div class="masonry">
-            <article class="tile"><div class="media portrait">01</div><footer><span>VIDEO</span><span class="check">✓</span></footer></article>
-            <article class="tile"><div class="media landscape">02</div><footer><span>VIDEO</span><span class="check">✓</span></footer></article>
-            <article class="tile"><div class="media square">03</div><footer><span>IMAGE</span><span class="check">✓</span></footer></article>
-            <article class="tile"><div class="media classic">04</div><footer><span>IMAGE</span><span class="check">✓</span></footer></article>
-            <article class="tile"><div class="media portrait">05</div><footer><span>VIDEO</span><span class="check">✓</span></footer></article>
-            <article class="tile"><div class="media landscape">06</div><footer><span>VIDEO</span><span class="check">✓</span></footer></article>
-            <article class="tile"><div class="media portrait">07</div><footer><span>IMAGE</span><span class="check">✓</span></footer></article>
-            <article class="tile"><div class="media square">08</div><footer><span>IMAGE</span><span class="check">✓</span></footer></article>
+            <article class="tile">
+              <div class="media portrait">01</div>
+              <footer><span>VIDEO</span><span class="check">✓</span></footer>
+            </article>
+            <article class="tile">
+              <div class="media landscape">02</div>
+              <footer><span>VIDEO</span><span class="check">✓</span></footer>
+            </article>
+            <article class="tile">
+              <div class="media square">03</div>
+              <footer><span>IMAGE</span><span class="check">✓</span></footer>
+            </article>
+            <article class="tile">
+              <div class="media classic">04</div>
+              <footer><span>IMAGE</span><span class="check">✓</span></footer>
+            </article>
+            <article class="tile">
+              <div class="media portrait">05</div>
+              <footer><span>VIDEO</span><span class="check">✓</span></footer>
+            </article>
+            <article class="tile">
+              <div class="media landscape">06</div>
+              <footer><span>VIDEO</span><span class="check">✓</span></footer>
+            </article>
+            <article class="tile">
+              <div class="media portrait">07</div>
+              <footer><span>IMAGE</span><span class="check">✓</span></footer>
+            </article>
+            <article class="tile">
+              <div class="media square">08</div>
+              <footer><span>IMAGE</span><span class="check">✓</span></footer>
+            </article>
           </div>
         </div>
       </section>
 
       <section id="data">
-        <div class="section-head"><span class="label">03 / Data flow</span><div><h2>Preserve geometry end to end</h2><p>The background normalizers already collect dimensions in most paths. The missing link is the public response and workspace state contract.</p></div></div>
+        <div class="section-head">
+          <span class="label">03 / Data flow</span>
+          <div>
+            <h2>Preserve geometry end to end</h2>
+            <p>
+              The background normalizers already collect dimensions in most paths. The missing link
+              is the public response and workspace state contract.
+            </p>
+          </div>
+        </div>
         <div class="flow">
-          <div class="flow-step"><span class="label">Source</span><strong>Instagram schema</strong><small>Dimensions or resource width/height</small></div>
-          <div class="flow-step"><span class="label">Normalize</span><strong>Background MediaItem</strong><small>Keep validated optional width + height</small></div>
-          <div class="flow-step"><span class="label">Transport</span><strong>FETCH_MEDIA response</strong><small>Serialize geometry into popup state and snapshots</small></div>
-          <div class="flow-step"><span class="label">Render</span><strong>MediaItemRow</strong><small>Metadata ratio, then intrinsic fallback</small></div>
+          <div class="flow-step">
+            <span class="label">Source</span><strong>Instagram schema</strong
+            ><small>Dimensions or resource width/height</small>
+          </div>
+          <div class="flow-step">
+            <span class="label">Normalize</span><strong>Background MediaItem</strong
+            ><small>Keep validated optional width + height</small>
+          </div>
+          <div class="flow-step">
+            <span class="label">Transport</span><strong>FETCH_MEDIA response</strong
+            ><small>Serialize geometry into popup state and snapshots</small>
+          </div>
+          <div class="flow-step">
+            <span class="label">Render</span><strong>MediaItemRow</strong
+            ><small>Metadata ratio, then intrinsic fallback</small>
+          </div>
         </div>
       </section>
 
       <section id="implementation">
-        <div class="section-head"><span class="label">04 / Build sequence</span><div><h2>Vertical slices with testable seams</h2><p>Keep transport, ratio resolution, and masonry placement separate. Each concern should remain understandable without knowing the others.</p></div></div>
+        <div class="section-head">
+          <span class="label">04 / Build sequence</span>
+          <div>
+            <h2>Vertical slices with testable seams</h2>
+            <p>
+              Keep transport, ratio resolution, and masonry placement separate. Each concern should
+              remain understandable without knowing the others.
+            </p>
+          </div>
+        </div>
         <ol class="steps">
-          <li><div><strong>Extend the shared media contract.</strong><p>Add optional <code>width</code> and <code>height</code> to fetch responses, popup/workspace items, and sanitized snapshots. Only positive finite pairs qualify as metadata ratios. Preserve backward compatibility with snapshots that omit both.</p></div></li>
-          <li><div><strong>Expose dimensions from the background.</strong><p>Include the dimensions already held by normalized <code>MediaItem</code> values in <code>handleFetchMedia</code>. Confirm image, video, sidecar, Story, Highlight, Reel, and profile-cover paths either provide dimensions or intentionally fall back.</p></div></li>
-          <li><div><strong>Introduce a pure ratio resolver.</strong><p>Create a small helper that returns metadata ratio when valid, intrinsic ratio when available, and <code>4 / 3</code> otherwise. Clamp neither normal ratios nor content; the renderer enforces only the visual height bound.</p></div></li>
-          <li><div><strong>Capture intrinsic geometry.</strong><p>On image <code>load</code>, read <code>naturalWidth/naturalHeight</code>. On video <code>loadedmetadata</code>, read <code>videoWidth/videoHeight</code>. Store fallback geometry by stable item index, clear stale measurements when a new fetch replaces the list, and avoid state updates when metadata already supplies a valid ratio.</p></div></li>
-          <li><div><strong>Build workspace-only ratio frames.</strong><p>Pass a CSS custom property or inline <code>aspect-ratio</code> to each workspace thumbnail. Use full-frame containment, the agreed maximum height, centered media, and a subtle resizing transition that respects <code>prefers-reduced-motion</code>. Leave popup selectors unchanged.</p></div></li>
-          <li><div><strong>Replace workspace grid placement with masonry.</strong><p>Use a deterministic, responsive column-placement implementation that assigns each card to the currently shortest column while retaining DOM semantics and stable item identity. Recalculate when column count, container width, item ratio, or card content height changes. Avoid relying on experimental CSS masonry support.</p></div></li>
-          <li><div><strong>Harden resizing and cleanup.</strong><p>Observe the workspace container rather than the whole window, debounce or batch layout measurement with animation frames, disconnect observers on unmount, and ensure fallback preview replacement cannot leave stale intrinsic dimensions behind.</p></div></li>
+          <li>
+            <div>
+              <strong>Extend the shared media contract.</strong>
+              <p>
+                Add optional <code>width</code> and <code>height</code> to fetch responses,
+                popup/workspace items, and sanitized snapshots. Only positive finite pairs qualify
+                as metadata ratios. Preserve backward compatibility with snapshots that omit both.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Expose dimensions from the background.</strong>
+              <p>
+                Include the dimensions already held by normalized <code>MediaItem</code> values in
+                <code>handleFetchMedia</code>. Confirm image, video, sidecar, Story, Highlight,
+                Reel, and profile-cover paths either provide dimensions or intentionally fall back.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Introduce a pure ratio resolver.</strong>
+              <p>
+                Create a small helper that returns metadata ratio when valid, intrinsic ratio when
+                available, and <code>4 / 3</code> otherwise. Clamp neither normal ratios nor
+                content; the renderer enforces only the visual height bound.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Capture intrinsic geometry.</strong>
+              <p>
+                On image <code>load</code>, read <code>naturalWidth/naturalHeight</code>. On video
+                <code>loadedmetadata</code>, read <code>videoWidth/videoHeight</code>. Store
+                fallback geometry by stable item index, clear stale measurements when a new fetch
+                replaces the list, and avoid state updates when metadata already supplies a valid
+                ratio.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Build workspace-only ratio frames.</strong>
+              <p>
+                Pass a CSS custom property or inline <code>aspect-ratio</code> to each workspace
+                thumbnail. Use full-frame containment, the agreed maximum height, centered media,
+                and a subtle resizing transition that respects <code>prefers-reduced-motion</code>.
+                Leave popup selectors unchanged.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Replace workspace grid placement with masonry.</strong>
+              <p>
+                Use a deterministic, responsive column-placement implementation that assigns each
+                card to the currently shortest column while retaining DOM semantics and stable item
+                identity. Recalculate when column count, container width, item ratio, or card
+                content height changes. Avoid relying on experimental CSS masonry support.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Harden resizing and cleanup.</strong>
+              <p>
+                Observe the workspace container rather than the whole window, debounce or batch
+                layout measurement with animation frames, disconnect observers on unmount, and
+                ensure fallback preview replacement cannot leave stale intrinsic dimensions behind.
+              </p>
+            </div>
+          </li>
         </ol>
       </section>
 
       <section id="files">
-        <div class="section-head"><span class="label">05 / Change map</span><div><h2>Expected code surface</h2><p>Exact helper extraction may change during implementation, but responsibilities should remain within these boundaries.</p></div></div>
+        <div class="section-head">
+          <span class="label">05 / Change map</span>
+          <div>
+            <h2>Expected code surface</h2>
+            <p>
+              Exact helper extraction may change during implementation, but responsibilities should
+              remain within these boundaries.
+            </p>
+          </div>
+        </div>
         <div class="card full">
           <ul class="file-list">
-            <li><code>src/background.ts</code><span>Return optional width and height from <code>FETCH_MEDIA</code>; retain current strict-schema behavior.</span></li>
-            <li><code>src/workspace/contracts.ts</code><span>Extend workspace media and snapshot sanitization with validated geometry.</span></li>
-            <li><code>src/workspace/use-media-fetch.ts</code><span>Accept dimension fields in the response and propagate them into UI state.</span></li>
-            <li><code>src/popup.tsx</code><span>Resolve ratios, collect intrinsic dimensions, and render a workspace masonry surface without altering compact-popup behavior.</span></li>
-            <li><code>src/styles.css</code><span>Add workspace-only adaptive preview, containment, height cap, responsive columns, and reduced-motion rules.</span></li>
-            <li><code>src/background.test.ts</code><span>Assert dimensions cross the background response boundary for representative formats.</span></li>
-            <li><code>src/workspace/contracts.test.ts</code><span>Assert geometry survives sanitization and older geometry-free snapshots remain valid.</span></li>
-            <li><code>src/popup.test.tsx / src/integration.test.tsx</code><span>Test ratio priority, intrinsic events, failure fallback, workspace scoping, reflow, and selection behavior.</span></li>
+            <li>
+              <code>src/background.ts</code
+              ><span
+                >Return optional width and height from <code>FETCH_MEDIA</code>; retain current
+                strict-schema behavior.</span
+              >
+            </li>
+            <li>
+              <code>src/workspace/contracts.ts</code
+              ><span
+                >Extend workspace media and snapshot sanitization with validated geometry.</span
+              >
+            </li>
+            <li>
+              <code>src/workspace/use-media-fetch.ts</code
+              ><span
+                >Accept dimension fields in the response and propagate them into UI state.</span
+              >
+            </li>
+            <li>
+              <code>src/popup.tsx</code
+              ><span
+                >Resolve ratios, collect intrinsic dimensions, and render a workspace masonry
+                surface without altering compact-popup behavior.</span
+              >
+            </li>
+            <li>
+              <code>src/styles.css</code
+              ><span
+                >Add workspace-only adaptive preview, containment, height cap, responsive columns,
+                and reduced-motion rules.</span
+              >
+            </li>
+            <li>
+              <code>src/background.test.ts</code
+              ><span
+                >Assert dimensions cross the background response boundary for representative
+                formats.</span
+              >
+            </li>
+            <li>
+              <code>src/workspace/contracts.test.ts</code
+              ><span
+                >Assert geometry survives sanitization and older geometry-free snapshots remain
+                valid.</span
+              >
+            </li>
+            <li>
+              <code>src/popup.test.tsx / src/integration.test.tsx</code
+              ><span
+                >Test ratio priority, intrinsic events, failure fallback, workspace scoping, reflow,
+                and selection behavior.</span
+              >
+            </li>
           </ul>
         </div>
       </section>
 
       <section id="testing">
-        <div class="section-head"><span class="label">06 / Verification</span><div><h2>Prove both data and layout</h2><p>Automated checks cover deterministic behavior. Browser verification covers computed sizing and dense visual packing that jsdom cannot faithfully model.</p></div></div>
+        <div class="section-head">
+          <span class="label">06 / Verification</span>
+          <div>
+            <h2>Prove both data and layout</h2>
+            <p>
+              Automated checks cover deterministic behavior. Browser verification covers computed
+              sizing and dense visual packing that jsdom cannot faithfully model.
+            </p>
+          </div>
+        </div>
         <div class="grid">
-          <article class="card wide"><h3>Automated cases</h3><ul class="acceptance"><li>Valid metadata wins over intrinsic dimensions.</li><li>Missing, zero, negative, infinite, or one-sided metadata falls back safely.</li><li>Image load and video metadata events update the ratio.</li><li>Failed detection remains at 4:3 without throwing.</li><li>Workspace snapshots retain dimensions; data URLs remain excluded.</li><li>Compact popup dimensions and row layout remain unchanged.</li><li>Selection, preview fallback, and frame export still work.</li></ul></article>
-          <article class="card wide"><h3>Browser matrix</h3><ul class="acceptance"><li>Mixed 16:9, 4:3, 1:1, 4:5, and 9:16 fixtures.</li><li>Four-, three-, two-, and one-column widths.</li><li>520px and 70vh height constraints.</li><li>No crop in images or video poster/frame content.</li><li>Stable packing after delayed media loads and resize.</li><li>Chrome and Firefox MV3 builds.</li><li>Realistic Story and Highlight URLs when authenticated access is available.</li></ul></article>
-          <article class="card full"><h3>Repository verification order</h3><div class="command">vp lint . &nbsp;&nbsp;+&nbsp;&nbsp; tsc --noEmit</div><div class="command">vp test run</div><div class="command">vp run fallow</div><div class="command">vp run build</div></article>
+          <article class="card wide">
+            <h3>Automated cases</h3>
+            <ul class="acceptance">
+              <li>Valid metadata wins over intrinsic dimensions.</li>
+              <li>Missing, zero, negative, infinite, or one-sided metadata falls back safely.</li>
+              <li>Image load and video metadata events update the ratio.</li>
+              <li>Failed detection remains at 4:3 without throwing.</li>
+              <li>Workspace snapshots retain dimensions; data URLs remain excluded.</li>
+              <li>Compact popup dimensions and row layout remain unchanged.</li>
+              <li>Selection, preview fallback, and frame export still work.</li>
+            </ul>
+          </article>
+          <article class="card wide">
+            <h3>Browser matrix</h3>
+            <ul class="acceptance">
+              <li>Mixed 16:9, 4:3, 1:1, 4:5, and 9:16 fixtures.</li>
+              <li>Four-, three-, two-, and one-column widths.</li>
+              <li>520px and 70vh height constraints.</li>
+              <li>No crop in images or video poster/frame content.</li>
+              <li>Stable packing after delayed media loads and resize.</li>
+              <li>Chrome and Firefox MV3 builds.</li>
+              <li>Realistic Story and Highlight URLs when authenticated access is available.</li>
+            </ul>
+          </article>
+          <article class="card full">
+            <h3>Repository verification order</h3>
+            <div class="command">vp lint . &nbsp;&nbsp;+&nbsp;&nbsp; tsc --noEmit</div>
+            <div class="command">vp test run</div>
+            <div class="command">vp run fallow</div>
+            <div class="command">vp run build</div>
+          </article>
         </div>
       </section>
 
       <section id="risks">
-        <div class="section-head"><span class="label">07 / Risk register</span><div><h2>Likely failure modes</h2><p>The implementation should solve these directly, not hide them with route-specific exceptions.</p></div></div>
+        <div class="section-head">
+          <span class="label">07 / Risk register</span>
+          <div>
+            <h2>Likely failure modes</h2>
+            <p>
+              The implementation should solve these directly, not hide them with route-specific
+              exceptions.
+            </p>
+          </div>
+        </div>
         <div class="card full">
-          <div class="risk"><strong>Layout churn</strong><span>Unknown media ratios arrive after first paint.</span><span class="mitigation">Metadata-first sizing, 4:3 placeholder, batched intrinsic updates, restrained transition.</span></div>
-          <div class="risk"><strong>Stale state</strong><span>A replaced fetch reuses item indexes and old measurements.</span><span class="mitigation">Reset intrinsic geometry with each fetched media set and key state to the current item identity.</span></div>
-          <div class="risk"><strong>Observer loops</strong><span>Measuring cards changes columns, triggering repeated layout.</span><span class="mitigation">Derive column count from container width, batch measurement, and commit only changed placements.</span></div>
-          <div class="risk"><strong>Visual order</strong><span>Tight packing differs from numerical and keyboard order.</span><span class="mitigation">Keep DOM order and numbered labels stable; treat masonry placement as visual only.</span></div>
-          <div class="risk"><strong>Bad geometry</strong><span>Instagram sends missing or malformed dimensions.</span><span class="mitigation">Central positive-finite validation plus intrinsic and 4:3 fallback chain.</span></div>
-          <div class="risk"><strong>Huge cards</strong><span>One-column 9:16 media dominates the viewport.</span><span class="mitigation">Apply <code>min(70vh, 520px)</code>, contain content, and preserve access to card controls.</span></div>
+          <div class="risk">
+            <strong>Layout churn</strong><span>Unknown media ratios arrive after first paint.</span
+            ><span class="mitigation"
+              >Metadata-first sizing, 4:3 placeholder, batched intrinsic updates, restrained
+              transition.</span
+            >
+          </div>
+          <div class="risk">
+            <strong>Stale state</strong
+            ><span>A replaced fetch reuses item indexes and old measurements.</span
+            ><span class="mitigation"
+              >Reset intrinsic geometry with each fetched media set and key state to the current
+              item identity.</span
+            >
+          </div>
+          <div class="risk">
+            <strong>Observer loops</strong
+            ><span>Measuring cards changes columns, triggering repeated layout.</span
+            ><span class="mitigation"
+              >Derive column count from container width, batch measurement, and commit only changed
+              placements.</span
+            >
+          </div>
+          <div class="risk">
+            <strong>Visual order</strong
+            ><span>Tight packing differs from numerical and keyboard order.</span
+            ><span class="mitigation"
+              >Keep DOM order and numbered labels stable; treat masonry placement as visual
+              only.</span
+            >
+          </div>
+          <div class="risk">
+            <strong>Bad geometry</strong
+            ><span>Instagram sends missing or malformed dimensions.</span
+            ><span class="mitigation"
+              >Central positive-finite validation plus intrinsic and 4:3 fallback chain.</span
+            >
+          </div>
+          <div class="risk">
+            <strong>Huge cards</strong><span>One-column 9:16 media dominates the viewport.</span
+            ><span class="mitigation"
+              >Apply <code>min(70vh, 520px)</code>, contain content, and preserve access to card
+              controls.</span
+            >
+          </div>
         </div>
       </section>
 
       <section id="done">
-        <div class="section-head"><span class="label">08 / Completion</span><div><h2>Definition of done</h2></div></div>
-        <div class="outcome"><p>Every workspace media card presents the complete downloadable media at its real aspect ratio when dimensions are known, recovers accurately from missing metadata through intrinsic measurement, packs responsively into dense masonry columns, respects the agreed height bound and reduced-motion preferences, leaves the compact popup unchanged, and passes the full automated and browser verification matrix.</p></div>
+        <div class="section-head">
+          <span class="label">08 / Completion</span>
+          <div><h2>Definition of done</h2></div>
+        </div>
+        <div class="outcome">
+          <p>
+            Every workspace media card presents the complete downloadable media at its real aspect
+            ratio when dimensions are known, recovers accurately from missing metadata through
+            intrinsic measurement, packs responsively into dense masonry columns, respects the
+            agreed height bound and reduced-motion preferences, leaves the compact popup unchanged,
+            and passes the full automated and browser verification matrix.
+          </p>
+        </div>
       </section>
     </main>
   </body>

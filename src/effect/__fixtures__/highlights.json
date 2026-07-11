@@ -872,376 +872,172 @@
   "errors": [
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        0,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 0, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        0,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 0, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        1,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 1, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        1,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 1, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        2,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 2, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        2,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 2, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        3,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 3, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        3,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 3, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        4,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 4, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        4,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 4, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        5,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 5, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        5,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 5, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        6,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 6, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        6,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 6, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        7,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 7, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        7,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 7, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        8,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 8, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        8,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 8, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        9,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 9, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        9,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 9, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        10,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 10, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        10,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 10, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        11,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 11, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        11,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 11, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        12,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 12, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        12,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 12, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        13,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 13, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        13,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 13, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        14,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 14, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        14,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 14, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        15,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 15, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        15,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 15, "story_view_count"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        16,
-        "story_cta_url"
-      ],
+      "path": ["reels_media", 0, "items", 16, "story_cta_url"],
       "severity": "ERROR"
     },
     {
       "message": "execution error",
-      "path": [
-        "reels_media",
-        0,
-        "items",
-        16,
-        "story_view_count"
-      ],
+      "path": ["reels_media", 0, "items", 16, "story_view_count"],
       "severity": "ERROR"
     }
   ]

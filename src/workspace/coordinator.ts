@@ -8,6 +8,7 @@ import {
 } from './contracts';
 
 let openingWorkspace: Promise<'created' | 'focused'> | undefined;
+let replacingWorkspace: Promise<void> = Promise.resolve();
 
 function isWorkspaceTab(tab: { url?: string }): boolean {
   const url = tab.url ?? '';
@@ -50,6 +51,15 @@ export async function openWorkspace(snapshot: WorkspaceSnapshot): Promise<'creat
 export async function replaceWorkspace(
   snapshot: WorkspaceSnapshot
 ): Promise<'replaced' | 'created'> {
+  const result = replacingWorkspace.then(() => replaceWorkspaceNow(snapshot));
+  replacingWorkspace = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
+async function replaceWorkspaceNow(snapshot: WorkspaceSnapshot): Promise<'replaced' | 'created'> {
   const existing = await findWorkspaceTab();
   if (!existing?.id) return createWorkspace(snapshot);
   await browser.storage.set({ [WORKSPACE_TRANSFER_KEY]: sanitizeSnapshot(snapshot) });

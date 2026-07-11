@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { isInstagramSource, sanitizeSnapshot, type WorkspaceSnapshot } from './contracts';
+import {
+  canonicalizeInstagramUrl,
+  isInstagramSource,
+  sanitizeSnapshot,
+  type WorkspaceSnapshot,
+} from './contracts';
 
 const snapshot: WorkspaceSnapshot = {
   version: 1,
@@ -30,6 +35,22 @@ describe('workspace contracts', () => {
     expect(isInstagramSource('https://instagram.com/p/example/')).toBe(true);
     expect(isInstagramSource('https://notinstagram.com/p/example/')).toBe(false);
     expect(isInstagramSource('not a URL')).toBe(false);
+  });
+
+  it('strictly canonicalizes supported targets', () => {
+    expect(
+      canonicalizeInstagramUrl('http://instagram.com/p/example/?img_index=2&utm=x#comments')
+    ).toMatchObject({
+      url: 'https://www.instagram.com/p/example/?img_index=2',
+      target: { type: 'post', shortcode: 'example', carouselIndex: 1 },
+    });
+    expect(canonicalizeInstagramUrl('https://www.instagram.com/stories/name/12345/')).toMatchObject(
+      { url: 'https://www.instagram.com/stories/name/', target: { type: 'story' } }
+    );
+    expect(canonicalizeInstagramUrl('https://www.instagram.com/explore/')).toBeNull();
+    expect(canonicalizeInstagramUrl('https://evilinstagram.com/p/example/')).toBeNull();
+    expect(canonicalizeInstagramUrl('ftp://www.instagram.com/p/example/')).toBeNull();
+    expect(canonicalizeInstagramUrl('https://www.instagram.com/p/example/extra/')).toBeNull();
   });
 
   it('removes transient data URL previews from transfers', () => {
