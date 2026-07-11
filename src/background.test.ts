@@ -185,6 +185,28 @@ describe('background dispatcher', () => {
     });
   });
 
+  it('prefers a supported clicked link over the page and tab URLs', async () => {
+    await import('./background');
+    const click = fakeBrowserObj.getContextClickListener()!;
+    click(
+      {
+        menuItemId: 'gramgrab-open',
+        linkUrl: 'https://www.instagram.com/p/link-shortcode/',
+        pageUrl: 'https://www.instagram.com/p/page-shortcode/',
+      },
+      { url: 'https://www.instagram.com/p/tab-shortcode/' }
+    );
+
+    await vi.waitFor(() => {
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
+        'workspace-transfer-v1': expect.objectContaining({
+          url: 'https://www.instagram.com/p/link-shortcode/',
+          intent: 'open',
+        }),
+      });
+    });
+  });
+
   it('opens the workspace with an explanation for unsupported Instagram routes', async () => {
     await import('./background');
     const click = fakeBrowserObj.getContextClickListener()!;
@@ -220,11 +242,31 @@ describe('background dispatcher', () => {
     });
 
     await vi.waitFor(() => {
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
+        'workspace-transfer-v1': expect.objectContaining({
+          url: 'https://www.instagram.com/reel/media-shortcode/',
+          intent: 'open',
+        }),
+      });
       expect(fakeBrowserObj.fakeBrowser.tabs.create).toHaveBeenCalledWith({
         active: true,
         url: expect.stringContaining('popup.html?surface=workspace&source='),
       });
     });
+  });
+
+  it('ignores context-menu clicks that do not belong to a GramGrab command', async () => {
+    await import('./background');
+    const click = fakeBrowserObj.getContextClickListener()!;
+    click({
+      menuItemId: 'another-extension-command',
+      pageUrl: 'https://www.instagram.com/p/page-shortcode/',
+    });
+
+    await Promise.resolve();
+
+    expect(fakeBrowserObj.fakeBrowser.storage.set).not.toHaveBeenCalled();
+    expect(fakeBrowserObj.fakeBrowser.tabs.create).not.toHaveBeenCalled();
   });
 
   it('returns true for known message types (indicates async sendResponse)', async () => {

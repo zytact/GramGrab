@@ -23,16 +23,19 @@ async function loadShim() {
 describe('browser shim', () => {
   let savedBrowser: unknown;
   let savedChrome: unknown;
+  let savedTargetBrowser: unknown;
 
   beforeEach(() => {
     savedBrowser = (globalThis as G)['browser'];
     savedChrome = (globalThis as G)['chrome'];
+    savedTargetBrowser = (globalThis as G)['__GRAMGRAB_TARGET_BROWSER__'];
     vi.resetModules();
   });
 
   afterEach(() => {
     (globalThis as G)['browser'] = savedBrowser;
     (globalThis as G)['chrome'] = savedChrome;
+    (globalThis as G)['__GRAMGRAB_TARGET_BROWSER__'] = savedTargetBrowser;
     vi.resetModules();
   });
 
@@ -178,6 +181,54 @@ describe('browser shim', () => {
       shim.contextMenus.onClicked.addListener(listener);
 
       expect(onClicked.addListener).toHaveBeenCalledWith(listener);
+    });
+
+    it('prefers Chrome when both complete browser globals are present', async () => {
+      const chrome = makeChrome();
+      const chromeOnClicked = { addListener: vi.fn() };
+      (chrome as G)['contextMenus'] = {
+        create: vi.fn(),
+        removeAll: vi.fn(),
+        onClicked: chromeOnClicked,
+      };
+      const nativeOnClicked = { addListener: vi.fn() };
+      (globalThis as G)['browser'] = {
+        storage: { local: {} },
+        contextMenus: { onClicked: nativeOnClicked },
+      };
+      (globalThis as G)['chrome'] = chrome;
+      (globalThis as G)['__GRAMGRAB_TARGET_BROWSER__'] = 'chromium';
+
+      const shim = await loadShim();
+      const listener = vi.fn();
+      shim.contextMenus.onClicked.addListener(listener);
+
+      expect(chromeOnClicked.addListener).toHaveBeenCalledWith(listener);
+      expect(nativeOnClicked.addListener).not.toHaveBeenCalled();
+    });
+
+    it('prefers the native browser global in a Firefox build', async () => {
+      const chrome = makeChrome();
+      const chromeOnClicked = { addListener: vi.fn() };
+      (chrome as G)['contextMenus'] = {
+        create: vi.fn(),
+        removeAll: vi.fn(),
+        onClicked: chromeOnClicked,
+      };
+      const nativeOnClicked = { addListener: vi.fn() };
+      (globalThis as G)['browser'] = {
+        storage: { local: {} },
+        contextMenus: { onClicked: nativeOnClicked },
+      };
+      (globalThis as G)['chrome'] = chrome;
+      (globalThis as G)['__GRAMGRAB_TARGET_BROWSER__'] = 'firefox';
+
+      const shim = await loadShim();
+      const listener = vi.fn();
+      shim.contextMenus.onClicked.addListener(listener);
+
+      expect(nativeOnClicked.addListener).toHaveBeenCalledWith(listener);
+      expect(chromeOnClicked.addListener).not.toHaveBeenCalled();
     });
 
     it('wraps chrome.tabs.query into a Promise (success)', async () => {
