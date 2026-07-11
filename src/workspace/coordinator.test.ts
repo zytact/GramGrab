@@ -3,7 +3,7 @@ import { openWorkspace, replaceWorkspace } from './coordinator';
 import type { WorkspaceSnapshot } from './contracts';
 
 const snapshot: WorkspaceSnapshot = {
-  version: 1,
+  version: 2,
   createdAt: 1,
   expiresAt: Date.now() + 60_000,
   url: 'https://www.instagram.com/p/example/',
@@ -11,7 +11,7 @@ const snapshot: WorkspaceSnapshot = {
   status: 'idle',
   message: 'Ready to fetch media.',
   mediaItems: [],
-  exportFrameIndexes: [],
+  frameExportSettings: {},
 };
 
 const mockBrowser = {

@@ -20,6 +20,7 @@ import {
   type WorkspaceMediaItem,
   type WorkspaceSnapshot,
 } from './contracts';
+import type { FrameExportSetting } from '../frame-export/timestamp';
 
 type SurfaceStatus = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
@@ -34,8 +35,8 @@ interface WorkspaceSurfaceOptions {
   setMessage: Dispatch<SetStateAction<string>>;
   mediaItems: WorkspaceMediaItem[];
   setMediaItems: Dispatch<SetStateAction<WorkspaceMediaItem[]>>;
-  exportFrameSet: Set<number>;
-  setExportFrameSet: Dispatch<SetStateAction<Set<number>>>;
+  frameExportSettings: Record<number, FrameExportSetting>;
+  setFrameExportSettings: Dispatch<SetStateAction<Record<number, FrameExportSetting>>>;
   setAutoDetected: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -45,16 +46,16 @@ function workspaceSnapshot({
   status,
   message,
   mediaItems,
-  exportFrameSet,
+  frameExportSettings,
 }: Pick<
   WorkspaceSurfaceOptions,
-  'url' | 'fetchedUrl' | 'status' | 'message' | 'mediaItems' | 'exportFrameSet'
+  'url' | 'fetchedUrl' | 'status' | 'message' | 'mediaItems' | 'frameExportSettings'
 >): WorkspaceSnapshot {
   const createdAt = Date.now();
   const resultsMatchDraftSource = fetchedUrl === url.trim();
   const settledStatus = status === 'error' ? 'error' : status === 'done' ? 'done' : 'idle';
   return {
-    version: 1,
+    version: 2,
     createdAt,
     expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
     url,
@@ -62,7 +63,7 @@ function workspaceSnapshot({
     status: resultsMatchDraftSource ? settledStatus : 'idle',
     message: resultsMatchDraftSource ? message : 'Ready to fetch media.',
     mediaItems: resultsMatchDraftSource ? mediaItems : [],
-    exportFrameIndexes: resultsMatchDraftSource ? [...exportFrameSet] : [],
+    frameExportSettings: resultsMatchDraftSource ? frameExportSettings : {},
   };
 }
 
@@ -84,7 +85,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
           session.setStatus(snapshot.status);
           session.setMessage(snapshot.message);
           session.setMediaItems(snapshot.mediaItems);
-          session.setExportFrameSet(new Set(snapshot.exportFrameIndexes));
+          session.setFrameExportSettings(snapshot.frameExportSettings);
           if (snapshot.intent === 'fetch') setFetchIntent(intent => intent + 1);
           return;
         }
