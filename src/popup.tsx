@@ -11,6 +11,9 @@ import { distributeMasonryItems } from './workspace/masonry';
 
 interface MediaItem {
   index: number;
+  itemIndex?: number;
+  mediaId?: string;
+  history?: { downloaded: boolean; count: number; latestDownloadedAt?: number };
   type: string;
   url: string;
   filenameHint: string;
@@ -27,7 +30,20 @@ interface PreviewResponse {
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 type VideoBlobResponse = { dataUrl?: string; error?: string };
-type DownloadMediaResponse = { error?: string; failures?: { url: string; reason: string }[] };
+type DownloadMediaResponse = {
+  error?: string;
+  failures?: { url: string; reason: string }[];
+  acceptedItemIndexes?: number[];
+};
+type HistoryEntry = {
+  id: string;
+  sourceUrl: string;
+  sourceKind: string;
+  itemIndex: number;
+  mediaType: string;
+  filenameHint: string;
+  downloadedAt: number;
+};
 
 export default function Popup() {
   const initialWorkspaceMode =
@@ -46,6 +62,9 @@ export default function Popup() {
     Record<number, { width: number; height: number }>
   >({});
   const [autoDetected, setAutoDetected] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [historyBusy, setHistoryBusy] = useState<string | null>(null);
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
 
   const replaceMediaItems = useCallback<typeof setMediaItems>(action => {
@@ -61,6 +80,11 @@ export default function Popup() {
     setStatus,
     setMessage,
   });
+  const handleFetchRef = useRef(handleFetch);
+
+  useEffect(() => {
+    handleFetchRef.current = handleFetch;
+  }, [handleFetch]);
 
   const handleIntrinsicDimensions = useCallback(
     (item: MediaItem, width: number, height: number) => {
@@ -160,6 +184,7 @@ export default function Popup() {
     [captureFrameFromVideo, mediaItems]
   );
 
+  // fallow-ignore-next-line complexity
   const handleDownload = useCallback(async () => {
     const selected = mediaItems.filter(m => m.selected);
     if (selected.length === 0) {
@@ -177,16 +202,36 @@ export default function Popup() {
       if (standardItems.length > 0) {
         const res = (await browser.runtime.sendMessage({
           type: 'DOWNLOAD_MEDIA',
-          urls: standardItems.map(item => item.url),
-          hints: standardItems.map(item => item.filenameHint),
-          types: standardItems.map(item => item.type),
+          sourceUrl: fetchedUrl || url,
+          items: standardItems.map(item => ({
+            itemIndex: item.itemIndex ?? item.index,
+            ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+            url: item.url,
+            filenameHint: item.filenameHint,
+            mediaType: item.type === 'video' ? 'video' : 'image',
+          })),
         })) as DownloadMediaResponse;
 
-        if (res?.error) {
+        if (res?.error && !res.acceptedItemIndexes?.length) {
           setMessage(res.error);
           setStatus('error');
           return;
         }
+        if (res?.acceptedItemIndexes?.length)
+          setMediaItems(previous =>
+            previous.map(item =>
+              res.acceptedItemIndexes!.includes(item.itemIndex ?? item.index)
+                ? {
+                    ...item,
+                    history: {
+                      downloaded: true,
+                      count: (item.history?.count ?? 0) + 1,
+                      latestDownloadedAt: Date.now(),
+                    },
+                  }
+                : item
+            )
+          );
       }
 
       setMessage(
@@ -197,7 +242,7 @@ export default function Popup() {
       setMessage(String(err));
       setStatus('error');
     }
-  }, [exportFrameSet, handleExportFrame, mediaItems]);
+  }, [exportFrameSet, fetchedUrl, handleExportFrame, mediaItems, url]);
 
   const selectedCount = mediaItems.filter(m => m.selected).length;
   const allSelected = mediaItems.length > 0 && selectedCount === mediaItems.length;
@@ -221,6 +266,52 @@ export default function Popup() {
   );
   const handleVideoRef = useCallback((index: number, el: HTMLVideoElement | null) => {
     videoRefs.current[index] = el;
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    const response = (await browser.runtime.sendMessage({ type: 'GET_DOWNLOAD_HISTORY' })) as {
+      entries?: HistoryEntry[];
+      error?: string;
+    };
+    if (response.error) {
+      setMessage(response.error);
+      return;
+    }
+    setHistoryEntries(response.entries ?? []);
+  }, []);
+
+  const openHistory = useCallback(() => {
+    setShowHistory(true);
+    void loadHistory();
+  }, [loadHistory]);
+  const redownloadHistory = useCallback(
+    async (entryId: string) => {
+      setHistoryBusy(entryId);
+      const response = (await browser.runtime.sendMessage({
+        type: 'REDOWNLOAD_HISTORY_ENTRY',
+        entryId,
+      })) as { error?: string };
+      setHistoryBusy(null);
+      setMessage(response.error ?? 'Download started.');
+      if (!response.error) void loadHistory();
+    },
+    [loadHistory]
+  );
+  const removeHistoryEntry = useCallback(async (entryId: string) => {
+    const response = (await browser.runtime.sendMessage({
+      type: 'DELETE_HISTORY_ENTRY',
+      entryId,
+    })) as { entries?: HistoryEntry[]; error?: string };
+    if (response.error) setMessage(response.error);
+    else setHistoryEntries(response.entries ?? []);
+  }, []);
+  const clearDownloadHistory = useCallback(async () => {
+    if (!window.confirm('Clear all download history?')) return;
+    const response = (await browser.runtime.sendMessage({ type: 'CLEAR_DOWNLOAD_HISTORY' })) as {
+      error?: string;
+    };
+    if (response.error) setMessage(response.error);
+    else setHistoryEntries([]);
   }, []);
 
   const {
@@ -249,8 +340,8 @@ export default function Popup() {
   });
 
   useEffect(() => {
-    if (fetchIntent > 0) void handleFetch();
-  }, [fetchIntent, handleFetch]);
+    if (fetchIntent > 0) void handleFetchRef.current();
+  }, [fetchIntent]);
 
   return (
     <div className={`container${workspaceMode ? ' workspace-container' : ''}`}>
@@ -264,46 +355,80 @@ export default function Popup() {
       </header>
 
       <div className="ext-body">
-        <div className="ext-section">
-          <div className="field-label">Source URL</div>
-          <input
-            className={`url-input${autoDetected ? ' detected' : ''}`}
-            type="url"
-            placeholder="Paste an Instagram URL…"
-            value={url}
-            onChange={e => handleUrlChange(e.currentTarget.value)}
-            onBlur={() => setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)}
-            onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
+        <div className="history-nav" aria-label="Popup view">
+          <button
+            className="workspace-secondary"
+            type="button"
+            onClick={() => setShowHistory(false)}
+            aria-pressed={!showHistory}
+          >
+            Results
+          </button>
+          <button
+            className="workspace-secondary"
+            type="button"
+            onClick={openHistory}
+            aria-pressed={showHistory}
+          >
+            History
+          </button>
+        </div>
+        {showHistory ? (
+          <HistoryView
+            entries={historyEntries}
+            busyId={historyBusy}
+            onRedownload={redownloadHistory}
+            onRemove={removeHistoryEntry}
+            onClear={clearDownloadHistory}
           />
-        </div>
+        ) : (
+          <>
+            <div className="ext-section">
+              <div className="field-label">Source URL</div>
+              <input
+                className={`url-input${autoDetected ? ' detected' : ''}`}
+                type="url"
+                placeholder="Paste an Instagram URL…"
+                value={url}
+                onChange={e => handleUrlChange(e.currentTarget.value)}
+                onBlur={() => setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)}
+                onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
+              />
+            </div>
 
-        <div className="ext-section">
-          <button className="btn" onClick={handleFetch} disabled={isBusy}>
-            {renderFetchButtonLabel(status)}
-          </button>
-        </div>
+            <div className="ext-section">
+              <button className="btn" onClick={handleFetch} disabled={isBusy}>
+                {renderFetchButtonLabel(status)}
+              </button>
+            </div>
 
-        <MediaListSection
-          mediaItems={mediaItems}
-          workspaceMode={workspaceMode}
-          intrinsicDimensions={intrinsicDimensions}
-          allSelected={allSelected}
-          fallbackLoading={fallbackLoading}
-          fallbackFailed={fallbackFailed}
-          exportFrameSet={exportFrameSet}
-          onPreviewError={handlePreviewError}
-          onToggle={toggleItem}
-          onToggleAll={toggleAll}
-          onToggleExportFrame={toggleExportFrame}
-          onVideoRef={handleVideoRef}
-          onIntrinsicDimensions={handleIntrinsicDimensions}
-        />
+            <MediaListSection
+              mediaItems={mediaItems}
+              workspaceMode={workspaceMode}
+              intrinsicDimensions={intrinsicDimensions}
+              allSelected={allSelected}
+              fallbackLoading={fallbackLoading}
+              fallbackFailed={fallbackFailed}
+              exportFrameSet={exportFrameSet}
+              onPreviewError={handlePreviewError}
+              onToggle={toggleItem}
+              onToggleAll={toggleAll}
+              onToggleExportFrame={toggleExportFrame}
+              onVideoRef={handleVideoRef}
+              onIntrinsicDimensions={handleIntrinsicDimensions}
+            />
 
-        <div className="ext-section">
-          <button className="btn" onClick={handleDownload} disabled={selectedCount === 0 || isBusy}>
-            {renderDownloadButtonLabel(status, selectedCount)}
-          </button>
-        </div>
+            <div className="ext-section">
+              <button
+                className="btn"
+                onClick={handleDownload}
+                disabled={selectedCount === 0 || isBusy}
+              >
+                {renderDownloadButtonLabel(status, selectedCount)}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="status-bar">
@@ -333,6 +458,100 @@ export default function Popup() {
       </footer>
     </div>
   );
+}
+
+function HistoryView({
+  entries,
+  busyId,
+  onRedownload,
+  onRemove,
+  onClear,
+}: {
+  entries: HistoryEntry[];
+  busyId: string | null;
+  onRedownload: (id: string) => void;
+  onRemove: (id: string) => void;
+  onClear: () => void;
+}) {
+  if (!entries.length)
+    return (
+      <div className="ext-section media-empty">
+        No downloads recorded yet. Only future accepted downloads are recorded.
+      </div>
+    );
+  return (
+    <section className="history-view" aria-label="Download history">
+      <div className="history-heading">
+        <div>
+          <span className="history-eyebrow">Download history</span>
+          <h2>
+            {entries.length} saved download{entries.length === 1 ? '' : 's'}
+          </h2>
+        </div>
+        <button className="history-clear" type="button" onClick={onClear}>
+          Clear
+        </button>
+      </div>
+      <div className="history-list">
+        {entries.map(entry => (
+          <article className="history-entry" key={entry.id}>
+            <div className="history-entry-topline">
+              <span className={`item-type-badge ${entry.mediaType}`}>{entry.mediaType}</span>
+              <span className="history-item-number">Item {entry.itemIndex + 1}</span>
+              <time
+                title={new Date(entry.downloadedAt).toLocaleString()}
+                dateTime={new Date(entry.downloadedAt).toISOString()}
+              >
+                {relativeHistoryTime(entry.downloadedAt)}
+              </time>
+            </div>
+            <span className="history-filename" title={entry.filenameHint}>
+              {entry.filenameHint}
+            </span>
+            <div className="history-entry-footer">
+              <a
+                className="history-source-link"
+                href={entry.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open source for item ${entry.itemIndex + 1}`}
+                title={entry.sourceUrl}
+              >
+                Open source ↗
+              </a>
+              <button
+                className="history-redownload"
+                type="button"
+                disabled={busyId === entry.id}
+                onClick={() => onRedownload(entry.id)}
+              >
+                {busyId === entry.id ? 'Starting…' : 'Re-download'}
+              </button>
+              <button
+                className="history-remove"
+                type="button"
+                onClick={() => onRemove(entry.id)}
+                aria-label={`Remove item ${entry.itemIndex + 1} from history`}
+                title="Remove from history"
+              >
+                ×
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function relativeHistoryTime(downloadedAt: number): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - downloadedAt) / 1000));
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function PopupHeader({
@@ -815,6 +1034,14 @@ function MediaItemRow(props: MediaItemRowProps) {
 
       <div className="item-info">
         <span className={`item-type-badge ${item.type}`}>{item.type}</span>
+        {item.history?.downloaded && (
+          <span
+            className="item-type-badge"
+            aria-label={`Downloaded ${new Date(item.history.latestDownloadedAt ?? Date.now()).toLocaleString()}`}
+          >
+            Downloaded
+          </span>
+        )}
         <span className="item-filename">{item.filenameHint}</span>
       </div>
 
