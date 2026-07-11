@@ -7,6 +7,10 @@ import {
   type WorkspaceSnapshot,
 } from './workspace/contracts.ts';
 import { replaceWorkspace } from './workspace/coordinator.ts';
+import { historySource } from './history/source.ts';
+import { reconcileHistoryEntry } from './history/reconciliation.ts';
+import { appendHistory, clearHistory, getHistory, removeHistory } from './history/repository.ts';
+import type { DownloadHistoryEntryV1, HistoryMarker } from './history/contracts.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
 import { runHandler } from './effect/runtime.ts';
 import {
@@ -45,6 +49,24 @@ import {
 } from './effect/errors.ts';
 
 const DOWNLOAD_CONCURRENCY = 3;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = Array.from({ length: items.length }) as R[];
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (cursor < items.length) {
+        const index = cursor++;
+        results[index] = await mapper(items[index]!, index);
+      }
+    })
+  );
+  return results;
+}
 
 const OPERATIONS = {
   MEDIA_BY_SHORTCODE: {
@@ -141,6 +163,8 @@ function pickBestResource(
 }
 
 interface MediaItem {
+  itemIndex: number;
+  mediaId?: string;
   type: 'image' | 'video';
   url: string;
   previewUrl?: string;
@@ -148,6 +172,10 @@ interface MediaItem {
   height?: number;
   takenAt?: number;
   filenameHint: string;
+}
+
+function withItemIndexes(items: MediaItem[]): MediaItem[] {
+  return items.map((item, itemIndex) => ({ ...item, itemIndex }));
 }
 
 function resolveHdUrl(hdUser: HdAvatarUser | undefined): string | undefined {
@@ -171,6 +199,8 @@ function normalizeProfilePicture(
   if (!picUrl) return [];
   return [
     {
+      itemIndex: 0,
+      mediaId: `profile-avatar:${username}`,
       type: 'image',
       url: picUrl,
       width: user?.profile_pic_dimensions?.width,
@@ -214,6 +244,8 @@ function createHighlightCoverItem(
   if (!downloadUrl) return undefined;
 
   return {
+    itemIndex: 0,
+    mediaId: String(entry.id),
     type: 'image',
     url: downloadUrl,
     previewUrl: buildHighlightPreviewUrl(versions.cropped?.url, downloadUrl),
@@ -313,6 +345,7 @@ function createShortcodeMediaItem(
   previewUrl?: string
 ): MediaItem {
   return {
+    itemIndex: 0,
     type,
     url,
     previewUrl,
@@ -360,14 +393,17 @@ function normalizeSidecarVideoItem(
     node.dimensions
   );
   return mediaSource
-    ? createShortcodeMediaItem(
-        context,
-        mediaSource.url,
-        'video',
-        mediaSource.width,
-        mediaSource.height,
-        pickPreviewSrc(node.display_resources ?? [], node.display_url)
-      )
+    ? {
+        ...createShortcodeMediaItem(
+          context,
+          mediaSource.url,
+          'video',
+          mediaSource.width,
+          mediaSource.height,
+          pickPreviewSrc(node.display_resources ?? [], node.display_url)
+        ),
+        mediaId: node.id != null ? String(node.id) : undefined,
+      }
     : undefined;
 }
 
@@ -375,12 +411,13 @@ function normalizeSidecarImageItem(
   node: SidecarChild,
   context: MediaContext
 ): MediaItem | undefined {
-  return createImageMediaItem(
+  const item = createImageMediaItem(
     node.display_resources ?? [],
     node.display_url,
     node.dimensions,
     context
   );
+  return item ? { ...item, mediaId: node.id != null ? String(node.id) : undefined } : undefined;
 }
 
 function normalizeShortcodeVideoItem(
@@ -393,14 +430,17 @@ function normalizeShortcodeVideoItem(
     video.dimensions
   );
   return mediaSource
-    ? createShortcodeMediaItem(
-        context,
-        mediaSource.url,
-        'video',
-        mediaSource.width,
-        mediaSource.height,
-        video.display_url
-      )
+    ? {
+        ...createShortcodeMediaItem(
+          context,
+          mediaSource.url,
+          'video',
+          mediaSource.width,
+          mediaSource.height,
+          video.display_url
+        ),
+        mediaId: video.id != null ? String(video.id) : undefined,
+      }
     : undefined;
 }
 
@@ -408,12 +448,13 @@ function normalizeShortcodeImageItem(
   image: ShortcodeImage,
   context: MediaContext
 ): MediaItem | undefined {
-  return createImageMediaItem(
+  const item = createImageMediaItem(
     image.display_resources ?? [],
     image.display_url,
     image.dimensions,
     context
   );
+  return item ? { ...item, mediaId: image.id != null ? String(image.id) : undefined } : undefined;
 }
 
 function resolveVideoMediaSource(
@@ -496,6 +537,8 @@ function createStoryVideoItem(reelId: string, item: StoryVideoItem): MediaItem |
   const best = pickBestResource(item.video_resources);
   return best
     ? {
+        itemIndex: 0,
+        mediaId: String(item.id),
         type: 'video',
         url: best,
         previewUrl: pickPreviewSrc(item.display_resources, item.display_url),
@@ -511,6 +554,8 @@ function createStoryImageItem(reelId: string, item: StoryImageItem): MediaItem |
   const best = pickBestResource(item.display_resources) ?? item.display_url;
   return best
     ? {
+        itemIndex: 0,
+        mediaId: String(item.id),
         type: 'image',
         url: best,
         previewUrl: pickPreviewSrc(item.display_resources, item.display_url),
@@ -769,13 +814,13 @@ const resolveMediaEffect = (
     switch (parsed.type) {
       case 'post':
       case 'reel':
-        return yield* fetchShortcodeMediaItems(parsed.shortcode!);
+        return withItemIndexes(yield* fetchShortcodeMediaItems(parsed.shortcode!));
       case 'highlight':
-        return yield* fetchHighlightMediaItems(parsed.highlightId!);
+        return withItemIndexes(yield* fetchHighlightMediaItems(parsed.highlightId!));
       case 'story':
-        return yield* fetchStoryMediaItems(parsed.username!);
+        return withItemIndexes(yield* fetchStoryMediaItems(parsed.username!));
       case 'profile':
-        return yield* fetchProfileMediaItems(parsed.username!);
+        return withItemIndexes(yield* fetchProfileMediaItems(parsed.username!));
     }
   });
 
@@ -894,9 +939,13 @@ function hasValidMediaDimensions(
 }
 
 async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
+  sourceUrl?: string;
   media:
     | {
         url: string;
+        itemIndex: number;
+        mediaId?: string;
+        history: HistoryMarker;
         type: string;
         filenameHint: string;
         previewUrl?: string;
@@ -906,20 +955,50 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
     | undefined;
   error: string | undefined;
 }> {
-  return runHandler(
-    resolveMediaEffect(msg.url).pipe(
-      Effect.map(items => ({
-        media: items.map(item => ({
-          url: item.url,
-          type: item.type,
-          filenameHint: item.filenameHint,
-          previewUrl: item.previewUrl,
-          ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
-        })),
-      }))
-    ),
-    { media: undefined }
+  const source = historySource(msg.url);
+  if (!source) return { media: undefined, error: 'Invalid Instagram URL.' };
+  const result = await runHandler(
+    resolveMediaEffect(source.url).pipe(Effect.map(items => ({ items }))),
+    { items: undefined as MediaItem[] | undefined }
   );
+  if (result.error || !result.items) return { media: undefined, error: result.error };
+  const stored = await getHistory();
+  if (stored.kind === 'unknown-version')
+    return { media: undefined, error: 'Download history uses a newer version.' };
+  return {
+    sourceUrl: source.url,
+    media: result.items.map(item => ({
+      url: item.url,
+      itemIndex: item.itemIndex,
+      ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+      type: item.type,
+      filenameHint: item.filenameHint,
+      previewUrl: item.previewUrl,
+      history: historyMarker(stored.entries, source.url, item),
+      ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
+    })),
+    error: undefined,
+  };
+}
+
+function historyMarker(
+  entries: readonly DownloadHistoryEntryV1[],
+  sourceUrl: string,
+  item: MediaItem
+): HistoryMarker {
+  const matches = entries.filter(
+    entry => entry.sourceUrl === sourceUrl && reconcileHistoryEntry(entry, [item]).kind === 'found'
+  );
+  const latest = matches.reduce<number | undefined>(
+    (value, entry) =>
+      value === undefined || entry.downloadedAt > value ? entry.downloadedAt : value,
+    undefined
+  );
+  return {
+    downloaded: matches.length > 0,
+    count: matches.length,
+    ...(latest ? { latestDownloadedAt: latest } : {}),
+  };
 }
 
 interface GetPreviewUrlMsg {
@@ -937,9 +1016,18 @@ async function handleGetPreviewUrl(
 
 interface DownloadMediaMsg {
   type: 'DOWNLOAD_MEDIA';
-  urls: string[];
-  hints: string[];
-  types: string[];
+  sourceUrl?: string;
+  items?: {
+    itemIndex: number;
+    mediaId?: string;
+    url: string;
+    filenameHint: string;
+    mediaType: 'image' | 'video';
+  }[];
+  /** Compatibility for clients before history. These downloads cannot be recorded. */
+  urls?: string[];
+  hints?: string[];
+  types?: string[];
 }
 
 interface FetchVideoBlobMsg {
@@ -947,46 +1035,119 @@ interface FetchVideoBlobMsg {
   url: string;
 }
 
-async function handleDownloadMedia(
-  msg: DownloadMediaMsg
-): Promise<{ error: string | undefined; failures?: { url: string; reason: string }[] }> {
-  const { urls, hints, types } = msg;
-  const validItems = urls
-    .map((url, i) => ({ url, hint: hints[i] ?? 'media', type: types[i] ?? 'image', index: i }))
-    .filter(item => !!item.url);
-
-  return Effect.runPromise(
-    Effect.forEach(
-      validItems,
-      item => {
-        const ext = item.type === 'video' ? 'mp4' : 'jpg';
-        const filename = `${item.hint}_${item.index + 1}.${ext}`;
-        return Effect.tryPromise({
-          try: () => browser.downloads.download({ url: item.url, filename, saveAs: false }),
-          catch: cause => new BrowserDownloadFailed({ url: item.url, cause }),
-        }).pipe(Effect.either);
-      },
-      { concurrency: DOWNLOAD_CONCURRENCY }
-    ).pipe(
-      Effect.map(results => {
-        const failures = results.flatMap(r =>
-          Either.isLeft(r) ? [{ url: r.left.url, reason: formatError(r.left) }] : []
-        );
-        if (failures.length === results.length && results.length > 0) {
-          return { error: 'All downloads failed' as string | undefined, failures };
+async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{
+  error: string | undefined;
+  failures?: { url: string; reason: string }[];
+  acceptedItemIndexes?: number[];
+}> {
+  const source = msg.sourceUrl ? historySource(msg.sourceUrl) : null;
+  if (msg.sourceUrl && !source) return { error: 'Invalid Instagram URL.' };
+  const validItems =
+    msg.items ??
+    (msg.urls ?? []).map((url, index) => ({
+      itemIndex: index,
+      mediaId: undefined as string | undefined,
+      url,
+      filenameHint: msg.hints?.[index] ?? 'media',
+      mediaType: msg.types?.[index] === 'video' ? ('video' as const) : ('image' as const),
+    }));
+  const results = await mapWithConcurrency(
+    validItems,
+    DOWNLOAD_CONCURRENCY,
+    async (item, batchIndex) => {
+      const filename = `${item.filenameHint}_${batchIndex + 1}.${item.mediaType === 'video' ? 'mp4' : 'jpg'}`;
+      try {
+        await browser.downloads.download({ url: item.url, filename, saveAs: false });
+        try {
+          if (source)
+            await appendHistory({
+              id: createHistoryId(),
+              sourceUrl: source.url,
+              sourceKind: source.kind,
+              itemIndex: item.itemIndex,
+              ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+              mediaType: item.mediaType,
+              filenameHint: item.filenameHint,
+              downloadedAt: Date.now(),
+              outcome: 'accepted',
+            });
+        } catch {
+          return { item, warning: 'Download started, but history could not be saved.' };
         }
-        return {
-          error:
-            failures.length > 0
-              ? (`${results.length - failures.length} of ${results.length} downloads succeeded; ${failures.length} failed.` as
-                  | string
-                  | undefined)
-              : undefined,
-          failures: failures.length > 0 ? failures : undefined,
-        };
-      })
-    )
+        return { item };
+      } catch (cause) {
+        return { item, failure: formatError(new BrowserDownloadFailed({ url: item.url, cause })) };
+      }
+    }
   );
+  const failures = results.flatMap(result =>
+    result.failure ? [{ url: result.item.url, reason: result.failure }] : []
+  );
+  const warning = results.find(result => result.warning)?.warning;
+  const accepted = results.filter(result => !result.failure).map(result => result.item.itemIndex);
+  return {
+    error:
+      failures.length === results.length
+        ? 'All downloads failed'
+        : (warning ??
+          (failures.length
+            ? `${accepted.length} of ${results.length} downloads succeeded; ${failures.length} failed.`
+            : undefined)),
+    ...(failures.length ? { failures } : {}),
+    acceptedItemIndexes: accepted,
+  };
+}
+
+function createHistoryId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+}
+
+async function handleGetDownloadHistory() {
+  const history = await getHistory();
+  return history.kind === 'unknown-version'
+    ? { entries: [], error: 'Download history uses a newer version.' }
+    : { entries: [...history.entries].reverse(), error: undefined };
+}
+
+async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
+  const history = await getHistory();
+  if (history.kind === 'unknown-version')
+    return { error: 'Download history uses a newer version.' };
+  const entry = history.entries.find(candidate => candidate.id === msg.entryId);
+  if (!entry) return { error: 'This history entry no longer exists.' };
+  const resolved = await runHandler(
+    resolveMediaEffect(entry.sourceUrl).pipe(Effect.map(items => ({ items }))),
+    {
+      items: undefined as MediaItem[] | undefined,
+    }
+  );
+  if (resolved.error || !resolved.items)
+    return {
+      error: `${resolved.error ?? 'Unable to refetch this source.'} History was not changed.`,
+    };
+  const match = reconcileHistoryEntry(entry, resolved.items);
+  if (match.kind === 'missing')
+    return { error: 'This item is no longer available at its original source. History was kept.' };
+  if (match.kind === 'ambiguous')
+    return {
+      error: 'GramGrab could not safely match this item after refetching. History was kept.',
+    };
+  const item = resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!;
+  return handleDownloadMedia({
+    type: 'DOWNLOAD_MEDIA',
+    sourceUrl: entry.sourceUrl,
+    items: [
+      {
+        itemIndex: item.itemIndex,
+        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+        url: item.url,
+        filenameHint: item.filenameHint,
+        mediaType: item.type,
+      },
+    ],
+  });
 }
 
 async function handleFetchVideoBlob(
@@ -1073,7 +1234,9 @@ function registerContextMenus(): void {
         id: CONTEXT_MENU_ROOT,
         title: 'GramGrab',
         contexts: ['page', 'link'],
-        visible: false,
+        // Keep a safe visible fallback for browsers that do not expose onShown.
+        // The click handler still validates the target before doing any work.
+        visible: true,
       });
       browser.contextMenus.create({
         id: CONTEXT_MENU_OPEN,
@@ -1139,6 +1302,26 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case 'DOWNLOAD_MEDIA':
       void handleDownloadMedia(msg as DownloadMediaMsg).then(sendResponse);
+      return true;
+
+    case 'GET_DOWNLOAD_HISTORY':
+      void handleGetDownloadHistory().then(sendResponse);
+      return true;
+
+    case 'DELETE_HISTORY_ENTRY':
+      void removeHistory((msg as { entryId: string }).entryId)
+        .then(entries => sendResponse({ entries: [...entries].reverse(), error: undefined }))
+        .catch(err => sendResponse({ entries: [], error: String(err) }));
+      return true;
+
+    case 'CLEAR_DOWNLOAD_HISTORY':
+      void clearHistory()
+        .then(() => sendResponse({ error: undefined }))
+        .catch(err => sendResponse({ error: String(err) }));
+      return true;
+
+    case 'REDOWNLOAD_HISTORY_ENTRY':
+      void handleRedownloadHistoryEntry(msg as { entryId: string }).then(sendResponse);
       return true;
 
     case 'FETCH_VIDEO_BLOB':
