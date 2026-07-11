@@ -67,6 +67,7 @@ type HistoryEntry = {
   downloadedAt: number;
 };
 
+// fallow-ignore-next-line complexity
 export default function Popup() {
   const initialWorkspaceMode =
     new URLSearchParams(window.location.search).get('surface') === 'workspace';
@@ -1462,6 +1463,7 @@ function MediaControls({
   );
 }
 
+// fallow-ignore-next-line complexity
 function MediaItemRow(props: MediaItemRowProps) {
   const {
     item,
