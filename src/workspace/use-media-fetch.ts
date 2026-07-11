@@ -1,6 +1,7 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 import { browser } from '../lib/browser';
 import type { WorkspaceMediaItem } from './contracts';
+import type { FrameExportSetting } from '../frame-export/timestamp';
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
@@ -23,7 +24,7 @@ interface UseMediaFetchOptions {
   url: string;
   setFetchedUrl: Dispatch<SetStateAction<string>>;
   setMediaItems: Dispatch<SetStateAction<WorkspaceMediaItem[]>>;
-  setExportFrameSet: Dispatch<SetStateAction<Set<number>>>;
+  setFrameExportSettings: Dispatch<SetStateAction<Record<number, FrameExportSetting>>>;
   setStatus: Dispatch<SetStateAction<Status>>;
   setMessage: Dispatch<SetStateAction<string>>;
 }
@@ -34,7 +35,7 @@ function applyFetchSuccess(
 ) {
   const items = media.map((item, index) => ({ ...item, index, selected: true }));
   options.setMediaItems(items);
-  options.setExportFrameSet(new Set());
+  options.setFrameExportSettings({});
   options.setStatus(items.length > 0 ? 'done' : 'error');
   options.setMessage(
     items.length > 0

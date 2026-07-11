@@ -1,4 +1,5 @@
 import { browser } from '../lib/browser';
+import type { FrameExportSetting } from '../frame-export/timestamp.ts';
 
 export interface WorkspaceMediaItem {
   index: number;
@@ -15,7 +16,7 @@ export interface WorkspaceMediaItem {
 }
 
 export interface WorkspaceSnapshot {
-  version: 1;
+  version: 2;
   createdAt: number;
   expiresAt: number;
   url: string;
@@ -23,8 +24,16 @@ export interface WorkspaceSnapshot {
   status: 'idle' | 'done' | 'error';
   message: string;
   mediaItems: WorkspaceMediaItem[];
-  exportFrameIndexes: number[];
+  frameExportSettings: Record<number, FrameExportSetting>;
   intent?: 'open' | 'fetch';
+}
+
+interface LegacyWorkspaceSnapshot extends Omit<
+  WorkspaceSnapshot,
+  'version' | 'frameExportSettings'
+> {
+  version: 1;
+  exportFrameIndexes: number[];
 }
 
 export const WORKSPACE_TRANSFER_KEY = 'workspace-transfer-v1';
@@ -179,7 +188,17 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
         ? { width: item.width, height: item.height }
         : {}),
     })),
-    exportFrameIndexes: [...snapshot.exportFrameIndexes],
+    frameExportSettings: Object.fromEntries(
+      Object.entries(snapshot.frameExportSettings).flatMap(([index, setting]) =>
+        Number.isSafeInteger(Number(index)) &&
+        Number(index) >= 0 &&
+        typeof setting?.enabled === 'boolean' &&
+        Number.isSafeInteger(setting.timestampSeconds) &&
+        setting.timestampSeconds >= 0
+          ? [[index, { enabled: setting.enabled, timestampSeconds: setting.timestampSeconds }]]
+          : []
+      )
+    ),
   };
 }
 
@@ -187,16 +206,42 @@ function isPositiveFinitePair(width: number | undefined, height: number | undefi
   return Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0;
 }
 
-export function isValidSnapshot(value: unknown): value is WorkspaceSnapshot {
-  const snapshot = value as Partial<WorkspaceSnapshot> | undefined;
-  return (
-    snapshot?.version === 1 &&
-    typeof snapshot.createdAt === 'number' &&
+// fallow-ignore-next-line complexity
+function isValidSnapshot(value: unknown): value is WorkspaceSnapshot {
+  const snapshot = value as
+    | (Omit<Partial<WorkspaceSnapshot>, 'version'> & {
+        version?: number;
+        exportFrameIndexes?: unknown;
+      })
+    | undefined;
+  const validBase =
+    typeof snapshot?.createdAt === 'number' &&
     typeof snapshot.expiresAt === 'number' &&
     snapshot.expiresAt > Date.now() &&
     typeof snapshot.url === 'string' &&
     typeof snapshot.fetchedUrl === 'string' &&
-    Array.isArray(snapshot.mediaItems) &&
-    Array.isArray(snapshot.exportFrameIndexes)
+    Array.isArray(snapshot.mediaItems);
+  if (!validBase) return false;
+  if (snapshot.version === 1) {
+    const indexes = Array.isArray(snapshot.exportFrameIndexes) ? snapshot.exportFrameIndexes : [];
+    return indexes.every(index => Number.isSafeInteger(index) && index >= 0);
+  }
+  return (
+    snapshot.version === 2 &&
+    typeof snapshot.frameExportSettings === 'object' &&
+    snapshot.frameExportSettings !== null
   );
+}
+
+export function upgradeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | undefined {
+  if (!isValidSnapshot(value)) return undefined;
+  const snapshot = value as WorkspaceSnapshot | LegacyWorkspaceSnapshot;
+  if (snapshot.version === 2) return snapshot;
+  const settings = Object.fromEntries(
+    (snapshot.exportFrameIndexes ?? []).map(index => [
+      index,
+      { enabled: true, timestampSeconds: 5 },
+    ])
+  );
+  return { ...snapshot, version: 2, frameExportSettings: settings };
 }
