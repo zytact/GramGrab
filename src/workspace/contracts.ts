@@ -2,6 +2,9 @@ import { browser } from '../lib/browser';
 
 export interface WorkspaceMediaItem {
   index: number;
+  itemIndex?: number;
+  mediaId?: string;
+  history?: { downloaded: boolean; count: number; latestDownloadedAt?: number };
   type: string;
   url: string;
   filenameHint: string;
@@ -162,6 +165,9 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
     ...snapshot,
     mediaItems: snapshot.mediaItems.map(item => ({
       index: item.index,
+      ...(item.itemIndex !== undefined ? { itemIndex: item.itemIndex } : {}),
+      ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+      ...(item.history ? { history: item.history } : {}),
       type: item.type,
       url: item.url,
       filenameHint: item.filenameHint,
