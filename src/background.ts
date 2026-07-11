@@ -1035,6 +1035,51 @@ interface FetchVideoBlobMsg {
   url: string;
 }
 
+type DownloadItem = NonNullable<DownloadMediaMsg['items']>[number];
+type DownloadAttempt = { item: DownloadItem; failure?: string; warning?: string };
+
+async function downloadItem(
+  item: DownloadItem,
+  batchIndex: number,
+  source: ReturnType<typeof historySource>
+): Promise<DownloadAttempt> {
+  try {
+    await browser.downloads.download({
+      url: item.url,
+      filename: `${item.filenameHint}_${batchIndex + 1}.${item.mediaType === 'video' ? 'mp4' : 'jpg'}`,
+      saveAs: false,
+    });
+    if (source) {
+      try {
+        await appendAcceptedHistory(item, source);
+      } catch {
+        return { item, warning: 'Download started, but history could not be saved.' };
+      }
+    }
+    return { item };
+  } catch (cause) {
+    return { item, failure: formatError(new BrowserDownloadFailed({ url: item.url, cause })) };
+  }
+}
+
+async function appendAcceptedHistory(
+  item: DownloadItem,
+  source: NonNullable<ReturnType<typeof historySource>>
+) {
+  await appendHistory({
+    id: createHistoryId(),
+    sourceUrl: source.url,
+    sourceKind: source.kind,
+    itemIndex: item.itemIndex,
+    ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+    mediaType: item.mediaType,
+    filenameHint: item.filenameHint,
+    downloadedAt: Date.now(),
+    outcome: 'accepted',
+  });
+}
+
+// fallow-ignore-next-line complexity
 async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{
   error: string | undefined;
   failures?: { url: string; reason: string }[];
@@ -1051,34 +1096,8 @@ async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{
       filenameHint: msg.hints?.[index] ?? 'media',
       mediaType: msg.types?.[index] === 'video' ? ('video' as const) : ('image' as const),
     }));
-  const results = await mapWithConcurrency(
-    validItems,
-    DOWNLOAD_CONCURRENCY,
-    async (item, batchIndex) => {
-      const filename = `${item.filenameHint}_${batchIndex + 1}.${item.mediaType === 'video' ? 'mp4' : 'jpg'}`;
-      try {
-        await browser.downloads.download({ url: item.url, filename, saveAs: false });
-        try {
-          if (source)
-            await appendHistory({
-              id: createHistoryId(),
-              sourceUrl: source.url,
-              sourceKind: source.kind,
-              itemIndex: item.itemIndex,
-              ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-              mediaType: item.mediaType,
-              filenameHint: item.filenameHint,
-              downloadedAt: Date.now(),
-              outcome: 'accepted',
-            });
-        } catch {
-          return { item, warning: 'Download started, but history could not be saved.' };
-        }
-        return { item };
-      } catch (cause) {
-        return { item, failure: formatError(new BrowserDownloadFailed({ url: item.url, cause })) };
-      }
-    }
+  const results = await mapWithConcurrency(validItems, DOWNLOAD_CONCURRENCY, (item, batchIndex) =>
+    downloadItem(item, batchIndex, source)
   );
   const failures = results.flatMap(result =>
     result.failure ? [{ url: result.item.url, reason: result.failure }] : []
@@ -1284,59 +1303,39 @@ registerContextMenus();
 // still recommend it, and Firefox supports it alongside promise-return style.
 // ---------------------------------------------------------------------------
 
+type MessageHandler = (message: unknown) => Promise<unknown>;
+
+const messageHandlers: Record<string, MessageHandler> = {
+  DOWNLOAD: message => handleDownload(message as DownloadMsg),
+  FETCH_MEDIA: message => handleFetchMedia(message as FetchMediaMsg),
+  GET_PREVIEW_URL: message => handleGetPreviewUrl(message as GetPreviewUrlMsg),
+  DOWNLOAD_MEDIA: message => handleDownloadMedia(message as DownloadMediaMsg),
+  GET_DOWNLOAD_HISTORY: () => handleGetDownloadHistory(),
+  DELETE_HISTORY_ENTRY: async message => {
+    try {
+      const entries = await removeHistory((message as { entryId: string }).entryId);
+      return { entries: [...entries].reverse(), error: undefined };
+    } catch (err) {
+      return { entries: [], error: String(err) };
+    }
+  },
+  CLEAR_DOWNLOAD_HISTORY: async () => {
+    try {
+      await clearHistory();
+      return { error: undefined };
+    } catch (err) {
+      return { error: String(err) };
+    }
+  },
+  REDOWNLOAD_HISTORY_ENTRY: message => handleRedownloadHistoryEntry(message as { entryId: string }),
+  FETCH_VIDEO_BLOB: message => handleFetchVideoBlob(message as FetchVideoBlobMsg),
+  DEBUG_SHAPE: message => handleDebugShape(message as DebugShapeMsg),
+  DOWNLOAD_DEBUG_JSON: message => handleDownloadDebugJson(message as DownloadDebugJsonMsg),
+};
+
 browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  const m = msg as { type?: string };
-
-  switch (m.type) {
-    case 'DOWNLOAD':
-      void handleDownload(msg as DownloadMsg).then(sendResponse);
-      return true;
-
-    case 'FETCH_MEDIA':
-      void handleFetchMedia(msg as FetchMediaMsg).then(sendResponse);
-      return true;
-
-    case 'GET_PREVIEW_URL':
-      void handleGetPreviewUrl(msg as GetPreviewUrlMsg).then(sendResponse);
-      return true;
-
-    case 'DOWNLOAD_MEDIA':
-      void handleDownloadMedia(msg as DownloadMediaMsg).then(sendResponse);
-      return true;
-
-    case 'GET_DOWNLOAD_HISTORY':
-      void handleGetDownloadHistory().then(sendResponse);
-      return true;
-
-    case 'DELETE_HISTORY_ENTRY':
-      void removeHistory((msg as { entryId: string }).entryId)
-        .then(entries => sendResponse({ entries: [...entries].reverse(), error: undefined }))
-        .catch(err => sendResponse({ entries: [], error: String(err) }));
-      return true;
-
-    case 'CLEAR_DOWNLOAD_HISTORY':
-      void clearHistory()
-        .then(() => sendResponse({ error: undefined }))
-        .catch(err => sendResponse({ error: String(err) }));
-      return true;
-
-    case 'REDOWNLOAD_HISTORY_ENTRY':
-      void handleRedownloadHistoryEntry(msg as { entryId: string }).then(sendResponse);
-      return true;
-
-    case 'FETCH_VIDEO_BLOB':
-      void handleFetchVideoBlob(msg as FetchVideoBlobMsg).then(sendResponse);
-      return true;
-
-    case 'DEBUG_SHAPE':
-      void handleDebugShape(msg as DebugShapeMsg).then(sendResponse);
-      return true;
-
-    case 'DOWNLOAD_DEBUG_JSON':
-      void handleDownloadDebugJson(msg as DownloadDebugJsonMsg).then(sendResponse);
-      return true;
-
-    default:
-      return false;
-  }
+  const handler = messageHandlers[(msg as { type?: string }).type ?? ''];
+  if (!handler) return false;
+  void handler(msg).then(sendResponse);
+  return true;
 });
