@@ -185,6 +185,30 @@ describe('background dispatcher', () => {
     });
   });
 
+  it('opens the workspace with an explanation for unsupported Instagram routes', async () => {
+    await import('./background');
+    const click = fakeBrowserObj.getContextClickListener()!;
+    click({
+      menuItemId: 'gramgrab-fetch',
+      pageUrl: 'https://www.instagram.com/explore/',
+    });
+
+    await vi.waitFor(() => {
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
+        'workspace-transfer-v1': expect.objectContaining({
+          url: 'https://www.instagram.com/explore/',
+          fetchedUrl: 'https://www.instagram.com/explore/',
+          status: 'error',
+          message: expect.stringContaining('not supported'),
+        }),
+      });
+      expect(fakeBrowserObj.fakeBrowser.tabs.create).toHaveBeenCalledWith({
+        active: true,
+        url: expect.stringContaining('popup.html?surface=workspace&source='),
+      });
+    });
+  });
+
   it('uses the page URL for image and video context commands', async () => {
     await import('./background');
     await Promise.resolve();

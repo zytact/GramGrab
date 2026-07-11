@@ -1057,6 +1057,13 @@ function contextTargetUrl(
   return undefined;
 }
 
+function contextSourceUrl(
+  info: { pageUrl?: string; linkUrl?: string; srcUrl?: string },
+  tab?: { url?: string }
+): string {
+  return info.pageUrl ?? tab?.url ?? info.linkUrl ?? info.srcUrl ?? '';
+}
+
 function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnapshot {
   const createdAt = Date.now();
   return {
@@ -1105,7 +1112,23 @@ function registerContextMenus(): void {
 browser.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== CONTEXT_MENU_OPEN && info.menuItemId !== CONTEXT_MENU_FETCH) return;
   const url = contextTargetUrl(info, tab);
-  if (!url) return;
+  if (!url) {
+    const sourceUrl = contextSourceUrl(info, tab);
+    const createdAt = Date.now();
+    void replaceWorkspace({
+      version: 1,
+      createdAt,
+      expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
+      url: sourceUrl,
+      fetchedUrl: sourceUrl,
+      status: 'error',
+      message:
+        'This Instagram page is not supported. Open a post, reel, story, highlight, or profile and try again.',
+      mediaItems: [],
+      exportFrameIndexes: [],
+    }).catch(err => console.warn('Could not open GramGrab workspace from context menu:', err));
+    return;
+  }
   const intent = info.menuItemId === CONTEXT_MENU_FETCH ? 'fetch' : 'open';
   void replaceWorkspace(workspaceCommand(url, intent)).catch(err =>
     console.warn('Could not open GramGrab workspace from context menu:', err)
