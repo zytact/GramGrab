@@ -3,11 +3,12 @@ import {
   canonicalizeInstagramUrl,
   isInstagramSource,
   sanitizeSnapshot,
+  upgradeWorkspaceSnapshot,
   type WorkspaceSnapshot,
 } from './contracts';
 
 const snapshot: WorkspaceSnapshot = {
-  version: 1,
+  version: 2,
   createdAt: 1,
   expiresAt: Date.now() + 60_000,
   url: 'https://www.instagram.com/p/example/',
@@ -26,7 +27,7 @@ const snapshot: WorkspaceSnapshot = {
       height: 1920,
     },
   ],
-  exportFrameIndexes: [],
+  frameExportSettings: {},
 };
 
 describe('workspace contracts', () => {
@@ -66,6 +67,19 @@ describe('workspace contracts', () => {
     });
     expect(olderSnapshot.mediaItems[0]).not.toHaveProperty('width');
     expect(olderSnapshot.mediaItems[0]).not.toHaveProperty('height');
+  });
+
+  it('upgrades version 1 frame selections to default frame timestamps', () => {
+    const legacy = {
+      ...snapshot,
+      version: 1 as const,
+      exportFrameIndexes: [0],
+    };
+    const upgraded = upgradeWorkspaceSnapshot(legacy);
+    expect(upgraded).toMatchObject({
+      version: 2,
+      frameExportSettings: { 0: { enabled: true, timestampSeconds: 5 } },
+    });
   });
 
   it.each([

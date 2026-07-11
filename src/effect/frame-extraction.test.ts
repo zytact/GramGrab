@@ -70,7 +70,9 @@ describe('captureFrameFromVideoEffect', () => {
       _listeners: Record<string, EventListenerOrEventListenerObject[]>;
     };
 
-    const resultPromise = Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either));
+    const resultPromise = Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3).pipe(Effect.either)
+    );
 
     // seeked event fires after currentTime is set
     await Promise.resolve();
@@ -78,6 +80,7 @@ describe('captureFrameFromVideoEffect', () => {
 
     const result = await resultPromise;
     expect(result._tag).toBe('Right');
+    expect(video.currentTime).toBe(3);
     if (result._tag === 'Right') {
       expect(result.right).toBeInstanceOf(Blob);
     }
@@ -88,7 +91,9 @@ describe('captureFrameFromVideoEffect', () => {
       _listeners: Record<string, EventListenerOrEventListenerObject[]>;
     };
 
-    const resultPromise = Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either));
+    const resultPromise = Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3).pipe(Effect.either)
+    );
 
     for (let i = 0; i < 5; i++) await Promise.resolve();
     fireEvent(video, 'loadedmetadata');
@@ -105,7 +110,9 @@ describe('captureFrameFromVideoEffect', () => {
       _listeners: Record<string, EventListenerOrEventListenerObject[]>;
     };
 
-    const resultPromise = Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either));
+    const resultPromise = Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3).pipe(Effect.either)
+    );
 
     await vi.runAllTimersAsync();
     const result = await resultPromise;
@@ -123,7 +130,9 @@ describe('captureFrameFromVideoEffect', () => {
     };
     const removeSpy = vi.spyOn(video, 'removeEventListener');
 
-    const resultPromise = Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either));
+    const resultPromise = Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3).pipe(Effect.either)
+    );
     await vi.runAllTimersAsync();
     await resultPromise;
 
@@ -135,7 +144,9 @@ describe('captureFrameFromVideoEffect', () => {
       _listeners: Record<string, EventListenerOrEventListenerObject[]>;
     };
 
-    const result = await Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either));
+    const result = await Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3).pipe(Effect.either)
+    );
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect((result.left as VideoFrameExtractionFailed).reason).toBe('no-duration');
@@ -150,7 +161,9 @@ describe('captureFrameFromVideoEffect', () => {
       videoHeight: 0,
     }) as HTMLVideoElement & { _listeners: Record<string, EventListenerOrEventListenerObject[]> };
 
-    const resultPromise = Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either));
+    const resultPromise = Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3).pipe(Effect.either)
+    );
     await Promise.resolve();
     fireEvent(video, 'seeked');
     const result = await resultPromise;
@@ -169,7 +182,9 @@ describe('captureFrameFromVideoEffect', () => {
       _listeners: Record<string, EventListenerOrEventListenerObject[]>;
     };
 
-    const resultPromise = Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either));
+    const resultPromise = Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3).pipe(Effect.either)
+    );
     await Promise.resolve();
     fireEvent(video, 'seeked');
     const result = await resultPromise;

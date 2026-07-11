@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Popup from './popup';
 
@@ -92,7 +92,7 @@ describe('Popup', () => {
           url: 'https://www.instagram.com/p/new-source/',
           fetchedUrl: '',
           mediaItems: [],
-          exportFrameIndexes: [],
+          frameExportSettings: {},
         }),
       });
     });
@@ -361,5 +361,30 @@ describe('Popup', () => {
 
     expect(frameCheckbox.checked).toBe(false);
     expect(selectionCheckbox.checked).toBe(false);
+  });
+
+  it('uses an accessible, timestamped frame selector for video exports', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [{ url: 'https://instagram.com/video.mp4', type: 'video', filenameHint: 'clip' }],
+      error: undefined,
+    });
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    const preview = document.querySelector('video')!;
+    Object.defineProperty(preview, 'duration', { configurable: true, value: 12 });
+    await user.click(screen.getByLabelText('Frame'));
+
+    const slider = screen.getByRole('slider', { name: 'Frame timestamp for item 01' });
+    expect(slider.getAttribute('aria-valuetext')).toBe('5 seconds');
+    expect(screen.getByText('00:05')).toBeDefined();
+    fireEvent.change(slider, { target: { value: '6' } });
+    expect(slider.getAttribute('aria-valuetext')).toBe('6 seconds');
+    fireEvent.change(slider, { target: { value: '0' } });
+    await user.click(screen.getByLabelText('Frame'));
+    await user.click(screen.getByLabelText('Frame'));
+    expect(screen.getByRole('slider').getAttribute('aria-valuetext')).toBe('0 seconds');
   });
 });
