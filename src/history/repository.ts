@@ -16,21 +16,28 @@ const validTypes = new Set(['image', 'video']);
 
 function validEntry(value: unknown): value is DownloadHistoryEntryV1 {
   const item = value as Partial<DownloadHistoryEntryV1> | null;
-  const source = typeof item?.sourceUrl === 'string' ? historySource(item.sourceUrl) : null;
+  return Boolean(item && hasValidIdentity(item) && hasValidMedia(item) && hasValidOutcome(item));
+}
+
+function hasValidIdentity(item: Partial<DownloadHistoryEntryV1>): boolean {
+  if (typeof item.id !== 'string' || typeof item.sourceUrl !== 'string') return false;
+  const source = historySource(item.sourceUrl);
+  return source?.url === item.sourceUrl && source?.kind === item.sourceKind;
+}
+
+function hasValidMedia(item: Partial<DownloadHistoryEntryV1>): boolean {
   return Boolean(
-    item &&
-    typeof item.id === 'string' &&
-    source?.url === item.sourceUrl &&
-    source?.kind === item.sourceKind &&
     validKinds.has(item.sourceKind ?? '') &&
     Number.isSafeInteger(item.itemIndex) &&
     item.itemIndex! >= 0 &&
-    (!item.mediaId || typeof item.mediaId === 'string') &&
+    (item.mediaId === undefined || typeof item.mediaId === 'string') &&
     validTypes.has(item.mediaType ?? '') &&
-    typeof item.filenameHint === 'string' &&
-    Number.isFinite(item.downloadedAt) &&
-    item.outcome === 'accepted'
+    typeof item.filenameHint === 'string'
   );
+}
+
+function hasValidOutcome(item: Partial<DownloadHistoryEntryV1>): boolean {
+  return Number.isFinite(item.downloadedAt) && item.outcome === 'accepted';
 }
 
 function decode(value: unknown): HistoryReadResult {
