@@ -21,6 +21,7 @@ export interface WorkspaceSnapshot {
   message: string;
   mediaItems: WorkspaceMediaItem[];
   exportFrameIndexes: number[];
+  intent?: 'open' | 'fetch';
 }
 
 export const WORKSPACE_TRANSFER_KEY = 'workspace-transfer-v1';
@@ -35,12 +36,98 @@ export function workspaceUrl(sourceUrl = ''): string {
 }
 
 export function isInstagramSource(value: string): boolean {
+  return canonicalizeInstagramUrl(value) !== null;
+}
+
+export interface InstagramTarget {
+  type: 'post' | 'reel' | 'story' | 'highlight' | 'profile';
+  shortcode?: string;
+  username?: string;
+  highlightId?: string;
+  carouselIndex?: number;
+}
+
+export interface CanonicalInstagramUrl {
+  url: string;
+  target: InstagramTarget;
+}
+
+const RESERVED_PROFILE_PATHS = new Set([
+  'p',
+  'reel',
+  'reels',
+  'stories',
+  'explore',
+  'direct',
+  'accounts',
+  'tv',
+]);
+const USERNAME = /^[a-zA-Z0-9._]{1,30}$/;
+const SHORTCODE = /^[a-zA-Z0-9_-]+$/;
+const NUMERIC_ID = /^\d+$/;
+
+/** Returns a supported target and its single display/storage URL. */
+export function canonicalizeInstagramUrl(value: string): CanonicalInstagramUrl | null {
   try {
     const url = new URL(value);
-    return /^https?:$/.test(url.protocol) && /(^|\.)instagram\.com$/i.test(url.hostname);
+    if (
+      !/^https?:$/.test(url.protocol) ||
+      !['instagram.com', 'www.instagram.com'].includes(url.hostname)
+    )
+      return null;
+    const path = url.pathname.split('/').filter(Boolean);
+    let target: InstagramTarget | undefined;
+    let canonicalPath: string | undefined;
+    if (path.length === 2 && path[0] === 'p' && SHORTCODE.test(path[1]!)) {
+      const carouselIndex = parseCarouselIndex(url.searchParams.get('img_index'));
+      target = { type: 'post', shortcode: path[1], carouselIndex };
+      canonicalPath = `/p/${path[1]}/`;
+      url.search = carouselIndex === undefined ? '' : `?img_index=${carouselIndex + 1}`;
+    } else if (path.length === 2 && path[0] === 'reel' && SHORTCODE.test(path[1]!)) {
+      target = { type: 'reel', shortcode: path[1] };
+      canonicalPath = `/reel/${path[1]}/`;
+      url.search = '';
+    } else if (
+      path.length === 3 &&
+      path[0] === 'stories' &&
+      path[1] === 'highlights' &&
+      NUMERIC_ID.test(path[2]!)
+    ) {
+      target = { type: 'highlight', highlightId: path[2] };
+      canonicalPath = `/stories/highlights/${path[2]}/`;
+      url.search = '';
+    } else if (
+      (path.length === 2 || (path.length === 3 && NUMERIC_ID.test(path[2]!))) &&
+      path[0] === 'stories' &&
+      USERNAME.test(path[1]!)
+    ) {
+      target = { type: 'story', username: path[1] };
+      canonicalPath = `/stories/${path[1]}/`;
+      url.search = '';
+    } else if (
+      path.length === 1 &&
+      USERNAME.test(path[0]!) &&
+      !RESERVED_PROFILE_PATHS.has(path[0]!.toLowerCase())
+    ) {
+      target = { type: 'profile', username: path[0] };
+      canonicalPath = `/${path[0]}/`;
+      url.search = '';
+    }
+    if (!target || !canonicalPath) return null;
+    url.protocol = 'https:';
+    url.hostname = 'www.instagram.com';
+    url.pathname = canonicalPath;
+    url.hash = '';
+    return { url: url.toString(), target };
   } catch {
-    return false;
+    return null;
   }
+}
+
+function parseCarouselIndex(imgIndex: string | null): number | undefined {
+  if (!imgIndex || !/^\d+$/.test(imgIndex)) return undefined;
+  const index = Number(imgIndex);
+  return Number.isSafeInteger(index) && index > 0 ? index - 1 : undefined;
 }
 
 export function isBusy(status: string): boolean {

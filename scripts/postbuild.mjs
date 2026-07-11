@@ -29,7 +29,7 @@ const baseManifest = {
     },
     default_title: 'GramGrab',
   },
-  permissions: ['downloads', 'storage', 'activeTab', 'tabs', 'scripting'],
+  permissions: ['downloads', 'storage', 'activeTab', 'tabs', 'scripting', 'contextMenus'],
   host_permissions: ['https://*.instagram.com/*', 'https://*.fbcdn.net/*'],
 };
 

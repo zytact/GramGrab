@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 import { browser } from '../lib/browser';
 import type { WorkspaceMediaItem } from './contracts';
 
@@ -41,7 +41,9 @@ function applyFetchSuccess(
 }
 
 export function useMediaFetch(options: UseMediaFetchOptions) {
+  const requestGeneration = useRef(0);
   return useCallback(async () => {
+    const generation = ++requestGeneration.current;
     const trimmedUrl = options.url.trim();
     if (!trimmedUrl) {
       options.setMessage('No URL provided.');
@@ -56,6 +58,7 @@ export function useMediaFetch(options: UseMediaFetchOptions) {
         type: 'FETCH_MEDIA',
         url: trimmedUrl,
       })) as MediaResponse;
+      if (generation !== requestGeneration.current) return;
       if (response?.error) {
         options.setMessage(response.error);
         options.setStatus('error');
@@ -64,6 +67,7 @@ export function useMediaFetch(options: UseMediaFetchOptions) {
       options.setFetchedUrl(trimmedUrl);
       applyFetchSuccess(response?.media ?? [], options);
     } catch (err) {
+      if (generation !== requestGeneration.current) return;
       options.setMessage(String(err));
       options.setStatus('error');
     }
