@@ -1,7 +1,7 @@
 import { browser } from '../lib/browser';
 import {
-  isValidSnapshot,
   sanitizeSnapshot,
+  upgradeWorkspaceSnapshot,
   WORKSPACE_TRANSFER_KEY,
   workspaceUrl,
   type WorkspaceSnapshot,
@@ -76,5 +76,5 @@ export async function claimWorkspaceTransfer(): Promise<WorkspaceSnapshot | unde
   const values = await browser.storage.get(WORKSPACE_TRANSFER_KEY);
   const candidate = values[WORKSPACE_TRANSFER_KEY];
   await browser.storage.remove(WORKSPACE_TRANSFER_KEY);
-  return isValidSnapshot(candidate) ? candidate : undefined;
+  return upgradeWorkspaceSnapshot(candidate);
 }

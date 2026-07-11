@@ -881,6 +881,55 @@ body::before {
   color: var(--brand);
 }
 
+.frame-export-control {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.frame-timestamp-row {
+  display: grid;
+  grid-template-columns: minmax(64px, 1fr) 38px;
+  align-items: center;
+  gap: 5px;
+  width: 120px;
+  color: var(--text-mid);
+  font-size: 9px;
+}
+
+.frame-timestamp-row input[type='range'] {
+  accent-color: var(--brand);
+  min-width: 0;
+}
+
+.frame-timestamp-row output {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.frame-timestamp-row span,
+.frame-timestamp-row .frame-error {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.frame-error {
+  color: var(--error);
+}
+
+.frame-retry {
+  grid-column: 1 / -1;
+  justify-self: start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
 /* ─── Responsive workspace tab ─── */
 body:has(.workspace-container) {
   width: auto;
