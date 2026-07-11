@@ -25,6 +25,7 @@ function hasValidIdentity(item: Partial<DownloadHistoryEntryV1>): boolean {
   return source?.url === item.sourceUrl && source?.kind === item.sourceKind;
 }
 
+// fallow-ignore-next-line complexity
 function hasValidMedia(item: Partial<DownloadHistoryEntryV1>): boolean {
   return Boolean(
     validKinds.has(item.sourceKind ?? '') &&
@@ -32,7 +33,13 @@ function hasValidMedia(item: Partial<DownloadHistoryEntryV1>): boolean {
     item.itemIndex! >= 0 &&
     (item.mediaId === undefined || typeof item.mediaId === 'string') &&
     validTypes.has(item.mediaType ?? '') &&
-    typeof item.filenameHint === 'string'
+    typeof item.filenameHint === 'string' &&
+    (item.exportMode === undefined ||
+      item.exportMode === 'direct' ||
+      item.exportMode === 'frame') &&
+    (item.frameTimestampSeconds === undefined ||
+      (Number.isSafeInteger(item.frameTimestampSeconds) && item.frameTimestampSeconds >= 0)) &&
+    (item.exportMode !== 'frame' || item.frameTimestampSeconds !== undefined)
   );
 }
 

@@ -8,10 +8,14 @@ const waitForEvent = (
   eventName: string
 ): Effect.Effect<void, VideoFrameExtractionFailed> =>
   Effect.async<void, VideoFrameExtractionFailed>((resume, signal) => {
-    const handler = () => resume(Effect.void);
+    const cleanup = () => target.removeEventListener(eventName, handler);
+    const handler = () => {
+      cleanup();
+      resume(Effect.void);
+    };
     target.addEventListener(eventName, handler, { once: true });
     signal.addEventListener('abort', () => {
-      target.removeEventListener(eventName, handler);
+      cleanup();
     });
   }).pipe(
     Effect.timeoutFail({
@@ -21,7 +25,8 @@ const waitForEvent = (
   );
 
 export const captureFrameFromVideoEffect = (
-  video: HTMLVideoElement
+  video: HTMLVideoElement,
+  timestampSeconds: number
 ): Effect.Effect<Blob, VideoFrameExtractionFailed> =>
   Effect.gen(function* () {
     if (video.readyState < 1) {
@@ -32,9 +37,11 @@ export const captureFrameFromVideoEffect = (
       return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-duration' }));
     }
 
-    const targetTime = Math.min(5, video.duration);
-    video.currentTime = targetTime;
-    yield* waitForEvent(video, 'seeked');
+    const targetTime = Math.max(0, Math.min(Math.ceil(video.duration) - 1, timestampSeconds));
+    if (Math.abs(video.currentTime - targetTime) > 0.01) {
+      video.currentTime = targetTime;
+      yield* waitForEvent(video, 'seeked');
+    }
 
     if (!video.videoWidth || !video.videoHeight) {
       return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-frame' }));
