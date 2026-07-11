@@ -332,6 +332,90 @@ describe('Popup', () => {
     });
   });
 
+  it('retries only the failed operation with its captured request and filename', async () => {
+    const user = userEvent.setup();
+    let downloadCalls = 0;
+    const submissions: { requestId: string; filename: string }[][] = [];
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: { type: string; operations?: { requestId: string; filename: string }[] }) => {
+        if (message.type === 'FETCH_MEDIA')
+          return {
+            media: [
+              { url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'first' },
+              { url: 'https://instagram.com/b.jpg', type: 'image', filenameHint: 'second' },
+            ],
+          };
+        if (message.type !== 'DOWNLOAD_MEDIA') return {};
+        const operations = message.operations ?? [];
+        submissions.push(operations);
+        downloadCalls++;
+        return {
+          results: operations.map((operation, index) =>
+            downloadCalls === 1 && index === 1
+              ? { requestId: operation.requestId, status: 'failed', reason: 'Try again.' }
+              : { requestId: operation.requestId, status: 'accepted' }
+          ),
+        };
+      }
+    );
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    await user.click(screen.getByText('Download 2 Selected'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Retry 1 failed' })).toBeDefined()
+    );
+    expect(screen.getByText('Failed: Try again.')).toBeDefined();
+    const firstSubmission = submissions[0]!;
+    await user.click(screen.getByRole('button', { name: 'Retry 1 failed' }));
+    await waitFor(() => expect(screen.getByText(/2 succeeded, 0 failed/)).toBeDefined());
+    expect(submissions).toHaveLength(2);
+    expect(submissions[1]).toEqual([firstSubmission[1]]);
+  });
+
+  it('offers the same failed-item retry in the workspace surface', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/popup.html?surface=workspace&source=https%3A%2F%2Fwww.instagram.com%2Fp%2Fabc123%2F'
+    );
+    const user = userEvent.setup();
+    let attempts = 0;
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: { type: string; operations?: { requestId: string }[] }) => {
+        if (message.type === 'FETCH_MEDIA')
+          return {
+            media: [{ url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'first' }],
+          };
+        if (message.type === 'DOWNLOAD_MEDIA') {
+          attempts++;
+          const operation = message.operations?.[0];
+          if (!operation) return { results: [] };
+          return {
+            results: [
+              attempts === 1
+                ? { requestId: operation.requestId, status: 'failed', reason: 'Try again.' }
+                : { requestId: operation.requestId, status: 'accepted' },
+            ],
+          };
+        }
+        return {};
+      }
+    );
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    await user.click(screen.getByRole('button', { name: 'Download selected' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Retry 1 failed' })).toBeDefined()
+    );
+    await user.click(screen.getByRole('button', { name: 'Retry 1 failed' }));
+    await waitFor(() => expect(screen.getByText(/1 succeeded, 0 failed/)).toBeDefined());
+    window.history.replaceState({}, '', '/popup.html');
+  });
+
   it('toggles video selection when its preview is clicked without toggling Frame', async () => {
     const user = userEvent.setup();
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
