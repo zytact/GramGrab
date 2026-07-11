@@ -82,6 +82,9 @@ Read it when working on domain terminology, product concepts, naming, business r
 
 Vite plus controls the pre-commit hook.
 
+## Validation
+`vp check` and `vp run fallow` must be run after making any changes to check for issues. `vp check` covers typechecking, linting, formatting issues and test running all in one.
+
 <!--VITE PLUS START-->
 
 # Using Vite+, the Unified Toolchain for the Web
