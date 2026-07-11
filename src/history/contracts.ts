@@ -14,6 +14,8 @@ export interface DownloadHistoryEntryV1 {
   mediaId?: string;
   mediaType: HistoryMediaType;
   filenameHint: string;
+  exportMode?: 'direct' | 'frame';
+  frameTimestampSeconds?: number;
   downloadedAt: number;
   outcome: 'accepted';
 }

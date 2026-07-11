@@ -1023,6 +1023,8 @@ interface DownloadMediaMsg {
     url: string;
     filenameHint: string;
     mediaType: 'image' | 'video';
+    exportMode?: 'direct' | 'frame';
+    frameTimestampSeconds?: number;
   }[];
   /** Compatibility for clients before history. These downloads cannot be recorded. */
   urls?: string[];
@@ -1074,6 +1076,10 @@ async function appendAcceptedHistory(
     ...(item.mediaId ? { mediaId: item.mediaId } : {}),
     mediaType: item.mediaType,
     filenameHint: item.filenameHint,
+    ...(item.exportMode ? { exportMode: item.exportMode } : {}),
+    ...(item.frameTimestampSeconds !== undefined
+      ? { frameTimestampSeconds: item.frameTimestampSeconds }
+      : {}),
     downloadedAt: Date.now(),
     outcome: 'accepted',
   });
@@ -1130,6 +1136,7 @@ async function handleGetDownloadHistory() {
     : { entries: [...history.entries].reverse(), error: undefined };
 }
 
+// fallow-ignore-next-line complexity
 async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
   const history = await getHistory();
   if (history.kind === 'unknown-version')
@@ -1154,6 +1161,19 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
       error: 'GramGrab could not safely match this item after refetching. History was kept.',
     };
   const item = resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!;
+  if (entry.exportMode === 'frame') {
+    return {
+      frame: {
+        itemIndex: item.itemIndex,
+        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+        url: item.url,
+        filenameHint: item.filenameHint,
+        timestampSeconds: entry.frameTimestampSeconds ?? 5,
+        sourceUrl: entry.sourceUrl,
+      },
+      error: undefined,
+    };
+  }
   return handleDownloadMedia({
     type: 'DOWNLOAD_MEDIA',
     sourceUrl: entry.sourceUrl,
@@ -1167,6 +1187,23 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
       },
     ],
   });
+}
+
+async function handleRecordFrameExport(msg: {
+  sourceUrl: string;
+  item: DownloadItem & { frameTimestampSeconds: number };
+}): Promise<{ error: string | undefined }> {
+  const source = historySource(msg.sourceUrl);
+  if (!source) return { error: 'Invalid Instagram URL.' };
+  try {
+    await appendAcceptedHistory(
+      { ...msg.item, exportMode: 'frame', frameTimestampSeconds: msg.item.frameTimestampSeconds },
+      source
+    );
+    return { error: undefined };
+  } catch {
+    return { error: 'Frame downloaded, but history could not be saved.' };
+  }
 }
 
 async function handleFetchVideoBlob(
@@ -1232,7 +1269,7 @@ function contextTargetUrl(info: { pageUrl?: string; linkUrl?: string }): string 
 function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnapshot {
   const createdAt = Date.now();
   return {
-    version: 1,
+    version: 2,
     createdAt,
     expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
     url,
@@ -1240,7 +1277,7 @@ function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnaps
     status: 'idle',
     message: intent === 'fetch' ? 'Fetching media…' : 'Ready to fetch media.',
     mediaItems: [],
-    exportFrameIndexes: [],
+    frameExportSettings: {},
     intent,
   };
 }
@@ -1328,6 +1365,10 @@ const messageHandlers: Record<string, MessageHandler> = {
     }
   },
   REDOWNLOAD_HISTORY_ENTRY: message => handleRedownloadHistoryEntry(message as { entryId: string }),
+  RECORD_FRAME_EXPORT: message =>
+    handleRecordFrameExport(
+      message as { sourceUrl: string; item: DownloadItem & { frameTimestampSeconds: number } }
+    ),
   FETCH_VIDEO_BLOB: message => handleFetchVideoBlob(message as FetchVideoBlobMsg),
   DEBUG_SHAPE: message => handleDebugShape(message as DebugShapeMsg),
   DOWNLOAD_DEBUG_JSON: message => handleDownloadDebugJson(message as DownloadDebugJsonMsg),

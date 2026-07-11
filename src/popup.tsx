@@ -3,6 +3,16 @@ import { Effect, Either } from 'effect';
 import './styles.css';
 import { browser } from './lib/browser';
 import { captureFrameFromVideoEffect } from './effect/frame-extraction';
+import { runFrameExportBatch } from './frame-export/batch';
+import {
+  clampFrameSecond,
+  defaultFrameSecond,
+  frameFilename,
+  frameTimestampAriaValue,
+  formatFrameTimestamp,
+  maximumFrameSecond,
+  type FrameExportSetting,
+} from './frame-export/timestamp';
 import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
@@ -30,6 +40,13 @@ interface PreviewResponse {
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 type VideoBlobResponse = { dataUrl?: string; error?: string };
+type FrameRuntime = {
+  status: 'idle' | 'loading' | 'ready' | 'failed' | 'exporting';
+  durationSeconds?: number;
+  dataUrl?: string;
+  error?: string;
+  warning?: string;
+};
 type DownloadMediaResponse = {
   error?: string;
   failures?: { url: string; reason: string }[];
@@ -42,6 +59,8 @@ type HistoryEntry = {
   itemIndex: number;
   mediaType: string;
   filenameHint: string;
+  exportMode?: 'direct' | 'frame';
+  frameTimestampSeconds?: number;
   downloadedAt: number;
 };
 
@@ -55,7 +74,10 @@ export default function Popup() {
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [exportFrameSet, setExportFrameSet] = useState<Set<number>>(new Set());
+  const [frameExportSettings, setFrameExportSettings] = useState<
+    Record<number, FrameExportSetting>
+  >({});
+  const [frameRuntime, setFrameRuntime] = useState<Record<number, FrameRuntime>>({});
   const [fallbackLoading, setFallbackLoading] = useState<Set<number>>(new Set());
   const [fallbackFailed, setFallbackFailed] = useState<Set<number>>(new Set());
   const [intrinsicDimensions, setIntrinsicDimensions] = useState<
@@ -66,9 +88,14 @@ export default function Popup() {
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState<string | null>(null);
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
+  const resultsGeneration = useRef(0);
+  const pendingFrameDefaults = useRef(new Set<number>());
 
   const replaceMediaItems = useCallback<typeof setMediaItems>(action => {
+    resultsGeneration.current++;
+    pendingFrameDefaults.current.clear();
     setIntrinsicDimensions({});
+    setFrameRuntime({});
     setMediaItems(action);
   }, []);
 
@@ -76,7 +103,7 @@ export default function Popup() {
     url,
     setFetchedUrl,
     setMediaItems: replaceMediaItems,
-    setExportFrameSet,
+    setFrameExportSettings,
     setStatus,
     setMessage,
   });
@@ -105,17 +132,121 @@ export default function Popup() {
     );
   }, []);
 
-  const toggleExportFrame = useCallback((index: number) => {
-    setExportFrameSet(prev => {
-      const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
-      return next;
+  const setFrameDuration = useCallback((index: number, durationSeconds: number) => {
+    const maximum = maximumFrameSecond(durationSeconds);
+    if (maximum === undefined) return;
+    setFrameRuntime(previous => ({
+      ...previous,
+      [index]: { ...previous[index], status: 'ready', durationSeconds, error: undefined },
+    }));
+    setFrameExportSettings(previous => {
+      const setting = previous[index];
+      if (!setting) return previous;
+      return {
+        ...previous,
+        [index]: {
+          ...setting,
+          timestampSeconds: clampFrameSecond(
+            pendingFrameDefaults.current.delete(index)
+              ? defaultFrameSecond(durationSeconds)
+              : setting.timestampSeconds,
+            durationSeconds
+          ),
+        },
+      };
     });
   }, []);
+
+  const loadFrameMetadata = useCallback(
+    // fallow-ignore-next-line complexity
+    async (index: number) => {
+      const generation = resultsGeneration.current;
+      const itemUrl = mediaItems[index]?.url;
+      if (!itemUrl) return;
+      const video = videoRefs.current[index];
+      if (video && maximumFrameSecond(video.duration) !== undefined) {
+        setFrameDuration(index, video.duration);
+        return;
+      }
+      setFrameRuntime(previous => ({ ...previous, [index]: { status: 'loading' } }));
+      try {
+        const response = (await browser.runtime.sendMessage({
+          type: 'FETCH_VIDEO_BLOB',
+          url: itemUrl,
+        })) as VideoBlobResponse;
+        const dataUrl = getVideoBlobDataUrl(response);
+        const durationSeconds = await getVideoDuration(dataUrl);
+        if (generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl) return;
+        setFrameRuntime(previous => ({
+          ...previous,
+          [index]: { status: 'ready', durationSeconds, dataUrl },
+        }));
+        setFrameExportSettings(previous => {
+          const setting = previous[index];
+          if (!setting) return previous;
+          return {
+            ...previous,
+            [index]: {
+              ...setting,
+              timestampSeconds: clampFrameSecond(
+                pendingFrameDefaults.current.delete(index)
+                  ? defaultFrameSecond(durationSeconds)
+                  : setting.timestampSeconds,
+                durationSeconds
+              ),
+            },
+          };
+        });
+      } catch {
+        if (generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl) return;
+        setFrameRuntime(previous => ({
+          ...previous,
+          [index]: { status: 'failed', error: 'Could not load video metadata. Retry.' },
+        }));
+      }
+    },
+    [mediaItems, setFrameDuration]
+  );
+
+  const toggleExportFrame = useCallback(
+    (index: number) => {
+      const enabled = !frameExportSettings[index]?.enabled;
+      setFrameExportSettings(previous => ({
+        ...previous,
+        [index]: {
+          enabled,
+          timestampSeconds: previous[index]?.timestampSeconds ?? 0,
+        },
+      }));
+      if (!frameExportSettings[index]) pendingFrameDefaults.current.add(index);
+      if (enabled) void loadFrameMetadata(index);
+    },
+    [frameExportSettings, loadFrameMetadata]
+  );
+
+  const changeFrameTimestamp = useCallback((index: number, timestampSeconds: number) => {
+    setFrameExportSettings(previous => ({
+      ...previous,
+      [index]: { enabled: true, timestampSeconds },
+    }));
+    setFrameRuntime(previous => ({
+      ...previous,
+      [index]: { ...previous[index], error: undefined, warning: undefined, status: 'ready' },
+    }));
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      for (const [index, setting] of Object.entries(frameExportSettings)) {
+        const duration = frameRuntime[Number(index)]?.durationSeconds;
+        const video = videoRefs.current[Number(index)];
+        if (!setting.enabled || duration === undefined || !video) continue;
+        const target = clampFrameSecond(setting.timestampSeconds, duration);
+        if (Math.abs(video.currentTime - target) > 0.01) video.currentTime = target;
+      }
+    }, 120);
+    return () => window.clearTimeout(timeout);
+  }, [frameExportSettings, frameRuntime]);
 
   const requestFallbackPreview = useCallback(async (index: number, itemUrl: string) => {
     setFallbackLoading(prev => new Set(prev).add(index));
@@ -150,38 +281,82 @@ export default function Popup() {
   }, []);
 
   const captureFrameFromVideo = useCallback(
-    (video: HTMLVideoElement) =>
-      Effect.runPromise(captureFrameFromVideoEffect(video).pipe(Effect.either)),
+    (video: HTMLVideoElement, timestampSeconds: number) =>
+      Effect.runPromise(captureFrameFromVideoEffect(video, timestampSeconds).pipe(Effect.either)),
     []
+  );
+  const captureFrameFromDataUrl = useCallback(
+    async (dataUrl: string, timestampSeconds: number) => {
+      const video = createExportVideo(dataUrl);
+      try {
+        return await captureFrameFromVideo(video, timestampSeconds);
+      } finally {
+        releaseVideo(video);
+      }
+    },
+    [captureFrameFromVideo]
   );
 
   const handleExportFrame = useCallback(
+    // fallow-ignore-next-line complexity
     async (index: number) => {
-      const video = videoRefs.current[index];
-      if (!video) return;
-
+      const item = mediaItems[index];
+      const setting = frameExportSettings[index];
+      const runtime = frameRuntime[index];
+      if (!item || !setting?.enabled || !runtime?.durationSeconds) {
+        throw new Error('Frame metadata is not ready.');
+      }
+      const timestampSeconds = clampFrameSecond(setting.timestampSeconds, runtime.durationSeconds);
+      setFrameRuntime(previous => ({
+        ...previous,
+        [index]: { ...previous[index], status: 'exporting', error: undefined },
+      }));
       try {
-        const res = (await browser.runtime.sendMessage({
-          type: 'FETCH_VIDEO_BLOB',
-          url: mediaItems[index]?.url,
-        })) as VideoBlobResponse;
-
-        const dataUrl = getVideoBlobDataUrl(res);
-        const result = await captureFrameFromVideo(createExportVideo(dataUrl));
-        if (Either.isLeft(result)) {
-          setMessage(frameExportErrorMessage(result.left.reason));
-          setStatus('error');
-          return;
+        const response = runtime.dataUrl
+          ? { dataUrl: runtime.dataUrl }
+          : ((await browser.runtime.sendMessage({
+              type: 'FETCH_VIDEO_BLOB',
+              url: item.url,
+            })) as VideoBlobResponse);
+        const dataUrl = getVideoBlobDataUrl(response);
+        let result = await captureFrameFromDataUrl(dataUrl, timestampSeconds);
+        if (Either.isLeft(result) && result.left.reason === 'timeout') {
+          result = await captureFrameFromDataUrl(dataUrl, timestampSeconds);
         }
-
-        downloadBlobAsFile(result.right, `${mediaItems[index]?.filenameHint ?? 'media'}_frame.jpg`);
-      } catch (err) {
-        void err;
-        setMessage('Frame export failed (CORS)');
-        setStatus('error');
+        if (Either.isLeft(result)) {
+          throw new Error(frameExportErrorMessage(result.left.reason));
+        }
+        downloadBlobAsFile(result.right, frameFilename(item.filenameHint, timestampSeconds));
+        const recorded = (await browser.runtime.sendMessage({
+          type: 'RECORD_FRAME_EXPORT',
+          sourceUrl: fetchedUrl || url,
+          item: {
+            itemIndex: item.itemIndex ?? item.index,
+            ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+            url: item.url,
+            filenameHint: item.filenameHint,
+            mediaType: 'video',
+            frameTimestampSeconds: timestampSeconds,
+          },
+        })) as { error?: string };
+        setFrameRuntime(previous => ({
+          ...previous,
+          [index]: {
+            ...previous[index],
+            status: 'ready',
+            ...(recorded.error ? { warning: recorded.error } : {}),
+          },
+        }));
+      } catch (error) {
+        const message = String(error).replace(/^Error: /, '');
+        setFrameRuntime(previous => ({
+          ...previous,
+          [index]: { ...previous[index], status: 'failed', error: message },
+        }));
+        throw error;
       }
     },
-    [captureFrameFromVideo, mediaItems]
+    [captureFrameFromDataUrl, fetchedUrl, frameExportSettings, frameRuntime, mediaItems, url]
   );
 
   // fallow-ignore-next-line complexity
@@ -197,8 +372,14 @@ export default function Popup() {
     setMessage(`Downloading ${selected.length} item${selected.length !== 1 ? 's' : ''}…`);
 
     try {
-      const standardItems = await exportSelectedFrames(selected, exportFrameSet, handleExportFrame);
+      const frameIndexes = selected
+        .filter(item => item.type === 'video' && frameExportSettings[item.index]?.enabled)
+        .map(item => item.index);
+      const frameResults = await runFrameExportBatch(frameIndexes, handleExportFrame);
+      const standardItems = selected.filter(item => !frameIndexes.includes(item.index));
 
+      let directSuccessful = 0;
+      let directFailures = 0;
       if (standardItems.length > 0) {
         const res = (await browser.runtime.sendMessage({
           type: 'DOWNLOAD_MEDIA',
@@ -212,11 +393,9 @@ export default function Popup() {
           })),
         })) as DownloadMediaResponse;
 
-        if (res?.error && !res.acceptedItemIndexes?.length) {
-          setMessage(res.error);
-          setStatus('error');
-          return;
-        }
+        directSuccessful =
+          res?.acceptedItemIndexes?.length ?? (res?.error ? 0 : standardItems.length);
+        directFailures = res?.failures?.length ?? (res?.error ? standardItems.length : 0);
         if (res?.acceptedItemIndexes?.length)
           setMediaItems(previous =>
             previous.map(item =>
@@ -234,15 +413,20 @@ export default function Popup() {
           );
       }
 
+      const failedFrames = frameResults.filter(result => result.error).length;
+      const failures = directFailures + failedFrames;
+      const successful = directSuccessful + frameResults.length - failedFrames;
       setMessage(
-        `Downloaded ${selected.length} item${selected.length !== 1 ? 's' : ''} successfully.`
+        failures
+          ? `${successful} downloaded, ${failures} failed. Retry the failed items.`
+          : `Downloaded ${successful} item${successful !== 1 ? 's' : ''} successfully.`
       );
-      setStatus('done');
+      setStatus(failures ? 'error' : 'done');
     } catch (err) {
       setMessage(String(err));
       setStatus('error');
     }
-  }, [exportFrameSet, fetchedUrl, handleExportFrame, mediaItems, url]);
+  }, [fetchedUrl, frameExportSettings, handleExportFrame, mediaItems, url]);
 
   const selectedCount = mediaItems.filter(m => m.selected).length;
   const allSelected = mediaItems.length > 0 && selectedCount === mediaItems.length;
@@ -267,6 +451,10 @@ export default function Popup() {
   const handleVideoRef = useCallback((index: number, el: HTMLVideoElement | null) => {
     videoRefs.current[index] = el;
   }, []);
+  const handleVideoMetadata = useCallback(
+    (index: number, durationSeconds: number) => setFrameDuration(index, durationSeconds),
+    [setFrameDuration]
+  );
 
   const loadHistory = useCallback(async () => {
     const response = (await browser.runtime.sendMessage({ type: 'GET_DOWNLOAD_HISTORY' })) as {
@@ -285,17 +473,68 @@ export default function Popup() {
     void loadHistory();
   }, [loadHistory]);
   const redownloadHistory = useCallback(
+    // fallow-ignore-next-line complexity
     async (entryId: string) => {
       setHistoryBusy(entryId);
       const response = (await browser.runtime.sendMessage({
         type: 'REDOWNLOAD_HISTORY_ENTRY',
         entryId,
-      })) as { error?: string };
+      })) as {
+        error?: string;
+        frame?: {
+          itemIndex: number;
+          mediaId?: string;
+          url: string;
+          filenameHint: string;
+          timestampSeconds: number;
+          sourceUrl: string;
+        };
+      };
+      if (response.frame) {
+        try {
+          const videoResponse = (await browser.runtime.sendMessage({
+            type: 'FETCH_VIDEO_BLOB',
+            url: response.frame.url,
+          })) as VideoBlobResponse;
+          const dataUrl = getVideoBlobDataUrl(videoResponse);
+          const duration = await getVideoDuration(dataUrl);
+          const timestampSeconds = clampFrameSecond(response.frame.timestampSeconds, duration);
+          let result = await captureFrameFromDataUrl(dataUrl, timestampSeconds);
+          if (Either.isLeft(result) && result.left.reason === 'timeout') {
+            result = await captureFrameFromDataUrl(dataUrl, timestampSeconds);
+          }
+          if (Either.isLeft(result)) throw new Error(frameExportErrorMessage(result.left.reason));
+          downloadBlobAsFile(
+            result.right,
+            frameFilename(response.frame.filenameHint, timestampSeconds)
+          );
+          const recorded = (await browser.runtime.sendMessage({
+            type: 'RECORD_FRAME_EXPORT',
+            sourceUrl: response.frame.sourceUrl,
+            item: {
+              itemIndex: response.frame.itemIndex,
+              ...(response.frame.mediaId ? { mediaId: response.frame.mediaId } : {}),
+              url: response.frame.url,
+              filenameHint: response.frame.filenameHint,
+              mediaType: 'video',
+              frameTimestampSeconds: timestampSeconds,
+            },
+          })) as { error?: string };
+          const adjustment =
+            timestampSeconds === response.frame.timestampSeconds
+              ? ''
+              : ` Timestamp adjusted to ${formatFrameTimestamp(timestampSeconds)}.`;
+          setMessage(`${recorded.error ?? 'Frame download started.'}${adjustment}`);
+        } catch (error) {
+          setMessage(String(error).replace(/^Error: /, ''));
+        }
+      } else {
+        setMessage(response.error ?? 'Download started.');
+      }
       setHistoryBusy(null);
-      setMessage(response.error ?? 'Download started.');
       if (!response.error) void loadHistory();
     },
-    [loadHistory]
+    [captureFrameFromDataUrl, loadHistory]
   );
   const removeHistoryEntry = useCallback(async (entryId: string) => {
     const response = (await browser.runtime.sendMessage({
@@ -334,8 +573,8 @@ export default function Popup() {
     setMessage,
     mediaItems,
     setMediaItems,
-    exportFrameSet,
-    setExportFrameSet,
+    frameExportSettings,
+    setFrameExportSettings,
     setAutoDetected,
   });
 
@@ -409,12 +648,17 @@ export default function Popup() {
               allSelected={allSelected}
               fallbackLoading={fallbackLoading}
               fallbackFailed={fallbackFailed}
-              exportFrameSet={exportFrameSet}
+              frameExportSettings={frameExportSettings}
+              frameRuntime={frameRuntime}
               onPreviewError={handlePreviewError}
               onToggle={toggleItem}
               onToggleAll={toggleAll}
               onToggleExportFrame={toggleExportFrame}
+              onChangeFrameTimestamp={changeFrameTimestamp}
+              onRetryFrameMetadata={loadFrameMetadata}
+              onRetryFrameExport={index => void handleExportFrame(index)}
               onVideoRef={handleVideoRef}
+              onVideoMetadata={handleVideoMetadata}
               onIntrinsicDimensions={handleIntrinsicDimensions}
             />
 
@@ -711,12 +955,17 @@ function MediaListSection({
   allSelected,
   fallbackLoading,
   fallbackFailed,
-  exportFrameSet,
+  frameExportSettings,
+  frameRuntime,
   onPreviewError,
   onToggle,
   onToggleAll,
   onToggleExportFrame,
+  onChangeFrameTimestamp,
+  onRetryFrameMetadata,
+  onRetryFrameExport,
   onVideoRef,
+  onVideoMetadata,
   onIntrinsicDimensions,
 }: {
   mediaItems: MediaItem[];
@@ -725,12 +974,17 @@ function MediaListSection({
   allSelected: boolean;
   fallbackLoading: Set<number>;
   fallbackFailed: Set<number>;
-  exportFrameSet: Set<number>;
+  frameExportSettings: Record<number, FrameExportSetting>;
+  frameRuntime: Record<number, FrameRuntime>;
   onPreviewError: (item: MediaItem) => void;
   onToggle: (index: number) => void;
   onToggleAll: () => void;
   onToggleExportFrame: (index: number) => void;
+  onChangeFrameTimestamp: (index: number, timestampSeconds: number) => void;
+  onRetryFrameMetadata: (index: number) => void;
+  onRetryFrameExport: (index: number) => void;
   onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
+  onVideoMetadata: (index: number, durationSeconds: number) => void;
   onIntrinsicDimensions: (item: MediaItem, width: number, height: number) => void;
 }) {
   const masonryRef = useRef<HTMLDivElement>(null);
@@ -767,9 +1021,16 @@ function MediaListSection({
       fallbackFailed={fallbackFailed.has(item.index)}
       onError={() => onPreviewError(item)}
       onToggle={() => onToggle(item.index)}
-      exportFrame={exportFrameSet.has(item.index)}
+      frameSetting={frameExportSettings[item.index]}
+      frameRuntime={frameRuntime[item.index]}
       onToggleExportFrame={() => onToggleExportFrame(item.index)}
+      onChangeFrameTimestamp={timestampSeconds =>
+        onChangeFrameTimestamp(item.index, timestampSeconds)
+      }
+      onRetryFrameMetadata={() => onRetryFrameMetadata(item.index)}
+      onRetryFrameExport={() => onRetryFrameExport(item.index)}
       onVideoRef={el => onVideoRef(item.index, el)}
+      onVideoMetadata={durationSeconds => onVideoMetadata(item.index, durationSeconds)}
       onIntrinsicDimensions={(width, height) => onIntrinsicDimensions(item, width, height)}
     />
   );
@@ -821,6 +1082,36 @@ function createExportVideo(dataUrl: string) {
   return exportVideo;
 }
 
+function releaseVideo(video: HTMLVideoElement) {
+  video.removeAttribute('src');
+  video.load();
+}
+
+function getVideoDuration(dataUrl: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const video = createExportVideo(dataUrl);
+    const cleanup = () => {
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('error', onError);
+      window.clearTimeout(timeout);
+      releaseVideo(video);
+    };
+    const onLoadedMetadata = () => {
+      const duration = video.duration;
+      cleanup();
+      if (maximumFrameSecond(duration) === undefined) reject(new Error('duration unavailable'));
+      else resolve(duration);
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('video metadata unavailable'));
+    };
+    const timeout = window.setTimeout(onError, 5_000);
+    video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+    video.addEventListener('error', onError, { once: true });
+  });
+}
+
 function frameExportErrorMessage(reason: string): string {
   switch (reason) {
     case 'no-duration':
@@ -847,24 +1138,6 @@ function downloadBlobAsFile(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-async function exportSelectedFrames(
-  selected: MediaItem[],
-  exportFrameSet: Set<number>,
-  handleExportFrame: (index: number) => Promise<void>
-) {
-  const standardItems: MediaItem[] = [];
-
-  for (const item of selected) {
-    if (item.type === 'video' && exportFrameSet.has(item.index)) {
-      await handleExportFrame(item.index);
-      continue;
-    }
-    standardItems.push(item);
-  }
-
-  return standardItems;
-}
-
 interface MediaItemRowProps {
   item: MediaItem;
   workspaceMode: boolean;
@@ -873,9 +1146,14 @@ interface MediaItemRowProps {
   fallbackFailed: boolean;
   onError: () => void;
   onToggle: () => void;
-  exportFrame: boolean;
+  frameSetting?: FrameExportSetting;
+  frameRuntime?: FrameRuntime;
   onToggleExportFrame: () => void;
+  onChangeFrameTimestamp: (timestampSeconds: number) => void;
+  onRetryFrameMetadata: () => void;
+  onRetryFrameExport: () => void;
   onVideoRef: (el: HTMLVideoElement | null) => void;
+  onVideoMetadata: (durationSeconds: number) => void;
   onIntrinsicDimensions: (width: number, height: number) => void;
 }
 
@@ -887,8 +1165,18 @@ function MediaPreview({
   fallbackFailed,
   onError,
   onVideoRef,
+  onVideoMetadata,
   onIntrinsicDimensions,
-}: Omit<MediaItemRowProps, 'onToggle' | 'exportFrame' | 'onToggleExportFrame'>) {
+}: Omit<
+  MediaItemRowProps,
+  | 'onToggle'
+  | 'frameSetting'
+  | 'frameRuntime'
+  | 'onToggleExportFrame'
+  | 'onChangeFrameTimestamp'
+  | 'onRetryFrameMetadata'
+  | 'onRetryFrameExport'
+>) {
   const ratio = resolveMediaRatio(
     item.width,
     item.height,
@@ -903,6 +1191,7 @@ function MediaPreview({
         <VideoPreview
           item={item}
           onVideoRef={onVideoRef}
+          onVideoMetadata={onVideoMetadata}
           onIntrinsicDimensions={onIntrinsicDimensions}
         />
       ) : (
@@ -921,8 +1210,9 @@ function MediaPreview({
 function VideoPreview({
   item,
   onVideoRef,
+  onVideoMetadata,
   onIntrinsicDimensions,
-}: Pick<MediaItemRowProps, 'item' | 'onVideoRef' | 'onIntrinsicDimensions'>) {
+}: Pick<MediaItemRowProps, 'item' | 'onVideoRef' | 'onVideoMetadata' | 'onIntrinsicDimensions'>) {
   return (
     <>
       <video
@@ -930,9 +1220,10 @@ function VideoPreview({
         muted
         playsInline
         ref={onVideoRef}
-        onLoadedMetadata={event =>
-          onIntrinsicDimensions(event.currentTarget.videoWidth, event.currentTarget.videoHeight)
-        }
+        onLoadedMetadata={event => {
+          onIntrinsicDimensions(event.currentTarget.videoWidth, event.currentTarget.videoHeight);
+          onVideoMetadata(event.currentTarget.duration);
+        }}
       />
       <div className="play-overlay">
         <div className="play-triangle" />
@@ -967,28 +1258,72 @@ function ImagePreview({
   );
 }
 
+// fallow-ignore-next-line complexity
 function MediaControls({
   item,
-  exportFrame,
+  frameSetting,
+  frameRuntime,
   onToggle,
   onToggleExportFrame,
-}: Pick<MediaItemRowProps, 'item' | 'exportFrame' | 'onToggle' | 'onToggleExportFrame'>) {
+  onChangeFrameTimestamp,
+  onRetryFrameMetadata,
+  onRetryFrameExport,
+}: Pick<
+  MediaItemRowProps,
+  | 'item'
+  | 'frameSetting'
+  | 'frameRuntime'
+  | 'onToggle'
+  | 'onToggleExportFrame'
+  | 'onChangeFrameTimestamp'
+  | 'onRetryFrameMetadata'
+  | 'onRetryFrameExport'
+>) {
+  const duration = frameRuntime?.durationSeconds;
+  const maximum = duration === undefined ? undefined : maximumFrameSecond(duration);
+  const timestampSeconds = frameSetting?.timestampSeconds ?? 0;
   return (
     <div className="media-controls">
       {item.type === 'video' && (
-        <label
-          className="frame-toggle"
-          title="Export frame on download"
-          onClick={event => event.stopPropagation()}
-        >
-          <input
-            type="checkbox"
-            checked={exportFrame}
-            onChange={onToggleExportFrame}
-            className="frame-toggle-checkbox"
-          />
-          Frame
-        </label>
+        <div className="frame-export-control" onClick={event => event.stopPropagation()}>
+          <label className="frame-toggle" title="Export a JPEG frame on download">
+            <input
+              type="checkbox"
+              checked={frameSetting?.enabled ?? false}
+              onChange={onToggleExportFrame}
+              className="frame-toggle-checkbox"
+            />
+            Frame
+          </label>
+          {frameSetting?.enabled && (
+            <div className="frame-timestamp-row">
+              <input
+                type="range"
+                min="0"
+                max={maximum ?? 0}
+                step="1"
+                value={timestampSeconds}
+                disabled={frameRuntime?.status !== 'ready' || maximum === undefined}
+                aria-label={`Frame timestamp for item ${String(item.index + 1).padStart(2, '0')}`}
+                aria-valuetext={frameTimestampAriaValue(timestampSeconds)}
+                onChange={event => onChangeFrameTimestamp(Number(event.currentTarget.value))}
+              />
+              <output>{formatFrameTimestamp(timestampSeconds)}</output>
+              {frameRuntime?.status === 'loading' && <span>Loading…</span>}
+              {frameRuntime?.status === 'failed' && (
+                <button
+                  type="button"
+                  className="frame-retry"
+                  onClick={frameRuntime.durationSeconds ? onRetryFrameExport : onRetryFrameMetadata}
+                >
+                  Retry
+                </button>
+              )}
+              {frameRuntime?.error && <span className="frame-error">{frameRuntime.error}</span>}
+              {frameRuntime?.warning && <span>{frameRuntime.warning}</span>}
+            </div>
+          )}
+        </div>
       )}
       <input
         className="item-checkbox"
@@ -1010,9 +1345,14 @@ function MediaItemRow(props: MediaItemRowProps) {
     fallbackFailed,
     onError,
     onToggle,
-    exportFrame,
+    frameSetting,
+    frameRuntime,
     onToggleExportFrame,
+    onChangeFrameTimestamp,
+    onRetryFrameMetadata,
+    onRetryFrameExport,
     onVideoRef,
+    onVideoMetadata,
     onIntrinsicDimensions,
   } = props;
   const num = String(item.index + 1).padStart(2, '0');
@@ -1029,6 +1369,7 @@ function MediaItemRow(props: MediaItemRowProps) {
         fallbackFailed={fallbackFailed}
         onError={onError}
         onVideoRef={onVideoRef}
+        onVideoMetadata={onVideoMetadata}
         onIntrinsicDimensions={onIntrinsicDimensions}
       />
 
@@ -1047,9 +1388,13 @@ function MediaItemRow(props: MediaItemRowProps) {
 
       <MediaControls
         item={item}
-        exportFrame={exportFrame}
+        frameSetting={frameSetting}
+        frameRuntime={frameRuntime}
         onToggle={onToggle}
         onToggleExportFrame={onToggleExportFrame}
+        onChangeFrameTimestamp={onChangeFrameTimestamp}
+        onRetryFrameMetadata={onRetryFrameMetadata}
+        onRetryFrameExport={onRetryFrameExport}
       />
     </div>
   );
