@@ -26,6 +26,7 @@ function makeFakeBrowser() {
 
   const fakeBrowser = {
     runtime: {
+      getURL: vi.fn().mockImplementation((path: string) => `chrome-extension://test/${path}`),
       sendMessage: vi.fn().mockResolvedValue(undefined),
       onMessage: {
         addListener: vi.fn((cb: Listener) => {
@@ -33,12 +34,18 @@ function makeFakeBrowser() {
         }),
       },
     },
-    tabs: { query: vi.fn().mockResolvedValue([]) },
+    tabs: {
+      query: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: 1 }),
+      update: vi.fn().mockResolvedValue(undefined),
+    },
     downloads: { download: vi.fn().mockResolvedValue(1) },
     storage: {
       get: vi.fn().mockResolvedValue({}),
       set: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
     },
+    windows: { update: vi.fn().mockResolvedValue(undefined) },
     contextMenus: {
       create: vi.fn(),
       removeAll: vi.fn().mockResolvedValue(undefined),
@@ -120,12 +127,13 @@ describe('background dispatcher', () => {
       pageUrl: 'https://elsewhere.example/',
       linkUrl: 'http://instagram.com/stories/person/123/',
     });
-    await Promise.resolve();
-    expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
-      'workspace-transfer-v1': expect.objectContaining({
-        url: 'https://www.instagram.com/stories/person/',
-        intent: 'fetch',
-      }),
+    await vi.waitFor(() => {
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
+        'workspace-transfer-v1': expect.objectContaining({
+          url: 'https://www.instagram.com/stories/person/',
+          intent: 'fetch',
+        }),
+      });
     });
   });
 
