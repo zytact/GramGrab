@@ -1,5 +1,12 @@
 import { Effect, Either, Schema } from 'effect';
 import { browser } from './lib/browser.ts';
+import {
+  canonicalizeInstagramUrl,
+  WORKSPACE_TRANSFER_TTL_MS,
+  type InstagramTarget,
+  type WorkspaceSnapshot,
+} from './workspace/contracts.ts';
+import { replaceWorkspace } from './workspace/coordinator.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
 import { runHandler } from './effect/runtime.ts';
 import {
@@ -63,16 +70,6 @@ const IG_HEADERS = {
 } as const;
 
 const USER_PROFILE_URL = 'https://www.instagram.com/api/v1/users/web_profile_info/';
-const RESERVED_PROFILE_PATHS = new Set([
-  'p',
-  'reel',
-  'reels',
-  'stories',
-  'explore',
-  'direct',
-  'accounts',
-  'tv',
-]);
 const SHORTCODE_VIDEO_TYPENAMES = new Set([
   'XDTGraphVideo',
   'GraphVideo',
@@ -93,13 +90,7 @@ const SHORTCODE_SIDECAR_TYPENAMES = new Set([
   'XDTMediaAlbum',
 ]);
 
-interface ParsedUrl {
-  type: 'post' | 'reel' | 'story' | 'highlight' | 'profile';
-  shortcode?: string;
-  username?: string;
-  highlightId?: string;
-  carouselIndex?: number;
-}
+type ParsedUrl = InstagramTarget;
 
 type SidecarChild = NonNullable<
   NonNullable<ShortcodeSidecar['edge_sidecar_to_children']>['edges']
@@ -117,64 +108,7 @@ interface MediaDimensions {
 }
 
 function parseInstagramUrl(url: string): ParsedUrl | null {
-  try {
-    const u = new URL(url);
-    if (!isInstagramHostname(u.hostname)) return null;
-    const path = u.pathname.replace(/\/$/, '').split('/').filter(Boolean);
-    if (path.length === 0) return null;
-    return (
-      parsePostUrl(path, u) ?? parseReelUrl(path) ?? parseStoriesUrl(path) ?? parseProfileUrl(path)
-    );
-  } catch {
-    return null;
-  }
-}
-
-function isInstagramHostname(hostname: string): boolean {
-  return hostname === 'www.instagram.com' || hostname === 'instagram.com';
-}
-
-function parsePostUrl(path: string[], url: URL): ParsedUrl | null {
-  const postIndex = path.indexOf('p');
-  const shortcode = postIndex >= 0 ? path[postIndex + 1] : undefined;
-  if (!shortcode) return null;
-
-  return {
-    type: 'post',
-    shortcode,
-    carouselIndex: parseCarouselIndex(url.searchParams.get('img_index')),
-  };
-}
-
-function parseReelUrl(path: string[]): ParsedUrl | null {
-  const reelIndex = path.indexOf('reel');
-  const shortcode = reelIndex >= 0 ? path[reelIndex + 1] : undefined;
-  return shortcode ? { type: 'reel', shortcode } : null;
-}
-
-function parseStoriesUrl(path: string[]): ParsedUrl | null {
-  const storiesIndex = path.indexOf('stories');
-  if (storiesIndex < 0) return null;
-
-  if (path[storiesIndex + 1] === 'highlights' && path[storiesIndex + 2]) {
-    return { type: 'highlight', highlightId: path[storiesIndex + 2] };
-  }
-
-  const username = path[storiesIndex + 1];
-  return username ? { type: 'story', username } : null;
-}
-
-function parseProfileUrl(path: string[]): ParsedUrl | null {
-  if (path.length !== 1) return null;
-  const username = path[0];
-  if (!username || RESERVED_PROFILE_PATHS.has(username)) return null;
-  return { type: 'profile', username };
-}
-
-function parseCarouselIndex(imgIndex: string | null): number | undefined {
-  if (!imgIndex) return undefined;
-  const parsed = Number.parseInt(imgIndex, 10);
-  return Number.isFinite(parsed) ? parsed - 1 : undefined;
+  return canonicalizeInstagramUrl(url)?.target ?? null;
 }
 
 async function resolveUsernameToId(username: string): Promise<string | null> {
@@ -1106,6 +1040,75 @@ async function handleDownloadDebugJson(
     return { error: String(err) };
   }
 }
+
+const CONTEXT_MENU_ROOT = 'gramgrab';
+const CONTEXT_MENU_OPEN = 'gramgrab-open';
+const CONTEXT_MENU_FETCH = 'gramgrab-fetch';
+
+function contextTargetUrl(info: { pageUrl?: string; linkUrl?: string }): string | undefined {
+  return canonicalizeInstagramUrl(info.linkUrl ?? info.pageUrl ?? '')?.url;
+}
+
+function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnapshot {
+  const createdAt = Date.now();
+  return {
+    version: 1,
+    createdAt,
+    expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
+    url,
+    fetchedUrl: '',
+    status: 'idle',
+    message: intent === 'fetch' ? 'Fetching media…' : 'Ready to fetch media.',
+    mediaItems: [],
+    exportFrameIndexes: [],
+    intent,
+  };
+}
+
+function registerContextMenus(): void {
+  void browser.contextMenus
+    .removeAll()
+    .then(() => {
+      browser.contextMenus.create({
+        id: CONTEXT_MENU_ROOT,
+        title: 'GramGrab',
+        contexts: ['page', 'link'],
+        visible: false,
+      });
+      browser.contextMenus.create({
+        id: CONTEXT_MENU_OPEN,
+        parentId: CONTEXT_MENU_ROOT,
+        title: 'Open in GramGrab',
+        contexts: ['page', 'link'],
+      });
+      browser.contextMenus.create({
+        id: CONTEXT_MENU_FETCH,
+        parentId: CONTEXT_MENU_ROOT,
+        title: 'Fetch with GramGrab',
+        contexts: ['page', 'link'],
+      });
+    })
+    .catch(err => console.warn('Could not register GramGrab context menus:', err));
+}
+
+browser.contextMenus.onShown.addListener(info => {
+  void browser.contextMenus
+    .update(CONTEXT_MENU_ROOT, { visible: Boolean(contextTargetUrl(info)) })
+    .then(() => browser.contextMenus.refresh())
+    .catch(err => console.warn('Could not update GramGrab context menu visibility:', err));
+});
+
+browser.contextMenus.onClicked.addListener(info => {
+  const url = contextTargetUrl(info);
+  if (!url) return;
+  const intent = info.menuItemId === CONTEXT_MENU_FETCH ? 'fetch' : 'open';
+  if (info.menuItemId !== CONTEXT_MENU_OPEN && info.menuItemId !== CONTEXT_MENU_FETCH) return;
+  void replaceWorkspace(workspaceCommand(url, intent)).catch(err =>
+    console.warn('Could not open GramGrab workspace from context menu:', err)
+  );
+});
+
+registerContextMenus();
 
 // ---------------------------------------------------------------------------
 // Single message dispatcher

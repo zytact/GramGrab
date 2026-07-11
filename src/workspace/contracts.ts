@@ -21,6 +21,7 @@ export interface WorkspaceSnapshot {
   message: string;
   mediaItems: WorkspaceMediaItem[];
   exportFrameIndexes: number[];
+  intent?: 'open' | 'fetch';
 }
 
 export const WORKSPACE_TRANSFER_KEY = 'workspace-transfer-v1';
@@ -35,12 +36,121 @@ export function workspaceUrl(sourceUrl = ''): string {
 }
 
 export function isInstagramSource(value: string): boolean {
+  return canonicalizeInstagramUrl(value) !== null;
+}
+
+export interface InstagramTarget {
+  type: 'post' | 'reel' | 'story' | 'highlight' | 'profile';
+  shortcode?: string;
+  username?: string;
+  highlightId?: string;
+  carouselIndex?: number;
+}
+
+export interface CanonicalInstagramUrl {
+  url: string;
+  target: InstagramTarget;
+}
+
+const RESERVED_PROFILE_PATHS = new Set([
+  'p',
+  'reel',
+  'reels',
+  'stories',
+  'explore',
+  'direct',
+  'accounts',
+  'tv',
+]);
+const USERNAME = /^[a-zA-Z0-9._]{1,30}$/;
+const SHORTCODE = /^[a-zA-Z0-9_-]+$/;
+const NUMERIC_ID = /^\d+$/;
+
+interface ParsedInstagramTarget {
+  target: InstagramTarget;
+  path: string;
+  search?: string;
+}
+
+function parsePost(path: string[], imgIndex: string | null): ParsedInstagramTarget | undefined {
+  if (path.length !== 2 || path[0] !== 'p' || !SHORTCODE.test(path[1]!)) return undefined;
+  const carouselIndex = parseCarouselIndex(imgIndex);
+  return {
+    target: { type: 'post', shortcode: path[1], carouselIndex },
+    path: `/p/${path[1]!}/`,
+    search: carouselIndex === undefined ? '' : `?img_index=${carouselIndex + 1}`,
+  };
+}
+
+function parseReel(path: string[]): ParsedInstagramTarget | undefined {
+  if (path.length !== 2 || path[0] !== 'reel' || !SHORTCODE.test(path[1]!)) return undefined;
+  return { target: { type: 'reel', shortcode: path[1] }, path: `/reel/${path[1]!}/` };
+}
+
+function parseHighlight(path: string[]): ParsedInstagramTarget | undefined {
+  if (
+    path.length !== 3 ||
+    path[0] !== 'stories' ||
+    path[1] !== 'highlights' ||
+    !NUMERIC_ID.test(path[2]!)
+  )
+    return undefined;
+  return {
+    target: { type: 'highlight', highlightId: path[2] },
+    path: `/stories/highlights/${path[2]!}/`,
+  };
+}
+
+function parseStory(path: string[]): ParsedInstagramTarget | undefined {
+  const hasStoryId = path.length === 3 && NUMERIC_ID.test(path[2]!);
+  if ((path.length !== 2 && !hasStoryId) || path[0] !== 'stories' || !USERNAME.test(path[1]!))
+    return undefined;
+  return { target: { type: 'story', username: path[1] }, path: `/stories/${path[1]!}/` };
+}
+
+function parseProfile(path: string[]): ParsedInstagramTarget | undefined {
+  if (
+    path.length !== 1 ||
+    !USERNAME.test(path[0]!) ||
+    RESERVED_PROFILE_PATHS.has(path[0]!.toLowerCase())
+  )
+    return undefined;
+  return { target: { type: 'profile', username: path[0] }, path: `/${path[0]!}/` };
+}
+
+/** Returns a supported target and its single display/storage URL. */
+export function canonicalizeInstagramUrl(value: string): CanonicalInstagramUrl | null {
   try {
     const url = new URL(value);
-    return /^https?:$/.test(url.protocol) && /(^|\.)instagram\.com$/i.test(url.hostname);
+    if (
+      !/^https?:$/.test(url.protocol) ||
+      !['instagram.com', 'www.instagram.com'].includes(url.hostname)
+    )
+      return null;
+    const path = url.pathname.split('/').filter(Boolean);
+    const parsed = [
+      parsePost(path, url.searchParams.get('img_index')),
+      parseReel(path),
+      parseHighlight(path),
+      parseStory(path),
+      parseProfile(path),
+    ].find((target): target is ParsedInstagramTarget => target !== undefined);
+    if (!parsed) return null;
+    url.protocol = 'https:';
+    url.hostname = 'www.instagram.com';
+    url.pathname = parsed.path;
+    url.search = parsed.search ?? '';
+    url.hash = '';
+    return { url: url.toString(), target: parsed.target };
   } catch {
-    return false;
+    return null;
   }
+}
+
+function parseCarouselIndex(imgIndex: string | null): number | undefined {
+  if (!imgIndex || !/^\d+$/.test(imgIndex)) return undefined;
+  const index = Number(imgIndex);
+  return Number.isSafeInteger(index) && index > 0 ? index - 1 : undefined;
 }
 
 export function isBusy(status: string): boolean {
