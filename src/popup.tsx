@@ -184,6 +184,7 @@ export default function Popup() {
     [captureFrameFromVideo, mediaItems]
   );
 
+  // fallow-ignore-next-line complexity
   const handleDownload = useCallback(async () => {
     const selected = mediaItems.filter(m => m.selected);
     if (selected.length === 0) {
