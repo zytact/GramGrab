@@ -47,6 +47,7 @@ function applyFetchSuccess(
 
 export function useMediaFetch(options: UseMediaFetchOptions) {
   const requestGeneration = useRef(0);
+  // fallow-ignore-next-line complexity
   return useCallback(async () => {
     const generation = ++requestGeneration.current;
     const trimmedUrl = options.url.trim();
