@@ -21,7 +21,10 @@ type Listener = (
 function makeFakeBrowser() {
   let registeredListener: Listener | null = null;
   let contextClickListener:
-    | ((info: { menuItemId: string; pageUrl?: string; linkUrl?: string }) => void)
+    | ((
+        info: { menuItemId: string; pageUrl?: string; linkUrl?: string; srcUrl?: string },
+        tab?: { url?: string }
+      ) => void)
     | null = null;
 
   const fakeBrowser = {
@@ -49,10 +52,7 @@ function makeFakeBrowser() {
     contextMenus: {
       create: vi.fn(),
       removeAll: vi.fn().mockResolvedValue(undefined),
-      update: vi.fn().mockResolvedValue(undefined),
-      refresh: vi.fn().mockResolvedValue(undefined),
       onClicked: { addListener: vi.fn(callback => (contextClickListener = callback)) },
-      onShown: { addListener: vi.fn() },
     },
   };
 
@@ -121,6 +121,14 @@ describe('background dispatcher', () => {
     await import('./background');
     await Promise.resolve();
     expect(fakeBrowserObj.fakeBrowser.contextMenus.create).toHaveBeenCalledTimes(3);
+    expect(fakeBrowserObj.fakeBrowser.contextMenus.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        id: 'gramgrab',
+        contexts: ['page', 'link', 'image', 'video'],
+        documentUrlPatterns: ['https://*.instagram.com/*'],
+      })
+    );
     const click = fakeBrowserObj.getContextClickListener()!;
     click({
       menuItemId: 'gramgrab-fetch',
@@ -133,6 +141,64 @@ describe('background dispatcher', () => {
           url: 'https://www.instagram.com/stories/person/',
           intent: 'fetch',
         }),
+      });
+      expect(fakeBrowserObj.fakeBrowser.tabs.create).toHaveBeenCalledWith({
+        active: true,
+        url: expect.stringContaining('popup.html?surface=workspace&source='),
+      });
+    });
+  });
+
+  it('uses the clicked tab URL when Chromium omits page and link URLs', async () => {
+    await import('./background');
+    await Promise.resolve();
+    const click = fakeBrowserObj.getContextClickListener()!;
+    click({ menuItemId: 'gramgrab-open' }, { url: 'https://www.instagram.com/reel/example-reel/' });
+
+    await vi.waitFor(() => {
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
+        'workspace-transfer-v1': expect.objectContaining({
+          url: 'https://www.instagram.com/reel/example-reel/',
+          intent: 'open',
+        }),
+      });
+    });
+  });
+
+  it('falls back to the page URL when the clicked link is not a supported target', async () => {
+    await import('./background');
+    await Promise.resolve();
+    const click = fakeBrowserObj.getContextClickListener()!;
+    click({
+      menuItemId: 'gramgrab-fetch',
+      linkUrl: 'https://help.instagram.com/',
+      pageUrl: 'https://www.instagram.com/p/page-shortcode/',
+    });
+
+    await vi.waitFor(() => {
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
+        'workspace-transfer-v1': expect.objectContaining({
+          url: 'https://www.instagram.com/p/page-shortcode/',
+          intent: 'fetch',
+        }),
+      });
+    });
+  });
+
+  it('uses the page URL for image and video context commands', async () => {
+    await import('./background');
+    await Promise.resolve();
+    const click = fakeBrowserObj.getContextClickListener()!;
+    click({
+      menuItemId: 'gramgrab-open',
+      pageUrl: 'https://www.instagram.com/reel/media-shortcode/',
+      srcUrl: 'https://instagram.example-cdn.test/media.jpg',
+    });
+
+    await vi.waitFor(() => {
+      expect(fakeBrowserObj.fakeBrowser.tabs.create).toHaveBeenCalledWith({
+        active: true,
+        url: expect.stringContaining('popup.html?surface=workspace&source='),
       });
     });
   });

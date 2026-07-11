@@ -19,6 +19,9 @@ const firefoxPackageOutput = {
 };
 
 export default defineConfig({
+  define: {
+    __GRAMGRAB_TARGET_BROWSER__: JSON.stringify(browser),
+  },
   run: {
     cache: {
       scripts: false, // Keep caching on explicit tasks so inputs/outputs stay well-defined.

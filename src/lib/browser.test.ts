@@ -86,6 +86,11 @@ describe('browser shim', () => {
           },
         },
         windows: { update: vi.fn().mockResolvedValue({}) },
+        contextMenus: {
+          create: vi.fn(),
+          removeAll: vi.fn().mockResolvedValue(undefined),
+          onClicked: { addListener: vi.fn() },
+        },
       };
       (globalThis as G)['browser'] = native;
       (globalThis as G)['chrome'] = undefined;
@@ -155,6 +160,24 @@ describe('browser shim', () => {
       const listener = vi.fn();
       shim.runtime.onMessage.addListener(listener);
       expect(chrome.runtime.onMessage.addListener).toHaveBeenCalledWith(listener);
+    });
+
+    it('uses Chrome when a partial browser global lacks context-menu events', async () => {
+      const chrome = makeChrome();
+      const onClicked = { addListener: vi.fn() };
+      (chrome as G)['contextMenus'] = {
+        create: vi.fn(),
+        removeAll: vi.fn(),
+        onClicked,
+      };
+      (globalThis as G)['browser'] = { storage: { local: {} } };
+      (globalThis as G)['chrome'] = chrome;
+
+      const shim = await loadShim();
+      const listener = vi.fn();
+      shim.contextMenus.onClicked.addListener(listener);
+
+      expect(onClicked.addListener).toHaveBeenCalledWith(listener);
     });
 
     it('wraps chrome.tabs.query into a Promise (success)', async () => {

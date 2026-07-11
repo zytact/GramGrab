@@ -1044,9 +1044,17 @@ async function handleDownloadDebugJson(
 const CONTEXT_MENU_ROOT = 'gramgrab';
 const CONTEXT_MENU_OPEN = 'gramgrab-open';
 const CONTEXT_MENU_FETCH = 'gramgrab-fetch';
+const INSTAGRAM_DOCUMENT_URL_PATTERNS = ['https://*.instagram.com/*'];
 
-function contextTargetUrl(info: { pageUrl?: string; linkUrl?: string }): string | undefined {
-  return canonicalizeInstagramUrl(info.linkUrl ?? info.pageUrl ?? '')?.url;
+function contextTargetUrl(
+  info: { pageUrl?: string; linkUrl?: string; srcUrl?: string },
+  tab?: { url?: string }
+): string | undefined {
+  for (const candidate of [info.linkUrl, info.pageUrl, tab?.url, info.srcUrl]) {
+    const canonical = canonicalizeInstagramUrl(candidate ?? '');
+    if (canonical) return canonical.url;
+  }
+  return undefined;
 }
 
 function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnapshot {
@@ -1066,43 +1074,39 @@ function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnaps
 }
 
 function registerContextMenus(): void {
+  const contexts = ['page', 'link', 'image', 'video'] as const;
   void browser.contextMenus
     .removeAll()
     .then(() => {
       browser.contextMenus.create({
         id: CONTEXT_MENU_ROOT,
         title: 'GramGrab',
-        contexts: ['page', 'link'],
-        visible: false,
+        contexts: [...contexts],
+        documentUrlPatterns: INSTAGRAM_DOCUMENT_URL_PATTERNS,
       });
       browser.contextMenus.create({
         id: CONTEXT_MENU_OPEN,
         parentId: CONTEXT_MENU_ROOT,
         title: 'Open in GramGrab',
-        contexts: ['page', 'link'],
+        contexts: [...contexts],
+        documentUrlPatterns: INSTAGRAM_DOCUMENT_URL_PATTERNS,
       });
       browser.contextMenus.create({
         id: CONTEXT_MENU_FETCH,
         parentId: CONTEXT_MENU_ROOT,
         title: 'Fetch with GramGrab',
-        contexts: ['page', 'link'],
+        contexts: [...contexts],
+        documentUrlPatterns: INSTAGRAM_DOCUMENT_URL_PATTERNS,
       });
     })
     .catch(err => console.warn('Could not register GramGrab context menus:', err));
 }
 
-browser.contextMenus.onShown.addListener(info => {
-  void browser.contextMenus
-    .update(CONTEXT_MENU_ROOT, { visible: Boolean(contextTargetUrl(info)) })
-    .then(() => browser.contextMenus.refresh())
-    .catch(err => console.warn('Could not update GramGrab context menu visibility:', err));
-});
-
-browser.contextMenus.onClicked.addListener(info => {
-  const url = contextTargetUrl(info);
+browser.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== CONTEXT_MENU_OPEN && info.menuItemId !== CONTEXT_MENU_FETCH) return;
+  const url = contextTargetUrl(info, tab);
   if (!url) return;
   const intent = info.menuItemId === CONTEXT_MENU_FETCH ? 'fetch' : 'open';
-  if (info.menuItemId !== CONTEXT_MENU_OPEN && info.menuItemId !== CONTEXT_MENU_FETCH) return;
   void replaceWorkspace(workspaceCommand(url, intent)).catch(err =>
     console.warn('Could not open GramGrab workspace from context menu:', err)
   );
