@@ -3,7 +3,7 @@ import { Effect, Either } from 'effect';
 import './styles.css';
 import { browser } from './lib/browser';
 import { captureFrameFromVideoEffect } from './effect/frame-extraction';
-import { isBusy as isWorkspaceBusy } from './workspace/contracts';
+import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
 import { isPositiveFinitePair, resolveMediaRatio } from './workspace/media-ratio';
@@ -231,6 +231,7 @@ export default function Popup() {
     handleOpenWorkspace,
     handleReplaceWorkspace,
     hasTransferableSession,
+    fetchIntent,
   } = useWorkspaceSurface({
     url,
     setUrl,
@@ -246,6 +247,10 @@ export default function Popup() {
     setExportFrameSet,
     setAutoDetected,
   });
+
+  useEffect(() => {
+    if (fetchIntent > 0) void handleFetch();
+  }, [fetchIntent, handleFetch]);
 
   return (
     <div className={`container${workspaceMode ? ' workspace-container' : ''}`}>
@@ -267,6 +272,7 @@ export default function Popup() {
             placeholder="Paste an Instagram URL…"
             value={url}
             onChange={e => handleUrlChange(e.currentTarget.value)}
+            onBlur={() => setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)}
             onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
           />
         </div>

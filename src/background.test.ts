@@ -20,6 +20,9 @@ type Listener = (
 
 function makeFakeBrowser() {
   let registeredListener: Listener | null = null;
+  let contextClickListener:
+    | ((info: { menuItemId: string; pageUrl?: string; linkUrl?: string }) => void)
+    | null = null;
 
   const fakeBrowser = {
     runtime: {
@@ -36,11 +39,20 @@ function makeFakeBrowser() {
       get: vi.fn().mockResolvedValue({}),
       set: vi.fn().mockResolvedValue(undefined),
     },
+    contextMenus: {
+      create: vi.fn(),
+      removeAll: vi.fn().mockResolvedValue(undefined),
+      update: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn().mockResolvedValue(undefined),
+      onClicked: { addListener: vi.fn(callback => (contextClickListener = callback)) },
+      onShown: { addListener: vi.fn() },
+    },
   };
 
   return {
     fakeBrowser,
     getListener: () => registeredListener,
+    getContextClickListener: () => contextClickListener,
   };
 }
 
@@ -96,6 +108,25 @@ describe('background dispatcher', () => {
   it('registers exactly one onMessage listener synchronously', async () => {
     await import('./background');
     expect(fakeBrowserObj.fakeBrowser.runtime.onMessage.addListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers an idempotent GramGrab submenu and routes link commands', async () => {
+    await import('./background');
+    await Promise.resolve();
+    expect(fakeBrowserObj.fakeBrowser.contextMenus.create).toHaveBeenCalledTimes(3);
+    const click = fakeBrowserObj.getContextClickListener()!;
+    click({
+      menuItemId: 'gramgrab-fetch',
+      pageUrl: 'https://elsewhere.example/',
+      linkUrl: 'http://instagram.com/stories/person/123/',
+    });
+    await Promise.resolve();
+    expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
+      'workspace-transfer-v1': expect.objectContaining({
+        url: 'https://www.instagram.com/stories/person/',
+        intent: 'fetch',
+      }),
+    });
   });
 
   it('returns true for known message types (indicates async sendResponse)', async () => {

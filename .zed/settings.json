@@ -10,35 +10,35 @@
           "run": "onType",
           "fixKind": "safe_fix",
           "typeAware": true,
-          "unusedDisableDirectives": "deny",
-        },
-      },
+          "unusedDisableDirectives": "deny"
+        }
+      }
     },
     "oxfmt": {
       "initialization_options": {
         "settings": {
           "fmt.configPath": "./vite.config.ts",
-          "run": "onSave",
-        },
-      },
-    },
+          "run": "onSave"
+        }
+      }
+    }
   },
   "languages": {
     "JavaScript": {
       "format_on_save": "on",
       "prettier": { "allowed": false },
       "formatter": [{ "language_server": { "name": "oxfmt" } }],
-      "code_action": "source.fixAll.oxc",
+      "code_action": "source.fixAll.oxc"
     },
     "TypeScript": {
       "format_on_save": "on",
       "prettier": { "allowed": false },
-      "formatter": [{ "language_server": { "name": "oxfmt" } }],
+      "formatter": [{ "language_server": { "name": "oxfmt" } }]
     },
     "Vue.js": {
       "format_on_save": "on",
       "prettier": { "allowed": false },
-      "formatter": [{ "language_server": { "name": "oxfmt" } }],
-    },
-  },
+      "formatter": [{ "language_server": { "name": "oxfmt" } }]
+    }
+  }
 }

@@ -48,7 +48,29 @@ export interface BrowserShim {
     remove: (keys: string | string[]) => Promise<void>;
   };
   windows: { update: (windowId: number, updateInfo: { focused: boolean }) => Promise<void> };
+  contextMenus: {
+    create: (properties: ContextMenuCreateProperties) => void;
+    removeAll: () => Promise<void>;
+    update: (id: string, properties: { visible: boolean }) => Promise<void>;
+    refresh: () => Promise<void>;
+    onClicked: { addListener: (callback: ContextMenuClickedCallback) => void };
+    onShown: { addListener: (callback: ContextMenuShownCallback) => void };
+  };
 }
+
+export interface ContextMenuCreateProperties {
+  id: string;
+  title: string;
+  contexts?: ('page' | 'link')[];
+  parentId?: string;
+  visible?: boolean;
+}
+export type ContextMenuClickedCallback = (info: {
+  menuItemId: string;
+  pageUrl?: string;
+  linkUrl?: string;
+}) => void;
+export type ContextMenuShownCallback = (info: { pageUrl?: string; linkUrl?: string }) => void;
 
 // ---------------------------------------------------------------------------
 // Internal Chrome type (narrow — only what we need)
@@ -82,6 +104,14 @@ interface ChromeGlobal {
       remove: (keys: string | string[], cb?: () => void) => void;
     };
   };
+  contextMenus: {
+    create: (properties: ContextMenuCreateProperties) => void;
+    removeAll: (callback?: () => void) => void;
+    update: (id: string, properties: { visible: boolean }, callback?: () => void) => void;
+    refresh: (callback?: () => void) => void;
+    onClicked: { addListener: (callback: ContextMenuClickedCallback) => void };
+    onShown: { addListener: (callback: ContextMenuShownCallback) => void };
+  };
 }
 
 interface NativeBrowserGlobal {
@@ -109,6 +139,14 @@ interface NativeBrowserGlobal {
     };
   };
   windows: { update: (windowId: number, updateInfo: { focused: boolean }) => Promise<unknown> };
+  contextMenus: {
+    create: (properties: ContextMenuCreateProperties) => void;
+    removeAll: () => Promise<void>;
+    update: (id: string, properties: { visible: boolean }) => Promise<void>;
+    refresh: () => Promise<void>;
+    onClicked: { addListener: (callback: ContextMenuClickedCallback) => void };
+    onShown: { addListener: (callback: ContextMenuShownCallback) => void };
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +158,7 @@ function lastError(cr: ChromeRuntime): Error | undefined {
 }
 
 function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
+  const contextMenus = chrome.contextMenus ?? noopContextMenus;
   return {
     runtime: {
       getURL: path => chrome.runtime.getURL(path),
@@ -207,7 +246,29 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
           });
         }),
     },
+    contextMenus: {
+      create: properties => contextMenus.create(properties),
+      removeAll: () => callbackPromise(chrome, callback => contextMenus.removeAll(callback)),
+      update: (id, properties) =>
+        callbackPromise(chrome, callback => contextMenus.update(id, properties, callback)),
+      refresh: () => callbackPromise(chrome, callback => contextMenus.refresh(callback)),
+      onClicked: contextMenus.onClicked,
+      onShown: contextMenus.onShown,
+    },
   };
+}
+
+function callbackPromise(
+  chrome: ChromeGlobal,
+  invoke: (callback: () => void) => void
+): Promise<void> {
+  return new Promise((resolve, reject) =>
+    invoke(() => {
+      const err = lastError(chrome.runtime);
+      if (err) reject(err);
+      else resolve();
+    })
+  );
 }
 
 function hasNativeStorageLocal(value: unknown): value is NativeBrowserGlobal {
@@ -232,12 +293,22 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
         await native.windows.update(windowId, updateInfo);
       },
     },
+    contextMenus: native.contextMenus ?? noopContextMenus,
   };
 }
 
 // ---------------------------------------------------------------------------
 // Fallback stub (tests / environments without either global)
 // ---------------------------------------------------------------------------
+
+const noopContextMenus: BrowserShim['contextMenus'] = {
+  create: () => {},
+  removeAll: () => Promise.resolve(),
+  update: () => Promise.resolve(),
+  refresh: () => Promise.resolve(),
+  onClicked: { addListener: () => {} },
+  onShown: { addListener: () => {} },
+};
 
 const noopShim: BrowserShim = {
   runtime: {
@@ -257,6 +328,7 @@ const noopShim: BrowserShim = {
     remove: () => Promise.resolve(),
   },
   windows: { update: () => Promise.resolve() },
+  contextMenus: noopContextMenus,
 };
 
 // ---------------------------------------------------------------------------
@@ -274,9 +346,13 @@ function getActiveBrowser(): BrowserShim {
   const nativeBrowser = g['browser'];
   const chrome = g['chrome'] as ChromeGlobal | undefined;
   if (hasNativeStorageLocal(nativeBrowser)) return buildNativeShim(nativeBrowser);
-  return (
-    (nativeBrowser as BrowserShim | undefined) ?? (chrome ? buildChromeShim(chrome) : noopShim)
-  );
+  if (nativeBrowser)
+    return {
+      ...noopShim,
+      ...(nativeBrowser as Partial<BrowserShim>),
+      contextMenus: (nativeBrowser as Partial<BrowserShim>).contextMenus ?? noopContextMenus,
+    };
+  return chrome ? buildChromeShim(chrome) : noopShim;
 }
 
 export const browser: BrowserShim = new Proxy({} as BrowserShim, {
