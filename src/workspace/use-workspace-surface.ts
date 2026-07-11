@@ -70,6 +70,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
   const workspaceMode = new URLSearchParams(window.location.search).get('surface') === 'workspace';
   const [workspaceExists, setWorkspaceExists] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const [fetchIntent, setFetchIntent] = useState(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
@@ -84,6 +85,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
           session.setMessage(snapshot.message);
           session.setMediaItems(snapshot.mediaItems);
           session.setExportFrameSet(new Set(snapshot.exportFrameIndexes));
+          if (snapshot.intent === 'fetch') setFetchIntent(intent => intent + 1);
           return;
         }
         const source = new URLSearchParams(window.location.search).get('source') ?? '';
@@ -157,5 +159,6 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
     handleOpenWorkspace,
     handleReplaceWorkspace,
     hasTransferableSession,
+    fetchIntent,
   };
 }
