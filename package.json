@@ -2,6 +2,7 @@
   "name": "gramgrab",
   "type": "module",
   "private": true,
+  "license": "GPL-3.0-only",
   "scripts": {
     "build": "vp run build-all",
     "build:chromium": "vp run build-chromium",
