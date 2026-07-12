@@ -4,7 +4,7 @@ on:
   pull_request:
 
 jobs:
-  typecheck:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -12,19 +12,8 @@ jobs:
         with:
           node-version: '22'
           cache: true
-      - run: vp install
-      - run: tsc --noEmit
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version: '22'
-          cache: true
-      - run: vp install
-      - run: vp lint .
+      - run: vp install --frozen-lockfile
+      - run: vp check
 
   test:
     runs-on: ubuntu-latest
@@ -34,8 +23,23 @@ jobs:
         with:
           node-version: '22'
           cache: true
-      - run: vp install
+      - run: vp install --frozen-lockfile
       - run: vp test run
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: '22'
+          cache: true
+      - run: vp install --frozen-lockfile
+      - run: vp run build-${{ matrix.browser }}
 
   fallow:
     runs-on: ubuntu-latest
@@ -45,5 +49,5 @@ jobs:
         with:
           node-version: '22'
           cache: true
-      - run: vp install
+      - run: vp install --frozen-lockfile
       - run: vp run fallow
