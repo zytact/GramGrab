@@ -63,7 +63,7 @@ export default defineConfig({
       'node_modules',
       '.husky',
       'extension',
-      'repos',
+      '.repos',
       'scripts/capture-ig-fixtures.mjs',
     ],
     rules: {
@@ -216,7 +216,7 @@ export default defineConfig({
     ],
   },
   staged: {
-    '*.{ts,tsx,js,mjs}': ['vp lint --fix', 'vp fmt'],
+    '{,!(.repos)/**/}*.{ts,tsx,js,mjs}': ['vp lint --fix', 'vp fmt'],
   },
   fmt: {
     singleQuote: true,
@@ -228,7 +228,7 @@ export default defineConfig({
     arrowParens: 'avoid',
     endOfLine: 'lf',
     sortPackageJson: false,
-    ignorePatterns: ['repos'],
+    ignorePatterns: ['.repos', '.agents', '.claude', '.pi'],
   },
   plugins: [react()],
   root: 'templates',
