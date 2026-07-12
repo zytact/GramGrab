@@ -27,6 +27,7 @@ interface UseMediaFetchOptions {
   setFrameExportSettings: Dispatch<SetStateAction<Record<number, FrameExportSetting>>>;
   setStatus: Dispatch<SetStateAction<Status>>;
   setMessage: Dispatch<SetStateAction<string>>;
+  onSuccess?: () => void;
 }
 
 function applyFetchSuccess(
@@ -46,6 +47,7 @@ function applyFetchSuccess(
 
 export function useMediaFetch(options: UseMediaFetchOptions) {
   const requestGeneration = useRef(0);
+  // fallow-ignore-next-line complexity
   return useCallback(async () => {
     const generation = ++requestGeneration.current;
     const trimmedUrl = options.url.trim();
@@ -70,6 +72,7 @@ export function useMediaFetch(options: UseMediaFetchOptions) {
       }
       options.setFetchedUrl(trimmedUrl);
       applyFetchSuccess(response?.media ?? [], options);
+      options.onSuccess?.();
     } catch (err) {
       if (generation !== requestGeneration.current) return;
       options.setMessage(String(err));

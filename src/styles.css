@@ -930,6 +930,40 @@ body::before {
   text-decoration: underline;
 }
 
+.download-attempt-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-mid);
+  font-size: 11px;
+}
+
+.download-attempt-summary:focus {
+  outline: 1px solid var(--brand);
+  outline-offset: 4px;
+}
+
+.download-item-status {
+  display: block;
+  margin-top: 4px;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.download-item-status.pending {
+  color: var(--accent);
+}
+.download-item-status.accepted {
+  color: var(--success);
+}
+.download-item-status.warning {
+  color: var(--text-mid);
+}
+.download-item-status.failed {
+  color: var(--error);
+}
+
 /* ─── Responsive workspace tab ─── */
 body:has(.workspace-container) {
   width: auto;
