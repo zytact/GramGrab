@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from 'effect';
+import { Effect, Schema } from 'effect';
 import { browser } from './lib/browser.ts';
 import {
   canonicalizeInstagramUrl,
@@ -23,6 +23,16 @@ import {
   graphqlPost as graphqlPostEffect,
 } from './effect/instagram.ts';
 import { ShortcodeMediaResponseSchema } from './effect/schemas.ts';
+import {
+  DownloadAcceptedResult,
+  DownloadFailedResult,
+  DownloadMediaResponse,
+  createRequestId,
+  decodeDownloadMediaRequest,
+  type DownloadMediaRequest,
+  type DownloadOperation,
+  type DownloadOperationResult,
+} from './download/contracts.ts';
 import type {
   HdAvatarUser,
   HighlightsTrayItem,
@@ -36,11 +46,9 @@ import type {
   WebProfileInfoUser,
 } from './effect/schemas.ts';
 import {
-  BrowserDownloadFailed,
   GraphQLRequestFailed,
   HttpError,
   InvalidInstagramUrl,
-  MediaNotFound,
   NetworkError,
   RateLimited,
   ResponseShapeUnknown,
@@ -824,103 +832,9 @@ const resolveMediaEffect = (
     }
   });
 
-const downloadMediaEffect = (
-  url: string,
-  carouselIndex?: number
-): Effect.Effect<
-  { items: MediaItem[]; failures: { url: string; reason: string }[] },
-  | InvalidInstagramUrl
-  | UsernameUnresolved
-  | NetworkError
-  | GraphQLRequestFailed
-  | RateLimited
-  | ResponseShapeUnknown
-  | MediaNotFound
-> =>
-  Effect.gen(function* () {
-    const allItems = yield* resolveMediaEffect(url);
-
-    let items = allItems;
-    if (carouselIndex !== undefined && items[carouselIndex] !== undefined) {
-      items = [items[carouselIndex]!];
-    }
-
-    if (items.length === 0) {
-      return yield* Effect.fail(
-        new MediaNotFound({
-          hint: 'Instagram may have changed the response shape or the session is not authorized.',
-        })
-      );
-    }
-
-    const results = yield* Effect.forEach(
-      items.map((item, i) => ({ item, i })),
-      ({ item, i }) => {
-        const ext = item.type === 'video' ? 'mp4' : 'jpg';
-        const filename = `${item.filenameHint}_${i + 1}.${ext}`;
-        return Effect.tryPromise({
-          try: () => browser.downloads.download({ url: item.url, filename, saveAs: false }),
-          catch: cause => new BrowserDownloadFailed({ url: item.url, cause }),
-        }).pipe(
-          Effect.map(() => item),
-          Effect.either
-        );
-      },
-      { concurrency: DOWNLOAD_CONCURRENCY }
-    );
-
-    const succeeded = results.flatMap(r => (Either.isRight(r) ? [r.right] : []));
-    const failures = results.flatMap(r =>
-      Either.isLeft(r) ? [{ url: r.left.url, reason: formatError(r.left) }] : []
-    );
-
-    return { items: succeeded, failures };
-  });
-
 // ---------------------------------------------------------------------------
 // Handler functions — each returns a structured response value
 // ---------------------------------------------------------------------------
-
-interface DownloadMsg {
-  type: 'DOWNLOAD';
-  url: string;
-  carouselIndex?: number;
-}
-
-async function handleDownload(msg: DownloadMsg): Promise<{
-  media: MediaItem[] | undefined;
-  failures: { url: string; reason: string }[] | undefined;
-  error: string | undefined;
-}> {
-  return Effect.runPromise(
-    downloadMediaEffect(msg.url, msg.carouselIndex).pipe(
-      Effect.map(({ items, failures }) => {
-        if (items.length === 0 && failures.length > 0) {
-          return {
-            media: undefined as MediaItem[] | undefined,
-            failures,
-            error: 'All downloads failed' as string | undefined,
-          };
-        }
-        return {
-          media: items as MediaItem[] | undefined,
-          failures:
-            failures.length > 0
-              ? failures
-              : (undefined as { url: string; reason: string }[] | undefined),
-          error: undefined as string | undefined,
-        };
-      }),
-      Effect.catchAll(err =>
-        Effect.succeed({
-          media: undefined as MediaItem[] | undefined,
-          failures: undefined as { url: string; reason: string }[] | undefined,
-          error: formatError(err) as string | undefined,
-        })
-      )
-    )
-  );
-}
 
 interface FetchMediaMsg {
   type: 'FETCH_MEDIA';
@@ -1014,58 +928,76 @@ async function handleGetPreviewUrl(
   });
 }
 
-interface DownloadMediaMsg {
-  type: 'DOWNLOAD_MEDIA';
-  sourceUrl?: string;
-  items?: {
-    itemIndex: number;
-    mediaId?: string;
-    url: string;
-    filenameHint: string;
-    mediaType: 'image' | 'video';
-    exportMode?: 'direct' | 'frame';
-    frameTimestampSeconds?: number;
-  }[];
-  /** Compatibility for clients before history. These downloads cannot be recorded. */
-  urls?: string[];
-  hints?: string[];
-  types?: string[];
-}
-
 interface FetchVideoBlobMsg {
   type: 'FETCH_VIDEO_BLOB';
   url: string;
 }
 
-type DownloadItem = NonNullable<DownloadMediaMsg['items']>[number];
-type DownloadAttempt = { item: DownloadItem; failure?: string; warning?: string };
+type DownloadAttempt = { operation: DownloadOperation; result: DownloadOperationResult };
+
+function historyFilenameHint(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '');
+}
+
+function sanitizedDownloadReason(cause: unknown): string {
+  const detail = cause instanceof Error ? cause.message.toLowerCase() : '';
+  if (detail.includes('network')) return 'The network interrupted this download.';
+  if (detail.includes('permission') || detail.includes('denied'))
+    return 'The browser denied this download.';
+  return 'The browser could not start this download.';
+}
 
 async function downloadItem(
-  item: DownloadItem,
-  batchIndex: number,
+  operation: DownloadOperation,
   source: ReturnType<typeof historySource>
 ): Promise<DownloadAttempt> {
   try {
     await browser.downloads.download({
-      url: item.url,
-      filename: `${item.filenameHint}_${batchIndex + 1}.${item.mediaType === 'video' ? 'mp4' : 'jpg'}`,
+      url: operation.url,
+      filename: operation.filename,
       saveAs: false,
     });
     if (source) {
       try {
-        await appendAcceptedHistory(item, source);
+        await appendAcceptedHistory(operation, source);
       } catch {
-        return { item, warning: 'Download started, but history could not be saved.' };
+        return {
+          operation,
+          result: DownloadAcceptedResult.make({
+            requestId: operation.requestId,
+            status: 'accepted',
+            warning: 'Download started, but history could not be saved.',
+          }),
+        };
       }
     }
-    return { item };
+    return {
+      operation,
+      result: DownloadAcceptedResult.make({ requestId: operation.requestId, status: 'accepted' }),
+    };
   } catch (cause) {
-    return { item, failure: formatError(new BrowserDownloadFailed({ url: item.url, cause })) };
+    return {
+      operation,
+      result: DownloadFailedResult.make({
+        requestId: operation.requestId,
+        status: 'failed',
+        reason: sanitizedDownloadReason(cause),
+      }),
+    };
   }
 }
 
+interface AcceptedHistoryOperation {
+  itemIndex: number;
+  mediaId?: string;
+  mediaType: 'image' | 'video';
+  filename: string;
+  exportMode?: 'direct' | 'frame';
+  frameTimestampSeconds?: number;
+}
+
 async function appendAcceptedHistory(
-  item: DownloadItem,
+  item: AcceptedHistoryOperation,
   source: NonNullable<ReturnType<typeof historySource>>
 ) {
   await appendHistory({
@@ -1075,7 +1007,7 @@ async function appendAcceptedHistory(
     itemIndex: item.itemIndex,
     ...(item.mediaId ? { mediaId: item.mediaId } : {}),
     mediaType: item.mediaType,
-    filenameHint: item.filenameHint,
+    filenameHint: historyFilenameHint(item.filename),
     ...(item.exportMode ? { exportMode: item.exportMode } : {}),
     ...(item.frameTimestampSeconds !== undefined
       ? { frameTimestampSeconds: item.frameTimestampSeconds }
@@ -1085,42 +1017,23 @@ async function appendAcceptedHistory(
   });
 }
 
-// fallow-ignore-next-line complexity
-async function handleDownloadMedia(msg: DownloadMediaMsg): Promise<{
-  error: string | undefined;
-  failures?: { url: string; reason: string }[];
-  acceptedItemIndexes?: number[];
-}> {
-  const source = msg.sourceUrl ? historySource(msg.sourceUrl) : null;
-  if (msg.sourceUrl && !source) return { error: 'Invalid Instagram URL.' };
-  const validItems =
-    msg.items ??
-    (msg.urls ?? []).map((url, index) => ({
-      itemIndex: index,
-      mediaId: undefined as string | undefined,
-      url,
-      filenameHint: msg.hints?.[index] ?? 'media',
-      mediaType: msg.types?.[index] === 'video' ? ('video' as const) : ('image' as const),
-    }));
-  const results = await mapWithConcurrency(validItems, DOWNLOAD_CONCURRENCY, (item, batchIndex) =>
-    downloadItem(item, batchIndex, source)
+async function handleDownloadMedia(message: unknown): Promise<DownloadMediaResponse> {
+  let request: DownloadMediaRequest;
+  try {
+    request = await decodeDownloadMediaRequest(message);
+  } catch {
+    return DownloadMediaResponse.make({
+      results: [],
+      error: 'The download request was invalid and could not be processed.',
+    });
+  }
+  const source = request.sourceUrl ? historySource(request.sourceUrl) : null;
+  if (request.sourceUrl && !source)
+    return DownloadMediaResponse.make({ results: [], error: 'Invalid Instagram URL.' });
+  const attempts = await mapWithConcurrency(request.operations, DOWNLOAD_CONCURRENCY, operation =>
+    downloadItem(operation, source)
   );
-  const failures = results.flatMap(result =>
-    result.failure ? [{ url: result.item.url, reason: result.failure }] : []
-  );
-  const warning = results.find(result => result.warning)?.warning;
-  const accepted = results.filter(result => !result.failure).map(result => result.item.itemIndex);
-  return {
-    error:
-      failures.length === results.length
-        ? 'All downloads failed'
-        : (warning ??
-          (failures.length
-            ? `${accepted.length} of ${results.length} downloads succeeded; ${failures.length} failed.`
-            : undefined)),
-    ...(failures.length ? { failures } : {}),
-    acceptedItemIndexes: accepted,
-  };
+  return DownloadMediaResponse.make({ results: attempts.map(attempt => attempt.result) });
 }
 
 function createHistoryId(): string {
@@ -1177,12 +1090,13 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
   return handleDownloadMedia({
     type: 'DOWNLOAD_MEDIA',
     sourceUrl: entry.sourceUrl,
-    items: [
+    operations: [
       {
+        requestId: createRequestId(),
         itemIndex: item.itemIndex,
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         url: item.url,
-        filenameHint: item.filenameHint,
+        filename: `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
         mediaType: item.type,
       },
     ],
@@ -1191,15 +1105,19 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
 
 async function handleRecordFrameExport(msg: {
   sourceUrl: string;
-  item: DownloadItem & { frameTimestampSeconds: number };
+  item: {
+    itemIndex: number;
+    mediaId?: string;
+    url: string;
+    filename: string;
+    mediaType: 'video';
+    frameTimestampSeconds: number;
+  };
 }): Promise<{ error: string | undefined }> {
   const source = historySource(msg.sourceUrl);
   if (!source) return { error: 'Invalid Instagram URL.' };
   try {
-    await appendAcceptedHistory(
-      { ...msg.item, exportMode: 'frame', frameTimestampSeconds: msg.item.frameTimestampSeconds },
-      source
-    );
+    await appendAcceptedHistory({ ...msg.item, exportMode: 'frame' }, source);
     return { error: undefined };
   } catch {
     return { error: 'Frame downloaded, but history could not be saved.' };
@@ -1343,10 +1261,9 @@ registerContextMenus();
 type MessageHandler = (message: unknown) => Promise<unknown>;
 
 const messageHandlers: Record<string, MessageHandler> = {
-  DOWNLOAD: message => handleDownload(message as DownloadMsg),
   FETCH_MEDIA: message => handleFetchMedia(message as FetchMediaMsg),
   GET_PREVIEW_URL: message => handleGetPreviewUrl(message as GetPreviewUrlMsg),
-  DOWNLOAD_MEDIA: message => handleDownloadMedia(message as DownloadMediaMsg),
+  DOWNLOAD_MEDIA: message => handleDownloadMedia(message),
   GET_DOWNLOAD_HISTORY: () => handleGetDownloadHistory(),
   DELETE_HISTORY_ENTRY: async message => {
     try {
@@ -1366,9 +1283,7 @@ const messageHandlers: Record<string, MessageHandler> = {
   },
   REDOWNLOAD_HISTORY_ENTRY: message => handleRedownloadHistoryEntry(message as { entryId: string }),
   RECORD_FRAME_EXPORT: message =>
-    handleRecordFrameExport(
-      message as { sourceUrl: string; item: DownloadItem & { frameTimestampSeconds: number } }
-    ),
+    handleRecordFrameExport(message as Parameters<typeof handleRecordFrameExport>[0]),
   FETCH_VIDEO_BLOB: message => handleFetchVideoBlob(message as FetchVideoBlobMsg),
   DEBUG_SHAPE: message => handleDebugShape(message as DebugShapeMsg),
   DOWNLOAD_DEBUG_JSON: message => handleDownloadDebugJson(message as DownloadDebugJsonMsg),
