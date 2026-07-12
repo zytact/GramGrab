@@ -63,4 +63,8 @@ await copyFile('icons/icon-16.png', `${outDir}/icons/icon-16.png`);
 await copyFile('icons/icon-48.png', `${outDir}/icons/icon-48.png`);
 await copyFile('icons/icon-96.png', `${outDir}/icons/icon-96.png`);
 
+// License and attribution notices must accompany packaged extension distributions.
+await copyFile('LICENSE', `${outDir}/LICENSE`);
+await copyFile('THIRD_PARTY_NOTICES', `${outDir}/THIRD_PARTY_NOTICES`);
+
 console.log(`[postbuild] wrote ${outDir}/manifest.json (target: ${browser})`);
