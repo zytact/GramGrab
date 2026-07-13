@@ -1,5 +1,7 @@
 node_modules/
 extension/
+.env
+.local/
 .fallow/
 TODOS.md
 .plans/

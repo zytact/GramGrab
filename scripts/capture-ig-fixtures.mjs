@@ -1,25 +1,31 @@
 // fallow-ignore-file unused-file
 // fallow-ignore-file complexity
 /* eslint-env browser */
-// Paste this entire file into the DevTools console on https://www.instagram.com
-// (logged in). Edit the constants below, then hit Enter.
+// Template for `vp run generate:ig-fixtures`. The generated local output is the
+// file to paste into the DevTools console on https://www.instagram.com (logged in).
 // It will download one JSON per IG endpoint we depend on to your Downloads folder.
 // Wrapped in a block so re-pasting in DevTools doesn't trip "redeclaration of const".
 {
-  const HIGHLIGHT_ID = '__LOCAL_HIGHLIGHT_ID__'; // from /stories/highlights/<ID>/
-  const STORY_USERNAME = '__LOCAL_STORY_USERNAME__'; // someone with an ACTIVE story right now
-  const AVATAR_USERNAME = '__LOCAL_AVATAR_USERNAME__'; // any username; endpoint may return empty user
-  const TRAY_USERNAME = '__LOCAL_TRAY_USERNAME__'; // user whose highlights tray to fetch
-  const PROFILE_USERNAME = '__LOCAL_PROFILE_USERNAME__'; // user for web_profile_info
+  const CAPTURE_CONFIG = JSON.parse('__IG_FIXTURE_CAPTURE_CONFIG__');
+  const {
+    IG_HIGHLIGHT_ID: HIGHLIGHT_ID,
+    IG_STORY_USERNAME: STORY_USERNAME,
+    IG_AVATAR_USERNAME: AVATAR_USERNAME,
+    IG_TRAY_USERNAME: TRAY_USERNAME,
+    IG_PROFILE_USERNAME: PROFILE_USERNAME,
+    IG_POST_IMAGE: POST_IMAGE,
+    IG_POST_VIDEO: POST_VIDEO,
+    IG_POST_SIDECAR: POST_SIDECAR,
+  } = CAPTURE_CONFIG;
+
+  // IG_HIGHLIGHT_ID is from /stories/highlights/<ID>/. IG_STORY_USERNAME must have an active Story.
+  // IG_AVATAR_USERNAME can be any user, IG_TRAY_USERNAME needs visible Highlights, and IG_PROFILE_USERNAME
+  // is used for web_profile_info. Posts may be public Instagram URLs or shortcodes.
   // Shortcodes for each branch of the ShortcodeMedia union — one per __typename.
   // Find one of each by browsing instagram.com: /p/<code>/ for image+sidecar, /reel/<code>/ for video.
-  const POST_IMAGE = '__LOCAL_POST_IMAGE__'; // single-image post URL or shortcode
-  const POST_VIDEO = '__LOCAL_POST_VIDEO__'; // single-video reel URL or shortcode
-  const POST_SIDECAR = '__LOCAL_POST_SIDECAR__'; // mixed image/video sidecar URL or shortcode
-
   // ---------------------------------------------------------------------------
 
-  (async () => {
+  void (async () => {
     const APP_ID = '936619743392459';
     const REELS_QUERY_HASH = '45246d3fe16ccc6577e0bd297a5db1ab';
     const SHORTCODE_DOC_IDS = ['8845758582119845', '10015901848480474'];
