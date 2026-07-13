@@ -162,11 +162,14 @@ GramGrab decodes every Instagram API response through strict Effect schemas. If 
 
 To fix it:
 
-1. Open `scripts/capture-ig-fixtures.mjs`, update the username/highlight-id constants at the top.
-2. Paste the whole file into DevTools console on `https://www.instagram.com` (logged in). Three JSON files will download.
-3. Replace the corresponding files in `src/effect/__fixtures__/`.
-4. Run `vp test run` — failing tests show exactly which fields changed.
-5. Update `src/effect/schemas.ts` to match the new shape, re-run tests, ship.
+1. Configure capture subjects in the repository-root `.env` (copy `.env.example` if needed).
+2. Run `vp run generate:ig-fixtures`, then paste `.local/capture-ig-fixtures.mjs` into DevTools on
+   `https://www.instagram.com` (logged in).
+3. Download the raw JSON files and sanitize them before replacing anything in
+   `src/effect/__fixtures__/`. Sanitization is a required, separate follow-up from issue #44; this
+   checkout does not yet provide a sanitizer command.
+4. Run `vp test run` - failing tests show exactly which fields changed.
+5. Update `src/effect/schemas.ts` to match the new shape, re-run tests, ship only sanitized fixtures.
 
 ---
 
