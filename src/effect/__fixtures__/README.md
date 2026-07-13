@@ -30,9 +30,14 @@ Real Instagram API responses captured for schema regression testing.
 
 When `ResponseShapeUnknown` fires in the wild:
 
-1. Open `scripts/capture-ig-fixtures.mjs`, update the constants at the top.
-2. Paste the whole file into the DevTools console on `https://www.instagram.com` (logged in).
-3. The corresponding JSON files download. Replace the matching files in this directory.
-4. Run `bun run test` — failing fixture tests will show exactly which field changed.
-5. Update the schema in `src/effect/schemas.ts` to match the new shape, re-run tests.
-6. Ship the update.
+1. Copy `.env.example` to `.env`, then configure the eight capture values. `.env` is ignored and
+   must never be committed.
+2. Generate the DevTools script with `vp run generate:ig-fixtures`.
+3. Paste `.local/capture-ig-fixtures.mjs` into the DevTools console on
+   `https://www.instagram.com` (logged in).
+4. Download the raw Fixtures. Sanitization is a required separate step owned by open issue #44;
+   no sanitizer command exists in this checkout yet.
+5. Replace the matching Fixtures in this directory with only the sanitized output.
+6. Run `vp test run` — failing fixture tests show what changed.
+7. Update `src/effect/schemas.ts` to match the new shape, re-run validation, and commit only the
+   sanitized Fixtures and schema changes.
