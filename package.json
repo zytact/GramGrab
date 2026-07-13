@@ -31,7 +31,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "crx": "^5.0.1",
-    "fallow": "^2.88.3",
+    "fallow": "^3.4.2",
     "jsdom": "^29.1.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
