@@ -58,14 +58,7 @@ export default defineConfig({
     env: {
       builtin: true,
     },
-    ignorePatterns: [
-      'dist',
-      'node_modules',
-      '.husky',
-      'extension',
-      '.repos',
-      'scripts/capture-ig-fixtures.mjs',
-    ],
+    ignorePatterns: ['dist', 'node_modules', '.husky', 'extension', '.repos'],
     rules: {
       'constructor-super': 'error',
       'for-direction': 'error',
@@ -201,6 +194,12 @@ export default defineConfig({
         files: ['**/*.js', '**/*.mjs'],
         env: {
           node: true,
+        },
+      },
+      {
+        files: ['scripts/capture-ig-fixtures.mjs'],
+        env: {
+          browser: true,
         },
       },
     ],
