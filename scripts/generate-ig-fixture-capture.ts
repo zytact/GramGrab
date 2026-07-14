@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Script } from 'node:vm';
 import { Schema } from 'effect';
+import { protocolConfig } from '../src/instagram-protocol/config.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, '..');
@@ -20,6 +21,7 @@ export const REQUIRED_CONFIG_KEYS = [
 ] as const;
 
 export const CONFIG_TOKEN = '__IG_FIXTURE_CAPTURE_CONFIG__';
+export const PROTOCOL_CONFIG_TOKEN = '__IG_PROTOCOL_CONFIG__';
 
 const usernameKeys = [
   'IG_STORY_USERNAME',
@@ -128,11 +130,17 @@ export function validateConfig(values: Record<string, string | undefined>): Capt
 export function renderCaptureScript(template: string, config: CaptureConfig): string {
   const token = `'${CONFIG_TOKEN}'`;
   const occurrences = template.split(token).length - 1;
-  if (occurrences !== 1) {
-    throw new Error(`Capture template must contain ${CONFIG_TOKEN} exactly once`);
+  const protocolToken = `'${PROTOCOL_CONFIG_TOKEN}'`;
+  const protocolOccurrences = template.split(protocolToken).length - 1;
+  if (occurrences !== 1 || protocolOccurrences !== 1) {
+    throw new Error(
+      `Capture template must contain ${CONFIG_TOKEN} and ${PROTOCOL_CONFIG_TOKEN} exactly once`
+    );
   }
 
-  return template.replace(token, JSON.stringify(JSON.stringify(config)));
+  return template
+    .replace(token, JSON.stringify(JSON.stringify(config)))
+    .replace(protocolToken, JSON.stringify(JSON.stringify(protocolConfig)));
 }
 
 export async function generateCaptureScript({

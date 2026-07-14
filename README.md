@@ -160,6 +160,10 @@ The popup sends messages to the background worker (`FETCH_MEDIA`, `DOWNLOAD_MEDI
 
 GramGrab decodes every Instagram API response through strict Effect schemas. If Instagram changes their response format, the extension will surface a clear message: _"Instagram changed their response format. The extension needs an update."_
 
+If the request itself stopped working because Instagram changed an App ID, ASBD ID, GraphQL
+identifier, endpoint, or transport, follow the
+[Instagram protocol refresh guide](docs/instagram-protocol.md) first.
+
 To fix it:
 
 1. Configure capture subjects in the repository-root `.env` (copy `.env.example` if needed).

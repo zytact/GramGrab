@@ -165,7 +165,7 @@ describe('graphqlPost', () => {
     document.body.innerHTML = '<input name="lsd" value="token123" />';
 
     const result = await Effect.runPromise(
-      graphqlPost(TEST_URL, '12345', vars, { 'X-IG-App-ID': '936619743392459' })
+      graphqlPost(TEST_URL, '12345', vars, { 'X-IG-App-ID': 'test-app-id' })
     );
 
     expect(result).toEqual(mockData);
@@ -176,8 +176,7 @@ describe('graphqlPost', () => {
         credentials: 'include',
         headers: expect.objectContaining({
           'Content-Type': 'application/x-www-form-urlencoded',
-          'X-ASBD-ID': '129477',
-          'X-IG-App-ID': '936619743392459',
+          'X-IG-App-ID': 'test-app-id',
         }),
         body: expect.any(URLSearchParams),
       })
