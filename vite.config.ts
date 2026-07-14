@@ -227,7 +227,7 @@ export default defineConfig({
     arrowParens: 'avoid',
     endOfLine: 'lf',
     sortPackageJson: false,
-    ignorePatterns: ['.repos', '.agents', '.claude', '.pi'],
+    ignorePatterns: ['.repos', '.agents', '.claude'],
   },
   plugins: [react()],
   root: 'templates',
