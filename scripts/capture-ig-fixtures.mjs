@@ -7,6 +7,7 @@
 // Wrapped in a block so re-pasting in DevTools doesn't trip "redeclaration of const".
 {
   const CAPTURE_CONFIG = JSON.parse('__IG_FIXTURE_CAPTURE_CONFIG__');
+  const PROTOCOL_CONFIG = JSON.parse('__IG_PROTOCOL_CONFIG__');
   const {
     IG_HIGHLIGHT_ID: HIGHLIGHT_ID,
     IG_STORY_USERNAME: STORY_USERNAME,
@@ -26,9 +27,9 @@
   // ---------------------------------------------------------------------------
 
   void (async () => {
-    const APP_ID = '936619743392459';
-    const REELS_QUERY_HASH = '45246d3fe16ccc6577e0bd297a5db1ab';
-    const SHORTCODE_DOC_IDS = ['8845758582119845', '10015901848480474'];
+    const { appId: APP_ID, asbdId: ASBD_ID } = PROTOCOL_CONFIG.client;
+    const SHORTCODE_CANDIDATES = PROTOCOL_CONFIG.operations.mediaByShortcode.candidates;
+    const REELS_CANDIDATES = PROTOCOL_CONFIG.operations.reelsMedia.candidates;
 
     // Arrays under these keys hold tagged-union variants (story items can be
     // video vs image, sidecar children can be video vs image, tray lists every
@@ -57,18 +58,6 @@
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    }
-
-    function assertOkResponse(name, status, json, hasRequiredData) {
-      if (status && (status < 200 || status >= 300)) {
-        throw new Error(`${name} failed with HTTP ${status}`);
-      }
-      if (!hasRequiredData(json)) {
-        const errors = json?.errors?.length ? ` errors: ${JSON.stringify(json.errors)}` : '';
-        throw new Error(`${name} returned no required data.${errors}`);
-      }
-      if (json?.errors?.length) console.warn(`  ${name} partial errors:`, json.errors);
-      return json;
     }
 
     async function readJsonResponse(r) {
@@ -116,29 +105,35 @@
       return id;
     }
 
-    async function graphqlFetch(params) {
-      const qs = new URLSearchParams(params);
-      const r = await fetch(`https://www.instagram.com/graphql/query/?${qs}`, {
-        credentials: 'include',
-        headers: { 'X-IG-App-ID': APP_ID },
-      });
-      return readJsonResponse(r);
-    }
+    async function configuredGraphqlFetch(candidate, request, vars) {
+      const commonHeaders = {
+        'X-IG-App-ID': APP_ID,
+      };
+      if (request.transport === 'query') {
+        const query = new URLSearchParams({
+          [candidate.kind]: candidate.id,
+          variables: JSON.stringify(vars),
+        });
+        const r = await fetch(`${request.endpoint}?${query}`, {
+          credentials: 'include',
+          headers: commonHeaders,
+        });
+        return readJsonResponse(r);
+      }
 
-    async function apiGraphqlFetch(docId, vars) {
       const lsd = getLsdToken();
       const body = new URLSearchParams({
-        doc_id: docId,
+        [candidate.kind]: candidate.id,
         variables: JSON.stringify(vars),
       });
       if (lsd) body.set('lsd', lsd);
-      const r = await fetch('https://www.instagram.com/api/graphql/', {
+      const r = await fetch(request.endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: {
+          ...commonHeaders,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'X-IG-App-ID': APP_ID,
-          'X-ASBD-ID': '129477',
+          'X-ASBD-ID': ASBD_ID,
           ...(lsd ? { 'X-FB-LSD': lsd } : {}),
         },
         body,
@@ -149,18 +144,20 @@
     async function shortcodeFetch(shortcode) {
       const vars = { shortcode };
       const failures = [];
-      for (const docId of SHORTCODE_DOC_IDS) {
-        for (const fetcher of [
-          () => graphqlFetch({ doc_id: docId, variables: JSON.stringify(vars) }),
-          () => apiGraphqlFetch(docId, vars),
-        ]) {
+      for (const candidate of SHORTCODE_CANDIDATES) {
+        for (const request of candidate.requests) {
           try {
-            const { status, json, text } = await fetcher();
+            const { status, json, text } = await configuredGraphqlFetch(candidate, request, vars);
             const node = jNode(json);
             if (status >= 200 && status < 300 && node) return json;
-            failures.push({ docId, status, errors: json?.errors ?? null, text: text ?? null });
+            failures.push({
+              id: candidate.id,
+              status,
+              errors: json?.errors ?? null,
+              text: text ?? null,
+            });
           } catch (e) {
-            failures.push({ docId, error: String(e) });
+            failures.push({ id: candidate.id, error: String(e) });
           }
         }
       }
@@ -179,16 +176,31 @@
     }
 
     async function reelsFetch(vars) {
-      const { status, json } = await graphqlFetch({
-        query_hash: REELS_QUERY_HASH,
-        variables: JSON.stringify(vars),
-      });
-      return assertOkResponse(
-        'reels_media',
-        status,
-        json,
-        j => Array.isArray(j?.data?.reels_media) && j.data.reels_media.length > 0
-      );
+      const failures = [];
+      for (const candidate of REELS_CANDIDATES) {
+        for (const request of candidate.requests) {
+          try {
+            const { status, json, text } = await configuredGraphqlFetch(candidate, request, vars);
+            if (
+              status >= 200 &&
+              status < 300 &&
+              Array.isArray(json?.data?.reels_media) &&
+              json.data.reels_media.length > 0
+            ) {
+              return json;
+            }
+            failures.push({
+              id: candidate.id,
+              status,
+              errors: json?.errors ?? null,
+              text: text ?? null,
+            });
+          } catch (e) {
+            failures.push({ id: candidate.id, error: String(e) });
+          }
+        }
+      }
+      throw new Error(`No reels media: ${JSON.stringify(failures)}`);
     }
 
     const steps = [

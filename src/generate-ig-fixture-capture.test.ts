@@ -3,8 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Script } from 'node:vm';
 import { describe, expect, it } from 'vite-plus/test';
+import { protocolConfig } from './instagram-protocol/config.ts';
 import {
   CONFIG_TOKEN,
+  PROTOCOL_CONFIG_TOKEN,
   REQUIRED_CONFIG_KEYS,
   generateCaptureScript,
   renderCaptureScript,
@@ -13,7 +15,9 @@ import {
 
 const template = `{
   const CAPTURE_CONFIG = JSON.parse('${CONFIG_TOKEN}');
+  const PROTOCOL_CONFIG = JSON.parse('${PROTOCOL_CONFIG_TOKEN}');
   globalThis.captureConfig = CAPTURE_CONFIG;
+  globalThis.protocolConfig = PROTOCOL_CONFIG;
 }`;
 const validConfig = {
   IG_HIGHLIGHT_ID: '12345678901234567',
@@ -66,6 +70,7 @@ describe('generateCaptureScript', () => {
       IG_POST_IMAGE: 'image_123',
       IG_POST_VIDEO: 'video-123',
     });
+    expect(context.protocolConfig).toEqual(JSON.parse(JSON.stringify(protocolConfig)));
   });
 
   it.each(REQUIRED_CONFIG_KEYS)('rejects missing %s before writing output', async key => {

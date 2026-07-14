@@ -14,6 +14,12 @@ import type { DownloadHistoryEntryV1, HistoryMarker } from './history/contracts.
 import { jsonToDataUrl } from './lib/data-url.ts';
 import { runHandler } from './effect/runtime.ts';
 import {
+  protocolConfig,
+  type ProtocolCandidate,
+  type ProtocolOperation,
+  type ProtocolRequest,
+} from './instagram-protocol/config.ts';
+import {
   fetchBlobAsDataUrl,
   fetchHdAvatarUser,
   fetchHighlightsTray,
@@ -76,22 +82,10 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-const OPERATIONS = {
-  MEDIA_BY_SHORTCODE: {
-    doc_ids: ['8845758582119845', '10015901848480474'],
-    apiUrl: 'https://www.instagram.com/api/graphql/',
-    url: 'https://www.instagram.com/graphql/query/',
-  },
-  REELS_MEDIA: {
-    query_hash: '45246d3fe16ccc6577e0bd297a5db1ab',
-    url: 'https://www.instagram.com/graphql/query/',
-  },
-} as const;
-
 const IG_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'X-IG-App-ID': '936619743392459',
+  'X-IG-App-ID': protocolConfig.client.appId,
   'X-Requested-With': 'XMLHttpRequest',
   Accept: '*/*',
   'Accept-Language': 'en-US,en;q=0.9',
@@ -583,7 +577,31 @@ const IG_GRAPHQL_HEADERS = { ...IG_HEADERS, Origin: 'https://www.instagram.com' 
 const IG_API_GRAPHQL_HEADERS = {
   ...IG_GRAPHQL_HEADERS,
   Referer: 'https://www.instagram.com/',
+  'X-ASBD-ID': protocolConfig.client.asbdId,
 } as const;
+
+function configuredGraphqlHeaders(request: ProtocolRequest): Record<string, string> {
+  return {
+    ...(request.transport === 'form' ? IG_API_GRAPHQL_HEADERS : IG_GRAPHQL_HEADERS),
+  };
+}
+
+function configuredRequests(operation: ProtocolOperation) {
+  return operation.candidates.flatMap(candidate =>
+    candidate.requests.map(request => ({ candidate, request }))
+  );
+}
+
+function configuredGraphqlRequest(
+  candidate: ProtocolCandidate,
+  request: ProtocolRequest,
+  variables: Record<string, unknown>
+) {
+  const headers = configuredGraphqlHeaders(request);
+  return request.transport === 'form'
+    ? graphqlPostEffect(request.endpoint, candidate.id, variables, headers, candidate.kind)
+    : graphqlFetchEffect(request.endpoint, candidate.kind, candidate.id, variables, headers);
+}
 
 function resolveShortcodeResponseNode(decoded: ShortcodeMediaResponse) {
   return (
@@ -610,6 +628,19 @@ type ShortcodeFetchAttempt =
       readonly error: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown;
     };
 
+interface ShortcodeAttemptState {
+  lastError?: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown;
+  lastRawWithoutNode?: Record<string, unknown>;
+}
+
+function rememberShortcodeAttempt(
+  state: ShortcodeAttemptState,
+  result: Exclude<ShortcodeFetchAttempt, { readonly _tag: 'Found' }>
+): void {
+  if (result._tag === 'Missing') state.lastRawWithoutNode = result.raw;
+  else state.lastError = result.error;
+}
+
 const classifyShortcodeRaw = (raw: Record<string, unknown>) =>
   decodeShortcodeResponse(raw).pipe(
     Effect.map(decoded =>
@@ -631,67 +662,30 @@ const attemptShortcodeRequest = (
     )
   );
 
-function pickShortcodeAttempt(
-  getAttempt: ShortcodeFetchAttempt,
-  postAttempt: ShortcodeFetchAttempt
-): ShortcodeFetchAttempt {
-  if (postAttempt._tag === 'Found') return postAttempt;
-  if (getAttempt._tag === 'Failed' && getAttempt.error._tag === 'ResponseShapeUnknown') {
-    return getAttempt;
-  }
-  if (postAttempt._tag === 'Failed') return postAttempt;
-  if (getAttempt._tag === 'Missing') return getAttempt;
-  return postAttempt;
-}
-
 const fetchShortcodeMediaRaw = (
   shortcode: string
 ): Effect.Effect<
   Record<string, unknown>,
   GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
-> => {
-  const fetchWithDocId = (docId: string): Effect.Effect<ShortcodeFetchAttempt, RateLimited> =>
-    Effect.gen(function* () {
-      const getAttempt = yield* attemptShortcodeRequest(
-        graphqlFetchEffect(
-          OPERATIONS.MEDIA_BY_SHORTCODE.url,
-          'doc_id',
-          docId,
-          { shortcode },
-          IG_GRAPHQL_HEADERS
-        )
+> =>
+  Effect.gen(function* () {
+    const state: ShortcodeAttemptState = {};
+    for (const { candidate, request } of configuredRequests(
+      protocolConfig.operations.mediaByShortcode
+    )) {
+      const result = yield* attemptShortcodeRequest(
+        configuredGraphqlRequest(candidate, request, { shortcode })
       );
-      if (getAttempt._tag === 'Found') return getAttempt;
-
-      const postAttempt = yield* attemptShortcodeRequest(
-        graphqlPostEffect(
-          OPERATIONS.MEDIA_BY_SHORTCODE.apiUrl,
-          docId,
-          { shortcode },
-          IG_API_GRAPHQL_HEADERS
-        )
-      );
-      return pickShortcodeAttempt(getAttempt, postAttempt);
-    });
-
-  return Effect.gen(function* () {
-    let lastError: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown | undefined;
-    let lastRawWithoutNode: Record<string, unknown> | undefined;
-
-    for (const docId of OPERATIONS.MEDIA_BY_SHORTCODE.doc_ids) {
-      const result = yield* fetchWithDocId(docId);
       if (result._tag === 'Found') return result.raw;
-      if (result._tag === 'Missing') lastRawWithoutNode = result.raw;
-      else lastError = result.error;
+      rememberShortcodeAttempt(state, result);
     }
 
-    if (lastError) return yield* Effect.fail(lastError);
-    if (lastRawWithoutNode) return lastRawWithoutNode;
+    if (state.lastError) return yield* Effect.fail(state.lastError);
+    if (state.lastRawWithoutNode) return state.lastRawWithoutNode;
     return yield* Effect.fail(
-      lastError ?? new ResponseShapeUnknown({ context: 'shortcode_media' })
+      state.lastError ?? new ResponseShapeUnknown({ context: 'shortcode_media' })
     );
   });
-};
 
 const fetchShortcodeMediaItems = (
   shortcode: string
@@ -721,19 +715,39 @@ function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
       };
 }
 
+const fetchConfiguredReelsMedia = (
+  variables: Record<string, unknown>
+): Effect.Effect<
+  readonly ReelItem[],
+  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+> =>
+  Effect.gen(function* () {
+    let lastError: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown | undefined;
+    for (const { candidate, request } of configuredRequests(protocolConfig.operations.reelsMedia)) {
+      const result = yield* fetchReelsMedia(
+        request.endpoint,
+        candidate.kind,
+        candidate.id,
+        variables,
+        configuredGraphqlHeaders(request),
+        request.transport === 'form' ? 'POST' : 'GET'
+      ).pipe(Effect.either);
+      if (result._tag === 'Right') return result.right;
+      if (result.left._tag === 'RateLimited') return yield* Effect.fail(result.left);
+      lastError = result.left;
+    }
+    return yield* Effect.fail(lastError ?? new ResponseShapeUnknown({ context: 'reels_media' }));
+  });
+
 const fetchHighlightMediaItems = (
   highlightId: string
 ): Effect.Effect<
   MediaItem[],
   GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
 > =>
-  fetchReelsMedia(
-    OPERATIONS.MEDIA_BY_SHORTCODE.url,
-    'query_hash',
-    OPERATIONS.REELS_MEDIA.query_hash,
-    createReelsRequestVariables('highlight', highlightId),
-    IG_GRAPHQL_HEADERS
-  ).pipe(Effect.map(normalizeReelsMediaItems));
+  fetchConfiguredReelsMedia(createReelsRequestVariables('highlight', highlightId)).pipe(
+    Effect.map(normalizeReelsMediaItems)
+  );
 
 const fetchStoryMediaItems = (
   username: string
@@ -751,13 +765,7 @@ const fetchStoryMediaItems = (
       return yield* Effect.fail(new UsernameUnresolved({ username }));
     }
 
-    const reels = yield* fetchReelsMedia(
-      OPERATIONS.MEDIA_BY_SHORTCODE.url,
-      'query_hash',
-      OPERATIONS.REELS_MEDIA.query_hash,
-      createReelsRequestVariables('story', userId),
-      IG_GRAPHQL_HEADERS
-    );
+    const reels = yield* fetchConfiguredReelsMedia(createReelsRequestVariables('story', userId));
 
     return normalizeReelsMediaItems(reels);
   });
