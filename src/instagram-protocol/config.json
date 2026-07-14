@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "client": {
+    "appId": "1217981644879628",
+    "asbdId": "359341"
+  },
+  "operations": {
+    "mediaByShortcode": {
+      "candidates": [
+        {
+          "kind": "doc_id",
+          "id": "35519738867674767",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/api/graphql",
+              "transport": "form"
+            }
+          ]
+        },
+        {
+          "kind": "doc_id",
+          "id": "8845758582119845",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query/",
+              "transport": "query"
+            },
+            {
+              "endpoint": "https://www.instagram.com/api/graphql/",
+              "transport": "form"
+            }
+          ]
+        },
+        {
+          "kind": "doc_id",
+          "id": "10015901848480474",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query/",
+              "transport": "query"
+            },
+            {
+              "endpoint": "https://www.instagram.com/api/graphql/",
+              "transport": "form"
+            }
+          ]
+        }
+      ]
+    },
+    "reelsMedia": {
+      "candidates": [
+        {
+          "kind": "doc_id",
+          "id": "28299494542988937",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query",
+              "transport": "form"
+            }
+          ]
+        },
+        {
+          "kind": "query_hash",
+          "id": "45246d3fe16ccc6577e0bd297a5db1ab",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query/",
+              "transport": "query"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
