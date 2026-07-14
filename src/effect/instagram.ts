@@ -86,14 +86,15 @@ export const graphqlFetch = (
 
 export const graphqlPost = (
   url: string,
-  docId: string,
+  operationId: string,
   variables: Record<string, unknown>,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  operationKey: 'doc_id' | 'query_hash' = 'doc_id'
 ): Effect.Effect<Record<string, unknown>, NetworkError | GraphQLRequestFailed | RateLimited> => {
   const attempt = Effect.gen(function* () {
     const lsd = yield* getInstagramLsdToken();
     const body = new URLSearchParams({
-      doc_id: docId,
+      [operationKey]: operationId,
       variables: JSON.stringify(variables),
     });
     if (lsd) body.set('lsd', lsd);
@@ -105,7 +106,6 @@ export const graphqlPost = (
           headers: {
             ...headers,
             'Content-Type': 'application/x-www-form-urlencoded',
-            'X-ASBD-ID': '129477',
             ...(lsd ? { 'X-FB-LSD': lsd } : {}),
           },
           body,
@@ -175,13 +175,16 @@ export const fetchReelsMedia = (
   operationKey: 'doc_id' | 'query_hash',
   operationId: string,
   variables: Record<string, unknown>,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  method: 'GET' | 'POST' = 'GET'
 ): Effect.Effect<
   readonly ReelItem[],
   NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
 > =>
   Effect.gen(function* () {
-    const raw = yield* graphqlFetch(graphqlUrl, operationKey, operationId, variables, headers);
+    const raw = yield* method === 'POST'
+      ? graphqlPost(graphqlUrl, operationId, variables, headers, operationKey)
+      : graphqlFetch(graphqlUrl, operationKey, operationId, variables, headers);
     const decoded = yield* Schema.decodeUnknown(ReelsMediaResponseSchema)(raw).pipe(
       Effect.mapError(() => new ResponseShapeUnknown({ context: 'reels_media' }))
     );

@@ -30,6 +30,11 @@ Real Instagram API responses captured for schema regression testing.
 
 When `ResponseShapeUnknown` fires in the wild:
 
+If Instagram changed the request metadata as well as the response shape, update the shared protocol
+configuration first by following the
+[Instagram protocol refresh guide](../../../docs/instagram-protocol.md). The generated fixture
+capture script will then embed the updated configuration.
+
 1. Copy `.env.example` to `.env`, then configure the eight capture values. `.env` is ignored and
    must never be committed.
 2. Generate the DevTools script with `vp run generate:ig-fixtures`.
