@@ -144,15 +144,15 @@ The popup sends messages to the background worker (`FETCH_MEDIA`, `DOWNLOAD_MEDI
 
 ## Permissions
 
-| Permission                  | Why it's needed                                            |
-| --------------------------- | ---------------------------------------------------------- |
-| `downloads`                 | Save media files to disk                                   |
-| `activeTab`                 | Read the URL of the current tab to auto-fill the URL field |
-| `tabs`                      | Query tab information                                      |
-| `storage`                   | Extension storage                                          |
-| `scripting`                 | Content script capability                                  |
-| `https://*.instagram.com/*` | Fetch media metadata                                       |
-| `https://*.fbcdn.net/*`     | Load media previews from Instagram's CDN                   |
+| Permission                  | Why it's needed                                                   |
+| --------------------------- | ----------------------------------------------------------------- |
+| `downloads`                 | Save media files and debug exports to disk                        |
+| `storage`                   | Persist download history and workspace handoff state              |
+| `activeTab`                 | Temporarily access the current tab when GramGrab is invoked       |
+| `tabs`                      | Read and manage tabs for URL detection and the GramGrab workspace |
+| `contextMenus`              | Add GramGrab actions to page and link context menus               |
+| `https://*.instagram.com/*` | Fetch media metadata from Instagram                               |
+| `https://*.fbcdn.net/*`     | Load media previews and videos from Instagram’s CDN               |
 
 ---
 
