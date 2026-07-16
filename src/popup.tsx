@@ -10,7 +10,7 @@ import {
   type DownloadOperation,
   type DownloadOperationResult,
 } from './download/contracts';
-import { type AttemptEntry, type AttemptOperation } from './download/attempt';
+import type { AttemptEntry, AttemptOperation } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
 import {
   clampFrameSecond,
@@ -33,6 +33,7 @@ import {
 import { isPositiveFinitePair, resolveMediaRatio } from './workspace/media-ratio';
 import { distributeMasonryItems } from './workspace/masonry';
 import { runSilentVideoBatch, type ReencodeCandidate } from './silent-video/batch';
+import { silentProgressMessage } from './silent-video/progress';
 
 interface MediaItem {
   index: number;
@@ -55,31 +56,6 @@ interface PreviewResponse {
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 type VideoBlobResponse = { dataUrl?: string; error?: string };
-const SILENT_PHASE_LABELS: Readonly<Record<string, string>> = {
-  queued: 'Waiting to inspect video',
-  inspecting: 'Inspecting video',
-  processing: 'Removing audio',
-  validating: 'Validating silent video',
-  downloading: 'Download started',
-};
-
-function silentProgressMessage(entries: readonly AttemptEntry[] | undefined): string | undefined {
-  const active = entries?.flatMap(entry =>
-    entry.operation.mode === 'silent' && entry.outcome.status === 'pending' ? [entry.outcome] : []
-  );
-  const progressState = ['processing', 'validating', 'inspecting', 'downloading', 'queued'].flatMap(
-    phase => {
-      const outcome = active?.find(candidate => candidate.phase === phase);
-      return outcome ? [outcome] : [];
-    }
-  )[0];
-  if (!progressState?.phase) return undefined;
-  const label = SILENT_PHASE_LABELS[progressState.phase];
-  if (!label) return undefined;
-  if (progressState.phase === 'queued') return `${label}…`;
-  if (progressState.phase === 'downloading') return label;
-  return `${label}… ${Math.round((progressState.progress ?? 0) * 100)}%`;
-}
 
 type FrameRuntime = {
   status: 'idle' | 'loading' | 'ready' | 'failed' | 'exporting';
