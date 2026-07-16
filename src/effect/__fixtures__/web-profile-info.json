@@ -2,42 +2,42 @@
   "data": {
     "user": {
       "ai_agent_type": null,
-      "biography": "Discover what's new on Instagram 🔎✨",
+      "biography": "SANITIZED_BIOGRAPHY_1",
       "bio_links": [
         {
-          "title": "Close Friends Only Podcast with J Balvin and Ryan Castro",
-          "lynx_url": "https://l.instagram.com/?u=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DH6G9PcvHjj4%26fbclid%3DPAZXh0bgNhZW0CMTEAc3J0YwZhcHBfaWQMMjU2MjgxMDQwNTU4AAGnoBGSN77QULVegN6YP9m9VCN9puh0afT57hrXQ61sPssTUD4hoFpDLlfk_tM_aem_ffbKHPrh_Zz36QD24QypdQ&e=AUDQW0AT6m-Oq5vZuBpgu_4tJOftYurpg7Mm25XTlDrv-OSIzYOY13sKVosrChVI9gHmov0fVOzCQcdCdSRSIFRr0CcFB3reMZxYtsq-fZZS7PneP2Du7Gpl0w",
-          "url": "https://www.youtube.com/watch?v=H6G9PcvHjj4",
+          "title": "SANITIZED_BIO_LINK_TITLE_1",
+          "lynx_url": "https://sanitized.invalid/resource/1/bio-link-shim",
+          "url": "https://sanitized.invalid/resource/1/bio-link",
           "link_type": "external"
         },
         {
-          "title": "Close Friends Only Podcast with J Balvin and Ryan Castro",
-          "lynx_url": "https://l.instagram.com/?u=https%3A%2F%2Fopen.spotify.com%2Fepisode%2F14Q9PGTAeZsdjOqT50hrkt%3Fsi%3DYkEhG7CJTvShXZ9G0BjIKQ%26utm_source%3Dig%26utm_medium%3Dsocial%26utm_content%3Dlink_in_bio%26fbclid%3DPAZXh0bgNhZW0CMTEAc3J0YwZhcHBfaWQMMjU2MjgxMDQwNTU4AAGnZDmnfOPzF7ia75bJgj8cf4dNryiZDdfetTgz2-BVy6CHeMc_UBqdgbsQ_U0_aem_-xTzZGu6TpmDS4o-j4SVcg&e=AUDDoSZilnXyVoJcTdpCH6wqYtB675B1dUczqqSyKxqJw2f4YElSRLoOBlRzrOTOlsxJipFnM3UEt5VUqvgMYv9LQ-QEZN628nxXigganTo7o0fH7_kckMc3rw",
-          "url": "https://open.spotify.com/episode/14Q9PGTAeZsdjOqT50hrkt?si=YkEhG7CJTvShXZ9G0BjIKQ",
+          "title": "SANITIZED_BIO_LINK_TITLE_1",
+          "lynx_url": "https://sanitized.invalid/resource/2/bio-link-shim",
+          "url": "https://sanitized.invalid/resource/2/bio-link",
           "link_type": "external"
         }
       ],
       "fb_profile_biolink": null,
       "biography_with_entities": {
-        "raw_text": "Discover what's new on Instagram 🔎✨",
+        "raw_text": "SANITIZED_BIOGRAPHY_1",
         "entities": []
       },
       "blocked_by_viewer": false,
       "restricted_by_viewer": false,
       "country_block": false,
-      "eimu_id": "117943452927407",
-      "external_url": "https://www.youtube.com/watch?v=H6G9PcvHjj4",
-      "external_url_linkshimmed": "https://l.instagram.com/?u=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DH6G9PcvHjj4%26fbclid%3DPAZXh0bgNhZW0CMTEAc3J0YwZhcHBfaWQMMjU2MjgxMDQwNTU4AAGnY-6js-ODyN1Gjswx0afak5Duvy9TcM_NB8-R6A6FuOLdw3ex7g4dZ9Nlxfc_aem_i2eLQPEMx387ORjFSTjqlQ&e=AUB1CP8WEsCFHbGx4YM-i8QBVjw-kRg6ZOFAuxlpRAG7dApWCopdZtDJKroWrtLA8eL31HQ9rAXhzqPTQYkJ6waoBKBZGjaxrDPIAw6chJ3BhVfSUWFKxL5G-Q",
+      "eimu_id": "SANITIZED_PERSON_11_EIMU_ID",
+      "external_url": "https://sanitized.invalid/resource/1/external",
+      "external_url_linkshimmed": "https://sanitized.invalid/resource/1/external-link-shim",
       "edge_followed_by": {
         "count": 685866963
       },
-      "fbid": "17841400039600391",
+      "fbid": "SANITIZED_PERSON_11_FB_ID",
       "followed_by_viewer": false,
       "edge_follow": {
         "count": 244
       },
       "follows_viewer": false,
-      "full_name": "Instagram",
+      "full_name": "SANITIZED_PERSON_11_FULL_NAME",
       "group_metadata": null,
       "has_ar_effects": true,
       "has_clips": true,
@@ -48,7 +48,7 @@
       "highlight_reel_count": 15,
       "has_requested_viewer": false,
       "hide_like_and_view_counts": false,
-      "id": "25025320",
+      "id": "SANITIZED_PERSON_11_ID",
       "is_business_account": false,
       "is_professional_account": true,
       "is_supervision_enabled": false,
@@ -75,21 +75,21 @@
         "edges": [
           {
             "node": {
-              "username": "tanusriiii__"
+              "username": "SANITIZED_PERSON_12_USERNAME"
             }
           }
         ]
       },
       "pinned_channels_list_count": 0,
-      "profile_pic_url": "https://instagram.fjrh1-3.fna.fbcdn.net/v/t51.82787-19/550891366_18667771684001321_1383210656577177067_n.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=instagram.fjrh1-3.fna.fbcdn.net&_nc_cat=1&_nc_oc=Q6cZ2gG9PPDVlgHV0zL2E191KiFvAkzCJbOHqfeqRMBmL5RQRhZonShdznzrvNFa8eUPCMwaAkVted7824gszbG4u7l1&_nc_ohc=THVV1nUBKTwQ7kNvwH7hQ83&_nc_gid=ep4ztv4eyt4VBhH_e7USNg&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AQDz14Nb6BugZC0bAFmzBF2cghXezkROM4Ue8aXAG4gflg&oe=6A4B32E7&_nc_sid=8b3546",
-      "profile_pic_url_hd": "https://instagram.fjrh1-3.fna.fbcdn.net/v/t51.82787-19/550891366_18667771684001321_1383210656577177067_n.jpg?stp=dst-jpg_s320x320_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=instagram.fjrh1-3.fna.fbcdn.net&_nc_cat=1&_nc_oc=Q6cZ2gG9PPDVlgHV0zL2E191KiFvAkzCJbOHqfeqRMBmL5RQRhZonShdznzrvNFa8eUPCMwaAkVted7824gszbG4u7l1&_nc_ohc=THVV1nUBKTwQ7kNvwH7hQ83&_nc_gid=ep4ztv4eyt4VBhH_e7USNg&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AQCZRDJZQc-2GxdFUtXCrFhhpqDTvDMe-SYC2W6Zy7mvHA&oe=6A4B32E7&_nc_sid=8b3546",
+      "profile_pic_url": "https://sanitized.invalid/person/11/profile-picture",
+      "profile_pic_url_hd": "https://sanitized.invalid/person/11/profile-picture-hd",
       "requested_by_viewer": false,
       "should_show_category": false,
       "should_show_public_contacts": false,
       "show_account_transparency_details": true,
       "transparency_label": null,
       "transparency_product": null,
-      "username": "instagram",
+      "username": "SANITIZED_PERSON_11_USERNAME",
       "pronouns": [],
       "edge_owner_to_timeline_media": {
         "count": 8507,

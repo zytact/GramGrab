@@ -1,9 +1,9 @@
 {
   "tray": [
     {
-      "id": "highlight:18073506245430518",
+      "id": "SANITIZED_MEDIA_1_ID",
       "reel_type": "highlight_reel",
-      "title": "🐒",
+      "title": "SANITIZED_MEDIA_1_TITLE",
       "created_at": 1770579436,
       "is_pinned_highlight": false,
       "prefetch_count": 0,
@@ -13,15 +13,15 @@
       "can_gif_quick_reply": true,
       "can_reshare": true,
       "is_archived": false,
-      "strong_id__": "highlight:18073506245430518",
+      "strong_id__": "SANITIZED_MEDIA_1_ID",
       "cover_media": {
         "crop_rect": null,
-        "media_id": "3151186306301053692_60483811374",
+        "media_id": "SANITIZED_MEDIA_2_ID",
         "upload_id": null,
         "cropped_image_version": {
           "height": 150,
           "scans_profile": "",
-          "url": "https://instagram.fjrh1-1.fna.fbcdn.net/v/t51.71878-15/630236198_878967978338697_4312736888841137303_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_ht=instagram.fjrh1-1.fna.fbcdn.net&_nc_cat=109&_nc_oc=Q6cZ2gHSL3O4MGq-Ms70_C9uxwX8P-odmulNFi8lvOWdGB4gXXIL5puRdkd4C_FDZQMK6JWvapOQgI6DCAqBJgltCv5b&_nc_ohc=_zBr3yEN-xkQ7kNvwGehcyN&_nc_gid=BQ4Kbk1Xc1PZlPEPzg3Olg&edm=ALbqBD0BAAAA&ccb=7-5&oh=00_AQDDoUbTDUBfYdwNzbjTXNpgZgokjjd_xsq7CIdifEjLZQ&oe=6A4B1799&_nc_sid=847350",
+          "url": "https://sanitized.invalid/media/2/cover",
           "width": 150
         },
         "full_image_version": null
@@ -37,25 +37,25 @@
       "can_react_with_avatar": false,
       "contains_stitched_media_blocked_by_rm": false,
       "user": {
-        "pk": "60483811374",
-        "pk_id": "60483811374",
-        "strong_id__": "60483811374",
-        "id": "60483811374",
-        "username": "p_ooja4.7",
-        "full_name": "ＰＣ🍒",
+        "pk": "SANITIZED_PERSON_1_ID",
+        "pk_id": "SANITIZED_PERSON_1_ID",
+        "strong_id__": "SANITIZED_PERSON_1_ID",
+        "id": "SANITIZED_PERSON_1_ID",
+        "username": "SANITIZED_PERSON_1_USERNAME",
+        "full_name": "SANITIZED_PERSON_1_FULL_NAME",
         "is_private": true,
         "is_verified": false,
-        "profile_pic_id": "3871530815847355146_60483811374",
-        "profile_pic_url": "https://instagram.fjrh1-2.fna.fbcdn.net/v/t51.82787-19/662302092_17971049328019375_2056357349967698990_n.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=instagram.fjrh1-2.fna.fbcdn.net&_nc_cat=107&_nc_oc=Q6cZ2gHSL3O4MGq-Ms70_C9uxwX8P-odmulNFi8lvOWdGB4gXXIL5puRdkd4C_FDZQMK6JWvapOQgI6DCAqBJgltCv5b&_nc_ohc=IWoNA81psZ8Q7kNvwE-W2UM&_nc_gid=BQ4Kbk1Xc1PZlPEPzg3Olg&edm=ALbqBD0BAAAA&ccb=7-5&oh=00_AQCtPwIOOQNOILZ19JPGX9zi_VzmpUB5d1VjeEF-foW08g&oe=6A4B1F23&_nc_sid=847350",
+        "profile_pic_id": "SANITIZED_MEDIA_3_PROFILE_PICTURE_ID",
+        "profile_pic_url": "https://sanitized.invalid/person/1/profile-picture",
         "account_badges": [],
-        "interop_messaging_user_fbid": "17842037679019375",
+        "interop_messaging_user_fbid": "SANITIZED_PERSON_1_FB_ID",
         "is_creator_agent_enabled": false
       }
     },
     {
-      "id": "highlight:17967669893995920",
+      "id": "SANITIZED_MEDIA_4_ID",
       "reel_type": "highlight_reel",
-      "title": "💋",
+      "title": "SANITIZED_MEDIA_4_TITLE",
       "created_at": 1766642673,
       "is_pinned_highlight": false,
       "prefetch_count": 0,
@@ -65,15 +65,15 @@
       "can_gif_quick_reply": true,
       "can_reshare": true,
       "is_archived": false,
-      "strong_id__": "highlight:17967669893995920",
+      "strong_id__": "SANITIZED_MEDIA_4_ID",
       "cover_media": {
         "crop_rect": [0, 0.26308384918401795, 1],
-        "media_id": "3492549366416679152_60483811374",
+        "media_id": "SANITIZED_MEDIA_5_ID",
         "upload_id": null,
         "cropped_image_version": {
           "height": 150,
           "scans_profile": "",
-          "url": "https://instagram.fjrh1-1.fna.fbcdn.net/v/t51.71878-15/465575215_753606540265151_1995180896626826128_n.jpg?stp=c0.299.640.640a_dst-jpg_e15_s150x150_tt6&_nc_ht=instagram.fjrh1-1.fna.fbcdn.net&_nc_cat=111&_nc_oc=Q6cZ2gHSL3O4MGq-Ms70_C9uxwX8P-odmulNFi8lvOWdGB4gXXIL5puRdkd4C_FDZQMK6JWvapOQgI6DCAqBJgltCv5b&_nc_ohc=3EDtwnl3YP0Q7kNvwHAmWLD&_nc_gid=BQ4Kbk1Xc1PZlPEPzg3Olg&edm=ALbqBD0BAAAA&ccb=7-5&oh=00_AQDNMxpvc-JEiG9zdTeCPq2mrBoR5oltXviJ_37M5oBBtQ&oe=6A4B2297&_nc_sid=847350",
+          "url": "https://sanitized.invalid/media/5/cover",
           "width": 150
         },
         "full_image_version": null
@@ -89,25 +89,25 @@
       "can_react_with_avatar": false,
       "contains_stitched_media_blocked_by_rm": false,
       "user": {
-        "pk": "60483811374",
-        "pk_id": "60483811374",
-        "strong_id__": "60483811374",
-        "id": "60483811374",
-        "username": "p_ooja4.7",
-        "full_name": "ＰＣ🍒",
+        "pk": "SANITIZED_PERSON_1_ID",
+        "pk_id": "SANITIZED_PERSON_1_ID",
+        "strong_id__": "SANITIZED_PERSON_1_ID",
+        "id": "SANITIZED_PERSON_1_ID",
+        "username": "SANITIZED_PERSON_1_USERNAME",
+        "full_name": "SANITIZED_PERSON_1_FULL_NAME",
         "is_private": true,
         "is_verified": false,
-        "profile_pic_id": "3871530815847355146_60483811374",
-        "profile_pic_url": "https://instagram.fjrh1-2.fna.fbcdn.net/v/t51.82787-19/662302092_17971049328019375_2056357349967698990_n.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=instagram.fjrh1-2.fna.fbcdn.net&_nc_cat=107&_nc_oc=Q6cZ2gHSL3O4MGq-Ms70_C9uxwX8P-odmulNFi8lvOWdGB4gXXIL5puRdkd4C_FDZQMK6JWvapOQgI6DCAqBJgltCv5b&_nc_ohc=IWoNA81psZ8Q7kNvwE-W2UM&_nc_gid=BQ4Kbk1Xc1PZlPEPzg3Olg&edm=ALbqBD0BAAAA&ccb=7-5&oh=00_AQCtPwIOOQNOILZ19JPGX9zi_VzmpUB5d1VjeEF-foW08g&oe=6A4B1F23&_nc_sid=847350",
+        "profile_pic_id": "SANITIZED_MEDIA_3_PROFILE_PICTURE_ID",
+        "profile_pic_url": "https://sanitized.invalid/person/1/profile-picture",
         "account_badges": [],
-        "interop_messaging_user_fbid": "17842037679019375",
+        "interop_messaging_user_fbid": "SANITIZED_PERSON_1_FB_ID",
         "is_creator_agent_enabled": false
       }
     },
     {
-      "id": "highlight:18371377837198070",
+      "id": "SANITIZED_MEDIA_6_ID",
       "reel_type": "highlight_reel",
-      "title": "🎀",
+      "title": "SANITIZED_MEDIA_6_TITLE",
       "created_at": 1753550021,
       "is_pinned_highlight": false,
       "prefetch_count": 0,
@@ -117,15 +117,15 @@
       "can_gif_quick_reply": true,
       "can_reshare": true,
       "is_archived": false,
-      "strong_id__": "highlight:18371377837198070",
+      "strong_id__": "SANITIZED_MEDIA_6_ID",
       "cover_media": {
         "crop_rect": null,
-        "media_id": "3127349435970047953_60483811374",
+        "media_id": "SANITIZED_MEDIA_7_ID",
         "upload_id": null,
         "cropped_image_version": {
           "height": 150,
           "scans_profile": "",
-          "url": "https://instagram.fjrh1-2.fna.fbcdn.net/v/t51.71878-15/629868575_2804021879945647_1301859161716883665_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_ht=instagram.fjrh1-2.fna.fbcdn.net&_nc_cat=107&_nc_oc=Q6cZ2gHSL3O4MGq-Ms70_C9uxwX8P-odmulNFi8lvOWdGB4gXXIL5puRdkd4C_FDZQMK6JWvapOQgI6DCAqBJgltCv5b&_nc_ohc=W-3WdgAo-XEQ7kNvwGtj4S_&_nc_gid=BQ4Kbk1Xc1PZlPEPzg3Olg&edm=ALbqBD0BAAAA&ccb=7-5&oh=00_AQCMc4PVTapz2276MGGyQu4txJWniUaKhQ4QXbN_gLCF1w&oe=6A4B2527&_nc_sid=847350",
+          "url": "https://sanitized.invalid/media/7/cover",
           "width": 150
         },
         "full_image_version": null
@@ -141,18 +141,18 @@
       "can_react_with_avatar": false,
       "contains_stitched_media_blocked_by_rm": false,
       "user": {
-        "pk": "60483811374",
-        "pk_id": "60483811374",
-        "strong_id__": "60483811374",
-        "id": "60483811374",
-        "username": "p_ooja4.7",
-        "full_name": "ＰＣ🍒",
+        "pk": "SANITIZED_PERSON_1_ID",
+        "pk_id": "SANITIZED_PERSON_1_ID",
+        "strong_id__": "SANITIZED_PERSON_1_ID",
+        "id": "SANITIZED_PERSON_1_ID",
+        "username": "SANITIZED_PERSON_1_USERNAME",
+        "full_name": "SANITIZED_PERSON_1_FULL_NAME",
         "is_private": true,
         "is_verified": false,
-        "profile_pic_id": "3871530815847355146_60483811374",
-        "profile_pic_url": "https://instagram.fjrh1-2.fna.fbcdn.net/v/t51.82787-19/662302092_17971049328019375_2056357349967698990_n.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=instagram.fjrh1-2.fna.fbcdn.net&_nc_cat=107&_nc_oc=Q6cZ2gHSL3O4MGq-Ms70_C9uxwX8P-odmulNFi8lvOWdGB4gXXIL5puRdkd4C_FDZQMK6JWvapOQgI6DCAqBJgltCv5b&_nc_ohc=IWoNA81psZ8Q7kNvwE-W2UM&_nc_gid=BQ4Kbk1Xc1PZlPEPzg3Olg&edm=ALbqBD0BAAAA&ccb=7-5&oh=00_AQCtPwIOOQNOILZ19JPGX9zi_VzmpUB5d1VjeEF-foW08g&oe=6A4B1F23&_nc_sid=847350",
+        "profile_pic_id": "SANITIZED_MEDIA_3_PROFILE_PICTURE_ID",
+        "profile_pic_url": "https://sanitized.invalid/person/1/profile-picture",
         "account_badges": [],
-        "interop_messaging_user_fbid": "17842037679019375",
+        "interop_messaging_user_fbid": "SANITIZED_PERSON_1_FB_ID",
         "is_creator_agent_enabled": false
       }
     }
