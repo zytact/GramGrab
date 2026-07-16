@@ -10,7 +10,7 @@ import {
   type SilentWorkerResponse,
 } from './contracts.ts';
 import { inspectSilentVideo, processSilentVideo } from './engine.ts';
-import { removeOutput, outputName } from './opfs.ts';
+import { cacheInput, removeOutput, outputName } from './opfs.ts';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -33,9 +33,12 @@ function failureKind(cause: unknown): SilentWorkerError['kind'] {
 async function handleRequest(request: Awaited<ReturnType<typeof decodeSilentWorkerRequest>>) {
   if (request._tag === 'inspect') {
     post(SilentProgress.make({ requestId: request.requestId, phase: 'inspecting', progress: 0 }));
+    const file = await cacheInput(request.requestId, request.url, progress =>
+      post(SilentProgress.make({ requestId: request.requestId, phase: 'inspecting', progress }))
+    );
     post(
       SilentInspected.make({
-        preflight: await inspectSilentVideo(request.requestId, request.url),
+        preflight: await inspectSilentVideo(request.requestId, file),
       })
     );
     return;
@@ -45,12 +48,8 @@ async function handleRequest(request: Awaited<ReturnType<typeof decodeSilentWork
     post(SilentReleased.make({ requestId: request.requestId }));
     return;
   }
-  const result = await processSilentVideo(
-    request.requestId,
-    request.url,
-    request.transcode,
-    progress =>
-      post(SilentProgress.make({ requestId: request.requestId, phase: 'processing', progress }))
+  const result = await processSilentVideo(request.requestId, request.transcode, progress =>
+    post(SilentProgress.make({ requestId: request.requestId, phase: 'processing', progress }))
   );
   post(SilentProgress.make({ requestId: request.requestId, phase: 'validating', progress: 1 }));
   post(SilentProcessed.make({ requestId: request.requestId, ...result }));
@@ -67,6 +66,7 @@ self.addEventListener('message', event => {
     try {
       await handleRequest(request);
     } catch (cause) {
+      await removeOutput(outputName(request.requestId)).catch(() => undefined);
       post(
         SilentWorkerError.make({
           requestId: request.requestId,

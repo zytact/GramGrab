@@ -10,23 +10,25 @@ import {
   Output,
   QUALITY_VERY_HIGH,
   StreamTarget,
-  UrlSource,
 } from 'mediabunny';
 import type { RequestId } from '../download/contracts.ts';
 import { SilentPreflight } from './contracts.ts';
-import { createOutput, readOutput, removeOutput } from './opfs.ts';
+import { createOutput, readInput, readOutput, removeOutput } from './opfs.ts';
 
-const mp4 = new Mp4OutputFormat({ fastStart: 'reserve' });
+const mp4 = new Mp4OutputFormat({ fastStart: false });
 
-function inputFromUrl(url: string) {
-  return new Input({ formats: ALL_FORMATS, source: new UrlSource(url) });
+function inputFromFile(file: File) {
+  return new Input({
+    formats: ALL_FORMATS,
+    source: new BlobSource(file, { maxCacheSize: 2 ** 21 }),
+  });
 }
 
 export async function inspectSilentVideo(
   requestId: RequestId,
-  url: string
+  file: File
 ): Promise<SilentPreflight> {
-  const input = inputFromUrl(url);
+  const input = inputFromFile(file);
   try {
     const video = await input.getPrimaryVideoTrack();
     if (!video) throw new Error('The source contains no video track.');
@@ -59,17 +61,17 @@ export async function inspectSilentVideo(
 
 export async function processSilentVideo(
   requestId: RequestId,
-  url: string,
   transcode: boolean,
   onProgress: (progress: number) => void
 ): Promise<{ alreadySilent: boolean; opfsName?: string }> {
-  const preflight = await inspectSilentVideo(requestId, url);
+  const file = await readInput(requestId);
+  const preflight = await inspectSilentVideo(requestId, file);
   if (preflight.audioTrackCount === 0) return { alreadySilent: true };
   if (!preflight.copyCompatible && !transcode) throw new Error('Re-encoding was not approved.');
   const owned = await createOutput(requestId);
   try {
-    if (transcode) await transcodeVideo(url, owned.writable, onProgress);
-    else await copyVideo(url, owned.writable, preflight.durationSeconds, onProgress);
+    if (transcode) await transcodeVideo(file, owned.writable, onProgress);
+    else await copyVideo(file, owned.writable, preflight.durationSeconds, onProgress);
     await validateOutput(owned.name);
     return { alreadySilent: false, opfsName: owned.name };
   } catch (error) {
@@ -79,12 +81,12 @@ export async function processSilentVideo(
 }
 
 async function copyVideo(
-  url: string,
+  file: File,
   writable: WritableStream,
   duration: number,
   onProgress: (progress: number) => void
 ) {
-  const input = inputFromUrl(url);
+  const input = inputFromFile(file);
   try {
     const track = await input.getPrimaryVideoTrack();
     const codec = await track?.getCodec();
@@ -108,13 +110,13 @@ async function copyVideo(
 }
 
 async function transcodeVideo(
-  url: string,
+  file: File,
   writable: WritableStream,
   onProgress: (progress: number) => void
 ) {
   if (!(await canEncodeVideo('avc')))
     throw new Error('This browser cannot encode high-quality H.264 video.');
-  const input = inputFromUrl(url);
+  const input = inputFromFile(file);
   try {
     const track = await input.getPrimaryVideoTrack();
     if (!track) throw new Error('The source contains no video track.');

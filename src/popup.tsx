@@ -55,6 +55,32 @@ interface PreviewResponse {
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 type VideoBlobResponse = { dataUrl?: string; error?: string };
+const SILENT_PHASE_LABELS: Readonly<Record<string, string>> = {
+  queued: 'Waiting to inspect video',
+  inspecting: 'Inspecting video',
+  processing: 'Removing audio',
+  validating: 'Validating silent video',
+  downloading: 'Download started',
+};
+
+function silentProgressMessage(entries: readonly AttemptEntry[] | undefined): string | undefined {
+  const active = entries?.flatMap(entry =>
+    entry.operation.mode === 'silent' && entry.outcome.status === 'pending' ? [entry.outcome] : []
+  );
+  const progressState = ['processing', 'validating', 'inspecting', 'downloading', 'queued'].flatMap(
+    phase => {
+      const outcome = active?.find(candidate => candidate.phase === phase);
+      return outcome ? [outcome] : [];
+    }
+  )[0];
+  if (!progressState?.phase) return undefined;
+  const label = SILENT_PHASE_LABELS[progressState.phase];
+  if (!label) return undefined;
+  if (progressState.phase === 'queued') return `${label}…`;
+  if (progressState.phase === 'downloading') return label;
+  return `${label}… ${Math.round((progressState.progress ?? 0) * 100)}%`;
+}
+
 type FrameRuntime = {
   status: 'idle' | 'loading' | 'ready' | 'failed' | 'exporting';
   durationSeconds?: number;
@@ -493,13 +519,9 @@ export default function Popup() {
   clearAttemptRef.current = downloadAttempt.clear;
 
   useEffect(() => {
-    const activeMediaWork = downloadAttempt.attempt?.entries.some(
-      entry =>
-        entry.operation.mode === 'silent' &&
-        entry.outcome.status === 'pending' &&
-        ['inspecting', 'processing', 'validating'].includes(entry.outcome.phase ?? '')
-    );
-    if (!activeMediaWork) return;
+    const progressMessage = silentProgressMessage(downloadAttempt.attempt?.entries);
+    if (!progressMessage) return;
+    setMessage(progressMessage);
     const guard = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener('beforeunload', guard);
     return () => window.removeEventListener('beforeunload', guard);

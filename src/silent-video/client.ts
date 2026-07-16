@@ -17,37 +17,46 @@ type Pending = {
 export class SilentVideoClient {
   readonly #worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   readonly #pending = new Map<string, Pending>();
+  #closed = false;
 
   constructor() {
     this.#worker.addEventListener('message', event => void this.#receive(event.data));
-    this.#worker.addEventListener('error', () =>
-      this.#failAll('The media worker stopped unexpectedly.')
-    );
+    this.#worker.addEventListener('error', () => {
+      this.#closed = true;
+      this.#failAll('The media worker stopped unexpectedly.');
+    });
   }
 
-  async inspect(requestId: RequestId, url: string): Promise<SilentPreflight> {
-    const response = await this.#request(requestId, InspectSilentVideo.make({ requestId, url }));
+  async inspect(
+    requestId: RequestId,
+    url: string,
+    onProgress: Pending['onProgress']
+  ): Promise<SilentPreflight> {
+    const response = await this.#request(
+      requestId,
+      InspectSilentVideo.make({ requestId, url }),
+      onProgress
+    );
     if (response._tag !== 'inspected')
       throw new Error(
-        response._tag === 'SilentWorkerError' ? response.reason : 'Invalid inspection result.'
+        response._tag === 'SilentWorkerError'
+          ? `Inspection failed (${response.kind}): ${response.reason}`
+          : 'Invalid inspection result.'
       );
     return response.preflight;
   }
 
-  async process(
-    requestId: RequestId,
-    url: string,
-    transcode: boolean,
-    onProgress: Pending['onProgress']
-  ) {
+  async process(requestId: RequestId, transcode: boolean, onProgress: Pending['onProgress']) {
     const response = await this.#request(
       requestId,
-      ProcessSilentVideo.make({ requestId, url, transcode }),
+      ProcessSilentVideo.make({ requestId, transcode }),
       onProgress
     );
     if (response._tag !== 'processed')
       throw new Error(
-        response._tag === 'SilentWorkerError' ? response.reason : 'Invalid processing result.'
+        response._tag === 'SilentWorkerError'
+          ? `Audio removal failed (${response.kind}): ${response.reason}`
+          : 'Invalid processing result.'
       );
     return response;
   }
@@ -57,6 +66,8 @@ export class SilentVideoClient {
   }
 
   close(): void {
+    if (this.#closed) return;
+    this.#closed = true;
     this.#worker.terminate();
     this.#failAll('The media worker was closed.');
   }
@@ -66,6 +77,7 @@ export class SilentVideoClient {
     message: object,
     onProgress?: Pending['onProgress']
   ): Promise<SilentWorkerResponse> {
+    if (this.#closed) return Promise.reject(new Error('The media worker was closed.'));
     if (this.#pending.has(requestId))
       return Promise.reject(new Error('A media request with this ID is already active.'));
     return new Promise((resolve, reject) => {

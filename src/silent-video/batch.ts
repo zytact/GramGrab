@@ -15,29 +15,53 @@ export interface ReencodeCandidate {
   readonly preflight: SilentPreflight;
 }
 
-interface OwnershipCounter {
-  value: number;
+interface OwnershipState {
+  activeDownloads: number;
+  batchComplete: boolean;
+}
+
+function errorReason(cause: unknown, fallback: string): string {
+  return cause instanceof Error && cause.message.trim() ? cause.message : fallback;
 }
 
 async function inspectOperations(
   client: SilentVideoClient,
-  operations: readonly AttemptOperation[]
+  operations: readonly AttemptOperation[],
+  onProgress: (requestId: string, phase: string, progress: number) => void
 ) {
-  const settled = await Promise.allSettled(
-    operations.map(operation => client.inspect(operation.requestId, operation.url))
+  const settled = operations.map<PromiseSettledResult<SilentPreflight> | undefined>(
+    () => undefined
   );
+  let nextIndex = 0;
+  const inspectNext = async (): Promise<void> => {
+    const index = nextIndex++;
+    const operation = operations[index];
+    if (!operation) return;
+    try {
+      settled[index] = {
+        status: 'fulfilled',
+        value: await client.inspect(operation.requestId, operation.url, (phase, progress) =>
+          onProgress(operation.requestId, phase, progress)
+        ),
+      };
+    } catch (reason) {
+      settled[index] = { status: 'rejected', reason };
+    }
+    await inspectNext();
+  };
+  await Promise.all(Array.from({ length: Math.min(2, operations.length) }, inspectNext));
   const candidates: ReencodeCandidate[] = [];
   const failures: DownloadOperationResult[] = [];
   settled.forEach((result, index) => {
     const operation = operations[index];
-    if (!operation) return;
+    if (!operation || !result) return;
     if (result.status === 'fulfilled') candidates.push({ operation, preflight: result.value });
     else
       failures.push(
         DownloadFailedResult.make({
           requestId: operation.requestId,
           status: 'failed',
-          reason: 'The source video could not be inspected.',
+          reason: errorReason(result.reason, 'The source video could not be inspected.'),
         })
       );
   });
@@ -79,17 +103,17 @@ async function processCandidate(
   client: SilentVideoClient,
   sourceUrl: string,
   onProgress: (requestId: string, phase: string, progress: number) => void,
-  ownership: OwnershipCounter
+  ownership: OwnershipState
 ): Promise<DownloadOperationResult> {
   const { operation, preflight } = candidate;
   try {
     onProgress(operation.requestId, 'queued', 0);
     const processed = await client.process(
       operation.requestId,
-      operation.url,
       !preflight.copyCompatible,
       (phase, progress) => onProgress(operation.requestId, phase, progress)
     );
+    if (processed.alreadySilent) await client.release(operation.requestId).catch(() => undefined);
     const url = processed.alreadySilent
       ? operation.url
       : URL.createObjectURL(await readOutput(processed.opfsName!));
@@ -98,6 +122,7 @@ async function processCandidate(
       filename: operation.filename,
       saveAs: false,
     });
+    onProgress(operation.requestId, 'downloading', 1);
     const warning = processed.alreadySilent
       ? undefined
       : await trackOwnedDownload(operation, downloadId, url, client, ownership);
@@ -107,11 +132,11 @@ async function processCandidate(
       status: 'accepted',
       ...(warning || historyWarning ? { warning: warning ?? historyWarning } : {}),
     });
-  } catch {
+  } catch (cause) {
     return DownloadFailedResult.make({
       requestId: operation.requestId,
       status: 'failed',
-      reason: 'Audio removal could not be completed.',
+      reason: errorReason(cause, 'Audio removal could not be completed.'),
     });
   }
 }
@@ -121,13 +146,13 @@ async function trackOwnedDownload(
   downloadId: number,
   url: string,
   client: SilentVideoClient,
-  ownership: OwnershipCounter
+  ownership: OwnershipState
 ): Promise<string | undefined> {
-  ownership.value++;
+  ownership.activeDownloads++;
   const ownershipReady = transferOutputToDownload(operation.requestId, downloadId);
   releaseWhenComplete(downloadId, url, client, operation.requestId, ownershipReady, () => {
-    ownership.value--;
-    if (ownership.value === 0) client.close();
+    ownership.activeDownloads--;
+    if (ownership.batchComplete && ownership.activeDownloads === 0) client.close();
   });
   try {
     await ownershipReady;
@@ -146,10 +171,11 @@ export async function runSilentVideoBatch(
   approvedRequestIds: Set<string>
 ): Promise<readonly DownloadOperationResult[]> {
   const client = new SilentVideoClient();
-  const ownership: OwnershipCounter = { value: 0 };
+  const ownership: OwnershipState = { activeDownloads: 0, batchComplete: false };
+  for (const operation of operations) onProgress(operation.requestId, 'queued', 0);
   try {
     await sweepOnce();
-    const inspected = await inspectOperations(client, operations);
+    const inspected = await inspectOperations(client, operations, onProgress);
     const skipped = await declinedReencodes(
       inspected.candidates,
       approvedRequestIds,
@@ -158,6 +184,9 @@ export async function runSilentVideoBatch(
     onPreflightComplete();
     const results = [...inspected.failures];
     for (const candidate of inspected.candidates) {
+      if (skipped.has(candidate.operation.requestId)) {
+        await client.release(candidate.operation.requestId).catch(() => undefined);
+      }
       results.push(
         skipped.has(candidate.operation.requestId)
           ? DownloadSkippedResult.make({
@@ -169,17 +198,18 @@ export async function runSilentVideoBatch(
       );
     }
     return results;
-  } catch {
+  } catch (cause) {
     return operations.map(operation =>
       DownloadFailedResult.make({
         requestId: operation.requestId,
         status: 'failed',
-        reason: 'Private browser storage is unavailable.',
+        reason: errorReason(cause, 'Private browser storage is unavailable.'),
       })
     );
   } finally {
     onPreflightComplete();
-    if (ownership.value === 0) client.close();
+    ownership.batchComplete = true;
+    if (ownership.activeDownloads === 0) client.close();
   }
 }
 

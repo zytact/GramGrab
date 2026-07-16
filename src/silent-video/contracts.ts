@@ -28,7 +28,6 @@ export class InspectSilentVideo extends Schema.TaggedClass<InspectSilentVideo>()
 }) {}
 export class ProcessSilentVideo extends Schema.TaggedClass<ProcessSilentVideo>()('process', {
   requestId: RequestIdSchema,
-  url: Schema.String.pipe(Schema.nonEmptyString()),
   transcode: Schema.Boolean,
 }) {}
 export class ReleaseSilentVideo extends Schema.TaggedClass<ReleaseSilentVideo>()('release', {
