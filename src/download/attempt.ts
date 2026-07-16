@@ -1,15 +1,16 @@
 import type { DownloadOperation, DownloadOperationResult } from './contracts.ts';
 
 export interface AttemptOperation extends DownloadOperation {
-  readonly mode: 'direct' | 'frame';
+  readonly mode: 'direct' | 'frame' | 'silent';
   readonly displayIndex: number;
   readonly frameTimestampSeconds?: number;
 }
 
 export type AttemptOutcome =
-  | { readonly status: 'pending' }
+  | { readonly status: 'pending'; readonly phase?: string; readonly progress?: number }
   | { readonly status: 'accepted'; readonly warning?: string }
-  | { readonly status: 'failed'; readonly reason: string };
+  | { readonly status: 'failed'; readonly reason: string }
+  | { readonly status: 'skipped'; readonly reason: string };
 
 export interface AttemptEntry {
   readonly operation: AttemptOperation;
@@ -25,6 +26,12 @@ export type AttemptAction =
   | { readonly type: 'fresh'; readonly operations: readonly AttemptOperation[] }
   | { readonly type: 'retry' }
   | { readonly type: 'settle'; readonly results: readonly DownloadOperationResult[] }
+  | {
+      readonly type: 'progress';
+      readonly requestId: string;
+      readonly phase: string;
+      readonly progress: number;
+    }
   | { readonly type: 'clear' };
 
 export function attemptReducer(
@@ -57,16 +64,39 @@ export function attemptReducer(
         entries: state.entries.map(entry => {
           const result = byRequestId.get(entry.operation.requestId);
           if (!result || entry.outcome.status !== 'pending') return entry;
+          const outcome =
+            result.status === 'accepted'
+              ? {
+                  status: 'accepted' as const,
+                  ...(result.warning ? { warning: result.warning } : {}),
+                }
+              : result.status === 'skipped'
+                ? { status: 'skipped' as const, reason: result.reason }
+                : { status: 'failed' as const, reason: result.reason };
           return {
             ...entry,
-            outcome:
-              result.status === 'accepted'
-                ? { status: 'accepted', ...(result.warning ? { warning: result.warning } : {}) }
-                : { status: 'failed', reason: result.reason },
+            outcome,
           };
         }),
       };
     }
+    case 'progress':
+      if (!state) return state;
+      return {
+        ...state,
+        entries: state.entries.map(entry =>
+          entry.operation.requestId === action.requestId && entry.outcome.status === 'pending'
+            ? {
+                ...entry,
+                outcome: {
+                  status: 'pending',
+                  phase: action.phase,
+                  progress: action.progress,
+                },
+              }
+            : entry
+        ),
+      };
     case 'clear':
       return undefined;
   }
@@ -97,6 +127,7 @@ export interface AttemptSummary {
   readonly succeeded: number;
   readonly failed: number;
   readonly warnings: number;
+  readonly skipped: number;
 }
 
 export function summarizeAttempt(attempt: DownloadAttempt | undefined): AttemptSummary {
@@ -105,10 +136,11 @@ export function summarizeAttempt(attempt: DownloadAttempt | undefined): AttemptS
       pending: summary.pending + Number(entry.outcome.status === 'pending'),
       succeeded: summary.succeeded + Number(entry.outcome.status === 'accepted'),
       failed: summary.failed + Number(entry.outcome.status === 'failed'),
+      skipped: summary.skipped + Number(entry.outcome.status === 'skipped'),
       warnings:
         summary.warnings +
         Number(entry.outcome.status === 'accepted' && Boolean(entry.outcome.warning)),
     }),
-    { pending: 0, succeeded: 0, failed: 0, warnings: 0 }
+    { pending: 0, succeeded: 0, failed: 0, warnings: 0, skipped: 0 }
   );
 }

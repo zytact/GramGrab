@@ -8,7 +8,7 @@ import {
 } from './contracts';
 
 const snapshot: WorkspaceSnapshot = {
-  version: 2,
+  version: 3,
   createdAt: 1,
   expiresAt: Date.now() + 60_000,
   url: 'https://www.instagram.com/p/example/',
@@ -28,6 +28,7 @@ const snapshot: WorkspaceSnapshot = {
     },
   ],
   frameExportSettings: {},
+  removeAudioIndexes: [],
 };
 
 describe('workspace contracts', () => {
@@ -77,7 +78,8 @@ describe('workspace contracts', () => {
     };
     const upgraded = upgradeWorkspaceSnapshot(legacy);
     expect(upgraded).toMatchObject({
-      version: 2,
+      version: 3,
+      removeAudioIndexes: [],
       frameExportSettings: { 0: { enabled: true, timestampSeconds: 5 } },
     });
   });

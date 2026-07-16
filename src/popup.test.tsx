@@ -51,7 +51,9 @@ describe('Popup', () => {
     await waitFor(() => {
       expect(mockBrowser.tabs.create).toHaveBeenCalledWith({
         active: true,
-        url: 'chrome-extension://test/popup.html?surface=workspace&source=https%3A%2F%2Fwww.instagram.com%2Fp%2Fabc123%2F',
+        url: expect.stringMatching(
+          /^chrome-extension:\/\/test\/popup\.html\?surface=workspace&source=https%3A%2F%2Fwww\.instagram\.com%2Fp%2Fabc123%2F&offer=/
+        ),
       });
     });
   });
@@ -87,14 +89,16 @@ describe('Popup', () => {
     await user.click(screen.getByRole('button', { name: 'Open in tab' }));
 
     await waitFor(() => {
-      expect(mockBrowser.storage.set).toHaveBeenLastCalledWith({
-        'workspace-transfer-v1': expect.objectContaining({
-          url: 'https://www.instagram.com/p/new-source/',
-          fetchedUrl: '',
-          mediaItems: [],
-          frameExportSettings: {},
-        }),
-      });
+      expect(mockBrowser.storage.set).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          'workspace-transfer-v1': expect.objectContaining({
+            url: 'https://www.instagram.com/p/new-source/',
+            fetchedUrl: '',
+            mediaItems: [],
+            frameExportSettings: {},
+          }),
+        })
+      );
     });
   });
 

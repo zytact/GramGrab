@@ -3,8 +3,8 @@ import {
   DOWNLOAD_HISTORY_KEY,
   DOWNLOAD_HISTORY_LIMIT,
   DOWNLOAD_HISTORY_VERSION,
-  type DownloadHistoryEntryV1,
-  type DownloadHistoryStoreV1,
+  type DownloadHistoryEntry,
+  type DownloadHistoryStoreV2,
   type HistoryReadResult,
 } from './contracts.ts';
 import { historySource } from './source.ts';
@@ -14,19 +14,19 @@ let mutationQueue: Promise<void> = Promise.resolve();
 const validKinds = new Set(['post', 'reel', 'story', 'highlight', 'profile']);
 const validTypes = new Set(['image', 'video']);
 
-function validEntry(value: unknown): value is DownloadHistoryEntryV1 {
-  const item = value as Partial<DownloadHistoryEntryV1> | null;
+function validEntry(value: unknown): value is DownloadHistoryEntry {
+  const item = value as Partial<DownloadHistoryEntry> | null;
   return Boolean(item && hasValidIdentity(item) && hasValidMedia(item) && hasValidOutcome(item));
 }
 
-function hasValidIdentity(item: Partial<DownloadHistoryEntryV1>): boolean {
+function hasValidIdentity(item: Partial<DownloadHistoryEntry>): boolean {
   if (typeof item.id !== 'string' || typeof item.sourceUrl !== 'string') return false;
   const source = historySource(item.sourceUrl);
   return source?.url === item.sourceUrl && source?.kind === item.sourceKind;
 }
 
 // fallow-ignore-next-line complexity
-function hasValidMedia(item: Partial<DownloadHistoryEntryV1>): boolean {
+function hasValidMedia(item: Partial<DownloadHistoryEntry>): boolean {
   return Boolean(
     validKinds.has(item.sourceKind ?? '') &&
     Number.isSafeInteger(item.itemIndex) &&
@@ -36,25 +36,33 @@ function hasValidMedia(item: Partial<DownloadHistoryEntryV1>): boolean {
     typeof item.filenameHint === 'string' &&
     (item.exportMode === undefined ||
       item.exportMode === 'direct' ||
-      item.exportMode === 'frame') &&
+      item.exportMode === 'frame' ||
+      item.exportMode === 'silent') &&
     (item.frameTimestampSeconds === undefined ||
       (Number.isSafeInteger(item.frameTimestampSeconds) && item.frameTimestampSeconds >= 0)) &&
     (item.exportMode !== 'frame' || item.frameTimestampSeconds !== undefined)
   );
 }
 
-function hasValidOutcome(item: Partial<DownloadHistoryEntryV1>): boolean {
+function hasValidOutcome(item: Partial<DownloadHistoryEntry>): boolean {
   return Number.isFinite(item.downloadedAt) && item.outcome === 'accepted';
 }
 
 function decode(value: unknown): HistoryReadResult {
   if (value === undefined) return { kind: 'ok', entries: [], repaired: false };
-  const store = value as Partial<DownloadHistoryStoreV1> | null;
+  const store = value as
+    | (Omit<Partial<DownloadHistoryStoreV2>, 'version'> & { version?: number })
+    | null;
   if (!store || typeof store.version !== 'number' || !Array.isArray(store.entries))
     return { kind: 'ok', entries: [], repaired: true };
-  if (store.version !== DOWNLOAD_HISTORY_VERSION) return { kind: 'unknown-version', entries: [] };
+  if (store.version !== 1 && store.version !== DOWNLOAD_HISTORY_VERSION)
+    return { kind: 'unknown-version', entries: [] };
   const entries = store.entries.filter(validEntry);
-  return { kind: 'ok', entries, repaired: entries.length !== store.entries.length };
+  return {
+    kind: 'ok',
+    entries,
+    repaired: store.version === 1 || entries.length !== store.entries.length,
+  };
 }
 
 async function read(): Promise<HistoryReadResult> {
@@ -74,7 +82,7 @@ export async function getHistory(): Promise<HistoryReadResult> {
   return read();
 }
 
-export function appendHistory(entry: DownloadHistoryEntryV1): Promise<DownloadHistoryEntryV1[]> {
+export function appendHistory(entry: DownloadHistoryEntry): Promise<DownloadHistoryEntry[]> {
   return enqueue(async () => {
     const current = await read();
     if (current.kind === 'unknown-version')
@@ -87,7 +95,7 @@ export function appendHistory(entry: DownloadHistoryEntryV1): Promise<DownloadHi
   });
 }
 
-export function removeHistory(id: string): Promise<DownloadHistoryEntryV1[]> {
+export function removeHistory(id: string): Promise<DownloadHistoryEntry[]> {
   return enqueue(async () => {
     const current = await read();
     if (current.kind === 'unknown-version')

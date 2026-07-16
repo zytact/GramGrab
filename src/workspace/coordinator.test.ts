@@ -3,7 +3,7 @@ import { openWorkspace, replaceWorkspace } from './coordinator';
 import type { WorkspaceSnapshot } from './contracts';
 
 const snapshot: WorkspaceSnapshot = {
-  version: 2,
+  version: 3,
   createdAt: 1,
   expiresAt: Date.now() + 60_000,
   url: 'https://www.instagram.com/p/example/',
@@ -12,6 +12,7 @@ const snapshot: WorkspaceSnapshot = {
   message: 'Ready to fetch media.',
   mediaItems: [],
   frameExportSettings: {},
+  removeAudioIndexes: [],
 };
 
 const mockBrowser = {
@@ -44,7 +45,9 @@ describe('replaceWorkspace', () => {
     await expect(replaceWorkspace(snapshot)).resolves.toBe('created');
     expect(mockBrowser.tabs.create).toHaveBeenCalledWith({
       active: true,
-      url: 'chrome-extension://test/popup.html?surface=workspace&source=https%3A%2F%2Fwww.instagram.com%2Fp%2Fexample%2F',
+      url: expect.stringMatching(
+        /^chrome-extension:\/\/test\/popup\.html\?surface=workspace&source=https%3A%2F%2Fwww\.instagram\.com%2Fp%2Fexample%2F&offer=/
+      ),
     });
   });
 

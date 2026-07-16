@@ -16,7 +16,7 @@ export interface WorkspaceMediaItem {
 }
 
 export interface WorkspaceSnapshot {
-  version: 2;
+  version: 3;
   createdAt: number;
   expiresAt: number;
   url: string;
@@ -25,6 +25,8 @@ export interface WorkspaceSnapshot {
   message: string;
   mediaItems: WorkspaceMediaItem[];
   frameExportSettings: Record<number, FrameExportSetting>;
+  removeAudioIndexes: number[];
+  autoStartDownload?: boolean;
   intent?: 'open' | 'fetch';
 }
 
@@ -36,14 +38,20 @@ interface LegacyWorkspaceSnapshot extends Omit<
   exportFrameIndexes: number[];
 }
 
+interface WorkspaceSnapshotV2 extends Omit<WorkspaceSnapshot, 'version' | 'removeAudioIndexes'> {
+  version: 2;
+}
+
 export const WORKSPACE_TRANSFER_KEY = 'workspace-transfer-v1';
+export const WORKSPACE_STATUS_KEY = 'workspace-status-v1';
 export const WORKSPACE_TRANSFER_TTL_MS = 60_000;
 
-export function workspaceUrl(sourceUrl = ''): string {
+export function workspaceUrl(sourceUrl = '', offerId = ''): string {
   const base = browser.runtime.getURL('popup.html');
   const url = new URL(base);
   url.searchParams.set('surface', 'workspace');
   if (sourceUrl) url.searchParams.set('source', sourceUrl);
+  if (offerId) url.searchParams.set('offer', offerId);
   return url.toString();
 }
 
@@ -199,6 +207,9 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
           : []
       )
     ),
+    removeAudioIndexes: snapshot.removeAudioIndexes.filter(
+      index => Number.isSafeInteger(index) && index >= 0
+    ),
   };
 }
 
@@ -227,7 +238,8 @@ function isValidSnapshot(value: unknown): value is WorkspaceSnapshot {
     return indexes.every(index => Number.isSafeInteger(index) && index >= 0);
   }
   return (
-    snapshot.version === 2 &&
+    (snapshot.version === 2 ||
+      (snapshot.version === 3 && Array.isArray(snapshot.removeAudioIndexes))) &&
     typeof snapshot.frameExportSettings === 'object' &&
     snapshot.frameExportSettings !== null
   );
@@ -235,13 +247,14 @@ function isValidSnapshot(value: unknown): value is WorkspaceSnapshot {
 
 export function upgradeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | undefined {
   if (!isValidSnapshot(value)) return undefined;
-  const snapshot = value as WorkspaceSnapshot | LegacyWorkspaceSnapshot;
-  if (snapshot.version === 2) return snapshot;
+  const snapshot = value as WorkspaceSnapshot | WorkspaceSnapshotV2 | LegacyWorkspaceSnapshot;
+  if (snapshot.version === 3) return snapshot;
+  if (snapshot.version === 2) return { ...snapshot, version: 3, removeAudioIndexes: [] };
   const settings = Object.fromEntries(
     (snapshot.exportFrameIndexes ?? []).map(index => [
       index,
       { enabled: true, timestampSeconds: 5 },
     ])
   );
-  return { ...snapshot, version: 2, frameExportSettings: settings };
+  return { ...snapshot, version: 3, frameExportSettings: settings, removeAudioIndexes: [] };
 }

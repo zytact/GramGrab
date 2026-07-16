@@ -41,6 +41,11 @@ export interface BrowserShim {
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
+    search: (query: { id?: number }) => Promise<{ id: number; state?: string }[]>;
+    onChanged: {
+      addListener: (callback: (delta: DownloadDelta) => void) => void;
+      removeListener: (callback: (delta: DownloadDelta) => void) => void;
+    };
   };
   storage: {
     get: (keys?: unknown) => Promise<Record<string, unknown>>;
@@ -56,6 +61,11 @@ export interface BrowserShim {
     onClicked: { addListener: (callback: ContextMenuClickedCallback) => void };
     onShown: { addListener: (callback: ContextMenuShownCallback) => void };
   };
+}
+
+export interface DownloadDelta {
+  id: number;
+  state?: { current?: string };
 }
 
 export interface ContextMenuCreateProperties {
@@ -96,6 +106,14 @@ interface ChromeGlobal {
       opts: { url: string; filename?: string; saveAs?: boolean },
       cb?: (id: number) => void
     ) => void;
+    search: (
+      query: { id?: number },
+      callback: (items: { id: number; state?: string }[]) => void
+    ) => void;
+    onChanged: {
+      addListener: (callback: (delta: DownloadDelta) => void) => void;
+      removeListener: (callback: (delta: DownloadDelta) => void) => void;
+    };
   };
   storage: {
     local: {
@@ -130,6 +148,11 @@ interface NativeBrowserGlobal {
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
+    search: (query: { id?: number }) => Promise<{ id: number; state?: string }[]>;
+    onChanged: {
+      addListener: (callback: (delta: DownloadDelta) => void) => void;
+      removeListener: (callback: (delta: DownloadDelta) => void) => void;
+    };
   };
   storage: {
     local: {
@@ -207,6 +230,15 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             const err = lastError(chrome.runtime);
             if (err) reject(err);
             else resolve(id);
+          });
+        }),
+      onChanged: chrome.downloads.onChanged,
+      search: query =>
+        new Promise((resolve, reject) => {
+          chrome.downloads.search(query, items => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve(items);
           });
         }),
     },
@@ -326,7 +358,11 @@ const noopShim: BrowserShim = {
     create: () => Promise.resolve({}),
     update: () => Promise.resolve(),
   },
-  downloads: { download: () => Promise.resolve(0) },
+  downloads: {
+    download: () => Promise.resolve(0),
+    search: () => Promise.resolve([]),
+    onChanged: { addListener: () => {}, removeListener: () => {} },
+  },
   storage: {
     get: () => Promise.resolve({}),
     set: () => Promise.resolve(),

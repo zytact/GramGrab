@@ -963,6 +963,74 @@ body::before {
 .download-item-status.failed {
   color: var(--error);
 }
+.download-item-status.skipped {
+  color: var(--text-mid);
+}
+
+.quality-dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 70%);
+}
+
+.quality-dialog {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 80vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.quality-dialog h2 {
+  margin: 0 32px 8px 0;
+  font-size: 18px;
+}
+
+.quality-dialog p,
+.quality-dialog small {
+  color: var(--text-mid);
+}
+
+.quality-dialog ul {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quality-dialog li {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border);
+  padding: 10px;
+}
+
+.quality-dialog li video {
+  width: 72px;
+  max-height: 72px;
+  object-fit: cover;
+}
+
+.quality-dialog-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.quality-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* ─── Responsive workspace tab ─── */
 body:has(.workspace-container) {

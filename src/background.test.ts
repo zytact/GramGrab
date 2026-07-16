@@ -173,12 +173,14 @@ describe('background dispatcher', () => {
       linkUrl: 'http://instagram.com/stories/person/123/',
     });
     await vi.waitFor(() => {
-      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
-        'workspace-transfer-v1': expect.objectContaining({
-          url: 'https://www.instagram.com/stories/person/',
-          intent: 'fetch',
-        }),
-      });
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          'workspace-transfer-v1': expect.objectContaining({
+            url: 'https://www.instagram.com/stories/person/',
+            intent: 'fetch',
+          }),
+        })
+      );
     });
   });
 
