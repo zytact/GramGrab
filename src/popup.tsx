@@ -6,11 +6,16 @@ import { captureFrameFromVideoEffect } from './effect/frame-extraction';
 import {
   DownloadAcceptedResult,
   DownloadFailedResult,
+  createOperationId,
   createRequestId,
   type DownloadOperation,
   type DownloadOperationResult,
 } from './download/contracts';
-import type { AttemptEntry, AttemptOperation } from './download/attempt';
+import { OperationWarning, type OperationFailure, type RecoveryAction } from './errors/contracts';
+import { normalizeFrameFailure } from './errors/normalize';
+import { FAILURE_PRESENTATION, WARNING_PRESENTATION } from './errors/presentation';
+import { buildDiagnostics } from './errors/diagnostics';
+import type { AttemptEntry, AttemptOperation, DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
 import {
   clampFrameSecond,
@@ -76,6 +81,39 @@ type HistoryEntry = {
   downloadedAt: number;
 };
 
+function diagnosticsForAttempt(
+  current: DownloadAttempt | undefined,
+  diagnosticFailure: OperationFailure | undefined,
+  sourceUrl: string
+): string {
+  const entries = current?.entries ?? [];
+  return buildDiagnostics({
+    extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
+    browser: { userAgent: navigator.userAgent },
+    source: { url: sourceUrl },
+    attempt: {
+      entries: entries.map(entry => ({
+        operationId: entry.operation.operationId,
+        requestId: entry.operation.requestId,
+        executionCount: entry.executionCount,
+        manualRetryCount: entry.manualRetryCount,
+      })),
+    },
+    items: entries.map(entry => ({
+      operationId: entry.operation.operationId,
+      requestId: entry.operation.requestId,
+      temporaryMediaUrl: entry.operation.url,
+      filename: entry.operation.filename,
+      mediaType: entry.operation.mediaType,
+      outcome: entry.outcome,
+    })),
+    ...(diagnosticFailure ? { batchFailure: diagnosticFailure } : {}),
+    warnings: entries.flatMap(entry =>
+      entry.outcome.status === 'started' && entry.outcome.warning ? [entry.outcome.warning] : []
+    ),
+  });
+}
+
 // fallow-ignore-next-line complexity
 export default function Popup() {
   const initialWorkspaceMode =
@@ -101,9 +139,14 @@ export default function Popup() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState<string | null>(null);
+  const [sourceFailure, setSourceFailure] = useState<OperationFailure>();
   const [reencodeChoice, setReencodeChoice] = useState<{
     candidates: readonly ReencodeCandidate[];
     resolve: (approved: boolean) => void;
+  }>();
+  const [diagnosticsPreview, setDiagnosticsPreview] = useState<{
+    json: string;
+    trigger: HTMLButtonElement;
   }>();
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
   const resultsGeneration = useRef(0);
@@ -125,7 +168,11 @@ export default function Popup() {
     setFrameExportSettings,
     setStatus,
     setMessage,
-    onSuccess: () => clearAttemptRef.current(),
+    onSuccess: () => {
+      setSourceFailure(undefined);
+      clearAttemptRef.current();
+    },
+    onFailure: setSourceFailure,
   });
   const handleFetchRef = useRef(handleFetch);
 
@@ -343,9 +390,10 @@ export default function Popup() {
       const runtime = frameRuntime[operation.displayIndex];
       if (!runtime?.durationSeconds || operation.frameTimestampSeconds === undefined)
         return DownloadFailedResult.make({
+          operationId: operation.operationId,
           requestId: operation.requestId,
           status: 'failed',
-          reason: 'Frame metadata is not ready.',
+          failure: normalizeFrameFailure('no-duration'),
         });
       setFrameRuntime(previous => ({
         ...previous,
@@ -368,9 +416,10 @@ export default function Popup() {
           captured = await captureFrameFromDataUrl(dataUrl, operation.frameTimestampSeconds);
         if (Either.isLeft(captured))
           return DownloadFailedResult.make({
+            operationId: operation.operationId,
             requestId: operation.requestId,
             status: 'failed',
-            reason: frameExportErrorMessage(captured.left.reason),
+            failure: normalizeFrameFailure(captured.left.reason, captured.left),
           });
         downloadBlobAsFile(captured.right, operation.filename);
         const recorded = (await browser.runtime.sendMessage({
@@ -394,11 +443,14 @@ export default function Popup() {
           },
         }));
         return DownloadAcceptedResult.make({
+          operationId: operation.operationId,
           requestId: operation.requestId,
-          status: 'accepted',
-          ...(recorded.error ? { warning: recorded.error } : {}),
+          status: 'started',
+          ...(recorded.error
+            ? { warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }) }
+            : {}),
         });
-      } catch {
+      } catch (cause) {
         setFrameRuntime(previous => ({
           ...previous,
           [operation.displayIndex]: {
@@ -408,9 +460,10 @@ export default function Popup() {
           },
         }));
         return DownloadFailedResult.make({
+          operationId: operation.operationId,
           requestId: operation.requestId,
           status: 'failed',
-          reason: 'Frame export failed.',
+          failure: normalizeFrameFailure('unexpected', cause),
         });
       }
     },
@@ -471,24 +524,27 @@ export default function Popup() {
       const summary = next.entries.reduce(
         (counts, entry) => ({
           pending: counts.pending + Number(entry.outcome.status === 'pending'),
-          succeeded: counts.succeeded + Number(entry.outcome.status === 'accepted'),
+          started: counts.started + Number(entry.outcome.status === 'started'),
           failed: counts.failed + Number(entry.outcome.status === 'failed'),
           skipped: counts.skipped + Number(entry.outcome.status === 'skipped'),
+          notAttempted: counts.notAttempted + Number(entry.outcome.status === 'not-attempted'),
         }),
-        { pending: 0, succeeded: 0, failed: 0, skipped: 0 }
+        { pending: 0, started: 0, failed: 0, skipped: 0, notAttempted: 0 }
       );
       if (summary.pending > 0) {
         setStatus('downloading');
         setMessage('Downloading…');
         return;
       }
-      setStatus(summary.failed ? 'error' : 'done');
+      setStatus(summary.failed || next.batchFailure ? 'error' : 'done');
       setMessage(
-        summary.failed
-          ? `${summary.succeeded} succeeded, ${summary.failed} failed, ${summary.skipped} skipped.`
-          : summary.skipped > 0
-            ? `${summary.succeeded} succeeded, ${summary.skipped} skipped.`
-            : `${summary.succeeded} item${summary.succeeded === 1 ? '' : 's'} succeeded.`
+        next.batchFailure
+          ? `${FAILURE_PRESENTATION[next.batchFailure.code].title}. ${summary.notAttempted} not attempted.`
+          : summary.failed
+            ? `${summary.started} started, ${summary.failed} failed, ${summary.skipped} skipped, ${summary.notAttempted} not attempted.`
+            : summary.skipped > 0
+              ? `${summary.started} started, ${summary.skipped} skipped.`
+              : `${summary.started} item${summary.started === 1 ? '' : 's'} started.`
       );
     },
   });
@@ -511,10 +567,13 @@ export default function Popup() {
       if (!item || !setting?.enabled || !runtime?.durationSeconds) return;
       const timestampSeconds = clampFrameSecond(setting.timestampSeconds, runtime.durationSeconds);
       await executeFrameAttempt({
+        operationId: createOperationId(),
         requestId: createRequestId(),
         itemIndex: item.itemIndex ?? item.index,
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         url: item.url,
+        originalUrl: item.url,
+        originalFilename: `${item.filenameHint}_${item.index + 1}.mp4`,
         filename: frameFilename(item.filenameHint, timestampSeconds),
         mediaType: 'video',
         mode: 'frame',
@@ -542,6 +601,7 @@ export default function Popup() {
         ? clampFrameSecond(setting.timestampSeconds, duration ?? setting.timestampSeconds + 1)
         : undefined;
       return {
+        operationId: createOperationId(),
         requestId: createRequestId(),
         itemIndex: item.itemIndex ?? item.index,
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
@@ -552,6 +612,8 @@ export default function Popup() {
             ? frameFilename(item.filenameHint, timestampSeconds ?? 0)
             : `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
         mediaType: item.type === 'video' ? 'video' : 'image',
+        originalUrl: item.url,
+        originalFilename: `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
         mode: removeAudio ? 'silent' : exportFrame ? 'frame' : 'direct',
         displayIndex: item.index,
         ...(timestampSeconds !== undefined ? { frameTimestampSeconds: timestampSeconds } : {}),
@@ -611,6 +673,39 @@ export default function Popup() {
   }, [allSelected]);
 
   const isBusy = isWorkspaceBusy(status) || downloadAttempt.busy;
+  const activeFailures = useMemo(
+    () => [
+      ...(sourceFailure ? [sourceFailure] : []),
+      ...(downloadAttempt.attempt?.batchFailure ? [downloadAttempt.attempt.batchFailure] : []),
+      ...(downloadAttempt.attempt?.entries.flatMap(entry =>
+        entry.outcome.status === 'failed' ? [entry.outcome.failure] : []
+      ) ?? []),
+    ],
+    [downloadAttempt.attempt, sourceFailure]
+  );
+  const hasRecoveryAction = useCallback(
+    (action: RecoveryAction) =>
+      activeFailures.some(item => FAILURE_PRESENTATION[item.code].actions.includes(action)),
+    [activeFailures]
+  );
+  const canCopyDiagnostics = hasRecoveryAction('copy-diagnostics');
+  const canDownloadOriginal = hasRecoveryAction('download-original');
+  const canTryReencode = hasRecoveryAction('try-reencode');
+  const canRefetchSource = hasRecoveryAction('refetch-source');
+  const canOpenInstagram = hasRecoveryAction('open-in-instagram');
+  const canReloadWorkspace = hasRecoveryAction('reload-workspace');
+  const previewDiagnostics = useCallback(
+    (trigger: HTMLButtonElement) => {
+      const current = downloadAttempt.attempt;
+      const diagnosticFailure = current?.batchFailure ?? sourceFailure;
+      if (!current && !diagnosticFailure) return;
+      setDiagnosticsPreview({
+        trigger,
+        json: diagnosticsForAttempt(current, diagnosticFailure, fetchedUrl || url),
+      });
+    },
+    [downloadAttempt.attempt, fetchedUrl, sourceFailure, url]
+  );
   const handleUrlChange = useCallback((nextUrl: string) => {
     setUrl(nextUrl);
     setAutoDetected(false);
@@ -655,7 +750,10 @@ export default function Popup() {
         entryId,
       })) as {
         error?: string;
-        results?: { status: 'accepted' | 'failed'; reason?: string }[];
+        results?: {
+          status: 'started' | 'failed';
+          failure?: { code: keyof typeof FAILURE_PRESENTATION };
+        }[];
         frame?: {
           itemIndex: number;
           mediaId?: string;
@@ -743,12 +841,16 @@ export default function Popup() {
               ? ''
               : ` Timestamp adjusted to ${formatFrameTimestamp(timestampSeconds)}.`;
           setMessage(`${recorded.error ?? 'Frame download started.'}${adjustment}`);
-        } catch (error) {
-          setMessage(String(error).replace(/^Error: /, ''));
+        } catch {
+          setMessage('Frame export failed. Download the original video or try again.');
         }
       } else {
         const failed = response.results?.find(result => result.status === 'failed');
-        setMessage(response.error ?? failed?.reason ?? 'Download started.');
+        const failure = failed?.failure ? FAILURE_PRESENTATION[failed.failure.code] : undefined;
+        setMessage(
+          response.error ??
+            (failure ? `${failure.title}. ${failure.explanation}` : 'Download started.')
+        );
       }
       setHistoryBusy(null);
       if (!response.error) void loadHistory();
@@ -866,6 +968,41 @@ export default function Popup() {
               <button className="btn" onClick={handleFetch} disabled={isBusy}>
                 {renderFetchButtonLabel(status)}
               </button>
+              {sourceFailure && (
+                <section className="download-attempt-summary" aria-live="polite">
+                  <strong>{FAILURE_PRESENTATION[sourceFailure.code].title}</strong>
+                  <span>{FAILURE_PRESENTATION[sourceFailure.code].explanation}</span>
+                  <code>{sourceFailure.code}</code>
+                  {canRefetchSource && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={() => void handleFetch()}
+                      disabled={isBusy}
+                    >
+                      Fetch source again
+                    </button>
+                  )}
+                  {canOpenInstagram && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={() => void browser.tabs.create({ url: fetchedUrl || url })}
+                    >
+                      Open in Instagram
+                    </button>
+                  )}
+                  {canCopyDiagnostics && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={event => previewDiagnostics(event.currentTarget)}
+                    >
+                      Copy diagnostics
+                    </button>
+                  )}
+                </section>
+              )}
             </div>
 
             <MediaListSection
@@ -903,9 +1040,17 @@ export default function Popup() {
                   aria-busy={downloadAttempt.busy}
                 >
                   <strong>
-                    {downloadAttempt.summary.succeeded} succeeded, {downloadAttempt.summary.failed}{' '}
-                    failed, {downloadAttempt.summary.skipped} skipped
+                    {downloadAttempt.summary.started} started, {downloadAttempt.summary.failed}{' '}
+                    failed, {downloadAttempt.summary.skipped} skipped,{' '}
+                    {downloadAttempt.summary.notAttempted} not attempted
                   </strong>
+                  {downloadAttempt.attempt.batchFailure && (
+                    <span className="download-item-status failed">
+                      {FAILURE_PRESENTATION[downloadAttempt.attempt.batchFailure.code].title}:{' '}
+                      {FAILURE_PRESENTATION[downloadAttempt.attempt.batchFailure.code].explanation}{' '}
+                      <code>{downloadAttempt.attempt.batchFailure.code}</code>
+                    </span>
+                  )}
                   {downloadAttempt.summary.warnings > 0 && (
                     <span> {downloadAttempt.summary.warnings} started with a history warning.</span>
                   )}
@@ -919,7 +1064,7 @@ export default function Popup() {
                       Retry {downloadAttempt.retryable.length} failed
                     </button>
                   )}
-                  {downloadAttempt.attempt.retryCount > 0 && downloadAttempt.summary.failed > 0 && (
+                  {canRefetchSource && (
                     <button
                       type="button"
                       className="workspace-secondary"
@@ -927,6 +1072,53 @@ export default function Popup() {
                       disabled={isBusy}
                     >
                       Fetch source again
+                    </button>
+                  )}
+                  {canOpenInstagram && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={() => void browser.tabs.create({ url: fetchedUrl || url })}
+                    >
+                      Open in Instagram
+                    </button>
+                  )}
+                  {canReloadWorkspace && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={() => window.location.reload()}
+                    >
+                      Reload workspace
+                    </button>
+                  )}
+                  {canCopyDiagnostics && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={event => previewDiagnostics(event.currentTarget)}
+                    >
+                      Copy diagnostics
+                    </button>
+                  )}
+                  {canDownloadOriginal && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={() => void downloadAttempt.downloadOriginals()}
+                      disabled={isBusy}
+                    >
+                      Download original
+                    </button>
+                  )}
+                  {canTryReencode && (
+                    <button
+                      type="button"
+                      className="workspace-secondary"
+                      onClick={() => void downloadAttempt.tryReencode()}
+                      disabled={isBusy}
+                    >
+                      Try re-encoding
                     </button>
                   )}
                 </section>
@@ -971,6 +1163,53 @@ export default function Popup() {
       {reencodeChoice && (
         <ReencodeDialog candidates={reencodeChoice.candidates} onChoice={settleReencodeChoice} />
       )}
+      {diagnosticsPreview && (
+        <DiagnosticsDialog
+          json={diagnosticsPreview.json}
+          onClose={() => {
+            const trigger = diagnosticsPreview.trigger;
+            setDiagnosticsPreview(undefined);
+            queueMicrotask(() => trigger.focus());
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DiagnosticsDialog({ json, onClose }: { json: string; onClose: () => void }) {
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => titleRef.current?.focus(), []);
+  return (
+    <div className="quality-dialog-backdrop" onMouseDown={onClose}>
+      <section
+        className="quality-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="diagnostics-dialog-title"
+        onMouseDown={event => event.stopPropagation()}
+      >
+        <h2 id="diagnostics-dialog-title" ref={titleRef} tabIndex={-1}>
+          Diagnostics preview
+        </h2>
+        <p>
+          This can include the Instagram source, temporary media URLs, filenames, operation IDs,
+          technical messages, and stacks. Share it only with someone you trust.
+        </p>
+        <pre className="diagnostics-preview">{json}</pre>
+        <div className="quality-dialog-actions">
+          <button type="button" className="workspace-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void navigator.clipboard.writeText(json).then(onClose)}
+          >
+            Copy diagnostics
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1768,22 +2007,26 @@ function MediaItemRow(props: MediaItemRowProps) {
                 : 'Starting…'}
           </span>
         )}
-        {attemptEntry?.outcome.status === 'accepted' && (
+        {attemptEntry?.outcome.status === 'started' && (
           <span className="download-item-status accepted">
             {attemptEntry.operation.mode === 'frame' ? 'Frame exported' : 'Download started'}
           </span>
         )}
-        {attemptEntry?.outcome.status === 'accepted' && attemptEntry.outcome.warning && (
-          <span className="download-item-status warning">{attemptEntry.outcome.warning}</span>
+        {attemptEntry?.outcome.status === 'started' && attemptEntry.outcome.warning && (
+          <span className="download-item-status warning">
+            {WARNING_PRESENTATION[attemptEntry.outcome.warning.code]}
+          </span>
         )}
         {attemptEntry?.outcome.status === 'failed' && (
           <span className="download-item-status failed" id={`download-result-${item.index}`}>
-            Failed: {attemptEntry.outcome.reason}
+            {FAILURE_PRESENTATION[attemptEntry.outcome.failure.code].title}:{' '}
+            {FAILURE_PRESENTATION[attemptEntry.outcome.failure.code].explanation}{' '}
+            <code>{attemptEntry.outcome.failure.code}</code>
           </span>
         )}
         {attemptEntry?.outcome.status === 'skipped' && (
           <span className="download-item-status skipped">
-            Skipped: {attemptEntry.outcome.reason}
+            Skipped: re-encoding was declined. <code>{attemptEntry.outcome.code}</code>
           </span>
         )}
       </div>

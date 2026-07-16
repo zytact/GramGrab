@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { cacheInput, sweepOutputs } from './opfs.ts';
+import { OperationFailure } from '../errors/contracts.ts';
+import { cleanFailedOutput } from './engine.ts';
+import { cacheInput, createOutput, sweepOutputs } from './opfs.ts';
 
 class MemoryWritable extends WritableStream<BlobPart> {
   constructor(
@@ -95,9 +97,9 @@ describe('silent video OPFS cleanup', () => {
     );
     directory.locked.add(`${requestId}.source`);
 
-    await expect(cacheInput(requestId, 'https://example.com/video.mp4', () => {})).rejects.toBe(
-      streamError
-    );
+    await expect(
+      cacheInput(requestId, 'https://example.com/video.mp4', () => {})
+    ).rejects.toMatchObject({ code: 'SILENT_STORAGE_WRITE_FAILED' });
     expect(directory.files.has(`${requestId}.source`)).toBe(true);
     expect(directory.files.has(`${requestId}.json`)).toBe(true);
 
@@ -107,5 +109,27 @@ describe('silent video OPFS cleanup', () => {
     await expect(sweepOutputs()).resolves.toBeUndefined();
     expect(directory.files.has(`${requestId}.source`)).toBe(false);
     expect(directory.files.has(`${requestId}.json`)).toBe(false);
+  });
+
+  it('removes a failed generated output while retaining cached input for re-encoding', async () => {
+    const operationId = '10000000-0000-4000-8000-000000000001';
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(new Uint8Array([1, 2, 3]))));
+    await cacheInput(operationId, 'https://example.com/video.mp4', () => {});
+    const output = await createOutput(operationId);
+    await output.writable.close();
+    expect(directory.files.has(`${operationId}.mp4`)).toBe(true);
+
+    await cleanFailedOutput(
+      output.name,
+      OperationFailure.make({
+        code: 'SILENT_COPY_FAILED',
+        phase: 'silent-copy',
+        scope: 'item',
+      })
+    );
+
+    expect(directory.files.has(`${operationId}.source`)).toBe(true);
+    expect(directory.files.has(`${operationId}.json`)).toBe(true);
+    expect(directory.files.has(`${operationId}.mp4`)).toBe(false);
   });
 });

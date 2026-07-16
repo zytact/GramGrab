@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vite-plus/test';
+import { OperationFailure, OperationWarning } from '../errors/contracts.ts';
 import {
-  DownloadAcceptedResult,
+  createOperationId,
+  createRequestId,
   DownloadFailedResult,
-  DownloadSkippedResult,
-  requestIdFrom,
+  DownloadNotAttemptedResult,
+  DownloadStartedResult,
 } from './contracts.ts';
 import {
   attemptReducer,
@@ -12,107 +14,149 @@ import {
   type AttemptOperation,
 } from './attempt.ts';
 
-const operations: readonly AttemptOperation[] = [
-  {
-    requestId: requestIdFrom('00000000-0000-4000-8000-000000000010'),
-    itemIndex: 0,
-    url: 'https://cdn.instagram.com/a.jpg',
-    filename: 'fixed-a.jpg',
-    mediaType: 'image',
-    mode: 'direct',
-    displayIndex: 0,
-  },
-  {
-    requestId: requestIdFrom('00000000-0000-4000-8000-000000000011'),
-    itemIndex: 1,
-    url: 'https://cdn.instagram.com/b.mp4',
-    filename: 'fixed-frame.jpg',
-    mediaType: 'video',
-    mode: 'frame',
-    displayIndex: 1,
-    frameTimestampSeconds: 12,
-  },
-];
+const operation = (): AttemptOperation => ({
+  operationId: createOperationId(),
+  requestId: createRequestId(),
+  itemIndex: 0,
+  url: 'https://cdn.instagram.com/a.jpg',
+  filename: 'a.jpg',
+  originalUrl: 'https://cdn.instagram.com/a.jpg',
+  originalFilename: 'a.jpg',
+  mediaType: 'image',
+  mode: 'direct',
+  displayIndex: 0,
+});
 
 describe('download attempt reducer', () => {
-  it('keeps skipped operations terminal and out of retry selection', () => {
-    const fresh = attemptReducer(undefined, { type: 'fresh', operations: [operations[1]!] })!;
+  it('keeps operation identity stable and creates a fresh request identity for retry', () => {
+    const item = operation();
+    const fresh = attemptReducer(undefined, { type: 'fresh', operations: [item] })!;
     const settled = attemptReducer(fresh, {
       type: 'settle',
       results: [
-        DownloadSkippedResult.make({
-          requestId: operations[1]!.requestId,
-          status: 'skipped',
-          reason: 'Re-encoding declined.',
-        }),
-      ],
-    })!;
-    expect(summarizeAttempt(settled).skipped).toBe(1);
-    expect(failedOperations(settled)).toEqual([]);
-    expect(attemptReducer(settled, { type: 'retry' })?.entries[0]?.outcome.status).toBe('skipped');
-  });
-  it('keeps accepted operations immutable across repeated targeted retries', () => {
-    const fresh = attemptReducer(undefined, { type: 'fresh', operations })!;
-    const settled = attemptReducer(fresh, {
-      type: 'settle',
-      results: [
-        DownloadAcceptedResult.make({ requestId: operations[0]!.requestId, status: 'accepted' }),
         DownloadFailedResult.make({
-          requestId: operations[1]!.requestId,
+          operationId: item.operationId,
+          requestId: item.requestId,
           status: 'failed',
-          reason: 'Frame export failed.',
+          failure: OperationFailure.make({
+            code: 'MEDIA_NETWORK_FAILED',
+            phase: 'media-transfer',
+            scope: 'item',
+          }),
         }),
       ],
     })!;
+    expect(failedOperations(settled)).toHaveLength(1);
     const retried = attemptReducer(settled, { type: 'retry' })!;
-    expect(retried.entries.map(entry => entry.outcome.status)).toEqual(['accepted', 'pending']);
-    expect(failedOperations(retried)).toEqual([]);
-    const afterRetry = attemptReducer(retried, {
-      type: 'settle',
-      results: [
-        DownloadAcceptedResult.make({ requestId: operations[1]!.requestId, status: 'accepted' }),
-      ],
-    })!;
-    expect(summarizeAttempt(afterRetry)).toEqual({
-      pending: 0,
-      succeeded: 2,
-      failed: 0,
-      warnings: 0,
-      skipped: 0,
-    });
-    expect(afterRetry.entries[1]!.operation).toMatchObject({
-      requestId: operations[1]!.requestId,
-      filename: 'fixed-frame.jpg',
-      frameTimestampSeconds: 12,
-    });
+    expect(retried.entries[0]?.operation.operationId).toBe(item.operationId);
+    expect(retried.entries[0]?.operation.requestId).not.toBe(item.requestId);
+    expect(retried.entries[0]).toMatchObject({ executionCount: 2, manualRetryCount: 1 });
   });
 
-  it('keeps selection-independent failures and counts accepted warnings as successes', () => {
-    const fresh = attemptReducer(undefined, { type: 'fresh', operations })!;
+  it('tracks retry allowance per operation in a mixed-mode batch', () => {
+    const direct = operation();
+    const frame = { ...operation(), mode: 'frame' as const, displayIndex: 1 };
+    const networkFailure = OperationFailure.make({
+      code: 'MEDIA_NETWORK_FAILED',
+      phase: 'media-transfer',
+      scope: 'item',
+    });
+    const fresh = attemptReducer(undefined, { type: 'fresh', operations: [direct, frame] })!;
+    const settled = attemptReducer(fresh, {
+      type: 'settle',
+      results: [direct, frame].map(item =>
+        DownloadFailedResult.make({
+          operationId: item.operationId,
+          requestId: item.requestId,
+          status: 'failed',
+          failure: networkFailure,
+        })
+      ),
+    })!;
+    const retried = attemptReducer(settled, {
+      type: 'retry',
+      operationIds: new Set([direct.operationId]),
+    })!;
+    const retriedDirect = retried.entries[0]!;
+    const untouchedFrame = retried.entries[1]!;
+    const failedAgain = attemptReducer(retried, {
+      type: 'settle',
+      results: [
+        DownloadFailedResult.make({
+          operationId: retriedDirect.operation.operationId,
+          requestId: retriedDirect.operation.requestId,
+          status: 'failed',
+          failure: networkFailure,
+        }),
+      ],
+    })!;
+    expect(untouchedFrame).toMatchObject({ executionCount: 1, manualRetryCount: 0 });
+    expect(failedOperations(failedAgain).map(item => item.operationId)).toEqual([
+      frame.operationId,
+    ]);
+  });
+
+  it('lets a batch storage prerequisite failure fall back not-attempted items to originals', () => {
+    const silent = {
+      ...operation(),
+      mode: 'silent' as const,
+      filename: 'a_silent.mp4',
+      originalFilename: 'a.mp4',
+      mediaType: 'video' as const,
+    };
+    const batchFailure = OperationFailure.make({
+      code: 'SILENT_STORAGE_UNAVAILABLE',
+      phase: 'silent-storage',
+      scope: 'batch',
+    });
+    const fresh = attemptReducer(undefined, { type: 'fresh', operations: [silent] })!;
+    const blocked = attemptReducer(fresh, {
+      type: 'settle',
+      batchFailure,
+      results: [
+        DownloadNotAttemptedResult.make({
+          operationId: silent.operationId,
+          requestId: silent.requestId,
+          status: 'not-attempted',
+        }),
+      ],
+    })!;
+    expect(blocked.batchFailure).toBe(batchFailure);
+    expect(summarizeAttempt(blocked).notAttempted).toBe(1);
+    const fallback = attemptReducer(blocked, {
+      type: 'fallback-original',
+      operationIds: new Set([silent.operationId]),
+    })!;
+    expect(fallback.entries[0]).toMatchObject({
+      operation: { operationId: silent.operationId, filename: 'a.mp4', mode: 'direct' },
+      outcome: { status: 'pending' },
+      executionCount: 2,
+      manualRetryCount: 0,
+    });
+    expect(fallback.entries[0]?.operation.requestId).not.toBe(silent.requestId);
+  });
+
+  it('counts started warnings without treating browser acceptance as completion', () => {
+    const item = operation();
+    const fresh = attemptReducer(undefined, { type: 'fresh', operations: [item] })!;
     const settled = attemptReducer(fresh, {
       type: 'settle',
       results: [
-        DownloadAcceptedResult.make({
-          requestId: operations[0]!.requestId,
-          status: 'accepted',
-          warning: 'Download started, but history could not be saved.',
-        }),
-        DownloadFailedResult.make({
-          requestId: operations[1]!.requestId,
-          status: 'failed',
-          reason: 'Frame export failed.',
+        DownloadStartedResult.make({
+          operationId: item.operationId,
+          requestId: item.requestId,
+          status: 'started',
+          warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }),
         }),
       ],
     })!;
     expect(summarizeAttempt(settled)).toEqual({
       pending: 0,
-      succeeded: 1,
-      failed: 1,
+      started: 1,
+      failed: 0,
       warnings: 1,
       skipped: 0,
+      notAttempted: 0,
     });
-    expect(failedOperations(settled).map(operation => operation.requestId)).toEqual([
-      operations[1]!.requestId,
-    ]);
   });
 });

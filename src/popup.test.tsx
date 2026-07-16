@@ -18,6 +18,7 @@ const mockBrowser = {
   runtime: {
     sendMessage: vi.fn(),
     getURL: vi.fn().mockReturnValue('chrome-extension://test/popup.html'),
+    getManifest: vi.fn().mockReturnValue({ version: '1.2.3' }),
   },
   windows: { update: vi.fn().mockResolvedValue(undefined) },
   storage: {
@@ -32,6 +33,7 @@ globalThis.browser = mockBrowser as typeof globalThis.browser;
 describe('Popup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, '', '/popup.html');
   });
 
   it('renders main elements', async () => {
@@ -176,7 +178,11 @@ describe('Popup', () => {
     const user = userEvent.setup();
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       media: undefined,
-      error: 'Could not resolve username',
+      failure: {
+        code: 'SOURCE_USERNAME_UNRESOLVED',
+        phase: 'source',
+        scope: 'batch',
+      },
     });
 
     await act(async () => {
@@ -191,8 +197,49 @@ describe('Popup', () => {
     await user.click(fetchButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Could not resolve username')).toBeDefined();
+      expect(screen.getAllByText(/Source unavailable/)).not.toHaveLength(0);
     });
+    await user.click(screen.getByRole('button', { name: 'Open in Instagram' }));
+    expect(mockBrowser.tabs.create).toHaveBeenCalledWith({
+      url: 'https://www.instagram.com/p/abc123/',
+    });
+  });
+
+  it('retains typed source failures for refetch and diagnostics actions', async () => {
+    const user = userEvent.setup();
+    let fetches = 0;
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: { type: string }) => {
+        if (message.type !== 'FETCH_MEDIA') return {};
+        fetches++;
+        return fetches === 1
+          ? {
+              media: undefined,
+              failure: {
+                code: 'SOURCE_NETWORK_FAILED',
+                phase: 'source',
+                scope: 'batch',
+              },
+            }
+          : {
+              media: undefined,
+              failure: {
+                code: 'IG_RESPONSE_SHAPE_UNKNOWN',
+                phase: 'source',
+                scope: 'batch',
+                cause: { message: 'schema detail' },
+              },
+            };
+      }
+    );
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByText('Fetch Media'));
+    await user.click(screen.getByRole('button', { name: 'Fetch source again' }));
+    expect(fetches).toBe(2);
+    const diagnostics = await screen.findByRole('button', { name: 'Copy diagnostics' });
+    await user.click(diagnostics);
+    expect(screen.getByRole('dialog', { name: 'Diagnostics preview' })).toBeDefined();
+    expect(screen.getByText(/schema detail/)).toBeDefined();
   });
 
   it('shows downloading state', async () => {
@@ -339,9 +386,12 @@ describe('Popup', () => {
   it('retries only the failed operation with its captured request and filename', async () => {
     const user = userEvent.setup();
     let downloadCalls = 0;
-    const submissions: { requestId: string; filename: string }[][] = [];
+    const submissions: { operationId: string; requestId: string; filename: string }[][] = [];
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
-      async (message: { type: string; operations?: { requestId: string; filename: string }[] }) => {
+      async (message: {
+        type: string;
+        operations?: { operationId: string; requestId: string; filename: string }[];
+      }) => {
         if (message.type === 'FETCH_MEDIA')
           return {
             media: [
@@ -356,8 +406,21 @@ describe('Popup', () => {
         return {
           results: operations.map((operation, index) =>
             downloadCalls === 1 && index === 1
-              ? { requestId: operation.requestId, status: 'failed', reason: 'Try again.' }
-              : { requestId: operation.requestId, status: 'accepted' }
+              ? {
+                  operationId: operation.operationId,
+                  requestId: operation.requestId,
+                  status: 'failed',
+                  failure: {
+                    code: 'MEDIA_NETWORK_FAILED',
+                    phase: 'media-transfer',
+                    scope: 'item',
+                  },
+                }
+              : {
+                  operationId: operation.operationId,
+                  requestId: operation.requestId,
+                  status: 'started',
+                }
           ),
         };
       }
@@ -370,12 +433,14 @@ describe('Popup', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Retry 1 failed' })).toBeDefined()
     );
-    expect(screen.getByText('Failed: Try again.')).toBeDefined();
+    expect(screen.getByText('MEDIA_NETWORK_FAILED')).toBeDefined();
     const firstSubmission = submissions[0]!;
     await user.click(screen.getByRole('button', { name: 'Retry 1 failed' }));
-    await waitFor(() => expect(screen.getByText(/2 succeeded, 0 failed/)).toBeDefined());
+    await waitFor(() => expect(screen.getByText(/2 started, 0 failed/)).toBeDefined());
     expect(submissions).toHaveLength(2);
-    expect(submissions[1]).toEqual([firstSubmission[1]]);
+    expect(submissions[1]?.[0]?.operationId).toBe(firstSubmission[1]?.operationId);
+    expect(submissions[1]?.[0]?.requestId).not.toBe(firstSubmission[1]?.requestId);
+    expect(submissions[1]?.[0]?.filename).toBe(firstSubmission[1]?.filename);
   });
 
   it('offers the same failed-item retry in the workspace surface', async () => {
@@ -387,7 +452,10 @@ describe('Popup', () => {
     const user = userEvent.setup();
     let attempts = 0;
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
-      async (message: { type: string; operations?: { requestId: string }[] }) => {
+      async (message: {
+        type: string;
+        operations?: { operationId: string; requestId: string }[];
+      }) => {
         if (message.type === 'FETCH_MEDIA')
           return {
             media: [{ url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'first' }],
@@ -399,8 +467,21 @@ describe('Popup', () => {
           return {
             results: [
               attempts === 1
-                ? { requestId: operation.requestId, status: 'failed', reason: 'Try again.' }
-                : { requestId: operation.requestId, status: 'accepted' },
+                ? {
+                    operationId: operation.operationId,
+                    requestId: operation.requestId,
+                    status: 'failed',
+                    failure: {
+                      code: 'MEDIA_NETWORK_FAILED',
+                      phase: 'media-transfer',
+                      scope: 'item',
+                    },
+                  }
+                : {
+                    operationId: operation.operationId,
+                    requestId: operation.requestId,
+                    status: 'started',
+                  },
             ],
           };
         }
@@ -416,8 +497,114 @@ describe('Popup', () => {
       expect(screen.getByRole('button', { name: 'Retry 1 failed' })).toBeDefined()
     );
     await user.click(screen.getByRole('button', { name: 'Retry 1 failed' }));
-    await waitFor(() => expect(screen.getByText(/1 succeeded, 0 failed/)).toBeDefined());
+    await waitFor(() => expect(screen.getByText(/1 started, 0 failed/)).toBeDefined());
     window.history.replaceState({}, '', '/popup.html');
+  });
+
+  it('renders a batch storage prerequisite failure and downloads not-attempted originals', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/popup.html?surface=workspace&source=https%3A%2F%2Fwww.instagram.com%2Fp%2Fabc123%2F'
+    );
+    class IdleWorker {
+      addEventListener(): void {}
+      terminate(): void {}
+    }
+    vi.stubGlobal('Worker', IdleWorker);
+    Object.defineProperty(navigator, 'storage', { value: undefined, configurable: true });
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: {
+        type: string;
+        operations?: { operationId: string; requestId: string }[];
+      }) => {
+        if (message.type === 'FETCH_MEDIA')
+          return {
+            media: [
+              { url: 'https://instagram.com/video.mp4', type: 'video', filenameHint: 'clip' },
+            ],
+          };
+        if (message.type === 'DOWNLOAD_MEDIA') {
+          const operation = message.operations?.[0];
+          return operation
+            ? {
+                results: [
+                  {
+                    operationId: operation.operationId,
+                    requestId: operation.requestId,
+                    status: 'started',
+                  },
+                ],
+              }
+            : { results: [] };
+        }
+        return {};
+      }
+    );
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByText('Fetch Media'));
+    await user.click(screen.getByLabelText('Remove audio'));
+    await user.click(screen.getByRole('button', { name: 'Download selected' }));
+    await waitFor(() => {
+      expect(screen.getByText('SILENT_STORAGE_UNAVAILABLE')).toBeDefined();
+      expect(screen.getAllByText(/1 not attempted/)).toHaveLength(2);
+      expect(screen.getByRole('button', { name: 'Download original' })).toBeDefined();
+    });
+    await user.click(screen.getByRole('button', { name: 'Download original' }));
+    await waitFor(() => expect(screen.getByText(/1 started, 0 failed/)).toBeDefined());
+    window.history.replaceState({}, '', '/popup.html');
+  });
+
+  it('previews diagnostics before copying and restores focus to the trigger', async () => {
+    const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: {
+        type: string;
+        operations?: { operationId: string; requestId: string }[];
+      }) => {
+        if (message.type === 'FETCH_MEDIA')
+          return {
+            media: [{ url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'a' }],
+          };
+        const operation = message.operations?.[0];
+        return operation
+          ? {
+              results: [
+                {
+                  operationId: operation.operationId,
+                  requestId: operation.requestId,
+                  status: 'failed',
+                  failure: {
+                    code: 'DOWNLOAD_UNEXPECTED_FAILURE',
+                    phase: 'browser-download',
+                    scope: 'item',
+                    cause: { message: 'technical detail' },
+                  },
+                },
+              ],
+            }
+          : {};
+      }
+    );
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { value: clipboard, configurable: true });
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByText('Fetch Media'));
+    await user.click(screen.getByText('Download 1 Selected'));
+    const trigger = await screen.findByRole('button', { name: 'Copy diagnostics' });
+    await user.click(trigger);
+    expect(screen.getByRole('dialog', { name: 'Diagnostics preview' })).toBeDefined();
+    expect(screen.getByText(/technical detail/)).toBeDefined();
+    expect(clipboard.writeText).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    await user.click(trigger);
+    const copyButtons = screen.getAllByRole('button', { name: 'Copy diagnostics' });
+    const copyButton = copyButtons.at(-1);
+    if (!copyButton) throw new Error('Expected the diagnostics copy button.');
+    await user.click(copyButton);
+    await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(expect.any(String)));
   });
 
   it('toggles video selection when its preview is clicked without toggling Frame', async () => {

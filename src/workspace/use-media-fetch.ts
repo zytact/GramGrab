@@ -2,6 +2,9 @@ import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 import { browser } from '../lib/browser';
 import type { WorkspaceMediaItem } from './contracts';
 import type { FrameExportSetting } from '../frame-export/timestamp';
+import type { OperationFailure } from '../errors/contracts';
+import { OperationFailure as OperationFailureModel } from '../errors/contracts';
+import { FAILURE_PRESENTATION } from '../errors/presentation';
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
@@ -18,6 +21,7 @@ interface MediaResponse {
     height?: number;
   }[];
   error?: string;
+  failure?: OperationFailure;
 }
 
 interface UseMediaFetchOptions {
@@ -28,6 +32,7 @@ interface UseMediaFetchOptions {
   setStatus: Dispatch<SetStateAction<Status>>;
   setMessage: Dispatch<SetStateAction<string>>;
   onSuccess?: () => void;
+  onFailure?: (failure: OperationFailure) => void;
 }
 
 function applyFetchSuccess(
@@ -65,17 +70,38 @@ export function useMediaFetch(options: UseMediaFetchOptions) {
         url: trimmedUrl,
       })) as MediaResponse;
       if (generation !== requestGeneration.current) return;
+      if (response?.failure) {
+        options.onFailure?.(response.failure);
+        const presentation = FAILURE_PRESENTATION[response.failure.code];
+        options.setMessage(`${presentation.title}. ${presentation.explanation}`);
+        options.setStatus('error');
+        return;
+      }
       if (response?.error) {
-        options.setMessage(response.error);
+        options.onFailure?.(
+          OperationFailureModel.make({
+            code: 'SOURCE_UNEXPECTED_FAILURE',
+            phase: 'source',
+            scope: 'batch',
+          })
+        );
+        options.setMessage('GramGrab could not load this source.');
         options.setStatus('error');
         return;
       }
       options.setFetchedUrl(trimmedUrl);
       applyFetchSuccess(response?.media ?? [], options);
       options.onSuccess?.();
-    } catch (err) {
+    } catch {
       if (generation !== requestGeneration.current) return;
-      options.setMessage(String(err));
+      options.setMessage('GramGrab could not contact the extension service.');
+      options.onFailure?.(
+        OperationFailureModel.make({
+          code: 'SOURCE_UNEXPECTED_FAILURE',
+          phase: 'source',
+          scope: 'batch',
+        })
+      );
       options.setStatus('error');
     }
   }, [options]);

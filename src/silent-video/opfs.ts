@@ -1,11 +1,12 @@
 import type { StreamTargetChunk } from 'mediabunny';
+import { OperationFailure, diagnosticCause } from '../errors/contracts.ts';
 
 const DIRECTORY = 'gramgrab-silent-v1';
 const WORKER_STALE_MS = 24 * 60 * 60 * 1000;
 const DOWNLOAD_STALE_MS = 7 * WORKER_STALE_MS;
 
 interface OwnershipLedger {
-  requestId: string;
+  operationId: string;
   inputName?: string;
   outputName?: string;
   owner: 'worker' | 'download';
@@ -14,9 +15,27 @@ interface OwnershipLedger {
 }
 
 async function directory(): Promise<FileSystemDirectoryHandle> {
-  if (!navigator.storage?.getDirectory) throw new Error('Private browser storage is unavailable.');
-  const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(DIRECTORY, { create: true });
+  if (!navigator.storage?.getDirectory)
+    throw storageFailure('SILENT_STORAGE_UNAVAILABLE', 'silent-storage');
+  try {
+    const root = await navigator.storage.getDirectory();
+    return await root.getDirectoryHandle(DIRECTORY, { create: true });
+  } catch (cause) {
+    throw storageFailure('SILENT_STORAGE_UNAVAILABLE', 'silent-storage', cause);
+  }
+}
+
+function storageFailure(
+  code: OperationFailure['code'],
+  phase: OperationFailure['phase'],
+  cause?: unknown
+): OperationFailure {
+  return OperationFailure.make({
+    code,
+    phase,
+    scope: 'item',
+    ...(cause === undefined ? {} : { cause: diagnosticCause(cause) }),
+  });
 }
 
 export function outputName(requestId: string): string {
@@ -34,7 +53,7 @@ function ledgerName(requestId: string): string {
 async function writeLedger(ledger: OwnershipLedger): Promise<void> {
   const handle = await (
     await directory()
-  ).getFileHandle(ledgerName(ledger.requestId), {
+  ).getFileHandle(ledgerName(ledger.operationId), {
     create: true,
   });
   const writable = await handle.createWritable();
@@ -53,18 +72,26 @@ async function readLedger(requestId: string): Promise<OwnershipLedger | undefine
 }
 
 export async function cacheInput(
-  requestId: string,
+  operationId: string,
   url: string,
   onProgress: (progress: number) => void
 ): Promise<File> {
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`Network request failed with status ${response.status}.`);
-  if (!response.body) throw new Error('The network response did not contain video data.');
+  if (!response.ok) {
+    const code =
+      response.status === 401 || response.status === 403
+        ? 'MEDIA_URL_EXPIRED'
+        : response.status === 404
+          ? 'MEDIA_NOT_FOUND'
+          : 'MEDIA_NETWORK_FAILED';
+    throw storageFailure(code, 'media-transfer');
+  }
+  if (!response.body) throw storageFailure('MEDIA_RESPONSE_EMPTY', 'media-transfer');
 
   const parent = await directory();
-  const name = inputName(requestId);
+  const name = inputName(operationId);
   const handle = await parent.getFileHandle(name, { create: true });
-  await writeLedger({ requestId, inputName: name, owner: 'worker', updatedAt: Date.now() });
+  await writeLedger({ operationId, inputName: name, owner: 'worker', updatedAt: Date.now() });
   const writable = await handle.createWritable();
   const contentLength = Number(response.headers.get('Content-Length')) || 0;
   let received = 0;
@@ -80,21 +107,29 @@ export async function cacheInput(
     onProgress(1);
     return handle.getFile();
   } catch (error) {
-    await removeOutput(outputName(requestId)).catch(() => undefined);
-    throw error;
+    await removeOutput(outputName(operationId)).catch(() => undefined);
+    if (error instanceof DOMException && error.name === 'QuotaExceededError')
+      throw storageFailure('SILENT_STORAGE_CAPACITY_EXCEEDED', 'silent-storage', error);
+    if (error instanceof OperationFailure) throw error;
+    throw storageFailure('SILENT_STORAGE_WRITE_FAILED', 'silent-storage', error);
   }
 }
 
-export async function readInput(requestId: string): Promise<File> {
-  return (await (await directory()).getFileHandle(inputName(requestId))).getFile();
+export async function readInput(operationId: string): Promise<File> {
+  try {
+    return await (await (await directory()).getFileHandle(inputName(operationId))).getFile();
+  } catch (cause) {
+    if (cause instanceof OperationFailure) throw cause;
+    throw storageFailure('SILENT_STORAGE_READ_FAILED', 'silent-storage', cause);
+  }
 }
 
-export async function createOutput(requestId: string) {
+export async function createOutput(operationId: string) {
   const parent = await directory();
-  const name = outputName(requestId);
-  const existing = await readLedger(requestId);
+  const name = outputName(operationId);
+  const existing = await readLedger(operationId);
   await writeLedger({
-    requestId,
+    operationId,
     ...(existing?.inputName ? { inputName: existing.inputName } : {}),
     outputName: name,
     owner: 'worker',
@@ -106,14 +141,14 @@ export async function createOutput(requestId: string) {
 }
 
 export async function transferOutputToDownload(
-  requestId: string,
+  operationId: string,
   downloadId: number
 ): Promise<void> {
-  const existing = await readLedger(requestId);
+  const existing = await readLedger(operationId);
   await writeLedger({
-    requestId,
+    operationId,
     ...(existing?.inputName ? { inputName: existing.inputName } : {}),
-    outputName: outputName(requestId),
+    outputName: outputName(operationId),
     owner: 'download',
     downloadId,
     updatedAt: Date.now(),
@@ -136,8 +171,8 @@ async function removeEntry(parent: FileSystemDirectoryHandle, name: string): Pro
 }
 
 export async function removeOutput(name: string): Promise<void> {
-  const requestId = name.replace(/\.mp4$/, '');
-  const ledger = await readLedger(requestId);
+  const operationId = name.replace(/\.mp4$/, '');
+  const ledger = await readLedger(operationId);
   const artifacts = [ledger?.inputName, ledger?.outputName, name].filter(
     (artifact, index, all): artifact is string =>
       Boolean(artifact) && all.indexOf(artifact) === index
@@ -148,7 +183,24 @@ export async function removeOutput(name: string): Promise<void> {
     if (!(await removeEntry(parent, artifact))) locked = true;
   }
   if (locked) return;
-  await removeEntry(parent, ledgerName(requestId));
+  await removeEntry(parent, ledgerName(operationId));
+}
+
+export async function removeGeneratedOutput(name: string): Promise<void> {
+  const operationId = name.replace(/\.mp4$/, '');
+  const ledger = await readLedger(operationId);
+  const parent = await directory();
+  if (!(await removeEntry(parent, ledger?.outputName ?? name))) return;
+  if (ledger?.inputName) {
+    await writeLedger({
+      operationId,
+      inputName: ledger.inputName,
+      owner: 'worker',
+      updatedAt: Date.now(),
+    });
+    return;
+  }
+  await removeEntry(parent, ledgerName(operationId));
 }
 
 export async function sweepOutputs(): Promise<void> {
@@ -167,7 +219,7 @@ export async function sweepOutputs(): Promise<void> {
         const ledger = JSON.parse(await file.text()) as OwnershipLedger;
         const staleAfter = ledger.owner === 'worker' ? WORKER_STALE_MS : DOWNLOAD_STALE_MS;
         if (Date.now() - ledger.updatedAt <= staleAfter) return;
-        await removeOutput(ledger.outputName ?? outputName(ledger.requestId));
+        await removeOutput(ledger.outputName ?? outputName(ledger.operationId));
       } catch {
         await parent.removeEntry(name);
       }

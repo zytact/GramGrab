@@ -231,10 +231,13 @@ describe('background dispatcher', () => {
       const result = (await invoke(listener, {
         type: 'DOWNLOAD_MEDIA',
         operations: Array.from({ length: 10 }, (_, i) => ({
+          operationId: `10000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
           requestId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
           itemIndex: i,
           url: `https://cdn.instagram.com/${i}.jpg`,
           filename: `hint_${i}.jpg`,
+          originalUrl: `https://cdn.instagram.com/${i}.jpg`,
+          originalFilename: `hint_${i}.jpg`,
           mediaType: 'image',
         })),
       })) as { results: { requestId: string; status: string }[] };
@@ -253,22 +256,31 @@ describe('background dispatcher', () => {
         type: 'DOWNLOAD_MEDIA',
         operations: [
           {
+            operationId: '10000000-0000-4000-8000-000000000001',
             requestId: '00000000-0000-4000-8000-000000000001',
             itemIndex: 0,
             url: 'https://cdn.instagram.com/secret.jpg',
             filename: 'secret.jpg',
+            originalUrl: 'https://cdn.instagram.com/secret.jpg',
+            originalFilename: 'secret.jpg',
             mediaType: 'image',
           },
         ],
-      })) as { results: { requestId: string; status: string; reason?: string }[] };
+      })) as {
+        results: {
+          requestId: string;
+          status: string;
+          failure?: { code: string; cause?: unknown };
+        }[];
+      };
       expect(result.results).toEqual([
         expect.objectContaining({
           requestId: '00000000-0000-4000-8000-000000000001',
           status: 'failed',
-          reason: 'The browser could not start this download.',
+          failure: expect.objectContaining({ code: 'DOWNLOAD_UNEXPECTED_FAILURE' }),
         }),
       ]);
-      expect(JSON.stringify(result)).not.toContain('secret');
+      expect(JSON.stringify(result.results[0]?.failure)).toContain('signed url token=secret');
     });
 
     it('rejects legacy and malformed payloads as a batch error', async () => {
@@ -279,7 +291,7 @@ describe('background dispatcher', () => {
       });
       expect(result).toMatchObject({
         results: [],
-        error: 'The download request was invalid and could not be processed.',
+        failure: expect.objectContaining({ code: 'DOWNLOAD_UNEXPECTED_FAILURE' }),
       });
     });
   });
@@ -440,10 +452,10 @@ describe('background dispatcher', () => {
       const result = (await invoke(listener, {
         type: 'FETCH_MEDIA',
         url: 'https://www.instagram.com/p/forbidden1/',
-      })) as { media: undefined; error: string };
+      })) as { media: undefined; failure: { code: string } };
 
       expect(result.media).toBeUndefined();
-      expect(result.error).toBe('GraphQL failed: 403');
+      expect(result.failure.code).toBe('IG_ACCESS_FORBIDDEN');
       expect(globalThis.fetch).toHaveBeenCalledTimes(configuredShortcodeRequests.length);
     });
 
@@ -459,10 +471,10 @@ describe('background dispatcher', () => {
       const result = (await invoke(listener, {
         type: 'FETCH_MEDIA',
         url: 'https://www.instagram.com/p/broken1/',
-      })) as { media: undefined; error: string };
+      })) as { media: undefined; failure: { code: string } };
 
       expect(result.media).toBeUndefined();
-      expect(result.error).toContain('Instagram changed their response format');
+      expect(result.failure.code).toBe('IG_RESPONSE_SHAPE_UNKNOWN');
       expect(globalThis.fetch).toHaveBeenCalledTimes(configuredShortcodeRequests.length);
     });
 
@@ -484,10 +496,10 @@ describe('background dispatcher', () => {
       const result = (await invoke(listener, {
         type: 'FETCH_MEDIA',
         url: 'https://www.instagram.com/p/emptyimage1/',
-      })) as { media: undefined; error: string };
+      })) as { media: undefined; failure: { code: string } };
 
       expect(result.media).toBeUndefined();
-      expect(result.error).toContain('Instagram changed their response format');
+      expect(result.failure.code).toBe('IG_RESPONSE_SHAPE_UNKNOWN');
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
   });
@@ -706,7 +718,7 @@ describe('background dispatcher', () => {
         type: 'FETCH_MEDIA',
         url: 'https://www.instagram.com/someuser/',
       });
-      expect(result).toMatchObject({ error: expect.stringContaining('Profile request failed') });
+      expect(result).toMatchObject({ failure: { code: 'IG_REQUEST_REJECTED' } });
     });
   });
 

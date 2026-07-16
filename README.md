@@ -2,6 +2,8 @@
 
 **GramGrab** is a browser extension (Chrome & Firefox, Manifest V3) that lets you download media from Instagram directly from your browser — posts, carousels, reels, stories, highlights, and profile pictures — with a clean, minimal UI and no third-party services.
 
+Operation failures use stable symbolic codes and action-led recovery. See [the error model](docs/error-model.md) for the canonical registry and diagnostics policy.
+
 ---
 
 ## Features

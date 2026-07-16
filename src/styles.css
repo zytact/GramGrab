@@ -1032,6 +1032,14 @@ body::before {
   gap: 8px;
 }
 
+.diagnostics-preview {
+  max-height: min(50vh, 28rem);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 /* ─── Responsive workspace tab ─── */
 body:has(.workspace-container) {
   width: auto;

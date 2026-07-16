@@ -1,4 +1,10 @@
-import type { DownloadOperation, DownloadOperationResult } from './contracts.ts';
+import {
+  createRequestId,
+  type DownloadOperation,
+  type DownloadOperationResult,
+} from './contracts.ts';
+import type { OperationFailure, OperationWarning, SkipCode } from '../errors/contracts.ts';
+import { FAILURE_PRESENTATION, retryable } from '../errors/presentation.ts';
 
 export interface AttemptOperation extends DownloadOperation {
   readonly mode: 'direct' | 'frame' | 'silent';
@@ -8,24 +14,31 @@ export interface AttemptOperation extends DownloadOperation {
 
 export type AttemptOutcome =
   | { readonly status: 'pending'; readonly phase?: string; readonly progress?: number }
-  | { readonly status: 'accepted'; readonly warning?: string }
-  | { readonly status: 'failed'; readonly reason: string }
-  | { readonly status: 'skipped'; readonly reason: string };
+  | { readonly status: 'started'; readonly warning?: OperationWarning }
+  | { readonly status: 'failed'; readonly failure: OperationFailure }
+  | { readonly status: 'skipped'; readonly code: SkipCode }
+  | { readonly status: 'not-attempted' };
 
 export interface AttemptEntry {
   readonly operation: AttemptOperation;
   readonly outcome: AttemptOutcome;
+  readonly executionCount: number;
+  readonly manualRetryCount: number;
 }
-
 export interface DownloadAttempt {
   readonly entries: readonly AttemptEntry[];
-  readonly retryCount: number;
+  readonly batchFailure?: OperationFailure;
 }
 
 export type AttemptAction =
   | { readonly type: 'fresh'; readonly operations: readonly AttemptOperation[] }
-  | { readonly type: 'retry' }
-  | { readonly type: 'settle'; readonly results: readonly DownloadOperationResult[] }
+  | { readonly type: 'retry'; readonly operationIds?: ReadonlySet<string> }
+  | { readonly type: 'fallback-original'; readonly operationIds: ReadonlySet<string> }
+  | {
+      readonly type: 'settle';
+      readonly results: readonly DownloadOperationResult[];
+      readonly batchFailure?: OperationFailure;
+    }
   | {
       readonly type: 'progress';
       readonly requestId: string;
@@ -44,39 +57,75 @@ export function attemptReducer(
         entries: action.operations.map(operation => ({
           operation,
           outcome: { status: 'pending' },
+          executionCount: 1,
+          manualRetryCount: 0,
         })),
-        retryCount: 0,
       };
     case 'retry':
       if (!state) return state;
       return {
         ...state,
-        retryCount: state.retryCount + 1,
-        entries: state.entries.map(entry =>
-          entry.outcome.status === 'failed' ? { ...entry, outcome: { status: 'pending' } } : entry
-        ),
+        batchFailure: undefined,
+        entries: state.entries.map(entry => {
+          const selected =
+            !action.operationIds || action.operationIds.has(entry.operation.operationId);
+          if (entry.outcome.status !== 'failed' || !selected) return entry;
+          return {
+            ...entry,
+            operation: { ...entry.operation, requestId: createRequestId() },
+            outcome: { status: 'pending' },
+            executionCount: entry.executionCount + 1,
+            manualRetryCount: entry.manualRetryCount + 1,
+          };
+        }),
       };
-    case 'settle': {
+    case 'fallback-original':
       if (!state) return state;
-      const byRequestId = new Map(action.results.map(result => [result.requestId, result]));
       return {
         ...state,
         entries: state.entries.map(entry => {
-          const result = byRequestId.get(entry.operation.requestId);
-          if (!result || entry.outcome.status !== 'pending') return entry;
-          const outcome =
-            result.status === 'accepted'
-              ? {
-                  status: 'accepted' as const,
-                  ...(result.warning ? { warning: result.warning } : {}),
-                }
-              : result.status === 'skipped'
-                ? { status: 'skipped' as const, reason: result.reason }
-                : { status: 'failed' as const, reason: result.reason };
+          if (
+            !['failed', 'not-attempted'].includes(entry.outcome.status) ||
+            !action.operationIds.has(entry.operation.operationId)
+          )
+            return entry;
           return {
             ...entry,
-            outcome,
+            operation: {
+              ...entry.operation,
+              requestId: createRequestId(),
+              url: entry.operation.originalUrl,
+              filename: entry.operation.originalFilename,
+              mode: 'direct',
+            },
+            outcome: { status: 'pending' },
+            executionCount: entry.executionCount + 1,
           };
+        }),
+      };
+    case 'settle': {
+      if (!state) return state;
+      const byOperationId = new Map(action.results.map(result => [result.operationId, result]));
+      return {
+        ...state,
+        ...(action.batchFailure ? { batchFailure: action.batchFailure } : {}),
+        entries: state.entries.map(entry => {
+          const result = byOperationId.get(entry.operation.operationId);
+          if (
+            !result ||
+            result.requestId !== entry.operation.requestId ||
+            entry.outcome.status !== 'pending'
+          )
+            return entry;
+          const outcome: AttemptOutcome =
+            result.status === 'started'
+              ? { status: 'started', ...(result.warning ? { warning: result.warning } : {}) }
+              : result.status === 'failed'
+                ? { status: 'failed', failure: result.failure }
+                : result.status === 'skipped'
+                  ? { status: 'skipped', code: result.code }
+                  : { status: 'not-attempted' };
+          return { ...entry, outcome };
         }),
       };
     }
@@ -88,11 +137,7 @@ export function attemptReducer(
           entry.operation.requestId === action.requestId && entry.outcome.status === 'pending'
             ? {
                 ...entry,
-                outcome: {
-                  status: 'pending',
-                  phase: action.phase,
-                  progress: action.progress,
-                },
+                outcome: { status: 'pending', phase: action.phase, progress: action.progress },
               }
             : entry
         ),
@@ -102,45 +147,43 @@ export function attemptReducer(
   }
 }
 
-export function pendingOperations(
+export const pendingOperations = (
   attempt: DownloadAttempt | undefined
-): readonly AttemptOperation[] {
-  return (
-    attempt?.entries.flatMap(entry =>
-      entry.outcome.status === 'pending' ? [entry.operation] : []
-    ) ?? []
-  );
-}
-
-export function failedOperations(
+): readonly AttemptOperation[] =>
+  attempt?.entries.flatMap(entry =>
+    entry.outcome.status === 'pending' ? [entry.operation] : []
+  ) ?? [];
+export const failedOperations = (
   attempt: DownloadAttempt | undefined
-): readonly AttemptOperation[] {
-  return (
-    attempt?.entries.flatMap(entry =>
-      entry.outcome.status === 'failed' ? [entry.operation] : []
-    ) ?? []
-  );
-}
+): readonly AttemptOperation[] =>
+  attempt?.entries.flatMap(entry =>
+    entry.outcome.status === 'failed' &&
+    FAILURE_PRESENTATION[entry.outcome.failure.code].actions.includes('retry-operation') &&
+    retryable(entry.outcome.failure.code, entry.manualRetryCount)
+      ? [entry.operation]
+      : []
+  ) ?? [];
 
 export interface AttemptSummary {
   readonly pending: number;
-  readonly succeeded: number;
+  readonly started: number;
   readonly failed: number;
   readonly warnings: number;
   readonly skipped: number;
+  readonly notAttempted: number;
 }
-
 export function summarizeAttempt(attempt: DownloadAttempt | undefined): AttemptSummary {
   return (attempt?.entries ?? []).reduce<AttemptSummary>(
     (summary, entry) => ({
       pending: summary.pending + Number(entry.outcome.status === 'pending'),
-      succeeded: summary.succeeded + Number(entry.outcome.status === 'accepted'),
+      started: summary.started + Number(entry.outcome.status === 'started'),
       failed: summary.failed + Number(entry.outcome.status === 'failed'),
       skipped: summary.skipped + Number(entry.outcome.status === 'skipped'),
+      notAttempted: summary.notAttempted + Number(entry.outcome.status === 'not-attempted'),
       warnings:
         summary.warnings +
-        Number(entry.outcome.status === 'accepted' && Boolean(entry.outcome.warning)),
+        Number(entry.outcome.status === 'started' && Boolean(entry.outcome.warning)),
     }),
-    { pending: 0, succeeded: 0, failed: 0, warnings: 0, skipped: 0 }
+    { pending: 0, started: 0, failed: 0, warnings: 0, skipped: 0, notAttempted: 0 }
   );
 }

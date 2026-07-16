@@ -1,97 +1,74 @@
 import { describe, expect, it } from 'vite-plus/test';
+import { OperationFailure } from '../errors/contracts.ts';
 import {
-  DownloadAcceptedResult,
   DownloadFailedResult,
   DownloadMediaResponse,
   DownloadOperation,
+  DownloadStartedResult,
+  createOperationId,
   createRequestId,
   decodeDownloadMediaRequest,
-  requestIdFrom,
   validateCorrelatedResults,
 } from './contracts.ts';
 
-const first = DownloadOperation.make({
-  requestId: requestIdFrom('00000000-0000-4000-8000-000000000001'),
-  itemIndex: 0,
-  url: 'https://cdn.instagram.com/duplicate.jpg',
-  filename: 'first.jpg',
-  mediaType: 'image',
-});
-const second = DownloadOperation.make({
-  requestId: requestIdFrom('00000000-0000-4000-8000-000000000002'),
-  itemIndex: 1,
-  url: 'https://cdn.instagram.com/duplicate.jpg',
-  filename: 'second.jpg',
-  mediaType: 'image',
-});
+const operation = (index: number) => {
+  const url = `https://cdn.instagram.com/${index}.jpg`;
+  const filename = `${index}.jpg`;
+  return DownloadOperation.make({
+    operationId: createOperationId(),
+    requestId: createRequestId(),
+    itemIndex: index,
+    url,
+    filename,
+    originalUrl: url,
+    originalFilename: filename,
+    mediaType: 'image',
+  });
+};
 
 describe('download contracts', () => {
-  it('creates valid UUID operation identities independently of duplicate URLs', () => {
-    expect(createRequestId()).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    );
+  it('correlates each result by operation and request identity', () => {
+    const first = operation(0);
+    const second = operation(1);
     const response = DownloadMediaResponse.make({
       results: [
-        DownloadAcceptedResult.make({ requestId: first.requestId, status: 'accepted' }),
+        DownloadStartedResult.make({
+          operationId: first.operationId,
+          requestId: first.requestId,
+          status: 'started',
+        }),
         DownloadFailedResult.make({
+          operationId: second.operationId,
           requestId: second.requestId,
           status: 'failed',
-          reason: 'Retry later.',
+          failure: OperationFailure.make({
+            code: 'MEDIA_NETWORK_FAILED',
+            phase: 'media-transfer',
+            scope: 'item',
+          }),
         }),
       ],
     });
     expect(validateCorrelatedResults([first, second], response)).toMatchObject({ ok: true });
   });
 
-  it('rejects malformed operations at the request boundary', async () => {
+  it('rejects malformed operation identities at the request boundary', async () => {
     await expect(
-      decodeDownloadMediaRequest({
-        operations: [
-          {
-            requestId: 'not-a-uuid',
-            itemIndex: 0,
-            url: 'x',
-            filename: 'a.jpg',
-            mediaType: 'image',
-          },
-        ],
-      })
+      decodeDownloadMediaRequest({ operations: [{ requestId: 'bad' }] })
     ).rejects.toBeDefined();
   });
 
-  it.each([
-    [
-      DownloadMediaResponse.make({
-        results: [DownloadAcceptedResult.make({ requestId: first.requestId, status: 'accepted' })],
-      }),
-      'missing',
-    ],
-    [
-      DownloadMediaResponse.make({
-        results: [
-          DownloadAcceptedResult.make({ requestId: first.requestId, status: 'accepted' }),
-          DownloadFailedResult.make({
-            requestId: first.requestId,
-            status: 'failed',
-            reason: 'Duplicate.',
-          }),
-        ],
-      }),
-      'duplicate',
-    ],
-    [
-      DownloadMediaResponse.make({
-        results: [
-          DownloadAcceptedResult.make({ requestId: first.requestId, status: 'accepted' }),
-          DownloadAcceptedResult.make({
-            requestId: requestIdFrom('00000000-0000-4000-8000-000000000003'),
-            status: 'accepted',
-          }),
-        ],
-      }),
-      'unknown',
-    ],
-  ])('rejects %s correlations', response => {
-    expect(validateCorrelatedResults([first, second], response)).toEqual({ ok: false });
+  it('rejects stale request results even when the operation ID matches', () => {
+    const item = operation(0);
+    const response = DownloadMediaResponse.make({
+      results: [
+        DownloadStartedResult.make({
+          operationId: item.operationId,
+          requestId: createRequestId(),
+          status: 'started',
+        }),
+      ],
+    });
+    expect(validateCorrelatedResults([item], response)).toEqual({ ok: false });
   });
 });

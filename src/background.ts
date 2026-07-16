@@ -12,7 +12,7 @@ import { reconcileHistoryEntry } from './history/reconciliation.ts';
 import { appendHistory, clearHistory, getHistory, removeHistory } from './history/repository.ts';
 import type { DownloadHistoryEntry, HistoryMarker } from './history/contracts.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
-import { runHandler } from './effect/runtime.ts';
+import { runHandler, runOperationHandler } from './effect/runtime.ts';
 import {
   protocolConfig,
   type ProtocolCandidate,
@@ -33,6 +33,7 @@ import {
   DownloadAcceptedResult,
   DownloadFailedResult,
   DownloadMediaResponse,
+  createOperationId,
   createRequestId,
   decodeDownloadMediaRequest,
   type DownloadMediaRequest,
@@ -61,6 +62,8 @@ import {
   UsernameUnresolved,
   formatError,
 } from './effect/errors.ts';
+import { OperationFailure, OperationWarning } from './errors/contracts.ts';
+import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from './errors/normalize.ts';
 
 const DOWNLOAD_CONCURRENCY = 3;
 
@@ -770,21 +773,12 @@ const fetchStoryMediaItems = (
     return normalizeReelsMediaItems(reels);
   });
 
-function mapProfileRequestError(err: HttpError | NetworkError | ResponseShapeUnknown) {
-  return err._tag === 'HttpError'
-    ? new NetworkError({ cause: `Profile request failed: ${err.status} ${err.message}` })
-    : err._tag === 'ResponseShapeUnknown'
-      ? err
-      : new NetworkError({ cause: err });
-}
-
 const fetchProfileMediaItems = (
   username: string
-): Effect.Effect<MediaItem[], NetworkError | ResponseShapeUnknown> => {
+): Effect.Effect<MediaItem[], HttpError | NetworkError | ResponseShapeUnknown> => {
   const profileInfoUrl = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
 
   return fetchWebProfileInfoUser(profileInfoUrl, 'omit', IG_GRAPHQL_HEADERS).pipe(
-    Effect.mapError(mapProfileRequestError),
     Effect.flatMap(user => {
       const rawUserId = user?.id ?? user?.pk;
       const userId = rawUserId != null ? String(rawUserId) : undefined;
@@ -818,6 +812,7 @@ const resolveMediaEffect = (
   MediaItem[],
   | InvalidInstagramUrl
   | UsernameUnresolved
+  | HttpError
   | NetworkError
   | GraphQLRequestFailed
   | RateLimited
@@ -876,14 +871,26 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
       }[]
     | undefined;
   error: string | undefined;
+  failure?: OperationFailure;
 }> {
   const source = historySource(msg.url);
-  if (!source) return { media: undefined, error: 'Invalid Instagram URL.' };
-  const result = await runHandler(
+  if (!source)
+    return {
+      media: undefined,
+      error: undefined,
+      failure: OperationFailure.make({
+        code: 'INPUT_INVALID_INSTAGRAM_URL',
+        phase: 'input',
+        scope: 'batch',
+      }),
+    };
+  const result = await runOperationHandler(
     resolveMediaEffect(source.url).pipe(Effect.map(items => ({ items }))),
-    { items: undefined as MediaItem[] | undefined }
+    { items: undefined as MediaItem[] | undefined },
+    normalizeSourceFailure
   );
-  if (result.error || !result.items) return { media: undefined, error: result.error };
+  if (result.failure || !result.items)
+    return { media: undefined, error: undefined, failure: result.failure };
   const stored = await getHistory();
   if (stored.kind === 'unknown-version')
     return { media: undefined, error: 'Download history uses a newer version.' };
@@ -947,14 +954,6 @@ function historyFilenameHint(filename: string): string {
   return filename.replace(/\.[^.]+$/, '');
 }
 
-function sanitizedDownloadReason(cause: unknown): string {
-  const detail = cause instanceof Error ? cause.message.toLowerCase() : '';
-  if (detail.includes('network')) return 'The network interrupted this download.';
-  if (detail.includes('permission') || detail.includes('denied'))
-    return 'The browser denied this download.';
-  return 'The browser could not start this download.';
-}
-
 async function downloadItem(
   operation: DownloadOperation,
   source: ReturnType<typeof historySource>
@@ -972,24 +971,30 @@ async function downloadItem(
         return {
           operation,
           result: DownloadAcceptedResult.make({
+            operationId: operation.operationId,
             requestId: operation.requestId,
-            status: 'accepted',
-            warning: 'Download started, but history could not be saved.',
+            status: 'started',
+            warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }),
           }),
         };
       }
     }
     return {
       operation,
-      result: DownloadAcceptedResult.make({ requestId: operation.requestId, status: 'accepted' }),
+      result: DownloadAcceptedResult.make({
+        operationId: operation.operationId,
+        requestId: operation.requestId,
+        status: 'started',
+      }),
     };
   } catch (cause) {
     return {
       operation,
       result: DownloadFailedResult.make({
+        operationId: operation.operationId,
         requestId: operation.requestId,
         status: 'failed',
-        reason: sanitizedDownloadReason(cause),
+        failure: normalizeBrowserDownloadFailure(cause),
       }),
     };
   }
@@ -1032,12 +1037,23 @@ async function handleDownloadMedia(message: unknown): Promise<DownloadMediaRespo
   } catch {
     return DownloadMediaResponse.make({
       results: [],
-      error: 'The download request was invalid and could not be processed.',
+      failure: OperationFailure.make({
+        code: 'DOWNLOAD_UNEXPECTED_FAILURE',
+        phase: 'browser-download',
+        scope: 'batch',
+      }),
     });
   }
   const source = request.sourceUrl ? historySource(request.sourceUrl) : null;
   if (request.sourceUrl && !source)
-    return DownloadMediaResponse.make({ results: [], error: 'Invalid Instagram URL.' });
+    return DownloadMediaResponse.make({
+      results: [],
+      failure: OperationFailure.make({
+        code: 'INPUT_INVALID_INSTAGRAM_URL',
+        phase: 'input',
+        scope: 'batch',
+      }),
+    });
   const attempts = await mapWithConcurrency(request.operations, DOWNLOAD_CONCURRENCY, operation =>
     downloadItem(operation, source)
   );
@@ -1112,11 +1128,14 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
     sourceUrl: entry.sourceUrl,
     operations: [
       {
+        operationId: createOperationId(),
         requestId: createRequestId(),
         itemIndex: item.itemIndex,
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         url: item.url,
         filename: `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
+        originalUrl: item.url,
+        originalFilename: `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
         mediaType: item.type,
       },
     ],

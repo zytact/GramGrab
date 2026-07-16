@@ -11,11 +11,27 @@ import {
   QUALITY_VERY_HIGH,
   StreamTarget,
 } from 'mediabunny';
-import type { RequestId } from '../download/contracts.ts';
+import type { OperationId, RequestId } from '../download/contracts.ts';
+import { OperationFailure, diagnosticCause, type FailureCode } from '../errors/contracts.ts';
 import { SilentPreflight } from './contracts.ts';
-import { createOutput, readInput, readOutput, removeOutput } from './opfs.ts';
+import {
+  createOutput,
+  readInput,
+  readOutput,
+  removeGeneratedOutput,
+  removeOutput,
+} from './opfs.ts';
+import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 
 const mp4 = new Mp4OutputFormat({ fastStart: false });
+
+const silentFailure = (code: FailureCode, phase: OperationFailure['phase'], cause?: unknown) =>
+  OperationFailure.make({
+    code,
+    phase,
+    scope: 'item',
+    ...(cause === undefined ? {} : { cause: diagnosticCause(cause) }),
+  });
 
 function inputFromFile(file: File) {
   return new Input({
@@ -25,13 +41,14 @@ function inputFromFile(file: File) {
 }
 
 export async function inspectSilentVideo(
+  operationId: OperationId,
   requestId: RequestId,
   file: File
 ): Promise<SilentPreflight> {
   const input = inputFromFile(file);
   try {
     const video = await input.getPrimaryVideoTrack();
-    if (!video) throw new Error('The source contains no video track.');
+    if (!video) throw silentFailure('SILENT_SOURCE_NO_VIDEO', 'silent-inspection');
     const [audio, codec, duration, sourceBitrate, width, height] = await Promise.all([
       input.getAudioTracks(),
       video.getCodec(),
@@ -43,6 +60,7 @@ export async function inspectSilentVideo(
     const copyCompatible = codec !== null && mp4.getSupportedVideoCodecs().includes(codec);
     return SilentPreflight.make({
       requestId,
+      operationId,
       audioTrackCount: audio.length,
       videoCodec: codec ?? 'unknown',
       durationSeconds: duration ?? 0,
@@ -60,24 +78,51 @@ export async function inspectSilentVideo(
 }
 
 export async function processSilentVideo(
+  operationId: OperationId,
   requestId: RequestId,
   transcode: boolean,
   onProgress: (progress: number) => void
 ): Promise<{ alreadySilent: boolean; opfsName?: string }> {
-  const file = await readInput(requestId);
-  const preflight = await inspectSilentVideo(requestId, file);
+  const file = await readInput(operationId);
+  const preflight = await inspectSilentVideo(operationId, requestId, file);
   if (preflight.audioTrackCount === 0) return { alreadySilent: true };
-  if (!preflight.copyCompatible && !transcode) throw new Error('Re-encoding was not approved.');
-  const owned = await createOutput(requestId);
+  if (!preflight.copyCompatible && !transcode)
+    throw silentFailure('SILENT_COPY_FAILED', 'silent-copy');
+  const owned = await createOutput(operationId);
   try {
-    if (transcode) await transcodeVideo(file, owned.writable, onProgress);
-    else await copyVideo(file, owned.writable, preflight.durationSeconds, onProgress);
+    await processOutput(file, owned.writable, preflight.durationSeconds, transcode, onProgress);
     await validateOutput(owned.name);
     return { alreadySilent: false, opfsName: owned.name };
   } catch (error) {
-    await removeOutput(owned.name);
-    throw error;
+    const failure = normalizeProcessingFailure(error, transcode);
+    await cleanFailedOutput(owned.name, failure);
+    throw failure;
   }
+}
+
+async function processOutput(
+  file: File,
+  writable: WritableStream,
+  duration: number,
+  transcode: boolean,
+  onProgress: (progress: number) => void
+): Promise<void> {
+  if (transcode) return transcodeVideo(file, writable, onProgress);
+  return copyVideo(file, writable, duration, onProgress);
+}
+
+function normalizeProcessingFailure(error: unknown, transcode: boolean): OperationFailure {
+  if (error instanceof OperationFailure) return error;
+  return silentFailure(
+    transcode ? 'SILENT_REENCODE_FAILED' : 'SILENT_COPY_FAILED',
+    transcode ? 'silent-reencode' : 'silent-copy',
+    error
+  );
+}
+
+export async function cleanFailedOutput(name: string, failure: OperationFailure): Promise<void> {
+  if (FAILURE_PRESENTATION[failure.code].retainSilentInput) return removeGeneratedOutput(name);
+  return removeOutput(name);
 }
 
 async function copyVideo(
@@ -90,7 +135,7 @@ async function copyVideo(
   try {
     const track = await input.getPrimaryVideoTrack();
     const codec = await track?.getCodec();
-    if (!track || !codec) throw new Error('The source video track cannot be copied.');
+    if (!track || !codec) throw silentFailure('SILENT_SOURCE_NO_VIDEO', 'silent-copy');
     const source = new EncodedVideoPacketSource(codec);
     const output = new Output({ format: mp4, target: new StreamTarget(writable) });
     output.addVideoTrack(source, { rotation: await track.getRotation() });
@@ -115,11 +160,11 @@ async function transcodeVideo(
   onProgress: (progress: number) => void
 ) {
   if (!(await canEncodeVideo('avc')))
-    throw new Error('This browser cannot encode high-quality H.264 video.');
+    throw silentFailure('SILENT_H264_ENCODER_UNAVAILABLE', 'silent-reencode');
   const input = inputFromFile(file);
   try {
     const track = await input.getPrimaryVideoTrack();
-    if (!track) throw new Error('The source contains no video track.');
+    if (!track) throw silentFailure('SILENT_SOURCE_NO_VIDEO', 'silent-reencode');
     const sourceBitrate = await track.getBitrate();
     const output = new Output({ format: mp4, target: new StreamTarget(writable) });
     const conversion = await Conversion.init({
@@ -132,7 +177,8 @@ async function transcodeVideo(
       audio: { discard: true },
       showWarnings: false,
     });
-    if (!conversion.isValid) throw new Error('The source cannot be converted to H.264 MP4.');
+    if (!conversion.isValid)
+      throw silentFailure('SILENT_SOURCE_CONVERSION_UNSUPPORTED', 'silent-reencode');
     conversion.onProgress = onProgress;
     await conversion.execute();
   } finally {
@@ -144,9 +190,9 @@ async function validateOutput(name: string): Promise<void> {
   const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(await readOutput(name)) });
   try {
     if (!(await input.getPrimaryVideoTrack()))
-      throw new Error('The generated file has no video track.');
+      throw silentFailure('SILENT_OUTPUT_NO_VIDEO', 'silent-validation');
     if ((await input.getAudioTracks()).length !== 0)
-      throw new Error('The generated file still contains audio.');
+      throw silentFailure('SILENT_OUTPUT_HAS_AUDIO', 'silent-validation');
   } finally {
     input.dispose();
   }
