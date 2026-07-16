@@ -1,6 +1,7 @@
 # IG Schema Fixtures
 
-Real Instagram API responses captured for schema regression testing.
+Sanitized structural snapshots of real Instagram API responses for schema regression testing. Raw
+captures are local-only sensitive data and must never be committed.
 
 ## Files
 
@@ -17,12 +18,18 @@ Real Instagram API responses captured for schema regression testing.
 
 ## Notes
 
-- **Media URLs expire** — the `oe=` param in CDN URLs is a time-based expiry. Tests assert schema
-  shape, not URL validity, so this is fine.
+- **CDN URLs are replaced** — signed and expiring URLs can still expose identifiers or remain usable
+  temporarily. Every URL in committed fixtures uses `https://sanitized.invalid/`.
+- **Timestamps are preserved** — capture, creation, taken-at, expiry, and update timestamps are
+  structural regression evidence and remain unchanged.
 - **Partial GraphQL errors** — every reels response includes `errors[]` for `story_cta_url` and
   `story_view_count` (fields the API refuses to serve). These are non-fatal; the extension ignores
   `errors[]` entirely (E1 posture). The fixture `errors` arrays are retained to confirm the schema
-  decodes successfully in the presence of partial errors.
+  decodes successfully in the presence of partial errors. Their `message`, `path`, severity, and
+  related structural data are deliberately preserved.
+- **`scans_profile` is preserved** — this is image encoding metadata, not profile identity.
+- **Nulls and empty strings are preserved** — the sanitizer keeps their exact placement even on
+  sensitive paths.
 - **Fixture freshness** — these are snapshots in time. The schema must decode them; if a decode
   test fails after a schema change it means you broke a shape that IG was serving.
 
@@ -40,9 +47,19 @@ capture script will then embed the updated configuration.
 2. Generate the DevTools script with `vp run generate:ig-fixtures`.
 3. Paste `.local/capture-ig-fixtures.mjs` into the DevTools console on
    `https://www.instagram.com` (logged in).
-4. Download the raw Fixtures. Sanitization is a required separate step owned by open issue #44;
-   no sanitizer command exists in this checkout yet.
-5. Replace the matching Fixtures in this directory with only the sanitized output.
-6. Run `vp test run` — failing fixture tests show what changed.
-7. Update `src/effect/schemas.ts` to match the new shape, re-run validation, and commit only the
-   sanitized Fixtures and schema changes.
+4. Move exactly the eight downloaded JSON files into `.local/raw-fixtures/`. Do not edit, publish, or
+   commit this directory.
+5. Run `vp run sanitize:ig-fixtures`. The complete batch must pass the reviewed path policy,
+   structural invariants, and endpoint Effect Schemas before `.local/sanitized-fixtures/` changes.
+6. Review the staged output. Diagnostics are value-free; inspect any newly observed raw path only
+   on the local machine and follow the classification process in
+   [`scripts/ig-fixture-sanitizer/README.md`](../../../scripts/ig-fixture-sanitizer/README.md).
+7. Run `vp run sanitize:ig-fixtures -- --write` to transactionally replace all eight committed JSON
+   files while preserving this README and other non-fixture files.
+8. Run `vp check`, `vp test run`, and `vp run fallow`. Failing fixture tests show what changed.
+9. Update `src/effect/schemas.ts` when the approved response shape changed, rerun validation, and
+   commit only sanitized fixtures and reviewed code or documentation changes.
+
+The sanitizer never modifies or deletes `.local/raw-fixtures/`. Remove sensitive captures manually
+when they are no longer needed. The write operation installs all eight JSON files or rolls the
+destination back; never replace individual committed fixtures from raw downloads.
