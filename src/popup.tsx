@@ -24,8 +24,15 @@ import {
 import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
+import {
+  findWorkspaceTab,
+  isWorkspaceReportedBusy,
+  openWorkspace,
+  replaceWorkspace,
+} from './workspace/coordinator';
 import { isPositiveFinitePair, resolveMediaRatio } from './workspace/media-ratio';
 import { distributeMasonryItems } from './workspace/masonry';
+import { runSilentVideoBatch, type ReencodeCandidate } from './silent-video/batch';
 
 interface MediaItem {
   index: number;
@@ -62,7 +69,7 @@ type HistoryEntry = {
   itemIndex: number;
   mediaType: string;
   filenameHint: string;
-  exportMode?: 'direct' | 'frame';
+  exportMode?: 'direct' | 'frame' | 'silent';
   frameTimestampSeconds?: number;
   downloadedAt: number;
 };
@@ -82,6 +89,7 @@ export default function Popup() {
     Record<number, FrameExportSetting>
   >({});
   const [frameRuntime, setFrameRuntime] = useState<Record<number, FrameRuntime>>({});
+  const [removeAudioIndexes, setRemoveAudioIndexes] = useState<Set<number>>(new Set());
   const [fallbackLoading, setFallbackLoading] = useState<Set<number>>(new Set());
   const [fallbackFailed, setFallbackFailed] = useState<Set<number>>(new Set());
   const [intrinsicDimensions, setIntrinsicDimensions] = useState<
@@ -91,6 +99,10 @@ export default function Popup() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState<string | null>(null);
+  const [reencodeChoice, setReencodeChoice] = useState<{
+    candidates: readonly ReencodeCandidate[];
+    resolve: (approved: boolean) => void;
+  }>();
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
   const resultsGeneration = useRef(0);
   const pendingFrameDefaults = useRef(new Set<number>());
@@ -225,10 +237,30 @@ export default function Popup() {
         },
       }));
       if (!frameExportSettings[index]) pendingFrameDefaults.current.add(index);
-      if (enabled) void loadFrameMetadata(index);
+      if (enabled) {
+        setRemoveAudioIndexes(previous => {
+          const next = new Set(previous);
+          next.delete(index);
+          return next;
+        });
+        void loadFrameMetadata(index);
+      }
     },
     [frameExportSettings, loadFrameMetadata]
   );
+
+  const toggleRemoveAudio = useCallback((index: number) => {
+    setRemoveAudioIndexes(previous => {
+      const next = new Set(previous);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+    setFrameExportSettings(previous => {
+      const setting = previous[index];
+      return setting ? { ...previous, [index]: { ...setting, enabled: false } } : previous;
+    });
+  }, []);
 
   const changeFrameTimestamp = useCallback((index: number, timestampSeconds: number) => {
     setFrameExportSettings(previous => ({
@@ -393,9 +425,31 @@ export default function Popup() {
     [fetchedUrl, url]
   );
 
+  const requestReencodeApproval = useCallback(
+    (candidates: readonly ReencodeCandidate[]) =>
+      new Promise<boolean>(resolve => setReencodeChoice({ candidates, resolve })),
+    []
+  );
+
+  const settleReencodeChoice = useCallback((approved: boolean) => {
+    setReencodeChoice(choice => {
+      choice?.resolve(approved);
+      return undefined;
+    });
+  }, []);
+
   const downloadAttempt = useDownloadAttempt({
     executeFrame: executeFrameAttempt,
     executeDirect,
+    executeSilent: (operations, onProgress, onPreflightComplete, approvedRequestIds) =>
+      runSilentVideoBatch(
+        operations,
+        requestReencodeApproval,
+        onProgress,
+        fetchedUrl || url,
+        onPreflightComplete,
+        approvedRequestIds
+      ),
     onAccepted: operations =>
       setMediaItems(previous =>
         previous.map(item =>
@@ -417,8 +471,9 @@ export default function Popup() {
           pending: counts.pending + Number(entry.outcome.status === 'pending'),
           succeeded: counts.succeeded + Number(entry.outcome.status === 'accepted'),
           failed: counts.failed + Number(entry.outcome.status === 'failed'),
+          skipped: counts.skipped + Number(entry.outcome.status === 'skipped'),
         }),
-        { pending: 0, succeeded: 0, failed: 0 }
+        { pending: 0, succeeded: 0, failed: 0, skipped: 0 }
       );
       if (summary.pending > 0) {
         setStatus('downloading');
@@ -428,12 +483,27 @@ export default function Popup() {
       setStatus(summary.failed ? 'error' : 'done');
       setMessage(
         summary.failed
-          ? `${summary.succeeded} succeeded, ${summary.failed} failed.`
-          : `${summary.succeeded} item${summary.succeeded === 1 ? '' : 's'} succeeded.`
+          ? `${summary.succeeded} succeeded, ${summary.failed} failed, ${summary.skipped} skipped.`
+          : summary.skipped > 0
+            ? `${summary.succeeded} succeeded, ${summary.skipped} skipped.`
+            : `${summary.succeeded} item${summary.succeeded === 1 ? '' : 's'} succeeded.`
       );
     },
   });
   clearAttemptRef.current = downloadAttempt.clear;
+
+  useEffect(() => {
+    const activeMediaWork = downloadAttempt.attempt?.entries.some(
+      entry =>
+        entry.operation.mode === 'silent' &&
+        entry.outcome.status === 'pending' &&
+        ['inspecting', 'processing', 'validating'].includes(entry.outcome.phase ?? '')
+    );
+    if (!activeMediaWork) return;
+    const guard = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', guard);
+    return () => window.removeEventListener('beforeunload', guard);
+  }, [downloadAttempt.attempt]);
 
   const handleExportFrame = useCallback(
     async (index: number) => {
@@ -468,7 +538,8 @@ export default function Popup() {
     const operations = selected.map<AttemptOperation>(item => {
       const setting = frameExportSettings[item.index];
       const duration = frameRuntime[item.index]?.durationSeconds;
-      const exportFrame = item.type === 'video' && setting?.enabled;
+      const removeAudio = item.type === 'video' && removeAudioIndexes.has(item.index);
+      const exportFrame = item.type === 'video' && setting?.enabled && !removeAudio;
       const timestampSeconds = exportFrame
         ? clampFrameSecond(setting.timestampSeconds, duration ?? setting.timestampSeconds + 1)
         : undefined;
@@ -477,19 +548,61 @@ export default function Popup() {
         itemIndex: item.itemIndex ?? item.index,
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         url: item.url,
-        filename: exportFrame
-          ? frameFilename(item.filenameHint, timestampSeconds ?? 0)
-          : `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
+        filename: removeAudio
+          ? `${item.filenameHint}_${item.index + 1}_silent.mp4`
+          : exportFrame
+            ? frameFilename(item.filenameHint, timestampSeconds ?? 0)
+            : `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
         mediaType: item.type === 'video' ? 'video' : 'image',
-        mode: exportFrame ? 'frame' : 'direct',
+        mode: removeAudio ? 'silent' : exportFrame ? 'frame' : 'direct',
         displayIndex: item.index,
         ...(timestampSeconds !== undefined ? { frameTimestampSeconds: timestampSeconds } : {}),
       };
     });
+    if (!initialWorkspaceMode && operations.some(operation => operation.mode === 'silent')) {
+      const createdAt = Date.now();
+      const snapshot = {
+        version: 3 as const,
+        createdAt,
+        expiresAt: createdAt + 60_000,
+        url,
+        fetchedUrl,
+        status: 'done' as const,
+        message,
+        mediaItems,
+        frameExportSettings,
+        removeAudioIndexes: [...removeAudioIndexes],
+        autoStartDownload: true,
+      };
+      const existing = await findWorkspaceTab();
+      if (existing) {
+        if (await isWorkspaceReportedBusy()) {
+          await openWorkspace(snapshot);
+          setMessage('The workspace is busy. Finish its active batch before replacing it.');
+          return;
+        }
+        if (!window.confirm('Replace the current workspace session and start this batch?')) return;
+        await replaceWorkspace(snapshot);
+      } else {
+        await openWorkspace(snapshot);
+      }
+      setMessage('Silent batch moved to the GramGrab workspace.');
+      return;
+    }
     setStatus('downloading');
     setMessage(`Starting ${operations.length} item${operations.length === 1 ? '' : 's'}…`);
     await downloadAttempt.start(operations);
-  }, [downloadAttempt, frameExportSettings, frameRuntime, mediaItems]);
+  }, [
+    downloadAttempt,
+    fetchedUrl,
+    frameExportSettings,
+    frameRuntime,
+    initialWorkspaceMode,
+    mediaItems,
+    message,
+    removeAudioIndexes,
+    url,
+  ]);
 
   const selectedCount = mediaItems.filter(m => m.selected).length;
   const allSelected = mediaItems.length > 0 && selectedCount === mediaItems.length;
@@ -553,8 +666,51 @@ export default function Popup() {
           timestampSeconds: number;
           sourceUrl: string;
         };
+        silent?: {
+          itemIndex: number;
+          mediaId?: string;
+          url: string;
+          filenameHint: string;
+          sourceUrl: string;
+        };
       };
-      if (response.frame) {
+      if (response.silent) {
+        const createdAt = Date.now();
+        const item = {
+          index: 0,
+          itemIndex: response.silent.itemIndex,
+          ...(response.silent.mediaId ? { mediaId: response.silent.mediaId } : {}),
+          type: 'video',
+          url: response.silent.url,
+          filenameHint: response.silent.filenameHint,
+          selected: true,
+        };
+        const snapshot = {
+          version: 3 as const,
+          createdAt,
+          expiresAt: createdAt + 60_000,
+          url: response.silent.sourceUrl,
+          fetchedUrl: response.silent.sourceUrl,
+          status: 'done' as const,
+          message: 'History item restored.',
+          mediaItems: [item],
+          frameExportSettings: {},
+          removeAudioIndexes: [0],
+          autoStartDownload: true,
+        };
+        const existing = await findWorkspaceTab();
+        if (existing && (await isWorkspaceReportedBusy())) {
+          await openWorkspace(snapshot);
+          setMessage('The workspace is busy. Finish its active batch before replacing it.');
+        } else if (
+          !existing ||
+          window.confirm('Replace the current workspace session and start this batch?')
+        ) {
+          if (existing) await replaceWorkspace(snapshot);
+          else await openWorkspace(snapshot);
+          setMessage('Silent download moved to the GramGrab workspace.');
+        }
+      } else if (response.frame) {
         try {
           const videoResponse = (await browser.runtime.sendMessage({
             type: 'FETCH_VIDEO_BLOB',
@@ -627,6 +783,7 @@ export default function Popup() {
     handleReplaceWorkspace,
     hasTransferableSession,
     fetchIntent,
+    downloadIntent,
   } = useWorkspaceSurface({
     url,
     setUrl,
@@ -640,12 +797,18 @@ export default function Popup() {
     setMediaItems,
     frameExportSettings,
     setFrameExportSettings,
+    removeAudioIndexes,
+    setRemoveAudioIndexes,
     setAutoDetected,
   });
 
   useEffect(() => {
     if (fetchIntent > 0) void handleFetchRef.current();
   }, [fetchIntent]);
+
+  useEffect(() => {
+    if (downloadIntent > 0) void handleDownload();
+  }, [downloadIntent, handleDownload]);
 
   return (
     <div className={`container${workspaceMode ? ' workspace-container' : ''}`}>
@@ -715,6 +878,7 @@ export default function Popup() {
               fallbackLoading={fallbackLoading}
               fallbackFailed={fallbackFailed}
               frameExportSettings={frameExportSettings}
+              removeAudioIndexes={removeAudioIndexes}
               frameRuntime={frameRuntime}
               attempt={downloadAttempt.attempt}
               disabled={isBusy}
@@ -722,6 +886,7 @@ export default function Popup() {
               onToggle={toggleItem}
               onToggleAll={toggleAll}
               onToggleExportFrame={toggleExportFrame}
+              onToggleRemoveAudio={toggleRemoveAudio}
               onChangeFrameTimestamp={changeFrameTimestamp}
               onRetryFrameMetadata={loadFrameMetadata}
               onRetryFrameExport={index => void handleExportFrame(index)}
@@ -741,7 +906,7 @@ export default function Popup() {
                 >
                   <strong>
                     {downloadAttempt.summary.succeeded} succeeded, {downloadAttempt.summary.failed}{' '}
-                    failed
+                    failed, {downloadAttempt.summary.skipped} skipped
                   </strong>
                   {downloadAttempt.summary.warnings > 0 && (
                     <span> {downloadAttempt.summary.warnings} started with a history warning.</span>
@@ -805,6 +970,59 @@ export default function Popup() {
         <span className="footer-brand">GramGrab</span>
         <span className="footer-tagline">Posts · Reels · Stories</span>
       </footer>
+      {reencodeChoice && (
+        <ReencodeDialog candidates={reencodeChoice.candidates} onChoice={settleReencodeChoice} />
+      )}
+    </div>
+  );
+}
+
+function ReencodeDialog({
+  candidates,
+  onChoice,
+}: {
+  candidates: readonly ReencodeCandidate[];
+  onChoice: (approved: boolean) => void;
+}) {
+  return (
+    <div className="quality-dialog-backdrop" onMouseDown={() => onChoice(false)}>
+      <section
+        className="quality-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="quality-dialog-title"
+        onMouseDown={event => event.stopPropagation()}
+        onKeyDown={event => event.key === 'Escape' && onChoice(false)}
+      >
+        <button
+          type="button"
+          className="quality-dialog-close"
+          aria-label="Skip videos requiring re-encoding"
+          onClick={() => onChoice(false)}
+        >
+          ×
+        </button>
+        <h2 id="quality-dialog-title">Some videos require re-encoding</h2>
+        <p>Lossless packet copying is unavailable. Re-encoding may change video quality.</p>
+        <ul>
+          {candidates.map(candidate => (
+            <li key={candidate.operation.requestId}>
+              <video src={candidate.operation.url} muted preload="metadata" aria-hidden="true" />
+              <span>Item {candidate.operation.displayIndex + 1}</span>
+              <strong>{candidate.operation.filename}</strong>
+              <small>{candidate.preflight.reason ?? candidate.preflight.videoCodec}</small>
+            </li>
+          ))}
+        </ul>
+        <div className="quality-dialog-actions">
+          <button type="button" onClick={() => onChoice(false)}>
+            Skip affected videos
+          </button>
+          <button type="button" onClick={() => onChoice(true)} autoFocus>
+            Re-encode affected videos
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1061,6 +1279,7 @@ function MediaListSection({
   fallbackLoading,
   fallbackFailed,
   frameExportSettings,
+  removeAudioIndexes,
   frameRuntime,
   attempt,
   disabled,
@@ -1068,6 +1287,7 @@ function MediaListSection({
   onToggle,
   onToggleAll,
   onToggleExportFrame,
+  onToggleRemoveAudio,
   onChangeFrameTimestamp,
   onRetryFrameMetadata,
   onRetryFrameExport,
@@ -1082,6 +1302,7 @@ function MediaListSection({
   fallbackLoading: Set<number>;
   fallbackFailed: Set<number>;
   frameExportSettings: Record<number, FrameExportSetting>;
+  removeAudioIndexes: Set<number>;
   frameRuntime: Record<number, FrameRuntime>;
   attempt: ReturnType<typeof useDownloadAttempt>['attempt'];
   disabled: boolean;
@@ -1089,6 +1310,7 @@ function MediaListSection({
   onToggle: (index: number) => void;
   onToggleAll: () => void;
   onToggleExportFrame: (index: number) => void;
+  onToggleRemoveAudio: (index: number) => void;
   onChangeFrameTimestamp: (index: number, timestampSeconds: number) => void;
   onRetryFrameMetadata: (index: number) => void;
   onRetryFrameExport: (index: number) => void;
@@ -1131,10 +1353,12 @@ function MediaListSection({
       onError={() => onPreviewError(item)}
       onToggle={() => onToggle(item.index)}
       frameSetting={frameExportSettings[item.index]}
+      removeAudio={removeAudioIndexes.has(item.index)}
       frameRuntime={frameRuntime[item.index]}
       attemptEntry={attempt?.entries.find(entry => entry.operation.displayIndex === item.index)}
       disabled={disabled}
       onToggleExportFrame={() => onToggleExportFrame(item.index)}
+      onToggleRemoveAudio={() => onToggleRemoveAudio(item.index)}
       onChangeFrameTimestamp={timestampSeconds =>
         onChangeFrameTimestamp(item.index, timestampSeconds)
       }
@@ -1263,8 +1487,10 @@ interface MediaItemRowProps {
   onError: () => void;
   onToggle: () => void;
   frameSetting?: FrameExportSetting;
+  removeAudio: boolean;
   frameRuntime?: FrameRuntime;
   onToggleExportFrame: () => void;
+  onToggleRemoveAudio: () => void;
   onChangeFrameTimestamp: (timestampSeconds: number) => void;
   onRetryFrameMetadata: () => void;
   onRetryFrameExport: () => void;
@@ -1289,8 +1515,10 @@ function MediaPreview({
   MediaItemRowProps,
   | 'onToggle'
   | 'frameSetting'
+  | 'removeAudio'
   | 'frameRuntime'
   | 'onToggleExportFrame'
+  | 'onToggleRemoveAudio'
   | 'onChangeFrameTimestamp'
   | 'onRetryFrameMetadata'
   | 'onRetryFrameExport'
@@ -1382,9 +1610,11 @@ function ImagePreview({
 function MediaControls({
   item,
   frameSetting,
+  removeAudio,
   frameRuntime,
   onToggle,
   onToggleExportFrame,
+  onToggleRemoveAudio,
   onChangeFrameTimestamp,
   onRetryFrameMetadata,
   onRetryFrameExport,
@@ -1394,9 +1624,11 @@ function MediaControls({
   MediaItemRowProps,
   | 'item'
   | 'frameSetting'
+  | 'removeAudio'
   | 'frameRuntime'
   | 'onToggle'
   | 'onToggleExportFrame'
+  | 'onToggleRemoveAudio'
   | 'onChangeFrameTimestamp'
   | 'onRetryFrameMetadata'
   | 'onRetryFrameExport'
@@ -1418,6 +1650,16 @@ function MediaControls({
               className="frame-toggle-checkbox"
             />
             Frame
+          </label>
+          <label className="frame-toggle" title="Download a silent MP4">
+            <input
+              type="checkbox"
+              checked={removeAudio}
+              onChange={onToggleRemoveAudio}
+              disabled={disabled}
+              className="frame-toggle-checkbox"
+            />
+            Remove audio
           </label>
           {frameSetting?.enabled && (
             <div className="frame-timestamp-row">
@@ -1474,8 +1716,10 @@ function MediaItemRow(props: MediaItemRowProps) {
     onError,
     onToggle,
     frameSetting,
+    removeAudio,
     frameRuntime,
     onToggleExportFrame,
+    onToggleRemoveAudio,
     onChangeFrameTimestamp,
     onRetryFrameMetadata,
     onRetryFrameExport,
@@ -1519,7 +1763,11 @@ function MediaItemRow(props: MediaItemRowProps) {
         <span className="item-filename">{item.filenameHint}</span>
         {attemptEntry?.outcome.status === 'pending' && (
           <span className="download-item-status pending">
-            {attemptEntry.operation.mode === 'frame' ? 'Exporting…' : 'Starting…'}
+            {attemptEntry.outcome.phase
+              ? `${attemptEntry.outcome.phase} ${Math.round((attemptEntry.outcome.progress ?? 0) * 100)}%`
+              : attemptEntry.operation.mode === 'frame'
+                ? 'Exporting…'
+                : 'Starting…'}
           </span>
         )}
         {attemptEntry?.outcome.status === 'accepted' && (
@@ -1535,14 +1783,21 @@ function MediaItemRow(props: MediaItemRowProps) {
             Failed: {attemptEntry.outcome.reason}
           </span>
         )}
+        {attemptEntry?.outcome.status === 'skipped' && (
+          <span className="download-item-status skipped">
+            Skipped: {attemptEntry.outcome.reason}
+          </span>
+        )}
       </div>
 
       <MediaControls
         item={item}
         frameSetting={frameSetting}
+        removeAudio={removeAudio}
         frameRuntime={frameRuntime}
         onToggle={onToggle}
         onToggleExportFrame={onToggleExportFrame}
+        onToggleRemoveAudio={onToggleRemoveAudio}
         onChangeFrameTimestamp={onChangeFrameTimestamp}
         onRetryFrameMetadata={onRetryFrameMetadata}
         onRetryFrameExport={onRetryFrameExport}

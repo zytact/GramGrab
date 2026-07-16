@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect';
 
-const RequestIdSchema = Schema.UUID.pipe(Schema.brand('RequestId'));
+export const RequestIdSchema = Schema.UUID.pipe(Schema.brand('RequestId'));
 export type RequestId = Schema.Schema.Type<typeof RequestIdSchema>;
 
 export class DownloadOperation extends Schema.Class<DownloadOperation>('DownloadOperation')({
@@ -35,7 +35,19 @@ export class DownloadFailedResult extends Schema.Class<DownloadFailedResult>(
   reason: Schema.String.pipe(Schema.nonEmptyString()),
 }) {}
 
-const DownloadOperationResult = Schema.Union(DownloadAcceptedResult, DownloadFailedResult);
+export class DownloadSkippedResult extends Schema.Class<DownloadSkippedResult>(
+  'DownloadSkippedResult'
+)({
+  requestId: RequestIdSchema,
+  status: Schema.Literal('skipped'),
+  reason: Schema.String.pipe(Schema.nonEmptyString()),
+}) {}
+
+const DownloadOperationResult = Schema.Union(
+  DownloadAcceptedResult,
+  DownloadFailedResult,
+  DownloadSkippedResult
+);
 export type DownloadOperationResult = Schema.Schema.Type<typeof DownloadOperationResult>;
 
 export class DownloadMediaResponse extends Schema.Class<DownloadMediaResponse>(

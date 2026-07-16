@@ -10,7 +10,7 @@ import { replaceWorkspace } from './workspace/coordinator.ts';
 import { historySource } from './history/source.ts';
 import { reconcileHistoryEntry } from './history/reconciliation.ts';
 import { appendHistory, clearHistory, getHistory, removeHistory } from './history/repository.ts';
-import type { DownloadHistoryEntryV1, HistoryMarker } from './history/contracts.ts';
+import type { DownloadHistoryEntry, HistoryMarker } from './history/contracts.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
 import { runHandler } from './effect/runtime.ts';
 import {
@@ -904,7 +904,7 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
 }
 
 function historyMarker(
-  entries: readonly DownloadHistoryEntryV1[],
+  entries: readonly DownloadHistoryEntry[],
   sourceUrl: string,
   item: MediaItem
 ): HistoryMarker {
@@ -1000,7 +1000,7 @@ interface AcceptedHistoryOperation {
   mediaId?: string;
   mediaType: 'image' | 'video';
   filename: string;
-  exportMode?: 'direct' | 'frame';
+  exportMode?: 'direct' | 'frame' | 'silent';
   frameTimestampSeconds?: number;
 }
 
@@ -1095,6 +1095,18 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
       error: undefined,
     };
   }
+  if (entry.exportMode === 'silent') {
+    return {
+      silent: {
+        itemIndex: item.itemIndex,
+        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+        url: item.url,
+        filenameHint: item.filenameHint,
+        sourceUrl: entry.sourceUrl,
+      },
+      error: undefined,
+    };
+  }
   return handleDownloadMedia({
     type: 'DOWNLOAD_MEDIA',
     sourceUrl: entry.sourceUrl,
@@ -1138,6 +1150,20 @@ async function handleFetchVideoBlob(
   return runHandler(fetchBlobAsDataUrl(msg.url).pipe(Effect.map(dataUrl => ({ dataUrl }))), {
     dataUrl: undefined,
   });
+}
+
+async function handleRecordSilentExport(msg: {
+  sourceUrl: string;
+  item: AcceptedHistoryOperation;
+}): Promise<{ error: string | undefined }> {
+  const source = historySource(msg.sourceUrl);
+  if (!source) return { error: 'Invalid Instagram URL.' };
+  try {
+    await appendAcceptedHistory({ ...msg.item, exportMode: 'silent' }, source);
+    return { error: undefined };
+  } catch {
+    return { error: 'Silent video downloaded, but history could not be saved.' };
+  }
 }
 
 interface DebugShapeMsg {
@@ -1195,7 +1221,7 @@ function contextTargetUrl(info: { pageUrl?: string; linkUrl?: string }): string 
 function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnapshot {
   const createdAt = Date.now();
   return {
-    version: 2,
+    version: 3,
     createdAt,
     expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
     url,
@@ -1204,6 +1230,7 @@ function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnaps
     message: intent === 'fetch' ? 'Fetching media…' : 'Ready to fetch media.',
     mediaItems: [],
     frameExportSettings: {},
+    removeAudioIndexes: [],
     intent,
   };
 }
@@ -1292,6 +1319,8 @@ const messageHandlers: Record<string, MessageHandler> = {
   REDOWNLOAD_HISTORY_ENTRY: message => handleRedownloadHistoryEntry(message as { entryId: string }),
   RECORD_FRAME_EXPORT: message =>
     handleRecordFrameExport(message as Parameters<typeof handleRecordFrameExport>[0]),
+  RECORD_SILENT_EXPORT: message =>
+    handleRecordSilentExport(message as Parameters<typeof handleRecordSilentExport>[0]),
   FETCH_VIDEO_BLOB: message => handleFetchVideoBlob(message as FetchVideoBlobMsg),
   DEBUG_SHAPE: message => handleDebugShape(message as DebugShapeMsg),
   DOWNLOAD_DEBUG_JSON: message => handleDownloadDebugJson(message as DownloadDebugJsonMsg),

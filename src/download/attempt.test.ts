@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { DownloadAcceptedResult, DownloadFailedResult, requestIdFrom } from './contracts.ts';
+import {
+  DownloadAcceptedResult,
+  DownloadFailedResult,
+  DownloadSkippedResult,
+  requestIdFrom,
+} from './contracts.ts';
 import {
   attemptReducer,
   failedOperations,
@@ -30,6 +35,22 @@ const operations: readonly AttemptOperation[] = [
 ];
 
 describe('download attempt reducer', () => {
+  it('keeps skipped operations terminal and out of retry selection', () => {
+    const fresh = attemptReducer(undefined, { type: 'fresh', operations: [operations[1]!] })!;
+    const settled = attemptReducer(fresh, {
+      type: 'settle',
+      results: [
+        DownloadSkippedResult.make({
+          requestId: operations[1]!.requestId,
+          status: 'skipped',
+          reason: 'Re-encoding declined.',
+        }),
+      ],
+    })!;
+    expect(summarizeAttempt(settled).skipped).toBe(1);
+    expect(failedOperations(settled)).toEqual([]);
+    expect(attemptReducer(settled, { type: 'retry' })?.entries[0]?.outcome.status).toBe('skipped');
+  });
   it('keeps accepted operations immutable across repeated targeted retries', () => {
     const fresh = attemptReducer(undefined, { type: 'fresh', operations })!;
     const settled = attemptReducer(fresh, {
@@ -57,6 +78,7 @@ describe('download attempt reducer', () => {
       succeeded: 2,
       failed: 0,
       warnings: 0,
+      skipped: 0,
     });
     expect(afterRetry.entries[1]!.operation).toMatchObject({
       requestId: operations[1]!.requestId,
@@ -82,7 +104,13 @@ describe('download attempt reducer', () => {
         }),
       ],
     })!;
-    expect(summarizeAttempt(settled)).toEqual({ pending: 0, succeeded: 1, failed: 1, warnings: 1 });
+    expect(summarizeAttempt(settled)).toEqual({
+      pending: 0,
+      succeeded: 1,
+      failed: 1,
+      warnings: 1,
+      skipped: 0,
+    });
     expect(failedOperations(settled).map(operation => operation.requestId)).toEqual([
       operations[1]!.requestId,
     ]);

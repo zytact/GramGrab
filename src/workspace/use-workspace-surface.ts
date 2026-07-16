@@ -16,6 +16,7 @@ import {
 import {
   isBusy,
   isInstagramSource,
+  WORKSPACE_STATUS_KEY,
   WORKSPACE_TRANSFER_TTL_MS,
   type WorkspaceMediaItem,
   type WorkspaceSnapshot,
@@ -37,6 +38,8 @@ interface WorkspaceSurfaceOptions {
   setMediaItems: Dispatch<SetStateAction<WorkspaceMediaItem[]>>;
   frameExportSettings: Record<number, FrameExportSetting>;
   setFrameExportSettings: Dispatch<SetStateAction<Record<number, FrameExportSetting>>>;
+  removeAudioIndexes: Set<number>;
+  setRemoveAudioIndexes: Dispatch<SetStateAction<Set<number>>>;
   setAutoDetected: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -47,15 +50,22 @@ function workspaceSnapshot({
   message,
   mediaItems,
   frameExportSettings,
+  removeAudioIndexes,
 }: Pick<
   WorkspaceSurfaceOptions,
-  'url' | 'fetchedUrl' | 'status' | 'message' | 'mediaItems' | 'frameExportSettings'
+  | 'url'
+  | 'fetchedUrl'
+  | 'status'
+  | 'message'
+  | 'mediaItems'
+  | 'frameExportSettings'
+  | 'removeAudioIndexes'
 >): WorkspaceSnapshot {
   const createdAt = Date.now();
   const resultsMatchDraftSource = fetchedUrl === url.trim();
   const settledStatus = status === 'error' ? 'error' : status === 'done' ? 'done' : 'idle';
   return {
-    version: 2,
+    version: 3,
     createdAt,
     expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
     url,
@@ -64,6 +74,7 @@ function workspaceSnapshot({
     message: resultsMatchDraftSource ? message : 'Ready to fetch media.',
     mediaItems: resultsMatchDraftSource ? mediaItems : [],
     frameExportSettings: resultsMatchDraftSource ? frameExportSettings : {},
+    removeAudioIndexes: resultsMatchDraftSource ? [...removeAudioIndexes] : [],
   };
 }
 
@@ -72,6 +83,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
   const [workspaceExists, setWorkspaceExists] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [fetchIntent, setFetchIntent] = useState(0);
+  const [downloadIntent, setDownloadIntent] = useState(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
@@ -86,6 +98,8 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
           session.setMessage(snapshot.message);
           session.setMediaItems(snapshot.mediaItems);
           session.setFrameExportSettings(snapshot.frameExportSettings);
+          session.setRemoveAudioIndexes(new Set(snapshot.removeAudioIndexes));
+          if (snapshot.autoStartDownload) setDownloadIntent(intent => intent + 1);
           if (snapshot.intent === 'fetch') setFetchIntent(intent => intent + 1);
           return;
         }
@@ -130,6 +144,18 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
   const busy = isBusy(options.status);
   const hasTransferableSession = isInstagramSource(options.url) || options.mediaItems.length > 0;
 
+  useEffect(() => {
+    if (!workspaceMode) return;
+    const publish = () =>
+      browser.storage.set({ [WORKSPACE_STATUS_KEY]: { busy, updatedAt: Date.now() } });
+    void publish();
+    const interval = window.setInterval(() => void publish(), 3_000);
+    return () => {
+      window.clearInterval(interval);
+      void browser.storage.remove(WORKSPACE_STATUS_KEY);
+    };
+  }, [busy, workspaceMode]);
+
   const handleOpenWorkspace = useCallback(async () => {
     if (busy) return;
     try {
@@ -161,5 +187,6 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
     handleReplaceWorkspace,
     hasTransferableSession,
     fetchIntent,
+    downloadIntent,
   };
 }

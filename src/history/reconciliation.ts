@@ -1,4 +1,4 @@
-import type { HistoryMediaType, DownloadHistoryEntryV1 } from './contracts.ts';
+import type { DownloadHistoryEntry, HistoryMediaType } from './contracts.ts';
 
 export interface ReconciledMediaItem {
   itemIndex: number;
@@ -12,7 +12,7 @@ export type Reconciliation =
   | { kind: 'ambiguous' };
 
 export function reconcileHistoryEntry(
-  entry: Pick<DownloadHistoryEntryV1, 'itemIndex' | 'mediaId' | 'mediaType'>,
+  entry: Pick<DownloadHistoryEntry, 'itemIndex' | 'mediaId' | 'mediaType'>,
   items: readonly ReconciledMediaItem[]
 ): Reconciliation {
   if (entry.mediaId) {
