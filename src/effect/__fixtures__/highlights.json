@@ -1,0 +1,1044 @@
+{
+  "data": {
+    "reels_media": [
+      {
+        "__typename": "GraphHighlightReel",
+        "id": "SANITIZED_MEDIA_8_ID",
+        "latest_reel_media": null,
+        "owner": {
+          "__typename": "GraphUser",
+          "id": "SANITIZED_PERSON_2_ID",
+          "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture",
+          "username": "SANITIZED_PERSON_2_USERNAME"
+        },
+        "items": [
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_9_ID",
+            "dimensions": {
+              "height": 1920,
+              "width": 1080
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/9/resource",
+                "config_width": 640,
+                "config_height": 1137
+              },
+              {
+                "src": "https://sanitized.invalid/media/9/resource",
+                "config_width": 750,
+                "config_height": 1333
+              },
+              {
+                "src": "https://sanitized.invalid/media/9/resource",
+                "config_width": 1080,
+                "config_height": 1920
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/9/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_1",
+            "taken_at_timestamp": 1771696407,
+            "expiring_at_timestamp": 1771782807,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_1",
+            "overlay_image_resources": null,
+            "video_duration": 20,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/9/resource",
+                "config_width": 480,
+                "config_height": 853,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_10_ID",
+            "dimensions": {
+              "height": 1920,
+              "width": 1080
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/10/resource",
+                "config_width": 640,
+                "config_height": 1137
+              },
+              {
+                "src": "https://sanitized.invalid/media/10/resource",
+                "config_width": 750,
+                "config_height": 1333
+              },
+              {
+                "src": "https://sanitized.invalid/media/10/resource",
+                "config_width": 1080,
+                "config_height": 1920
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/10/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_2",
+            "taken_at_timestamp": 1764297248,
+            "expiring_at_timestamp": 1764383648,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_2",
+            "overlay_image_resources": null,
+            "video_duration": 45,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/10/resource",
+                "config_width": 480,
+                "config_height": 853,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_18_ID",
+            "dimensions": {
+              "height": 1920,
+              "width": 1080
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/18/resource",
+                "config_width": 640,
+                "config_height": 1137
+              },
+              {
+                "src": "https://sanitized.invalid/media/18/resource",
+                "config_width": 750,
+                "config_height": 1333
+              },
+              {
+                "src": "https://sanitized.invalid/media/18/resource",
+                "config_width": 1080,
+                "config_height": 1920
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/18/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_3",
+            "taken_at_timestamp": 1762684231,
+            "expiring_at_timestamp": 1762770631,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_3",
+            "overlay_image_resources": null,
+            "video_duration": 20,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/18/resource",
+                "config_width": 480,
+                "config_height": 853,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_19_ID",
+            "dimensions": {
+              "height": 1920,
+              "width": 1080
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/19/resource",
+                "config_width": 640,
+                "config_height": 1137
+              },
+              {
+                "src": "https://sanitized.invalid/media/19/resource",
+                "config_width": 750,
+                "config_height": 1333
+              },
+              {
+                "src": "https://sanitized.invalid/media/19/resource",
+                "config_width": 1080,
+                "config_height": 1920
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/19/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_4",
+            "taken_at_timestamp": 1762673146,
+            "expiring_at_timestamp": 1762759546,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_4",
+            "overlay_image_resources": null,
+            "video_duration": 25,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/19/resource",
+                "config_width": 480,
+                "config_height": 853,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryImage",
+            "id": "SANITIZED_MEDIA_20_ID",
+            "dimensions": {
+              "height": 1920,
+              "width": 1080
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/20/resource",
+                "config_width": 640,
+                "config_height": 1137
+              },
+              {
+                "src": "https://sanitized.invalid/media/20/resource",
+                "config_width": 750,
+                "config_height": 1333
+              },
+              {
+                "src": "https://sanitized.invalid/media/20/resource",
+                "config_width": 1080,
+                "config_height": 1920
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/20/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_5",
+            "taken_at_timestamp": 1760381691,
+            "expiring_at_timestamp": 1760468091,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": false,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_5",
+            "tappable_objects": [
+              {
+                "__typename": "GraphTappableLocation",
+                "x": 0.5,
+                "y": 0.13558385,
+                "width": 0.36997285,
+                "height": 0.033667702,
+                "rotation": 0,
+                "custom_title": null,
+                "attribution": null,
+                "id": "SANITIZED_TAPPABLE_ID_1",
+                "short_name": ""
+              }
+            ],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryImage",
+            "id": "SANITIZED_MEDIA_21_ID",
+            "dimensions": {
+              "height": 1920,
+              "width": 1080
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/21/resource",
+                "config_width": 640,
+                "config_height": 1137
+              },
+              {
+                "src": "https://sanitized.invalid/media/21/resource",
+                "config_width": 750,
+                "config_height": 1333
+              },
+              {
+                "src": "https://sanitized.invalid/media/21/resource",
+                "config_width": 1080,
+                "config_height": 1920
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/21/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_6",
+            "taken_at_timestamp": 1758123134,
+            "expiring_at_timestamp": 1758209534,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": false,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_6",
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_22_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/22/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/22/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/22/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/22/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_7",
+            "taken_at_timestamp": 1739684762,
+            "expiring_at_timestamp": 1739771162,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_7",
+            "overlay_image_resources": null,
+            "video_duration": 10.033,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/22/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_23_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/23/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/23/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/23/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/23/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_8",
+            "taken_at_timestamp": 1738759816,
+            "expiring_at_timestamp": 1738846216,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_8",
+            "overlay_image_resources": null,
+            "video_duration": 15,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/23/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_24_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/24/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/24/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/24/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/24/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_9",
+            "taken_at_timestamp": 1699689277,
+            "expiring_at_timestamp": 1699775677,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_9",
+            "overlay_image_resources": null,
+            "video_duration": 26.4,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/24/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_25_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/25/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/25/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/25/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/25/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_10",
+            "taken_at_timestamp": 1699689221,
+            "expiring_at_timestamp": 1699775621,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_10",
+            "overlay_image_resources": null,
+            "video_duration": 41.354,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/25/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_11_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/11/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/11/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/11/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/11/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_11",
+            "taken_at_timestamp": 1697373601,
+            "expiring_at_timestamp": 1697460001,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_11",
+            "overlay_image_resources": null,
+            "video_duration": 33.266,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/11/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_12_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/12/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/12/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/12/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/12/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_12",
+            "taken_at_timestamp": 1693924842,
+            "expiring_at_timestamp": 1694011242,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_12",
+            "overlay_image_resources": null,
+            "video_duration": 15,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/12/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryImage",
+            "id": "SANITIZED_MEDIA_13_ID",
+            "dimensions": {
+              "height": 1920,
+              "width": 1080
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/13/resource",
+                "config_width": 640,
+                "config_height": 1137
+              },
+              {
+                "src": "https://sanitized.invalid/media/13/resource",
+                "config_width": 750,
+                "config_height": 1333
+              },
+              {
+                "src": "https://sanitized.invalid/media/13/resource",
+                "config_width": 1080,
+                "config_height": 1920
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/13/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_13",
+            "taken_at_timestamp": 1693917962,
+            "expiring_at_timestamp": 1694004362,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": false,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_13",
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_14_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/14/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/14/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/14/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/14/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_14",
+            "taken_at_timestamp": 1693317627,
+            "expiring_at_timestamp": 1693404027,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_14",
+            "overlay_image_resources": null,
+            "video_duration": 15,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/14/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_15_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/15/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/15/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/15/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/15/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_15",
+            "taken_at_timestamp": 1693117935,
+            "expiring_at_timestamp": 1693204335,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_15",
+            "overlay_image_resources": null,
+            "video_duration": 15,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/15/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryVideo",
+            "id": "SANITIZED_MEDIA_16_ID",
+            "dimensions": {
+              "height": 1136,
+              "width": 640
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/16/resource",
+                "config_width": 640,
+                "config_height": 1136
+              },
+              {
+                "src": "https://sanitized.invalid/media/16/resource",
+                "config_width": 750,
+                "config_height": 1331
+              },
+              {
+                "src": "https://sanitized.invalid/media/16/resource",
+                "config_width": 1080,
+                "config_height": 1917
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/16/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_16",
+            "taken_at_timestamp": 1692986376,
+            "expiring_at_timestamp": 1693072776,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": true,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_16",
+            "overlay_image_resources": null,
+            "video_duration": 15,
+            "video_resources": [
+              {
+                "src": "https://sanitized.invalid/media/16/resource",
+                "config_width": 480,
+                "config_height": 852,
+                "mime_type": "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"",
+                "profile": "BASELINE"
+              }
+            ],
+            "tappable_objects": [],
+            "story_app_attribution": null
+          },
+          {
+            "__typename": "GraphStoryImage",
+            "id": "SANITIZED_MEDIA_17_ID",
+            "dimensions": {
+              "height": 1333,
+              "width": 750
+            },
+            "display_resources": [
+              {
+                "src": "https://sanitized.invalid/media/17/resource",
+                "config_width": 640,
+                "config_height": 1137
+              },
+              {
+                "src": "https://sanitized.invalid/media/17/resource",
+                "config_width": 750,
+                "config_height": 1333
+              },
+              {
+                "src": "https://sanitized.invalid/media/17/resource",
+                "config_width": 1080,
+                "config_height": 1920
+              }
+            ],
+            "display_url": "https://sanitized.invalid/media/17/display",
+            "media_preview": "SANITIZED_MEDIA_PREVIEW_17",
+            "taken_at_timestamp": 1692417974,
+            "expiring_at_timestamp": 1692504374,
+            "story_cta_url": null,
+            "story_view_count": null,
+            "is_video": false,
+            "owner": {
+              "id": "SANITIZED_PERSON_2_ID",
+              "username": "SANITIZED_PERSON_2_USERNAME",
+              "profile_pic_url": "https://sanitized.invalid/person/2/profile-picture"
+            },
+            "should_log_client_event": false,
+            "tracking_token": "SANITIZED_TRACKING_TOKEN_17",
+            "tappable_objects": [],
+            "story_app_attribution": null
+          }
+        ]
+      }
+    ]
+  },
+  "errors": [
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 0, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 0, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 1, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 1, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 2, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 2, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 3, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 3, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 4, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 4, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 5, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 5, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 6, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 6, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 7, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 7, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 8, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 8, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 9, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 9, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 10, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 10, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 11, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 11, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 12, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 12, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 13, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 13, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 14, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 14, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 15, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 15, "story_view_count"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 16, "story_cta_url"],
+      "severity": "ERROR"
+    },
+    {
+      "message": "execution error",
+      "path": ["reels_media", 0, "items", 16, "story_view_count"],
+      "severity": "ERROR"
+    }
+  ]
+}

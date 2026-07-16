@@ -1,0 +1,105 @@
+{
+  "data": {
+    "user": {
+      "ai_agent_type": null,
+      "biography": "SANITIZED_BIOGRAPHY_1",
+      "bio_links": [
+        {
+          "title": "SANITIZED_BIO_LINK_TITLE_1",
+          "lynx_url": "https://sanitized.invalid/resource/1/bio-link-shim",
+          "url": "https://sanitized.invalid/resource/1/bio-link",
+          "link_type": "external"
+        },
+        {
+          "title": "SANITIZED_BIO_LINK_TITLE_1",
+          "lynx_url": "https://sanitized.invalid/resource/2/bio-link-shim",
+          "url": "https://sanitized.invalid/resource/2/bio-link",
+          "link_type": "external"
+        }
+      ],
+      "fb_profile_biolink": null,
+      "biography_with_entities": {
+        "raw_text": "SANITIZED_BIOGRAPHY_1",
+        "entities": []
+      },
+      "blocked_by_viewer": false,
+      "restricted_by_viewer": false,
+      "country_block": false,
+      "eimu_id": "SANITIZED_PERSON_11_EIMU_ID",
+      "external_url": "https://sanitized.invalid/resource/1/external",
+      "external_url_linkshimmed": "https://sanitized.invalid/resource/1/external-link-shim",
+      "edge_followed_by": {
+        "count": 685866963
+      },
+      "fbid": "SANITIZED_PERSON_11_FB_ID",
+      "followed_by_viewer": false,
+      "edge_follow": {
+        "count": 244
+      },
+      "follows_viewer": false,
+      "full_name": "SANITIZED_PERSON_11_FULL_NAME",
+      "group_metadata": null,
+      "has_ar_effects": true,
+      "has_clips": true,
+      "has_guides": false,
+      "has_chaining": true,
+      "has_channel": false,
+      "has_blocked_viewer": false,
+      "highlight_reel_count": 15,
+      "has_requested_viewer": false,
+      "hide_like_and_view_counts": false,
+      "id": "SANITIZED_PERSON_11_ID",
+      "is_business_account": false,
+      "is_professional_account": true,
+      "is_supervision_enabled": false,
+      "is_guardian_of_viewer": false,
+      "is_supervised_by_viewer": false,
+      "is_supervised_user": false,
+      "is_embeds_disabled": false,
+      "is_joined_recently": false,
+      "guardian_id": null,
+      "business_address_json": null,
+      "business_contact_method": "UNKNOWN",
+      "business_email": null,
+      "business_phone_number": null,
+      "business_category_name": null,
+      "overall_category_name": null,
+      "category_enum": null,
+      "category_name": null,
+      "is_private": false,
+      "is_verified": true,
+      "is_verified_by_mv4b": false,
+      "is_regulated_c18": false,
+      "edge_mutual_followed_by": {
+        "count": 2,
+        "edges": [
+          {
+            "node": {
+              "username": "SANITIZED_PERSON_12_USERNAME"
+            }
+          }
+        ]
+      },
+      "pinned_channels_list_count": 0,
+      "profile_pic_url": "https://sanitized.invalid/person/11/profile-picture",
+      "profile_pic_url_hd": "https://sanitized.invalid/person/11/profile-picture-hd",
+      "requested_by_viewer": false,
+      "should_show_category": false,
+      "should_show_public_contacts": false,
+      "show_account_transparency_details": true,
+      "transparency_label": null,
+      "transparency_product": null,
+      "username": "SANITIZED_PERSON_11_USERNAME",
+      "pronouns": [],
+      "edge_owner_to_timeline_media": {
+        "count": 8507,
+        "page_info": {
+          "has_next_page": true,
+          "end_cursor": ""
+        },
+        "edges": []
+      }
+    }
+  },
+  "status": "ok"
+}
