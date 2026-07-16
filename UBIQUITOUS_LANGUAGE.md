@@ -26,13 +26,18 @@
 
 ## Errors
 
-| Term                       | Definition                                                                            | Aliases to avoid |
-| -------------------------- | ------------------------------------------------------------------------------------- | ---------------- |
-| **`ResponseShapeUnknown`** | Tagged error raised when a response fails schema decoding                             | Parse error      |
-| **`RateLimited`**          | Tagged error raised on HTTP 429 from IG                                               | Throttled        |
-| **`NetworkError`**         | Tagged error wrapping a failed `fetch` (DNS, offline, abort, etc.)                    | Fetch error      |
-| **`HttpError`**            | Tagged error for non-OK HTTP responses other than 429                                 | Status error     |
-| **`GraphQLRequestFailed`** | Tagged error for IG GraphQL-layer failures (operation rejected, missing data wrapper) | GQL error        |
+| Term                       | Definition                                                                                         | Aliases to avoid |
+| -------------------------- | -------------------------------------------------------------------------------------------------- | ---------------- |
+| **`ResponseShapeUnknown`** | Tagged error raised when a response fails schema decoding                                          | Parse error      |
+| **`RateLimited`**          | Tagged error raised on HTTP 429 from IG                                                            | Throttled        |
+| **`NetworkError`**         | Tagged error wrapping a failed `fetch` (DNS, offline, abort, etc.)                                 | Fetch error      |
+| **`HttpError`**            | Tagged error for non-OK HTTP responses other than 429                                              | Status error     |
+| **`GraphQLRequestFailed`** | Tagged error for IG GraphQL-layer failures (operation rejected, missing data wrapper)              | GQL error        |
+| **Failure code**           | Stable symbolic identifier for a user-operation failure, defined by the canonical error registry   | Error message    |
+| **Recovery action**        | Closed action identifier derived from failure policy, such as retry, refetch, or original fallback | Button text      |
+| **Operation outcome**      | Honest state of one logical item: pending, started, failed, skipped, or not attempted              | Result string    |
+| **Operation ID**           | Stable identity of one logical selected item across retries and fallbacks                          | Request ID       |
+| **Request ID**             | Fresh correlation identity for one transport execution                                             | Operation ID     |
 
 ## Endpoints
 

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { StreamTargetChunk } from 'mediabunny';
-import { requestIdFrom } from '../download/contracts.ts';
+import { operationIdFrom, requestIdFrom } from '../download/contracts.ts';
 import { inspectSilentVideo, processSilentVideo } from './engine.ts';
 
 type StoredPart = string | StreamTargetChunk;
@@ -91,16 +91,17 @@ describe('silent video media processing', () => {
 
   it('packet-copies an audiovisual MP4 into a playable video-only MP4', async () => {
     const requestId = requestIdFrom('00000000-0000-4000-8000-000000000001');
+    const operationId = operationIdFrom('10000000-0000-4000-8000-000000000001');
     const fixturePath = resolve('src/silent-video/__fixtures__/synthetic-av.mp4');
-    directory.files.set(`${requestId}.source`, Uint8Array.from(await readFile(fixturePath)));
+    directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
 
-    const result = await processSilentVideo(requestId, false, () => {});
+    const result = await processSilentVideo(operationId, requestId, false, () => {});
 
     expect(result.alreadySilent).toBe(false);
-    expect(result.opfsName).toBe(`${requestId}.mp4`);
-    const outputBytes = directory.files.get(`${requestId}.mp4`) ?? new Uint8Array();
-    const output = new File([outputBytes.buffer], `${requestId}.mp4`);
-    const preflight = await inspectSilentVideo(requestId, output);
+    expect(result.opfsName).toBe(`${operationId}.mp4`);
+    const outputBytes = directory.files.get(`${operationId}.mp4`) ?? new Uint8Array();
+    const output = new File([outputBytes.buffer], `${operationId}.mp4`);
+    const preflight = await inspectSilentVideo(operationId, requestId, output);
     expect(preflight.videoCodec).toBe('avc');
     expect(preflight.audioTrackCount).toBe(0);
     expect(preflight.width).toBe(16);

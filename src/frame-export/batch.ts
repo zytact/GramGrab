@@ -1,6 +1,6 @@
 export interface FrameExportJobResult {
   index: number;
-  error?: string;
+  failure?: unknown;
 }
 
 export async function runFrameExportBatch(
@@ -17,8 +17,8 @@ export async function runFrameExportBatch(
       try {
         await run(index);
         results.push({ index });
-      } catch (error) {
-        results.push({ index, error: String(error) });
+      } catch (failure) {
+        results.push({ index, failure });
       }
     }
   };

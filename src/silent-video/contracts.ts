@@ -1,5 +1,6 @@
 import { Effect, Schema } from 'effect';
-import { RequestIdSchema } from '../download/contracts.ts';
+import { OperationIdSchema, RequestIdSchema } from '../download/contracts.ts';
+import { OperationFailure } from '../errors/contracts.ts';
 
 const SilentPhase = Schema.Literal(
   'inspecting',
@@ -12,6 +13,7 @@ const SilentPhase = Schema.Literal(
 
 export class SilentPreflight extends Schema.Class<SilentPreflight>('SilentPreflight')({
   requestId: RequestIdSchema,
+  operationId: OperationIdSchema,
   audioTrackCount: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
   videoCodec: Schema.String,
   durationSeconds: Schema.Number.pipe(Schema.nonNegative()),
@@ -23,14 +25,18 @@ export class SilentPreflight extends Schema.Class<SilentPreflight>('SilentPrefli
 }) {}
 
 export class InspectSilentVideo extends Schema.TaggedClass<InspectSilentVideo>()('inspect', {
+  operationId: OperationIdSchema,
   requestId: RequestIdSchema,
   url: Schema.String.pipe(Schema.nonEmptyString()),
+  useCachedInput: Schema.Boolean,
 }) {}
 export class ProcessSilentVideo extends Schema.TaggedClass<ProcessSilentVideo>()('process', {
+  operationId: OperationIdSchema,
   requestId: RequestIdSchema,
   transcode: Schema.Boolean,
 }) {}
 export class ReleaseSilentVideo extends Schema.TaggedClass<ReleaseSilentVideo>()('release', {
+  operationId: OperationIdSchema,
   requestId: RequestIdSchema,
 }) {}
 const SilentWorkerRequest = Schema.Union(
@@ -40,6 +46,7 @@ const SilentWorkerRequest = Schema.Union(
 );
 
 export class SilentProgress extends Schema.TaggedClass<SilentProgress>()('progress', {
+  operationId: OperationIdSchema,
   requestId: RequestIdSchema,
   phase: SilentPhase,
   progress: Schema.Number.pipe(Schema.between(0, 1)),
@@ -48,19 +55,21 @@ export class SilentInspected extends Schema.TaggedClass<SilentInspected>()('insp
   preflight: SilentPreflight,
 }) {}
 export class SilentProcessed extends Schema.TaggedClass<SilentProcessed>()('processed', {
+  operationId: OperationIdSchema,
   requestId: RequestIdSchema,
   alreadySilent: Schema.Boolean,
   opfsName: Schema.optional(Schema.String),
 }) {}
 export class SilentReleased extends Schema.TaggedClass<SilentReleased>()('released', {
+  operationId: OperationIdSchema,
   requestId: RequestIdSchema,
 }) {}
 export class SilentWorkerError extends Schema.TaggedClass<SilentWorkerError>()(
   'SilentWorkerError',
   {
     requestId: RequestIdSchema,
-    kind: Schema.Literal('network', 'unsupported', 'storage', 'processing', 'validation'),
-    reason: Schema.String.pipe(Schema.nonEmptyString()),
+    operationId: OperationIdSchema,
+    failure: OperationFailure,
   }
 ) {}
 const SilentWorkerResponse = Schema.Union(

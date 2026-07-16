@@ -25,6 +25,7 @@ export type OnMessageCallback = (
 export interface BrowserShim {
   runtime: {
     getURL: (path: string) => string;
+    getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
     onMessage: {
       addListener: (callback: OnMessageCallback) => void;
@@ -88,6 +89,7 @@ export type ContextMenuShownCallback = (info: { pageUrl?: string; linkUrl?: stri
 
 interface ChromeRuntime {
   getURL: (path: string) => string;
+  getManifest?: () => { version?: string };
   lastError?: { message?: string };
   sendMessage: (msg: unknown, callback: (response: unknown) => void) => void;
   onMessage: { addListener: (callback: OnMessageCallback) => void };
@@ -135,6 +137,7 @@ interface ChromeGlobal {
 interface NativeBrowserGlobal {
   runtime: {
     getURL: (path: string) => string;
+    getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
     onMessage: { addListener: (callback: OnMessageCallback) => void };
   };
@@ -185,6 +188,7 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
   return {
     runtime: {
       getURL: path => chrome.runtime.getURL(path),
+      getManifest: () => chrome.runtime.getManifest?.() ?? {},
       sendMessage: msg =>
         new Promise((resolve, reject) => {
           chrome.runtime.sendMessage(msg, response => {
@@ -350,6 +354,7 @@ const noopContextMenus: BrowserShim['contextMenus'] = {
 const noopShim: BrowserShim = {
   runtime: {
     getURL: path => path,
+    getManifest: () => ({}),
     sendMessage: () => Promise.resolve(undefined),
     onMessage: { addListener: () => {} },
   },

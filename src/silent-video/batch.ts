@@ -3,8 +3,11 @@ import {
   DownloadAcceptedResult,
   DownloadFailedResult,
   DownloadSkippedResult,
+  DownloadNotAttemptedResult,
+  OperationBatchOutcome,
   type DownloadOperationResult,
 } from '../download/contracts.ts';
+import { OperationFailure, OperationWarning, diagnosticCause } from '../errors/contracts.ts';
 import type { AttemptOperation } from '../download/attempt.ts';
 import { SilentVideoClient } from './client.ts';
 import { readOutput, sweepOutputs, transferOutputToDownload } from './opfs.ts';
@@ -20,14 +23,21 @@ interface OwnershipState {
   batchComplete: boolean;
 }
 
-function errorReason(cause: unknown, fallback: string): string {
-  return cause instanceof Error && cause.message.trim() ? cause.message : fallback;
+function silentFailure(
+  cause: unknown,
+  code: OperationFailure['code'],
+  phase: OperationFailure['phase']
+) {
+  return cause instanceof OperationFailure
+    ? cause
+    : OperationFailure.make({ code, phase, scope: 'item', cause: diagnosticCause(cause) });
 }
 
 async function inspectOperations(
   client: SilentVideoClient,
   operations: readonly AttemptOperation[],
-  onProgress: (requestId: string, phase: string, progress: number) => void
+  onProgress: (requestId: string, phase: string, progress: number) => void,
+  approvedRequestIds: ReadonlySet<string>
 ) {
   const settled = operations.map<PromiseSettledResult<SilentPreflight> | undefined>(
     () => undefined
@@ -40,8 +50,12 @@ async function inspectOperations(
     try {
       settled[index] = {
         status: 'fulfilled',
-        value: await client.inspect(operation.requestId, operation.url, (phase, progress) =>
-          onProgress(operation.requestId, phase, progress)
+        value: await client.inspect(
+          operation.operationId,
+          operation.requestId,
+          operation.url,
+          approvedRequestIds.has(operation.operationId),
+          (phase, progress) => onProgress(operation.requestId, phase, progress)
         ),
       };
     } catch (reason) {
@@ -59,9 +73,14 @@ async function inspectOperations(
     else
       failures.push(
         DownloadFailedResult.make({
+          operationId: operation.operationId,
           requestId: operation.requestId,
           status: 'failed',
-          reason: errorReason(result.reason, 'The source video could not be inspected.'),
+          failure: silentFailure(
+            result.reason,
+            'SILENT_INPUT_INSPECTION_FAILED',
+            'silent-inspection'
+          ),
         })
       );
   });
@@ -77,12 +96,12 @@ async function declinedReencodes(
     candidate =>
       candidate.preflight.audioTrackCount > 0 &&
       !candidate.preflight.copyCompatible &&
-      !approvedRequestIds.has(candidate.operation.requestId)
+      !approvedRequestIds.has(candidate.operation.operationId)
   );
   if (undecided.length === 0) return new Set();
   if (!(await approveReencode(undecided)))
-    return new Set(undecided.map(candidate => candidate.operation.requestId));
-  for (const candidate of undecided) approvedRequestIds.add(candidate.operation.requestId);
+    return new Set(undecided.map(candidate => candidate.operation.operationId));
+  for (const candidate of undecided) approvedRequestIds.add(candidate.operation.operationId);
   return new Set();
 }
 
@@ -103,17 +122,20 @@ async function processCandidate(
   client: SilentVideoClient,
   sourceUrl: string,
   onProgress: (requestId: string, phase: string, progress: number) => void,
-  ownership: OwnershipState
+  ownership: OwnershipState,
+  approvedOperationIds: ReadonlySet<string>
 ): Promise<DownloadOperationResult> {
   const { operation, preflight } = candidate;
   try {
     onProgress(operation.requestId, 'queued', 0);
     const processed = await client.process(
+      operation.operationId,
       operation.requestId,
-      !preflight.copyCompatible,
+      !preflight.copyCompatible || approvedOperationIds.has(operation.operationId),
       (phase, progress) => onProgress(operation.requestId, phase, progress)
     );
-    if (processed.alreadySilent) await client.release(operation.requestId).catch(() => undefined);
+    if (processed.alreadySilent)
+      await client.release(operation.operationId, operation.requestId).catch(() => undefined);
     const url = processed.alreadySilent
       ? operation.url
       : URL.createObjectURL(await readOutput(processed.opfsName!));
@@ -128,15 +150,23 @@ async function processCandidate(
       : await trackOwnedDownload(operation, downloadId, url, client, ownership);
     const historyWarning = (await recordSilentHistory(sourceUrl, operation)).error;
     return DownloadAcceptedResult.make({
+      operationId: operation.operationId,
       requestId: operation.requestId,
-      status: 'accepted',
-      ...(warning || historyWarning ? { warning: warning ?? historyWarning } : {}),
+      status: 'started',
+      ...(warning || historyWarning
+        ? {
+            warning: OperationWarning.make({
+              code: warning ? 'SILENT_TEMPORARY_FILE_CLEANUP_UNCONFIRMED' : 'HISTORY_SAVE_FAILED',
+            }),
+          }
+        : {}),
     });
   } catch (cause) {
     return DownloadFailedResult.make({
+      operationId: operation.operationId,
       requestId: operation.requestId,
       status: 'failed',
-      reason: errorReason(cause, 'Audio removal could not be completed.'),
+      failure: silentFailure(cause, 'SILENT_UNEXPECTED_FAILURE', 'silent-worker'),
     });
   }
 }
@@ -149,8 +179,8 @@ async function trackOwnedDownload(
   ownership: OwnershipState
 ): Promise<string | undefined> {
   ownership.activeDownloads++;
-  const ownershipReady = transferOutputToDownload(operation.requestId, downloadId);
-  releaseWhenComplete(downloadId, url, client, operation.requestId, ownershipReady, () => {
+  const ownershipReady = transferOutputToDownload(operation.operationId, downloadId);
+  releaseWhenComplete(downloadId, url, client, operation, ownershipReady, () => {
     ownership.activeDownloads--;
     if (ownership.batchComplete && ownership.activeDownloads === 0) client.close();
   });
@@ -169,13 +199,13 @@ export async function runSilentVideoBatch(
   sourceUrl: string,
   onPreflightComplete: () => void,
   approvedRequestIds: Set<string>
-): Promise<readonly DownloadOperationResult[]> {
+): Promise<OperationBatchOutcome> {
   const client = new SilentVideoClient();
   const ownership: OwnershipState = { activeDownloads: 0, batchComplete: false };
   for (const operation of operations) onProgress(operation.requestId, 'queued', 0);
   try {
     await sweepOnce();
-    const inspected = await inspectOperations(client, operations, onProgress);
+    const inspected = await inspectOperations(client, operations, onProgress, approvedRequestIds);
     const skipped = await declinedReencodes(
       inspected.candidates,
       approvedRequestIds,
@@ -184,28 +214,48 @@ export async function runSilentVideoBatch(
     onPreflightComplete();
     const results = [...inspected.failures];
     for (const candidate of inspected.candidates) {
-      if (skipped.has(candidate.operation.requestId)) {
-        await client.release(candidate.operation.requestId).catch(() => undefined);
+      if (skipped.has(candidate.operation.operationId)) {
+        await client
+          .release(candidate.operation.operationId, candidate.operation.requestId)
+          .catch(() => undefined);
       }
       results.push(
-        skipped.has(candidate.operation.requestId)
+        skipped.has(candidate.operation.operationId)
           ? DownloadSkippedResult.make({
+              operationId: candidate.operation.operationId,
               requestId: candidate.operation.requestId,
               status: 'skipped',
-              reason: 'High-quality H.264 re-encoding was declined.',
+              code: 'SILENT_REENCODE_DECLINED',
             })
-          : await processCandidate(candidate, client, sourceUrl, onProgress, ownership)
+          : await processCandidate(
+              candidate,
+              client,
+              sourceUrl,
+              onProgress,
+              ownership,
+              approvedRequestIds
+            )
       );
     }
-    return results;
+    return OperationBatchOutcome.make({ outcomes: results });
   } catch (cause) {
-    return operations.map(operation =>
-      DownloadFailedResult.make({
-        requestId: operation.requestId,
-        status: 'failed',
-        reason: errorReason(cause, 'Private browser storage is unavailable.'),
-      })
-    );
+    const itemFailure = silentFailure(cause, 'SILENT_STORAGE_UNAVAILABLE', 'silent-storage');
+    const failure = OperationFailure.make({
+      code: itemFailure.code,
+      phase: itemFailure.phase,
+      scope: 'batch',
+      ...(itemFailure.cause ? { cause: itemFailure.cause } : {}),
+    });
+    return OperationBatchOutcome.make({
+      failure,
+      outcomes: operations.map(operation =>
+        DownloadNotAttemptedResult.make({
+          operationId: operation.operationId,
+          requestId: operation.requestId,
+          status: 'not-attempted',
+        })
+      ),
+    });
   } finally {
     onPreflightComplete();
     ownership.batchComplete = true;
@@ -223,7 +273,7 @@ function releaseWhenComplete(
   downloadId: number,
   url: string,
   client: SilentVideoClient,
-  requestId: AttemptOperation['requestId'],
+  operation: AttemptOperation,
   ownershipReady: Promise<void>,
   onReleased: () => void
 ): void {
@@ -238,7 +288,7 @@ function releaseWhenComplete(
       .catch(() => undefined)
       .then(() => {
         URL.revokeObjectURL(url);
-        return client.release(requestId).finally(onReleased);
+        return client.release(operation.operationId, operation.requestId).finally(onReleased);
       });
   };
   browser.downloads.onChanged.addListener(listener);

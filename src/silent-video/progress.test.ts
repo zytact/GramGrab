@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { requestIdFrom } from '../download/contracts.ts';
+import { operationIdFrom, requestIdFrom } from '../download/contracts.ts';
 import type { AttemptEntry, AttemptOperation, AttemptOutcome } from '../download/attempt.ts';
 import { silentProgressMessage } from './progress.ts';
 
 const operation = (index: number): AttemptOperation => ({
+  operationId: operationIdFrom(`10000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
   requestId: requestIdFrom(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
   itemIndex: index,
   displayIndex: index,
   url: `https://example.com/${index}.mp4`,
   filename: `${index}.mp4`,
+  originalUrl: `https://example.com/${index}.mp4`,
+  originalFilename: `${index}.mp4`,
   mediaType: 'video',
   mode: 'silent',
 });
@@ -16,6 +19,8 @@ const operation = (index: number): AttemptOperation => ({
 const entry = (index: number, outcome: AttemptOutcome): AttemptEntry => ({
   operation: operation(index),
   outcome,
+  executionCount: 1,
+  manualRetryCount: 0,
 });
 
 describe('silent video progress message', () => {
@@ -34,7 +39,7 @@ describe('silent video progress message', () => {
   it('selects active work instead of a completed earlier item', () => {
     expect(
       silentProgressMessage([
-        entry(1, { status: 'accepted' }),
+        entry(1, { status: 'started' }),
         entry(2, { status: 'pending', phase: 'processing', progress: 0.4 }),
       ])
     ).toBe('Removing audio… 40%');

@@ -36,7 +36,7 @@ export class BrowserDownloadFailed extends Data.TaggedError('BrowserDownloadFail
 
 // Frame extraction (Phase 7+)
 export class VideoFrameExtractionFailed extends Data.TaggedError('VideoFrameExtractionFailed')<{
-  reason: 'no-duration' | 'no-frame' | 'no-canvas' | 'no-blob' | 'cors' | 'timeout';
+  reason: 'no-duration' | 'no-frame' | 'no-canvas' | 'no-blob' | 'timeout';
 }> {}
 
 type AppError =

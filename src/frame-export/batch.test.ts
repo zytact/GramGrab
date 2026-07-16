@@ -14,6 +14,6 @@ describe('frame export batch', () => {
     });
     expect(maximum).toBeLessThanOrEqual(2);
     expect(results).toHaveLength(3);
-    expect(results.find(result => result.index === 1)?.error).toContain('capture failed');
+    expect(results.find(result => result.index === 1)?.failure).toBeInstanceOf(Error);
   });
 });

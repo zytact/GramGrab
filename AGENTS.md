@@ -78,6 +78,10 @@ This repo has a domain glossary at `UBIQUITOUS_LANGUAGE.md`.
 
 Read it when working on domain terminology, product concepts, naming, business rules, user-facing language, or when interpreting ambiguous terms (notably the overloaded **Reel** and **Unknown**). Prefer the canonical terms defined there, and avoid aliases listed as discouraged.
 
+## Operation errors
+
+The canonical failure registry and compatibility contract live in `docs/error-model.md`. When adding a failure code, update its producer, schema, normalizer, exhaustive presentation/recovery policy, diagnostics policy, documentation row, and focused tests together. Do not render diagnostic causes as ordinary UI copy.
+
 ## Pre-commit
 
 Vite plus controls the pre-commit hook.
