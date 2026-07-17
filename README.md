@@ -1,6 +1,6 @@
 # GramGrab
 
-**GramGrab** is a browser extension (Chrome & Firefox, Manifest V3) that lets you download media from Instagram directly from your browser — posts, carousels, reels, stories, highlights, and profile pictures — with a clean, minimal UI and no third-party services.
+**GramGrab** is a browser extension (Chrome & Firefox, Manifest V3) that lets you download media from Instagram directly from your browser - posts, carousels, reels, stories, highlights, and profile pictures - with a clean, minimal UI and no third-party services.
 
 Operation failures use stable symbolic codes and action-led recovery. See [the error model](docs/error-model.md) for the canonical registry and diagnostics policy.
 
@@ -8,16 +8,19 @@ Operation failures use stable symbolic codes and action-led recovery. See [the e
 
 ## Features
 
-- **Posts & Carousels** — download single images or every image in a multi-photo post at once
-- **Reels** — save short-form video content as MP4
-- **Stories** — download active stories from any accessible profile
-- **Highlights** — save archived story highlights
-- **Profile pictures** — fetch the highest-resolution profile picture available
-- **Batch selection** — cherry-pick which items to download from any result set
-- **Preview thumbnails** — see images and videos before you download
-- **Auto-detect URL** — the popup reads the URL of your active Instagram tab automatically
-- **Export video frame** — toggle a "Frame" checkbox on any video to download a JPEG still (5s mark) instead of the MP4
-- **Dark/light theme** — follows your OS preference
+- **Posts & Carousels** - download single images or every image in a multi-photo post at once
+- **Reels** - save short-form video content as MP4
+- **Stories** - download active stories from any accessible profile
+- **Highlights** - save archived story highlights
+- **Profile pictures** - fetch the highest-resolution profile picture available
+- **Batch selection** - cherry-pick which items to download from any result set
+- **Preview thumbnails** - see images and videos before you download
+- **Auto-detect URL** - the popup reads the URL of your active Instagram tab automatically
+- **Export video frame** - choose a timestamp and download a JPEG still instead of the MP4
+- **Silent video export** - create a video-only MP4 when the source contains an audio track
+- **Download history** - review accepted downloads, remove entries, clear history, and redownload an item
+- **Workspace tab** - move large result sets and active batches from the popup into a dedicated tab
+- **Dark/light theme** - follows your OS preference
 
 ---
 
@@ -33,7 +36,7 @@ Operation failures use stable symbolic codes and action-led recovery. See [the e
 
 ## Installation
 
-### Option A — Load the pre-built extension (recommended)
+### Option A - Load the pre-built extension (recommended)
 
 1. Clone or download this repository.
 2. Run the build to generate browser-specific output directories:
@@ -60,7 +63,7 @@ Operation failures use stable symbolic codes and action-led recovery. See [the e
 
 > **Why separate folders?** Chromium MV3 requires a `service_worker` background entry; Firefox MV3 uses `scripts`. The two builds share the same TypeScript source but get different generated `manifest.json` files.
 
-### Option B — Development mode (live rebuild)
+### Option B - Development mode (live rebuild)
 
 ```bash
 vp install
@@ -74,13 +77,13 @@ Then load the matching `extension/chromium/` or `extension/firefox/` folder as a
 
 ## How to Use
 
-1. **Open Instagram** in a browser tab and navigate to the content you want — a post, reel, story, highlight, or profile page.
+1. **Open Instagram** in a browser tab and navigate to the content you want - a post, reel, story, highlight, or profile page.
 2. **Click the GramGrab icon** in your toolbar to open the popup.
    - The URL field auto-fills with the Instagram URL from your active tab. If it doesn't, paste the URL manually.
 3. **Click "Fetch Media"** (or press Enter). GramGrab queries Instagram for the available media items.
 4. **Review the results.** Each item shows a thumbnail, media type badge (image / video), and a filename hint.
    - Use the **Select All** checkbox or tick individual items.
-5. **Click "Download N Selected"** to save the chosen files. Your browser's standard download mechanism handles the rest — files land wherever your browser saves downloads.
+5. **Click "Download N Selected"** to save the chosen files. Your browser's standard download mechanism handles the rest - files land wherever your browser saves downloads.
 
 ### Supported URL formats
 
@@ -127,20 +130,21 @@ vp fmt .
 vp fmt --check .
 ```
 
-The Vite build root is `templates/`; `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. Vite+ task caching is configured for the browser build and packaging workflows, so repeated `vp run build:*` and `vp run package:*` commands can replay cached outputs when inputs have not changed. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a deeper look at the codebase structure.
+The Vite build root is `templates/`; `templates/popup.tsx` mounts the React popup, while `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. Vite+ task caching is configured for the browser build and packaging workflows, so repeated `vp run build:*` and `vp run package:*` commands can replay cached outputs when inputs have not changed. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a deeper look at the codebase structure.
 
 ---
 
 ## How It Works
 
-GramGrab is built on two parts:
+GramGrab has a popup surface, a background worker, and shared domain modules:
 
-- **Popup UI** — a React app (`src/App.tsx`) rendered inside the extension popup. It handles URL input, media listing, selection, and status feedback.
-- **Background service worker** (`src/background.ts`) — handles all network requests to Instagram's internal GraphQL API and triggers browser downloads via `browser.downloads.download()`.
+- **Popup UI** - `templates/popup.html` loads `templates/popup.tsx`, which mounts the React app from `src/popup.tsx`. It handles URL input, media listing, selection, previews, frame and silent-video choices, history, workspace actions, and status feedback.
+- **Background service worker** (`src/background.ts`) - handles Instagram requests, strict response decoding, browser downloads, history persistence, context-menu commands, and workspace coordination.
+- **Shared modules** - `src/effect/` contains request and schema code, `src/errors/` maps failures to recovery actions, and the `src/history/`, `src/workspace/`, `src/download/`, `src/frame-export/`, and `src/silent-video/` modules keep stateful workflows explicit and testable.
 
-The popup sends messages to the background worker (`FETCH_MEDIA`, `DOWNLOAD_MEDIA`, `GET_PREVIEW_URL`). The worker fetches media metadata from Instagram using your authenticated browser session (cookies are included automatically), parses the response, and returns normalized media items to the popup.
+The popup sends messages to the background worker through the single dispatcher in `src/background.ts`. The main operations are `FETCH_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB`, `DOWNLOAD_MEDIA`, history reads and mutations, `RECORD_FRAME_EXPORT`, `RECORD_SILENT_EXPORT`, and diagnostics export. Workspace handoff uses a versioned, short-lived storage transfer coordinated by `src/workspace/coordinator.ts`, so a popup can open or replace a dedicated workspace tab without losing its current source, results, or export settings. The worker fetches media metadata from Instagram using your authenticated browser session, decodes the response, and returns normalized media items to the popup. The listener is registered synchronously and keeps asynchronous work alive with `sendResponse` plus `return true` for Chromium and Firefox compatibility.
 
-> GramGrab never sends your data anywhere except directly to Instagram's own servers. All requests go from your browser to `instagram.com` and `fbcdn.net` (Instagram's media CDN).
+> GramGrab does not use an application backend or third-party analytics service. The extension makes requests from your browser to Instagram endpoints and the `fbcdn.net` media CDN, using the browser's authenticated session where required. It stores download history and short-lived workspace handoff data in the browser's extension storage; media URLs and diagnostics can also exist transiently in in-memory UI state while an operation is active.
 
 ---
 
@@ -171,9 +175,11 @@ To fix it:
 1. Configure capture subjects in the repository-root `.env` (copy `.env.example` if needed).
 2. Run `vp run generate:ig-fixtures`, then paste `.local/capture-ig-fixtures.mjs` into DevTools on
    `https://www.instagram.com` (logged in).
-3. Download the raw JSON files and sanitize them before replacing anything in
-   `src/effect/__fixtures__/`. Sanitization is a required, separate follow-up from issue #44; this
-   checkout does not yet provide a sanitizer command.
+3. Download the raw JSON files into `.local/raw-fixtures/` and sanitize them before replacing
+   anything in `src/effect/__fixtures__/`. Run `vp run sanitize:ig-fixtures` to validate and stage
+   the complete capture set, review the value-free output, then run
+   `vp run sanitize:ig-fixtures -- --write` to install all eight sanitized fixtures transactionally.
+   The sanitizer is the privacy boundary for committed captures.
 4. Run `vp test run` - failing tests show exactly which fields changed.
 5. Update `src/effect/schemas.ts` to match the new shape, re-run tests, ship only sanitized fixtures.
 
@@ -181,11 +187,17 @@ To fix it:
 
 ## Limitations
 
-- **Login required** — you must be logged in to Instagram in the same browser profile. Private content is only accessible if your account follows that profile.
-- **API fragility** — GramGrab uses Instagram's internal, undocumented GraphQL endpoints. Instagram may change these without notice, which can break fetching until the extension is updated.
-- **Time-limited CDN URLs** — Instagram media URLs expire after a few hours. Downloads initiated through GramGrab must complete before the URL expires.
-- **No download history** — GramGrab does not track what you have previously downloaded.
-- **File formats** — images are always saved as `.jpg` and videos as `.mp4`, matching the formats Instagram serves.
+- **Login required** - you must be logged in to Instagram in the same browser profile. Private content is only accessible if your account follows that profile.
+- **API fragility** - GramGrab uses Instagram's internal, undocumented GraphQL endpoints. Instagram may change these without notice, which can break fetching until the extension is updated.
+- **Time-limited CDN URLs** - Instagram media URLs expire after a few hours. Downloads initiated through GramGrab must complete before the URL expires.
+- **Local download history** - GramGrab records accepted downloads locally in extension storage. It
+  stores the canonical source URL, media identity, filename hint, export mode, and timestamp, but not
+  the temporary media or preview URL. History is capped at 1,000 entries and can be deleted from the
+  popup.
+- **Workspace lifetime** - workspace transfers are short-lived handoffs between the popup and a
+  dedicated extension tab. They expire after 60 seconds and are sanitized before being written to
+  extension storage.
+- **File formats** - images are always saved as `.jpg` and videos as `.mp4`, matching the formats Instagram serves.
 
 ---
 
