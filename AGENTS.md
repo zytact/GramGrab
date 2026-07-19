@@ -46,12 +46,6 @@ This project vendors external repositories under `.repos/`.
 - Do not import from `.repos/` - application code should continue importing from normal package dependencies
 - When writing Effect code, inspect `.repos/effect/` for examples of idiomatic usage, tests, module structure, and API design. Treat it as the source of truth for Effect patterns.
 
-## TypeScript & Style
-
-- `moduleResolution: bundler`, `verbatimModuleSyntax: true`, `allowImportingTsExtensions: true`, `noUncheckedIndexedAccess: true` — array/object access may return `undefined`.
-- `no-console` rule: only `console.warn`/`console.error` allowed.
-- Prettier: single quotes, trailing commas (es5), 100 print width, arrow parens avoid.
-
 ## Testing
 
 - Vitest + jsdom. Files: `src/**/*.test.{ts,tsx}`. Setup: `src/test/setup.ts` (polyfills Blob.arrayBuffer, installs mock `globalThis.browser`).
