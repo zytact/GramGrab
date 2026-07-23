@@ -10,6 +10,7 @@ import {
   RequestId,
   StatusResult,
   TransportFailure,
+  ValidationFailure,
 } from '@gramgrab/protocol';
 import { browser, type NativePort } from './lib/browser.ts';
 
@@ -21,6 +22,12 @@ const RequestEnvelope = Schema.Struct({ version: Schema.Number, requestId: Reque
 let port: NativePort | undefined;
 let reconnectDelay = 1_000;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let commandHandler:
+  | ((
+      request: Request,
+      emit: (event: Accepted | Completed | Rejected | import('@gramgrab/protocol').Progress) => void
+    ) => Promise<void>)
+  | undefined;
 
 function browserName(): 'chromium' | 'firefox' | 'unknown' {
   const userAgent = globalThis.navigator?.userAgent ?? '';
@@ -29,7 +36,10 @@ function browserName(): 'chromium' | 'firefox' | 'unknown' {
   return 'unknown';
 }
 
-function post(requestId: RequestId, event: Accepted | Completed | Rejected): void {
+function post(
+  requestId: RequestId,
+  event: Accepted | Completed | Rejected | import('@gramgrab/protocol').Progress
+): void {
   port?.postMessage(
     Schema.encodeSync(Event)(Event.make({ version: PROTOCOL_VERSION, requestId, event }))
   );
@@ -70,6 +80,10 @@ function handleMessage(message: unknown): void {
         post(request.requestId, Completed.make({ result }));
         return;
       }
+      if (commandHandler) {
+        void commandHandler(request, event => post(request.requestId, event));
+        return;
+      }
       post(
         request.requestId,
         Rejected.make({
@@ -77,7 +91,16 @@ function handleMessage(message: unknown): void {
         })
       );
     },
-    () => undefined
+    error => {
+      const envelope = Schema.decodeUnknownEither(RequestEnvelope)(message);
+      if (envelope._tag === 'Left') return;
+      post(
+        envelope.right.requestId,
+        Rejected.make({
+          failure: ValidationFailure.make({ message: String(error) }),
+        })
+      );
+    }
   );
 }
 
@@ -101,6 +124,7 @@ function connect(): void {
   }
 }
 
-export function startNativeBridge(): void {
+export function startNativeBridge(handler: NonNullable<typeof commandHandler>): void {
+  commandHandler = handler;
   if (!port && !reconnectTimer) connect();
 }

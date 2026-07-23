@@ -2,6 +2,36 @@ import { Effect, Schema } from 'effect';
 import { browser } from './lib/browser.ts';
 import { startNativeBridge } from './native-bridge.ts';
 import {
+  Completed,
+  DebugExportResult,
+  DebugGetResult,
+  Export as ProtocolExport,
+  ExportOperation as ProtocolExportOperation,
+  ExportResult as ProtocolExportResult,
+  FrameExport,
+  HistoryClearResult,
+  HistoryEntry as ProtocolHistoryEntry,
+  HistoryListResult,
+  HistoryRedownloadFailed,
+  HistoryRedownloadResult,
+  HistoryRedownloadStarted,
+  HistoryRemoveResult,
+  InspectResult,
+  InspectedMedia,
+  ItemFailed,
+  ItemSucceeded,
+  MediaIdentity,
+  OperationFailure as ProtocolOperationFailure,
+  OperationId as ProtocolOperationId,
+  Progress,
+  Rejected,
+  SilentExport,
+  ValidationFailure,
+  type CommandResult,
+  type EventPayload,
+  type Request,
+} from '@gramgrab/protocol';
+import {
   canonicalizeInstagramUrl,
   WORKSPACE_TRANSFER_TTL_MS,
   type InstagramTarget,
@@ -65,8 +95,6 @@ import {
 } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from './errors/normalize.ts';
-
-startNativeBridge();
 
 const DOWNLOAD_CONCURRENCY = 3;
 
@@ -1304,6 +1332,379 @@ browser.contextMenus.onClicked.addListener(info => {
 
 registerContextMenus();
 
+let runnerTabId: number | undefined;
+let runnerReady: Promise<number> | undefined;
+let resolveRunnerReady: ((tabId: number) => void) | undefined;
+let runnerProgress: ((event: Progress) => void) | undefined;
+let runnerIdleTimer: ReturnType<typeof setTimeout> | undefined;
+let exportQueue: Promise<void> = Promise.resolve();
+
+async function getRunner(): Promise<number> {
+  if (!runnerReady) {
+    runnerReady = new Promise(resolve => {
+      resolveRunnerReady = resolve;
+    });
+    const tab = await browser.tabs.create({
+      url: browser.runtime.getURL('runner.html'),
+      active: false,
+    });
+    if (tab.id === undefined) throw new Error('The extension runner could not be created.');
+    runnerTabId = tab.id;
+  }
+  return Promise.race([
+    runnerReady,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('The extension runner did not become ready.')), 5_000)
+    ),
+  ]);
+}
+
+function protocolFailure(failure: OperationFailure): ProtocolOperationFailure {
+  return ProtocolOperationFailure.make({ code: failure.code, scope: failure.scope });
+}
+
+async function inspectCommand(sourceUrl: string): Promise<InspectResult> {
+  const response = await handleFetchMedia({ type: 'FETCH_MEDIA', url: sourceUrl });
+  if (response.failure) throw protocolFailure(response.failure);
+  if (!response.media || !response.sourceUrl)
+    throw ProtocolOperationFailure.make({ code: 'SOURCE_MEDIA_NOT_FOUND', scope: 'batch' });
+  return InspectResult.make({
+    sourceUrl: response.sourceUrl,
+    items: response.media.map((item, index) =>
+      InspectedMedia.make({
+        itemNumber: index + 1,
+        mediaIdentity: MediaIdentity.make({
+          itemIndex: item.itemIndex,
+          ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+        }),
+        mediaType: item.type === 'video' ? 'video' : 'image',
+        url: item.url,
+        ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
+        filenameHint: item.filenameHint,
+        ...(item.width ? { width: item.width } : {}),
+        ...(item.height ? { height: item.height } : {}),
+        history: item.history,
+      })
+    ),
+  });
+}
+
+function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
+  return ProtocolHistoryEntry.make({
+    id: entry.id,
+    sourceUrl: entry.sourceUrl,
+    sourceKind: entry.sourceKind,
+    mediaIdentity: MediaIdentity.make({
+      itemIndex: entry.itemIndex,
+      ...(entry.mediaId ? { mediaId: entry.mediaId } : {}),
+    }),
+    mediaType: entry.mediaType,
+    filenameHint: entry.filenameHint,
+    ...(entry.exportMode ? { exportMode: entry.exportMode } : {}),
+    ...(entry.frameTimestampSeconds === undefined
+      ? {}
+      : { frameTimestampSeconds: entry.frameTimestampSeconds }),
+    downloadedAt: entry.downloadedAt,
+  });
+}
+
+async function runExport(command: ProtocolExport, emit: (event: EventPayload) => void) {
+  if (command.operations.every(operation => operation.mode._tag === 'DirectExport'))
+    return runDirectExport(command, emit);
+  let release = () => {};
+  const turn = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const previous = exportQueue;
+  exportQueue = previous.then(() => turn);
+  await previous;
+  if (runnerIdleTimer) clearTimeout(runnerIdleTimer);
+  runnerIdleTimer = undefined;
+  runnerProgress = emit;
+  try {
+    const tabId = await getRunner();
+    return (await browser.tabs.sendMessage(tabId, {
+      type: 'RUN_EXPORT',
+      sourceUrl: command.sourceUrl,
+      command,
+    })) as CommandResult;
+  } catch {
+    const staleTabId = runnerTabId;
+    runnerTabId = undefined;
+    runnerReady = undefined;
+    if (staleTabId !== undefined) await browser.tabs.remove(staleTabId).catch(() => undefined);
+    const tabId = await getRunner();
+    return (await browser.tabs.sendMessage(tabId, {
+      type: 'RUN_EXPORT',
+      sourceUrl: command.sourceUrl,
+      command,
+    })) as CommandResult;
+  } finally {
+    runnerProgress = undefined;
+    release();
+    runnerIdleTimer = setTimeout(() => {
+      const tabId = runnerTabId;
+      runnerTabId = undefined;
+      runnerReady = undefined;
+      if (tabId !== undefined) void browser.tabs.remove(tabId).catch(() => undefined);
+    }, 30_000);
+  }
+}
+
+// fallow-ignore-next-line complexity
+async function runDirectExport(command: ProtocolExport, emit: (event: EventPayload) => void) {
+  const inspected = await inspectCommand(command.sourceUrl);
+  const operations: DownloadOperation[] = [];
+  const requestedById = new Map(
+    command.operations.map(operation => [operation.operationId, operation])
+  );
+  for (const requested of command.operations) {
+    const item = inspected.items[requested.itemNumber - 1];
+    if (
+      !item ||
+      (requested.mediaIdentity &&
+        (requested.mediaIdentity.itemIndex !== item.mediaIdentity.itemIndex ||
+          (requested.mediaIdentity.mediaId !== undefined &&
+            requested.mediaIdentity.mediaId !== item.mediaIdentity.mediaId)))
+    )
+      continue;
+    emit(
+      Progress.make({
+        operationId: requested.operationId,
+        itemNumber: requested.itemNumber,
+        phase: 'direct-download',
+      })
+    );
+    const extension = item.mediaType === 'video' ? 'mp4' : 'jpg';
+    operations.push({
+      operationId: requested.operationId,
+      requestId: crypto.randomUUID(),
+      itemIndex: item.mediaIdentity.itemIndex,
+      ...(item.mediaIdentity.mediaId ? { mediaId: item.mediaIdentity.mediaId } : {}),
+      url: item.url,
+      filename: `${item.filenameHint}_${item.mediaIdentity.itemIndex + 1}.${extension}`,
+      originalUrl: item.url,
+      originalFilename: `${item.filenameHint}_${item.mediaIdentity.itemIndex + 1}.${extension}`,
+      mediaType: item.mediaType,
+    });
+  }
+  const response = await handleDownloadMedia({
+    sourceUrl: command.sourceUrl,
+    operations,
+  });
+  const batchFailure = response.failure;
+  const results = batchFailure
+    ? operations.map(operation =>
+        DownloadFailedResult.make({
+          operationId: operation.operationId,
+          requestId: operation.requestId,
+          status: 'failed',
+          failure: batchFailure,
+        })
+      )
+    : response.results;
+  return ProtocolExportResult.make({
+    outcomes: command.operations.map(requested => {
+      const result = results.find(candidate => candidate.operationId === requested.operationId);
+      const identity =
+        requested.mediaIdentity ?? MediaIdentity.make({ itemIndex: requested.itemNumber - 1 });
+      return result?.status === 'started'
+        ? ItemSucceeded.make({
+            operationId: requested.operationId,
+            itemNumber: requested.itemNumber,
+            mediaIdentity: identity,
+          })
+        : ItemFailed.make({
+            operationId: requested.operationId,
+            itemNumber: requested.itemNumber,
+            mediaIdentity: identity,
+            failure:
+              result?.status === 'failed'
+                ? protocolFailure(result.failure)
+                : ProtocolOperationFailure.make({ code: 'MEDIA_NOT_FOUND', scope: 'item' }),
+          });
+    }),
+  });
+}
+
+// fallow-ignore-next-line complexity
+async function executeCommand(
+  request: Request,
+  emit: (event: EventPayload) => void
+): Promise<void> {
+  try {
+    const command = request.command;
+    let result: CommandResult;
+    switch (command._tag) {
+      case 'Inspect':
+        emit(Progress.make({ phase: 'resolving' }));
+        result = await inspectCommand(command.sourceUrl);
+        break;
+      case 'Export':
+        emit(Progress.make({ phase: 'resolving' }));
+        result = await runExport(command, emit);
+        break;
+      case 'HistoryList': {
+        emit(Progress.make({ phase: 'history' }));
+        const history = await getHistory();
+        if (history.kind === 'unknown-version') throw new Error('Unsupported history version.');
+        result = HistoryListResult.make({
+          entries: [...history.entries].reverse().map(historyEntry),
+          repaired: history.repaired,
+        });
+        break;
+      }
+      case 'HistoryRemove': {
+        const before = await getHistory();
+        if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
+        const known = new Set(before.entries.map(entry => entry.id));
+        const removedEntryIds = command.entryIds.filter(id => known.has(id));
+        for (const id of removedEntryIds) await removeHistory(id);
+        result = HistoryRemoveResult.make({
+          removedEntryIds,
+          unknownEntryIds: command.entryIds.filter(id => !known.has(id)),
+        });
+        break;
+      }
+      case 'HistoryClear': {
+        const before = await getHistory();
+        if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
+        await clearHistory();
+        result = HistoryClearResult.make({ clearedCount: before.entries.length });
+        break;
+      }
+      case 'HistoryRedownload': {
+        const before = await getHistory();
+        if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
+        const known = new Set(before.entries.map(entry => entry.id));
+        const outcomes = [];
+        for (const entryId of command.entryIds.filter(id => known.has(id))) {
+          const entry = before.entries.find(candidate => candidate.id === entryId);
+          const response = await handleRedownloadHistoryEntry({ entryId });
+          if (entry && (response.frame || response.silent)) {
+            const resolvedItem = response.frame ?? response.silent;
+            const operationId = Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID());
+            const exportResult = await runExport(
+              ProtocolExport.make({
+                sourceUrl: entry.sourceUrl,
+                operations: [
+                  ProtocolExportOperation.make({
+                    operationId,
+                    itemNumber: resolvedItem.itemIndex + 1,
+                    mediaIdentity: MediaIdentity.make({
+                      itemIndex: resolvedItem.itemIndex,
+                      ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
+                    }),
+                    mode: response.frame
+                      ? FrameExport.make({
+                          timestampSeconds: response.frame.timestampSeconds,
+                        })
+                      : SilentExport.make({ reencode: 'allow' }),
+                  }),
+                ],
+              }),
+              emit
+            );
+            const failed =
+              exportResult._tag === 'ExportResult' &&
+              exportResult.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded');
+            outcomes.push(
+              failed
+                ? HistoryRedownloadFailed.make({
+                    entryId,
+                    failure: ProtocolOperationFailure.make({
+                      code: 'DOWNLOAD_UNEXPECTED_FAILURE',
+                      scope: 'item',
+                    }),
+                  })
+                : HistoryRedownloadStarted.make({ entryId })
+            );
+            continue;
+          }
+          const directFailed =
+            'results' in response &&
+            (response.failure || response.results.some(result => result.status !== 'started'));
+          outcomes.push(
+            response.error || directFailed
+              ? HistoryRedownloadFailed.make({
+                  entryId,
+                  failure: ProtocolOperationFailure.make({
+                    code: 'MEDIA_NOT_FOUND',
+                    scope: 'item',
+                  }),
+                })
+              : HistoryRedownloadStarted.make({ entryId })
+          );
+        }
+        result = HistoryRedownloadResult.make({
+          outcomes,
+          unknownEntryIds: command.entryIds.filter(id => !known.has(id)),
+        });
+        break;
+      }
+      case 'DebugGet': {
+        emit(Progress.make({ phase: 'diagnostics' }));
+        result = DebugGetResult.make({
+          diagnosticsVersion: 1,
+          report: JSON.stringify(
+            {
+              diagnosticsVersion: 1,
+              capturedAt: new Date().toISOString(),
+              extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
+              browser: browserName(),
+            },
+            null,
+            2
+          ),
+        });
+        break;
+      }
+      case 'DebugExport': {
+        const filename = `gramgrab-debug-${Date.now()}.json`;
+        const report = {
+          diagnosticsVersion: 1,
+          capturedAt: new Date().toISOString(),
+          extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
+          browser: browserName(),
+        };
+        await browser.downloads.download({
+          url: jsonToDataUrl(report),
+          filename,
+          saveAs: true,
+        });
+        result = DebugExportResult.make({
+          diagnosticsVersion: 1,
+          filename,
+          status: 'started',
+        });
+        break;
+      }
+      default:
+        throw new Error('Unsupported command.');
+    }
+    emit(Completed.make({ result }));
+  } catch (error) {
+    emit(
+      Rejected.make({
+        failure:
+          error instanceof ProtocolOperationFailure
+            ? { _tag: 'CommandFailure', failure: error }
+            : ValidationFailure.make({
+                message: error instanceof Error ? error.message : String(error),
+              }),
+      })
+    );
+  }
+}
+
+function browserName(): 'chromium' | 'firefox' | 'unknown' {
+  const userAgent = globalThis.navigator?.userAgent ?? '';
+  if (/Firefox/i.test(userAgent)) return 'firefox';
+  return /Chrom(?:e|ium)/i.test(userAgent) ? 'chromium' : 'unknown';
+}
+
+startNativeBridge(executeCommand);
+
 // ---------------------------------------------------------------------------
 // Single message dispatcher
 //
@@ -1348,7 +1749,43 @@ const messageHandlers: Record<string, MessageHandler> = {
   DOWNLOAD_DEBUG_JSON: message => handleDownloadDebugJson(message as DownloadDebugJsonMsg),
 };
 
-browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+// fallow-ignore-next-line complexity
+browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  const internal = msg as {
+    type?: string;
+    operationId?: import('@gramgrab/protocol').OperationId;
+    itemNumber?: import('@gramgrab/protocol').HumanItemNumber;
+    phase?: string;
+    progress?: number;
+  };
+  if (internal.type === 'RUNNER_READY' && sender.tab?.id !== undefined) {
+    runnerTabId = sender.tab.id;
+    resolveRunnerReady?.(sender.tab.id);
+    resolveRunnerReady = undefined;
+    return false;
+  }
+  if (internal.type === 'RUNNER_PROGRESS' && internal.phase) {
+    const phases: Record<string, Progress['phase']> = {
+      'direct-download': 'direct-download',
+      'frame-metadata': 'frame-metadata',
+      'frame-export': 'frame-export',
+      queued: 'silent-inspection',
+      inspecting: 'silent-inspection',
+      copying: 'silent-copy',
+      reencoding: 'silent-reencode',
+      validating: 'silent-validation',
+      downloading: 'silent-validation',
+    };
+    runnerProgress?.(
+      Progress.make({
+        ...(internal.operationId ? { operationId: internal.operationId } : {}),
+        ...(internal.itemNumber ? { itemNumber: internal.itemNumber } : {}),
+        phase: phases[internal.phase] ?? 'silent-inspection',
+        ...(internal.progress === undefined ? {} : { progress: internal.progress }),
+      })
+    );
+    return false;
+  }
   const handler = messageHandlers[(msg as { type?: string }).type ?? ''];
   if (!handler) return false;
   void handler(msg).then(sendResponse);

@@ -18,7 +18,7 @@
  */
 export type OnMessageCallback = (
   msg: unknown,
-  sender: unknown,
+  sender: { tab?: { id?: number } },
   sendResponse: (response: unknown) => void
 ) => boolean | void;
 
@@ -47,6 +47,8 @@ export interface BrowserShim {
     }) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
     create: (createProperties: { url: string; active?: boolean }) => Promise<{ id?: number }>;
     update: (tabId: number, updateProperties: { active?: boolean; url?: string }) => Promise<void>;
+    sendMessage: (tabId: number, message: unknown) => Promise<unknown>;
+    remove: (tabId: number) => Promise<void>;
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
@@ -110,6 +112,8 @@ interface ChromeGlobal {
     query: (q: unknown, cb: (tabs: unknown[]) => void) => void;
     create: (q: unknown, cb: (tab: unknown) => void) => void;
     update: (id: number, q: unknown, cb: () => void) => void;
+    sendMessage: (id: number, message: unknown, cb: (response: unknown) => void) => void;
+    remove: (id: number, cb: () => void) => void;
   };
   windows: { update: (id: number, q: unknown, cb: () => void) => void };
   downloads: {
@@ -158,6 +162,8 @@ interface NativeBrowserGlobal {
       tabId: number,
       updateProperties: { active?: boolean; url?: string }
     ) => Promise<unknown>;
+    sendMessage: (tabId: number, message: unknown) => Promise<unknown>;
+    remove: (tabId: number) => Promise<void>;
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
@@ -232,6 +238,22 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
       update: (tabId, updateProperties) =>
         new Promise((resolve, reject) => {
           chrome.tabs.update(tabId, updateProperties, () => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve();
+          });
+        }),
+      sendMessage: (tabId, message) =>
+        new Promise((resolve, reject) => {
+          chrome.tabs.sendMessage(tabId, message, response => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve(response);
+          });
+        }),
+      remove: tabId =>
+        new Promise((resolve, reject) => {
+          chrome.tabs.remove(tabId, () => {
             const err = lastError(chrome.runtime);
             if (err) reject(err);
             else resolve();
@@ -335,6 +357,8 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
       update: async (tabId, updateProperties) => {
         await native.tabs.update(tabId, updateProperties);
       },
+      sendMessage: (tabId, message) => native.tabs.sendMessage(tabId, message),
+      remove: tabId => native.tabs.remove(tabId),
     },
     downloads: native.downloads,
     storage: native.storage.local,
@@ -384,6 +408,8 @@ const noopShim: BrowserShim = {
     query: () => Promise.resolve([]),
     create: () => Promise.resolve({}),
     update: () => Promise.resolve(),
+    sendMessage: () => Promise.resolve(undefined),
+    remove: () => Promise.resolve(),
   },
   downloads: {
     download: () => Promise.resolve(0),

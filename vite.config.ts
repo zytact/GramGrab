@@ -244,6 +244,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(extensionRoot, 'templates/popup.html'),
+        runner: resolve(extensionRoot, 'templates/runner.html'),
         // background.ts is bundled directly as a JS module entry — no HTML
         // wrapper needed. Both Chromium (service_worker) and Firefox (scripts)
         // reference js/background.js in their respective manifests.
