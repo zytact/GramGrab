@@ -20,6 +20,22 @@ const firefoxPackageOutput = {
 };
 
 export default defineConfig({
+  pack: {
+    entry: {
+      gramgrab: 'apps/cli/src/index.ts',
+      'gramgrab-native-host': 'apps/native-host/src/index.ts',
+    },
+    outDir: 'artifacts',
+    clean: true,
+    format: 'esm',
+    platform: 'node',
+    target: 'node22',
+    banner: '#!/usr/bin/env node',
+    deps: {
+      alwaysBundle: ['effect'],
+      onlyBundle: ['effect'],
+    },
+  },
   run: {
     cache: {
       scripts: false, // Keep caching on explicit tasks so inputs/outputs stay well-defined.
@@ -55,6 +71,24 @@ export default defineConfig({
         input: [autoInput, `!${viteTempInput.pattern}`, `!${firefoxOutput.pattern}`],
         output: [firefoxOutput, firefoxPackageOutput],
       },
+      'package-tools': {
+        command: ['vp pack', 'node apps/native-host/scripts/package-tools.mjs'],
+        input: [
+          'apps/cli/src/**',
+          'apps/cli/bin/gramgrab.cmd',
+          'apps/native-host/bin/gramgrab-native-host.cmd',
+          'apps/native-host/src/**',
+          'apps/native-host/manifests/**',
+          'apps/native-host/scripts/package-tools.mjs',
+          'apps/native-host/scripts/verify-tools.mjs',
+          'packages/protocol/src/**',
+          'package.json',
+          'pnpm-lock.yaml',
+          'tsconfig.json',
+          'vite.config.ts',
+        ],
+        output: [{ pattern: 'artifacts/**', base: 'workspace' }],
+      },
     },
   },
   lint: {
@@ -65,7 +99,7 @@ export default defineConfig({
     env: {
       builtin: true,
     },
-    ignorePatterns: ['dist', 'node_modules', '.husky', 'extension', '.repos'],
+    ignorePatterns: ['dist', 'node_modules', '.husky', 'extension/**', '.repos'],
     rules: {
       'constructor-super': 'error',
       'for-direction': 'error',
@@ -234,7 +268,7 @@ export default defineConfig({
     arrowParens: 'avoid',
     endOfLine: 'lf',
     sortPackageJson: false,
-    ignorePatterns: ['.repos', '.agents', '.claude'],
+    ignorePatterns: ['extension/**', '.repos', '.agents', '.claude'],
   },
   plugins: [react()],
   root: resolve(extensionRoot, 'templates'),
@@ -244,6 +278,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(extensionRoot, 'templates/popup.html'),
+        runner: resolve(extensionRoot, 'templates/runner.html'),
         // background.ts is bundled directly as a JS module entry — no HTML
         // wrapper needed. Both Chromium (service_worker) and Firefox (scripts)
         // reference js/background.js in their respective manifests.

@@ -173,6 +173,7 @@ The popup sends messages to the background worker through the single dispatcher 
 | `activeTab`                 | Temporarily access the current tab when GramGrab is invoked       |
 | `tabs`                      | Read and manage tabs for URL detection and the GramGrab workspace |
 | `contextMenus`              | Add GramGrab actions to page and link context menus               |
+| `nativeMessaging`           | Expose GramGrab operations to the local CLI bridge                |
 | `https://*.instagram.com/*` | Fetch media metadata from Instagram                               |
 | `https://*.fbcdn.net/*`     | Load media previews and videos from Instagram’s CDN               |
 

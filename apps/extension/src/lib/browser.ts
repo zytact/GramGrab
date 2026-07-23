@@ -18,17 +18,28 @@
  */
 export type OnMessageCallback = (
   msg: unknown,
-  sender: unknown,
+  sender: { tab?: { id?: number } },
   sendResponse: (response: unknown) => void
 ) => boolean | void;
+
+export interface NativePort {
+  postMessage: (message: unknown) => void;
+  disconnect: () => void;
+  onMessage: { addListener: (callback: (message: unknown) => void) => void };
+  onDisconnect: { addListener: (callback: () => void) => void };
+}
 
 export interface BrowserShim {
   runtime: {
     getURL: (path: string) => string;
     getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
+    connectNative: (application: string) => NativePort;
     onMessage: {
       addListener: (callback: OnMessageCallback) => void;
+    };
+    onStartup: {
+      addListener: (callback: () => void) => void;
     };
   };
   tabs: {
@@ -39,10 +50,14 @@ export interface BrowserShim {
     }) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
     create: (createProperties: { url: string; active?: boolean }) => Promise<{ id?: number }>;
     update: (tabId: number, updateProperties: { active?: boolean; url?: string }) => Promise<void>;
+    sendMessage: (tabId: number, message: unknown) => Promise<unknown>;
+    remove: (tabId: number) => Promise<void>;
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
-    search: (query: { id?: number }) => Promise<{ id: number; state?: string }[]>;
+    search: (query: {
+      id?: number;
+    }) => Promise<{ id: number; state?: string; fileSize?: number }[]>;
     onChanged: {
       addListener: (callback: (delta: DownloadDelta) => void) => void;
       removeListener: (callback: (delta: DownloadDelta) => void) => void;
@@ -53,7 +68,16 @@ export interface BrowserShim {
     set: (items: Record<string, unknown>) => Promise<void>;
     remove: (keys: string | string[]) => Promise<void>;
   };
-  windows: { update: (windowId: number, updateInfo: { focused: boolean }) => Promise<void> };
+  windows: {
+    create: (createData: {
+      url: string;
+      focused?: boolean;
+      state?: 'minimized' | 'normal';
+      type?: 'popup';
+    }) => Promise<{ id?: number; tabs?: { id?: number }[] }>;
+    update: (windowId: number, updateInfo: { focused: boolean }) => Promise<void>;
+    remove: (windowId: number) => Promise<void>;
+  };
   contextMenus: {
     create: (properties: ContextMenuCreateProperties) => void;
     removeAll: () => Promise<void>;
@@ -92,7 +116,9 @@ interface ChromeRuntime {
   getManifest?: () => { version?: string };
   lastError?: { message?: string };
   sendMessage: (msg: unknown, callback: (response: unknown) => void) => void;
+  connectNative?: (application: string) => NativePort;
   onMessage: { addListener: (callback: OnMessageCallback) => void };
+  onStartup?: { addListener: (callback: () => void) => void };
 }
 
 interface ChromeGlobal {
@@ -101,8 +127,14 @@ interface ChromeGlobal {
     query: (q: unknown, cb: (tabs: unknown[]) => void) => void;
     create: (q: unknown, cb: (tab: unknown) => void) => void;
     update: (id: number, q: unknown, cb: () => void) => void;
+    sendMessage: (id: number, message: unknown, cb: (response: unknown) => void) => void;
+    remove: (id: number, cb: () => void) => void;
   };
-  windows: { update: (id: number, q: unknown, cb: () => void) => void };
+  windows: {
+    create: (q: unknown, cb: (window: unknown) => void) => void;
+    update: (id: number, q: unknown, cb: () => void) => void;
+    remove: (id: number, cb: () => void) => void;
+  };
   downloads: {
     download: (
       opts: { url: string; filename?: string; saveAs?: boolean },
@@ -139,7 +171,9 @@ interface NativeBrowserGlobal {
     getURL: (path: string) => string;
     getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
+    connectNative?: (application: string) => NativePort;
     onMessage: { addListener: (callback: OnMessageCallback) => void };
+    onStartup?: { addListener: (callback: () => void) => void };
   };
   tabs: {
     query: (queryInfo: unknown) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
@@ -148,6 +182,8 @@ interface NativeBrowserGlobal {
       tabId: number,
       updateProperties: { active?: boolean; url?: string }
     ) => Promise<unknown>;
+    sendMessage: (tabId: number, message: unknown) => Promise<unknown>;
+    remove: (tabId: number) => Promise<void>;
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
@@ -164,7 +200,11 @@ interface NativeBrowserGlobal {
       remove: (keys: string | string[]) => Promise<void>;
     };
   };
-  windows: { update: (windowId: number, updateInfo: { focused: boolean }) => Promise<unknown> };
+  windows: {
+    create: (createData: unknown) => Promise<{ id?: number; tabs?: { id?: number }[] }>;
+    update: (windowId: number, updateInfo: { focused: boolean }) => Promise<unknown>;
+    remove: (windowId: number) => Promise<void>;
+  };
   contextMenus: {
     create: (properties: ContextMenuCreateProperties) => void;
     removeAll: () => Promise<void>;
@@ -197,8 +237,12 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             else resolve(response);
           });
         }),
+      connectNative: application => chrome.runtime.connectNative?.(application) ?? noopNativePort,
       onMessage: {
         addListener: callback => chrome.runtime.onMessage.addListener(callback),
+      },
+      onStartup: {
+        addListener: callback => chrome.runtime.onStartup?.addListener(callback),
       },
     },
     tabs: {
@@ -221,6 +265,22 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
       update: (tabId, updateProperties) =>
         new Promise((resolve, reject) => {
           chrome.tabs.update(tabId, updateProperties, () => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve();
+          });
+        }),
+      sendMessage: (tabId, message) =>
+        new Promise((resolve, reject) => {
+          chrome.tabs.sendMessage(tabId, message, response => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve(response);
+          });
+        }),
+      remove: tabId =>
+        new Promise((resolve, reject) => {
+          chrome.tabs.remove(tabId, () => {
             const err = lastError(chrome.runtime);
             if (err) reject(err);
             else resolve();
@@ -273,9 +333,25 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
         }),
     },
     windows: {
+      create: createData =>
+        new Promise((resolve, reject) => {
+          chrome.windows.create(createData, window => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve(window as { id?: number; tabs?: { id?: number }[] });
+          });
+        }),
       update: (windowId, updateInfo) =>
         new Promise((resolve, reject) => {
           chrome.windows.update(windowId, updateInfo, () => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve();
+          });
+        }),
+      remove: windowId =>
+        new Promise((resolve, reject) => {
+          chrome.windows.remove(windowId, () => {
             const err = lastError(chrome.runtime);
             if (err) reject(err);
             else resolve();
@@ -314,20 +390,28 @@ function hasNativeStorageLocal(value: unknown): value is NativeBrowserGlobal {
 
 function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
   return {
-    runtime: native.runtime,
+    runtime: {
+      ...native.runtime,
+      connectNative: application => native.runtime.connectNative?.(application) ?? noopNativePort,
+      onStartup: native.runtime.onStartup ?? noopRuntimeStartup,
+    },
     tabs: {
       query: queryInfo => native.tabs.query(queryInfo),
       create: createProperties => native.tabs.create(createProperties),
       update: async (tabId, updateProperties) => {
         await native.tabs.update(tabId, updateProperties);
       },
+      sendMessage: (tabId, message) => native.tabs.sendMessage(tabId, message),
+      remove: tabId => native.tabs.remove(tabId),
     },
     downloads: native.downloads,
     storage: native.storage.local,
     windows: {
+      create: createData => native.windows.create(createData),
       update: async (windowId, updateInfo) => {
         await native.windows.update(windowId, updateInfo);
       },
+      remove: windowId => native.windows.remove(windowId),
     },
     contextMenus: {
       ...noopContextMenus,
@@ -351,17 +435,32 @@ const noopContextMenus: BrowserShim['contextMenus'] = {
   onShown: { addListener: () => {} },
 };
 
+const noopNativePort: NativePort = {
+  postMessage: () => {},
+  disconnect: () => {},
+  onMessage: { addListener: () => {} },
+  onDisconnect: { addListener: () => {} },
+};
+
+const noopRuntimeStartup: BrowserShim['runtime']['onStartup'] = {
+  addListener: () => {},
+};
+
 const noopShim: BrowserShim = {
   runtime: {
     getURL: path => path,
     getManifest: () => ({}),
     sendMessage: () => Promise.resolve(undefined),
+    connectNative: () => noopNativePort,
     onMessage: { addListener: () => {} },
+    onStartup: noopRuntimeStartup,
   },
   tabs: {
     query: () => Promise.resolve([]),
     create: () => Promise.resolve({}),
     update: () => Promise.resolve(),
+    sendMessage: () => Promise.resolve(undefined),
+    remove: () => Promise.resolve(),
   },
   downloads: {
     download: () => Promise.resolve(0),
@@ -373,7 +472,11 @@ const noopShim: BrowserShim = {
     set: () => Promise.resolve(),
     remove: () => Promise.resolve(),
   },
-  windows: { update: () => Promise.resolve() },
+  windows: {
+    create: () => Promise.resolve({}),
+    update: () => Promise.resolve(),
+    remove: () => Promise.resolve(),
+  },
   contextMenus: noopContextMenus,
 };
 
@@ -392,12 +495,15 @@ function getActiveBrowser(): BrowserShim {
   const nativeBrowser = g['browser'];
   const chrome = g['chrome'] as ChromeGlobal | undefined;
   if (hasNativeStorageLocal(nativeBrowser)) return buildNativeShim(nativeBrowser);
-  if (nativeBrowser)
+  if (nativeBrowser) {
+    const partialBrowser = nativeBrowser as Partial<BrowserShim>;
     return {
       ...noopShim,
-      ...(nativeBrowser as Partial<BrowserShim>),
-      contextMenus: (nativeBrowser as Partial<BrowserShim>).contextMenus ?? noopContextMenus,
+      ...partialBrowser,
+      runtime: { ...noopShim.runtime, ...partialBrowser.runtime },
+      contextMenus: partialBrowser.contextMenus ?? noopContextMenus,
     };
+  }
   return chrome ? buildChromeShim(chrome) : noopShim;
 }
 

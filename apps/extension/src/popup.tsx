@@ -1,22 +1,20 @@
 import { useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from 'react';
-import { Effect, Either } from 'effect';
 import './styles.css';
 import { browser } from './lib/browser';
-import { captureFrameFromVideoEffect } from './effect/frame-extraction';
 import {
-  DownloadAcceptedResult,
-  DownloadFailedResult,
   createOperationId,
   createRequestId,
+  DownloadFailedResult,
   type DownloadOperation,
   type DownloadOperationResult,
 } from './download/contracts';
-import { OperationWarning, type OperationFailure, type RecoveryAction } from './errors/contracts';
+import type { OperationFailure, RecoveryAction } from './errors/contracts';
 import { normalizeFrameFailure } from './errors/normalize';
 import { FAILURE_PRESENTATION, WARNING_PRESENTATION } from './errors/presentation';
 import { buildDiagnostics } from './errors/diagnostics';
 import type { AttemptEntry, AttemptOperation, DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
+import { ExportCandidate, planExportOperations } from './download/coordinator';
 import {
   clampFrameSecond,
   defaultFrameSecond,
@@ -26,6 +24,7 @@ import {
   maximumFrameSecond,
   type FrameExportSetting,
 } from './frame-export/timestamp';
+import { executeFrameExport } from './frame-export/executor';
 import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
@@ -59,9 +58,9 @@ interface PreviewResponse {
   error?: string;
 }
 
-type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 type VideoBlobResponse = { dataUrl?: string; error?: string };
 
+type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 type FrameRuntime = {
   status: 'idle' | 'loading' | 'ready' | 'failed' | 'exporting';
   durationSeconds?: number;
@@ -80,6 +79,29 @@ type HistoryEntry = {
   frameTimestampSeconds?: number;
   downloadedAt: number;
 };
+
+function exportCandidate(
+  item: MediaItem,
+  frameExportSettings: Record<number, FrameExportSetting>,
+  frameRuntime: Record<number, FrameRuntime>,
+  removeAudioIndexes: ReadonlySet<number>
+): ExportCandidate {
+  const setting = frameExportSettings[item.index];
+  const durationSeconds = frameRuntime[item.index]?.durationSeconds;
+  return ExportCandidate.make({
+    index: item.index,
+    itemIndex: item.itemIndex,
+    mediaId: item.mediaId,
+    type: item.type === 'video' ? 'video' : 'image',
+    url: item.url,
+    filenameHint: item.filenameHint,
+    selected: item.selected,
+    frameEnabled: setting?.enabled ?? false,
+    frameTimestampSeconds: setting?.timestampSeconds ?? 0,
+    frameDurationSeconds: durationSeconds,
+    removeAudio: removeAudioIndexes.has(item.index),
+  });
+}
 
 function diagnosticsForAttempt(
   current: DownloadAttempt | undefined,
@@ -367,25 +389,7 @@ export default function Popup() {
     }
   }, []);
 
-  const captureFrameFromVideo = useCallback(
-    (video: HTMLVideoElement, timestampSeconds: number) =>
-      Effect.runPromise(captureFrameFromVideoEffect(video, timestampSeconds).pipe(Effect.either)),
-    []
-  );
-  const captureFrameFromDataUrl = useCallback(
-    async (dataUrl: string, timestampSeconds: number) => {
-      const video = createExportVideo(dataUrl);
-      try {
-        return await captureFrameFromVideo(video, timestampSeconds);
-      } finally {
-        releaseVideo(video);
-      }
-    },
-    [captureFrameFromVideo]
-  );
-
   const executeFrameAttempt = useCallback(
-    // fallow-ignore-next-line complexity
     async (operation: AttemptOperation): Promise<DownloadOperationResult> => {
       const runtime = frameRuntime[operation.displayIndex];
       if (!runtime?.durationSeconds || operation.frameTimestampSeconds === undefined)
@@ -403,54 +407,19 @@ export default function Popup() {
           error: undefined,
         },
       }));
-      try {
-        const response = runtime.dataUrl
-          ? { dataUrl: runtime.dataUrl }
-          : ((await browser.runtime.sendMessage({
-              type: 'FETCH_VIDEO_BLOB',
-              url: operation.url,
-            })) as VideoBlobResponse);
-        const dataUrl = getVideoBlobDataUrl(response);
-        let captured = await captureFrameFromDataUrl(dataUrl, operation.frameTimestampSeconds);
-        if (Either.isLeft(captured) && captured.left.reason === 'timeout')
-          captured = await captureFrameFromDataUrl(dataUrl, operation.frameTimestampSeconds);
-        if (Either.isLeft(captured))
-          return DownloadFailedResult.make({
-            operationId: operation.operationId,
-            requestId: operation.requestId,
-            status: 'failed',
-            failure: normalizeFrameFailure(captured.left.reason, captured.left),
-          });
-        downloadBlobAsFile(captured.right, operation.filename);
-        const recorded = (await browser.runtime.sendMessage({
-          type: 'RECORD_FRAME_EXPORT',
-          sourceUrl: fetchedUrl || url,
-          item: {
-            itemIndex: operation.itemIndex,
-            ...(operation.mediaId ? { mediaId: operation.mediaId } : {}),
-            url: operation.url,
-            filename: operation.filename,
-            mediaType: 'video',
-            frameTimestampSeconds: operation.frameTimestampSeconds,
-          },
-        })) as { error?: string };
+      const result = await executeFrameExport(operation, fetchedUrl || url);
+      if (result.status === 'started') {
         setFrameRuntime(previous => ({
           ...previous,
           [operation.displayIndex]: {
             ...previous[operation.displayIndex],
             status: 'ready',
-            ...(recorded.error ? { warning: recorded.error } : {}),
+            ...(result.warning
+              ? { warning: 'Frame downloaded, but history could not be saved.' }
+              : {}),
           },
         }));
-        return DownloadAcceptedResult.make({
-          operationId: operation.operationId,
-          requestId: operation.requestId,
-          status: 'started',
-          ...(recorded.error
-            ? { warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }) }
-            : {}),
-        });
-      } catch (cause) {
+      } else {
         setFrameRuntime(previous => ({
           ...previous,
           [operation.displayIndex]: {
@@ -459,15 +428,10 @@ export default function Popup() {
             error: 'Frame export failed.',
           },
         }));
-        return DownloadFailedResult.make({
-          operationId: operation.operationId,
-          requestId: operation.requestId,
-          status: 'failed',
-          failure: normalizeFrameFailure('unexpected', cause),
-        });
       }
+      return result;
     },
-    [captureFrameFromDataUrl, fetchedUrl, frameRuntime, url]
+    [fetchedUrl, frameRuntime, url]
   );
 
   const executeDirect = useCallback(
@@ -482,7 +446,17 @@ export default function Popup() {
 
   const requestReencodeApproval = useCallback(
     (candidates: readonly ReencodeCandidate[]) =>
-      new Promise<boolean>(resolve => setReencodeChoice({ candidates, resolve })),
+      new Promise<ReadonlySet<string>>(resolve =>
+        setReencodeChoice({
+          candidates,
+          resolve: approved =>
+            resolve(
+              approved
+                ? new Set(candidates.map(candidate => candidate.operation.operationId))
+                : new Set()
+            ),
+        })
+      ),
     []
   );
 
@@ -591,34 +565,11 @@ export default function Popup() {
       setStatus('error');
       return;
     }
-    // fallow-ignore-next-line complexity
-    const operations = selected.map<AttemptOperation>(item => {
-      const setting = frameExportSettings[item.index];
-      const duration = frameRuntime[item.index]?.durationSeconds;
-      const removeAudio = item.type === 'video' && removeAudioIndexes.has(item.index);
-      const exportFrame = item.type === 'video' && setting?.enabled && !removeAudio;
-      const timestampSeconds = exportFrame
-        ? clampFrameSecond(setting.timestampSeconds, duration ?? setting.timestampSeconds + 1)
-        : undefined;
-      return {
-        operationId: createOperationId(),
-        requestId: createRequestId(),
-        itemIndex: item.itemIndex ?? item.index,
-        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-        url: item.url,
-        filename: removeAudio
-          ? `${item.filenameHint}_${item.index + 1}_silent.mp4`
-          : exportFrame
-            ? frameFilename(item.filenameHint, timestampSeconds ?? 0)
-            : `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
-        mediaType: item.type === 'video' ? 'video' : 'image',
-        originalUrl: item.url,
-        originalFilename: `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
-        mode: removeAudio ? 'silent' : exportFrame ? 'frame' : 'direct',
-        displayIndex: item.index,
-        ...(timestampSeconds !== undefined ? { frameTimestampSeconds: timestampSeconds } : {}),
-      };
-    });
+    const operations = planExportOperations(
+      mediaItems.map(item =>
+        exportCandidate(item, frameExportSettings, frameRuntime, removeAudioIndexes)
+      )
+    );
     if (!initialWorkspaceMode && operations.some(operation => operation.mode === 'silent')) {
       const createdAt = Date.now();
       const snapshot = {
@@ -807,43 +758,31 @@ export default function Popup() {
           setMessage('Silent download moved to the GramGrab workspace.');
         }
       } else if (response.frame) {
-        try {
-          const videoResponse = (await browser.runtime.sendMessage({
-            type: 'FETCH_VIDEO_BLOB',
+        const timestampSeconds = response.frame.timestampSeconds;
+        const result = await executeFrameExport(
+          {
+            operationId: createOperationId(),
+            requestId: createRequestId(),
+            itemIndex: response.frame.itemIndex,
+            ...(response.frame.mediaId ? { mediaId: response.frame.mediaId } : {}),
             url: response.frame.url,
-          })) as VideoBlobResponse;
-          const dataUrl = getVideoBlobDataUrl(videoResponse);
-          const duration = await getVideoDuration(dataUrl);
-          const timestampSeconds = clampFrameSecond(response.frame.timestampSeconds, duration);
-          let result = await captureFrameFromDataUrl(dataUrl, timestampSeconds);
-          if (Either.isLeft(result) && result.left.reason === 'timeout') {
-            result = await captureFrameFromDataUrl(dataUrl, timestampSeconds);
-          }
-          if (Either.isLeft(result)) throw new Error(frameExportErrorMessage(result.left.reason));
-          downloadBlobAsFile(
-            result.right,
-            frameFilename(response.frame.filenameHint, timestampSeconds)
-          );
-          const recorded = (await browser.runtime.sendMessage({
-            type: 'RECORD_FRAME_EXPORT',
-            sourceUrl: response.frame.sourceUrl,
-            item: {
-              itemIndex: response.frame.itemIndex,
-              ...(response.frame.mediaId ? { mediaId: response.frame.mediaId } : {}),
-              url: response.frame.url,
-              filename: frameFilename(response.frame.filenameHint, timestampSeconds),
-              mediaType: 'video',
-              frameTimestampSeconds: timestampSeconds,
-            },
-          })) as { error?: string };
-          const adjustment =
-            timestampSeconds === response.frame.timestampSeconds
-              ? ''
-              : ` Timestamp adjusted to ${formatFrameTimestamp(timestampSeconds)}.`;
-          setMessage(`${recorded.error ?? 'Frame download started.'}${adjustment}`);
-        } catch {
-          setMessage('Frame export failed. Download the original video or try again.');
-        }
+            originalUrl: response.frame.url,
+            filename: frameFilename(response.frame.filenameHint, timestampSeconds),
+            originalFilename: `${response.frame.filenameHint}.mp4`,
+            mediaType: 'video',
+            mode: 'frame',
+            displayIndex: 0,
+            frameTimestampSeconds: timestampSeconds,
+          },
+          response.frame.sourceUrl
+        );
+        setMessage(
+          result.status === 'started'
+            ? result.warning
+              ? 'Frame downloaded, but history could not be saved.'
+              : 'Frame download started.'
+            : 'Frame export failed. Download the original video or try again.'
+        );
       } else {
         const failed = response.results?.find(result => result.status === 'failed');
         const failure = failed?.failure ? FAILURE_PRESENTATION[failed.failure.code] : undefined;
@@ -855,7 +794,7 @@ export default function Popup() {
       setHistoryBusy(null);
       if (!response.error) void loadHistory();
     },
-    [captureFrameFromDataUrl, loadHistory]
+    [loadHistory]
   );
   const removeHistoryEntry = useCallback(async (entryId: string) => {
     const response = (await browser.runtime.sendMessage({
@@ -1687,32 +1626,6 @@ function getVideoDuration(dataUrl: string): Promise<number> {
     video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
     video.addEventListener('error', onError, { once: true });
   });
-}
-
-function frameExportErrorMessage(reason: string): string {
-  switch (reason) {
-    case 'no-duration':
-      return 'Frame export failed (duration unavailable).';
-    case 'no-frame':
-      return 'Frame export failed (no video frame).';
-    case 'no-canvas':
-      return 'Frame export failed (canvas unavailable).';
-    case 'no-blob':
-      return 'Frame export failed (image export).';
-    case 'timeout':
-      return 'Frame export failed (timed out).';
-    default:
-      return 'Frame export failed.';
-  }
-}
-
-function downloadBlobAsFile(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 interface MediaItemRowProps {

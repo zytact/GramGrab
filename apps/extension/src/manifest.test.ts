@@ -6,7 +6,14 @@ import {
   parseBrowserTarget,
 } from '../scripts/manifest.mjs';
 
-const expectedPermissions = ['downloads', 'storage', 'activeTab', 'tabs', 'contextMenus'];
+const expectedPermissions = [
+  'downloads',
+  'storage',
+  'activeTab',
+  'tabs',
+  'contextMenus',
+  'nativeMessaging',
+];
 const expectedHostPermissions = ['https://*.instagram.com/*', 'https://*.fbcdn.net/*'];
 
 function readPermissionRows(readme: string) {

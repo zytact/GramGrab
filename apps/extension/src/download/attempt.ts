@@ -1,16 +1,15 @@
-import {
-  createRequestId,
-  type DownloadOperation,
-  type DownloadOperationResult,
-} from './contracts.ts';
+import { createRequestId, DownloadOperation, type DownloadOperationResult } from './contracts.ts';
+import { Schema } from 'effect';
 import type { OperationFailure, OperationWarning, SkipCode } from '../errors/contracts.ts';
 import { FAILURE_PRESENTATION, retryable } from '../errors/presentation.ts';
 
-export interface AttemptOperation extends DownloadOperation {
-  readonly mode: 'direct' | 'frame' | 'silent';
-  readonly displayIndex: number;
-  readonly frameTimestampSeconds?: number;
-}
+export const AttemptOperationSchema = Schema.Struct({
+  ...DownloadOperation.fields,
+  mode: Schema.Literal('direct', 'frame', 'silent'),
+  displayIndex: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+  frameTimestampSeconds: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+});
+export type AttemptOperation = Schema.Schema.Type<typeof AttemptOperationSchema>;
 
 export type AttemptOutcome =
   | { readonly status: 'pending'; readonly phase?: string; readonly progress?: number }
@@ -163,6 +162,53 @@ export const failedOperations = (
       ? [entry.operation]
       : []
   ) ?? [];
+
+export function prepareRetry(attempt: DownloadAttempt | undefined): DownloadAttempt | undefined {
+  const operationIds = new Set(failedOperations(attempt).map(operation => operation.operationId));
+  return operationIds.size === 0
+    ? attempt
+    : attemptReducer(attempt, { type: 'retry', operationIds });
+}
+
+export function prepareOriginalFallback(
+  attempt: DownloadAttempt | undefined
+): DownloadAttempt | undefined {
+  const batchAllowsOriginal = Boolean(
+    attempt?.batchFailure &&
+    FAILURE_PRESENTATION[attempt.batchFailure.code].actions.includes('download-original')
+  );
+  const operationIds = new Set(
+    (attempt?.entries ?? []).flatMap(entry =>
+      (entry.outcome.status === 'failed' &&
+        FAILURE_PRESENTATION[entry.outcome.failure.code].actions.includes('download-original')) ||
+      (entry.outcome.status === 'not-attempted' && batchAllowsOriginal)
+        ? [entry.operation.operationId]
+        : []
+    )
+  );
+  return operationIds.size === 0
+    ? attempt
+    : attemptReducer(attempt, { type: 'fallback-original', operationIds });
+}
+
+export function prepareReencodeRetry(attempt: DownloadAttempt | undefined): {
+  readonly attempt: DownloadAttempt | undefined;
+  readonly operationIds: ReadonlySet<string>;
+} {
+  const operationIds = new Set(
+    (attempt?.entries ?? []).flatMap(entry =>
+      entry.outcome.status === 'failed' &&
+      FAILURE_PRESENTATION[entry.outcome.failure.code].actions.includes('try-reencode')
+        ? [entry.operation.operationId]
+        : []
+    )
+  );
+  return {
+    operationIds,
+    attempt:
+      operationIds.size === 0 ? attempt : attemptReducer(attempt, { type: 'retry', operationIds }),
+  };
+}
 
 export interface AttemptSummary {
   readonly pending: number;

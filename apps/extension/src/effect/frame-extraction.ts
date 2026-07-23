@@ -24,25 +24,21 @@ const waitForEvent = (
     })
   );
 
-export const captureFrameFromVideoEffect = (
+const seekToTimestamp = (
   video: HTMLVideoElement,
   timestampSeconds: number
+): Effect.Effect<void, VideoFrameExtractionFailed> => {
+  const targetTime = Math.max(0, Math.min(Math.ceil(video.duration) - 1, timestampSeconds));
+  if (Math.abs(video.currentTime - targetTime) <= 0.01) return Effect.void;
+
+  video.currentTime = targetTime;
+  return waitForEvent(video, 'seeked');
+};
+
+const captureCanvasFrame = (
+  video: HTMLVideoElement
 ): Effect.Effect<Blob, VideoFrameExtractionFailed> =>
   Effect.gen(function* () {
-    if (video.readyState < 1) {
-      yield* waitForEvent(video, 'loadedmetadata');
-    }
-
-    if (!Number.isFinite(video.duration) || video.duration <= 0) {
-      return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-duration' }));
-    }
-
-    const targetTime = Math.max(0, Math.min(Math.ceil(video.duration) - 1, timestampSeconds));
-    if (Math.abs(video.currentTime - targetTime) > 0.01) {
-      video.currentTime = targetTime;
-      yield* waitForEvent(video, 'seeked');
-    }
-
     if (!video.videoWidth || !video.videoHeight) {
       return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-frame' }));
     }
@@ -57,12 +53,31 @@ export const captureFrameFromVideoEffect = (
 
     ctx.drawImage(video, 0, 0);
     const blob = yield* Effect.async<Blob | null, never>(resume => {
-      canvas.toBlob(b => resume(Effect.succeed(b)), 'image/jpeg', 0.95);
+      canvas.toBlob(value => resume(Effect.succeed(value)), 'image/jpeg', 0.95);
     });
 
-    if (!blob) {
-      return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-blob' }));
+    return yield* blob
+      ? Effect.succeed(blob)
+      : Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-blob' }));
+  });
+
+export const captureFrameFromVideoEffect = (
+  video: HTMLVideoElement,
+  timestampSeconds: number
+): Effect.Effect<Blob, VideoFrameExtractionFailed> =>
+  Effect.gen(function* () {
+    if (video.readyState < 1) {
+      yield* waitForEvent(video, 'loadedmetadata');
     }
 
-    return blob;
+    if (!Number.isFinite(video.duration) || video.duration <= 0) {
+      return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-duration' }));
+    }
+
+    if (video.readyState < 2) {
+      yield* waitForEvent(video, 'loadeddata');
+    }
+
+    yield* seekToTimestamp(video, timestampSeconds);
+    return yield* captureCanvasFrame(video);
   });

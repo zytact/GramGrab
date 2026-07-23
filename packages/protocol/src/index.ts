@@ -1,5 +1,8 @@
 import { Schema } from 'effect';
 
+export { decodeJsonFrame, encodeFrame, encodeJsonFrame, FrameDecoder } from './framing.ts';
+export { localIpcEndpoint, type IpcEnvironment } from './ipc.ts';
+
 export const PROTOCOL_VERSION = 1 as const;
 
 export const RequestId = Schema.UUID.pipe(Schema.brand('RequestId'));
@@ -51,6 +54,12 @@ export class Inspect extends Schema.TaggedClass<Inspect>()('Inspect', {
   sourceUrl: Schema.String.pipe(Schema.nonEmptyString()),
 }) {}
 
+export class Status extends Schema.TaggedClass<Status>()('Status', {}) {}
+
+export class Echo extends Schema.TaggedClass<Echo>()('Echo', {
+  value: Schema.Unknown,
+}) {}
+
 export class Export extends Schema.TaggedClass<Export>()('Export', {
   sourceUrl: Schema.String.pipe(Schema.nonEmptyString()),
   operations: Schema.Array(ExportOperation).pipe(Schema.minItems(1)),
@@ -74,6 +83,8 @@ export class DebugGet extends Schema.TaggedClass<DebugGet>()('DebugGet', {}) {}
 export class DebugExport extends Schema.TaggedClass<DebugExport>()('DebugExport', {}) {}
 
 export const Command = Schema.Union(
+  Status,
+  Echo,
   Inspect,
   Export,
   HistoryList,
@@ -90,6 +101,14 @@ export class Request extends Schema.Class<Request>('Request')({
   requestId: RequestId,
   command: Command,
 }) {}
+
+export class CancelRequest extends Schema.TaggedClass<CancelRequest>()('CancelRequest', {
+  version: Schema.Literal(PROTOCOL_VERSION),
+  requestId: RequestId,
+}) {}
+
+export const ClientMessage = Schema.Union(Request, CancelRequest);
+export type ClientMessage = Schema.Schema.Type<typeof ClientMessage>;
 
 export const FAILURE_CODES = [
   'INPUT_INVALID_INSTAGRAM_URL',
@@ -289,7 +308,21 @@ export class DebugExportResult extends Schema.TaggedClass<DebugExportResult>()(
   }
 ) {}
 
+export class StatusResult extends Schema.TaggedClass<StatusResult>()('StatusResult', {
+  browser: Schema.Literal('chromium', 'firefox', 'unknown'),
+  extensionVersion: Schema.String.pipe(Schema.nonEmptyString()),
+  hostVersion: Schema.String.pipe(Schema.nonEmptyString()),
+  protocolVersion: Schema.Number.pipe(Schema.int(), Schema.positive()),
+  compatible: Schema.Boolean,
+}) {}
+
+export class EchoResult extends Schema.TaggedClass<EchoResult>()('EchoResult', {
+  value: Schema.Unknown,
+}) {}
+
 export const CommandResult = Schema.Union(
+  StatusResult,
+  EchoResult,
   InspectResult,
   ExportResult,
   HistoryListResult,
@@ -339,4 +372,5 @@ export class Event extends Schema.Class<Event>('Event')({
 }) {}
 
 export const decodeRequest = Schema.decodeUnknown(Request);
+export const decodeClientMessage = Schema.decodeUnknown(ClientMessage);
 export const decodeEvent = Schema.decodeUnknown(Event);

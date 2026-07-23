@@ -2,7 +2,11 @@
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "entry": [
     "apps/extension/templates/popup.tsx",
+    "apps/extension/templates/runner.ts",
+    "apps/extension/src/runner.ts",
     "apps/extension/src/background.ts",
+    "apps/native-host/scripts/package-tools.mjs",
+    "apps/native-host/scripts/verify-tools.mjs",
     "apps/*/src/index.ts",
     "packages/*/src/index.ts"
   ],

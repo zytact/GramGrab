@@ -15,10 +15,12 @@ fresh request ID.
 ## Grammar
 
 ```text
+gramgrab status [--json]
+gramgrab help
 gramgrab inspect SOURCE_URL [--json]
-gramgrab export SOURCE_URL --item NUMBER --mode direct [--json]
-gramgrab export SOURCE_URL --item NUMBER --mode frame --at SECONDS [--json]
-gramgrab export SOURCE_URL --item NUMBER --mode silent --reencode forbid|allow|require [--json]
+gramgrab export SOURCE_URL [--item NUMBER] [--mode direct] [--json]
+gramgrab export SOURCE_URL [--item NUMBER] --mode frame [--at SECONDS] [--json]
+gramgrab export SOURCE_URL [--item NUMBER] --mode silent --reencode forbid|allow|require [--json]
 gramgrab export SOURCE_URL --plan - [--json]
 gramgrab history list [--json]
 gramgrab history remove ENTRY_ID... [--json]
@@ -28,9 +30,27 @@ gramgrab debug get [--json]
 gramgrab debug export [--json]
 ```
 
+`status` is the phase 3 transport probe. It uses a five-second bounded wait and reports the
+browser family, extension version, native-host version, protocol version, and compatibility. The
+native host is browser-started and relays length-prefixed JSON frames over a per-user Unix socket
+on Linux and macOS or a named pipe on Windows. `GRAMGRAB_IPC_PATH` overrides the endpoint for
+development and tests.
+
+Development native-host manifest templates live in `apps/native-host/manifests`. The complete
+compatibility, registration, migration, and troubleshooting guide is in `docs/cli-setup.md`.
+Automatic registration remains out of scope. A second browser profile receives an explicit
+collision error and cannot remove the live profile's endpoint.
+
 Repeated item operations and `--plan -` support mixed batches. JSON mode never prompts. History
 removal and clearing must be explicit commands. Silent re-encoding uses the request policy and does
-not prompt in JSON mode.
+not prompt in JSON mode. When `--item` is omitted, the CLI performs a fresh inspection and applies
+the selected mode to every resolved item. When `--mode` is omitted, direct export is used. Frame
+export defaults to timestamp 5 seconds and clamps to the last valid second for shorter videos.
+
+JSON progress is newline-delimited on stderr. Numeric updates are coalesced to 0%, 25%, 50%, 75%,
+and 100% milestones per item and phase. Phase changes are always emitted, and the terminal result
+is emitted once on stdout. Exit 0 means full success, exit 1 means command rejection or at least one
+unsuccessful item outcome, and exit 2 means argument, validation, or transport failure.
 
 ## Capability inventory
 

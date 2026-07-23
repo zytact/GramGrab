@@ -10,6 +10,7 @@ const permissionDocumentation = [
     reason: 'Read and manage tabs for URL detection and the GramGrab workspace',
   },
   { permission: 'contextMenus', reason: 'Add GramGrab actions to page and link context menus' },
+  { permission: 'nativeMessaging', reason: 'Expose GramGrab operations to the local CLI bridge' },
 ];
 
 const hostPermissionDocumentation = [

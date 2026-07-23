@@ -7,6 +7,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
+import { Schema } from 'effect';
+import {
+  Export,
+  ExportOperation,
+  FrameExport,
+  HumanItemNumber,
+  OperationId,
+  PROTOCOL_VERSION,
+  Request,
+} from '@gramgrab/protocol';
 import { protocolConfig } from './instagram-protocol/config.ts';
 
 type Listener = (
@@ -21,6 +31,9 @@ type Listener = (
 
 function makeFakeBrowser() {
   let registeredListener: Listener | null = null;
+  let nativeMessageListener: ((message: unknown) => void) | null = null;
+  let startupListener: (() => void) | null = null;
+  const nativeMessages: unknown[] = [];
   let contextClickListener:
     | ((info: { menuItemId: string; pageUrl?: string; linkUrl?: string }) => void)
     | null = null;
@@ -34,19 +47,44 @@ function makeFakeBrowser() {
           registeredListener = cb;
         }),
       },
+      onStartup: {
+        addListener: vi.fn((listener: () => void) => {
+          startupListener = listener;
+        }),
+      },
+      connectNative: vi.fn(() => ({
+        postMessage: (message: unknown) => nativeMessages.push(message),
+        onMessage: {
+          addListener: (listener: (message: unknown) => void) => {
+            nativeMessageListener = listener;
+          },
+        },
+        onDisconnect: { addListener: vi.fn() },
+      })),
+      getManifest: vi.fn(() => ({ version: 'test' })),
     },
     tabs: {
       query: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue({ id: 1 }),
       update: vi.fn().mockResolvedValue(undefined),
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
     },
-    downloads: { download: vi.fn().mockResolvedValue(1) },
+    downloads: {
+      download: vi.fn().mockResolvedValue(1),
+      search: vi.fn().mockResolvedValue([{ id: 1, state: 'complete', fileSize: 100 }]),
+      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
+    },
     storage: {
       get: vi.fn().mockResolvedValue({}),
       set: vi.fn().mockResolvedValue(undefined),
       remove: vi.fn().mockResolvedValue(undefined),
     },
-    windows: { update: vi.fn().mockResolvedValue(undefined) },
+    windows: {
+      create: vi.fn().mockResolvedValue({ id: 2, tabs: [{ id: 1 }] }),
+      update: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
+    },
     contextMenus: {
       create: vi.fn(),
       removeAll: vi.fn().mockResolvedValue(undefined),
@@ -60,6 +98,9 @@ function makeFakeBrowser() {
   return {
     fakeBrowser,
     getListener: () => registeredListener,
+    getStartupListener: () => startupListener,
+    getNativeMessageListener: () => nativeMessageListener,
+    nativeMessages,
     getContextClickListener: () => contextClickListener,
   };
 }
@@ -162,6 +203,16 @@ describe('background dispatcher', () => {
     expect(fakeBrowserObj.fakeBrowser.runtime.onMessage.addListener).toHaveBeenCalledTimes(1);
   });
 
+  it('re-activates the native bridge when the browser starts', async () => {
+    await import('./background');
+
+    const startup = fakeBrowserObj.getStartupListener();
+    expect(startup).not.toBeNull();
+    startup?.();
+
+    expect(fakeBrowserObj.fakeBrowser.runtime.connectNative).toHaveBeenCalledTimes(1);
+  });
+
   it('registers an idempotent GramGrab submenu and routes link commands', async () => {
     await import('./background');
     await Promise.resolve();
@@ -206,6 +257,69 @@ describe('background dispatcher', () => {
     const ret = listener({ type: 'UNKNOWN_TYPE' }, {}, sendResponse);
     expect(ret).toBe(false);
     expect(sendResponse).not.toHaveBeenCalled();
+  });
+
+  it('decodes a plain runner failure before encoding it to the native protocol', async () => {
+    const listener = await loadBackground();
+    const operationId = Schema.decodeUnknownSync(OperationId)(
+      '00000000-0000-4000-8000-000000000001'
+    );
+    fakeBrowserObj.fakeBrowser.tabs.sendMessage.mockResolvedValue({
+      _tag: 'ExportResult',
+      outcomes: [
+        {
+          _tag: 'ItemFailed',
+          operationId,
+          itemNumber: 1,
+          mediaIdentity: { itemIndex: 0 },
+          failure: { code: 'FRAME_TIMEOUT', scope: 'item' },
+        },
+      ],
+    });
+    const request = Schema.decodeUnknownSync(Request)({
+      version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(),
+      command: Export.make({
+        sourceUrl: 'https://www.instagram.com/p/example/',
+        operations: [
+          ExportOperation.make({
+            operationId,
+            itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(1),
+            mode: FrameExport.make({ timestampSeconds: 0 }),
+          }),
+        ],
+      }),
+    });
+
+    fakeBrowserObj.getNativeMessageListener()?.(Schema.encodeSync(Request)(request));
+    await vi.waitFor(() =>
+      expect(fakeBrowserObj.fakeBrowser.windows.create).toHaveBeenCalledWith({
+        url: 'chrome-extension://test/runner.html',
+        focused: false,
+        state: 'minimized',
+        type: 'popup',
+      })
+    );
+    listener({ type: 'RUNNER_READY' }, { tab: { id: 1 } }, vi.fn());
+
+    await vi.waitFor(() =>
+      expect(fakeBrowserObj.nativeMessages).toContainEqual(
+        expect.objectContaining({
+          event: expect.objectContaining({
+            _tag: 'Completed',
+            result: expect.objectContaining({
+              _tag: 'ExportResult',
+              outcomes: [
+                expect.objectContaining({
+                  _tag: 'ItemFailed',
+                  failure: { code: 'FRAME_TIMEOUT', scope: 'item' },
+                }),
+              ],
+            }),
+          }),
+        })
+      )
+    );
   });
 
   // ── DOWNLOAD_MEDIA ────────────────────────────────────────────────────────
@@ -297,6 +411,48 @@ describe('background dispatcher', () => {
   });
 
   describe('frame export history', () => {
+    it('records history only after a non-empty frame download completes', async () => {
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'DOWNLOAD_FRAME_EXPORT',
+        dataUrl: 'data:image/jpeg;base64,ZmFrZQ==',
+        sourceUrl: 'https://www.instagram.com/p/abc123/',
+        item: {
+          itemIndex: 0,
+          url: 'https://cdn.instagram.com/video.mp4',
+          filename: 'post_frame.jpg',
+          mediaType: 'video',
+          frameTimestampSeconds: 0,
+        },
+      });
+
+      expect(result).toEqual({ error: undefined });
+      expect(fakeBrowserObj.fakeBrowser.downloads.search).toHaveBeenCalledWith({ id: 1 });
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalled();
+    });
+
+    it('does not record an empty completed frame download', async () => {
+      fakeBrowserObj.fakeBrowser.downloads.search.mockResolvedValue([
+        { id: 1, state: 'complete', fileSize: 0 },
+      ]);
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'DOWNLOAD_FRAME_EXPORT',
+        dataUrl: 'data:image/jpeg;base64,',
+        sourceUrl: 'https://www.instagram.com/p/abc123/',
+        item: {
+          itemIndex: 0,
+          url: 'https://cdn.instagram.com/video.mp4',
+          filename: 'post_frame.jpg',
+          mediaType: 'video',
+          frameTimestampSeconds: 0,
+        },
+      });
+
+      expect(result).toEqual({ error: 'Frame download failed.' });
+      expect(fakeBrowserObj.fakeBrowser.storage.set).not.toHaveBeenCalled();
+    });
+
     it('records a historical frame re-download using its immutable filename', async () => {
       const listener = await loadBackground();
       const result = await invoke(listener, {
