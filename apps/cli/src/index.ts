@@ -34,6 +34,17 @@ import {
 
 export { decodeEvent, decodeRequest, PROTOCOL_VERSION } from '@gramgrab/protocol';
 
+export class IpcUnavailableError extends Error {
+  readonly code = 'IPC_UNAVAILABLE';
+
+  constructor(override readonly cause: unknown) {
+    super(
+      'IPC_UNAVAILABLE: no browser-started native host owns the endpoint. Confirm registration, keep the extension enabled, and reload the browser.'
+    );
+    this.name = 'IpcUnavailableError';
+  }
+}
+
 const endpoint = localIpcEndpoint({
   platform: platform(),
   runtimeDirectory: process.env.XDG_RUNTIME_DIR,
@@ -220,6 +231,16 @@ async function readStandardInput(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+function normalizeIpcConnectionError(error: unknown): unknown {
+  if (!isIpcUnavailableError(error)) return error;
+  return new IpcUnavailableError(error);
+}
+
+function isIpcUnavailableError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return false;
+  return error.code === 'ENOENT' || error.code === 'ECONNREFUSED';
+}
+
 export function request(
   command: Command,
   onEvent: (event: EventPayload) => void,
@@ -307,7 +328,7 @@ export function request(
       }
     });
     socket.on('error', error => {
-      finish(() => reject(error));
+      finish(() => reject(normalizeIpcConnectionError(error)));
     });
     socket.on('end', disconnected);
     socket.on('close', disconnected);

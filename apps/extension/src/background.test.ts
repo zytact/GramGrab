@@ -32,6 +32,7 @@ type Listener = (
 function makeFakeBrowser() {
   let registeredListener: Listener | null = null;
   let nativeMessageListener: ((message: unknown) => void) | null = null;
+  let startupListener: (() => void) | null = null;
   const nativeMessages: unknown[] = [];
   let contextClickListener:
     | ((info: { menuItemId: string; pageUrl?: string; linkUrl?: string }) => void)
@@ -44,6 +45,11 @@ function makeFakeBrowser() {
       onMessage: {
         addListener: vi.fn((cb: Listener) => {
           registeredListener = cb;
+        }),
+      },
+      onStartup: {
+        addListener: vi.fn((listener: () => void) => {
+          startupListener = listener;
         }),
       },
       connectNative: vi.fn(() => ({
@@ -92,6 +98,7 @@ function makeFakeBrowser() {
   return {
     fakeBrowser,
     getListener: () => registeredListener,
+    getStartupListener: () => startupListener,
     getNativeMessageListener: () => nativeMessageListener,
     nativeMessages,
     getContextClickListener: () => contextClickListener,
@@ -194,6 +201,16 @@ describe('background dispatcher', () => {
   it('registers exactly one onMessage listener synchronously', async () => {
     await import('./background');
     expect(fakeBrowserObj.fakeBrowser.runtime.onMessage.addListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-activates the native bridge when the browser starts', async () => {
+    await import('./background');
+
+    const startup = fakeBrowserObj.getStartupListener();
+    expect(startup).not.toBeNull();
+    startup?.();
+
+    expect(fakeBrowserObj.fakeBrowser.runtime.connectNative).toHaveBeenCalledTimes(1);
   });
 
   it('registers an idempotent GramGrab submenu and routes link commands', async () => {

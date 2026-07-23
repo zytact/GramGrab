@@ -1807,6 +1807,7 @@ function browserName(): 'chromium' | 'firefox' | 'unknown' {
 }
 
 startNativeBridge(executeCommand);
+browser.runtime.onStartup.addListener(() => startNativeBridge(executeCommand));
 
 // ---------------------------------------------------------------------------
 // Single message dispatcher

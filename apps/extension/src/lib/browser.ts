@@ -38,6 +38,9 @@ export interface BrowserShim {
     onMessage: {
       addListener: (callback: OnMessageCallback) => void;
     };
+    onStartup: {
+      addListener: (callback: () => void) => void;
+    };
   };
   tabs: {
     query: (queryInfo: {
@@ -115,6 +118,7 @@ interface ChromeRuntime {
   sendMessage: (msg: unknown, callback: (response: unknown) => void) => void;
   connectNative?: (application: string) => NativePort;
   onMessage: { addListener: (callback: OnMessageCallback) => void };
+  onStartup?: { addListener: (callback: () => void) => void };
 }
 
 interface ChromeGlobal {
@@ -169,6 +173,7 @@ interface NativeBrowserGlobal {
     sendMessage: (msg: unknown) => Promise<unknown>;
     connectNative?: (application: string) => NativePort;
     onMessage: { addListener: (callback: OnMessageCallback) => void };
+    onStartup?: { addListener: (callback: () => void) => void };
   };
   tabs: {
     query: (queryInfo: unknown) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
@@ -235,6 +240,9 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
       connectNative: application => chrome.runtime.connectNative?.(application) ?? noopNativePort,
       onMessage: {
         addListener: callback => chrome.runtime.onMessage.addListener(callback),
+      },
+      onStartup: {
+        addListener: callback => chrome.runtime.onStartup?.addListener(callback),
       },
     },
     tabs: {
@@ -385,6 +393,7 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
     runtime: {
       ...native.runtime,
       connectNative: application => native.runtime.connectNative?.(application) ?? noopNativePort,
+      onStartup: native.runtime.onStartup ?? noopRuntimeStartup,
     },
     tabs: {
       query: queryInfo => native.tabs.query(queryInfo),
@@ -433,6 +442,10 @@ const noopNativePort: NativePort = {
   onDisconnect: { addListener: () => {} },
 };
 
+const noopRuntimeStartup: BrowserShim['runtime']['onStartup'] = {
+  addListener: () => {},
+};
+
 const noopShim: BrowserShim = {
   runtime: {
     getURL: path => path,
@@ -440,6 +453,7 @@ const noopShim: BrowserShim = {
     sendMessage: () => Promise.resolve(undefined),
     connectNative: () => noopNativePort,
     onMessage: { addListener: () => {} },
+    onStartup: noopRuntimeStartup,
   },
   tabs: {
     query: () => Promise.resolve([]),
@@ -481,12 +495,15 @@ function getActiveBrowser(): BrowserShim {
   const nativeBrowser = g['browser'];
   const chrome = g['chrome'] as ChromeGlobal | undefined;
   if (hasNativeStorageLocal(nativeBrowser)) return buildNativeShim(nativeBrowser);
-  if (nativeBrowser)
+  if (nativeBrowser) {
+    const partialBrowser = nativeBrowser as Partial<BrowserShim>;
     return {
       ...noopShim,
-      ...(nativeBrowser as Partial<BrowserShim>),
-      contextMenus: (nativeBrowser as Partial<BrowserShim>).contextMenus ?? noopContextMenus,
+      ...partialBrowser,
+      runtime: { ...noopShim.runtime, ...partialBrowser.runtime },
+      contextMenus: partialBrowser.contextMenus ?? noopContextMenus,
     };
+  }
   return chrome ? buildChromeShim(chrome) : noopShim;
 }
 

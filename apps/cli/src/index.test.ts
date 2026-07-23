@@ -228,6 +228,17 @@ describe('CLI output', () => {
 });
 
 describe('CLI request lifecycle', () => {
+  it('normalizes a missing IPC endpoint', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'gramgrab-cli-'));
+    temporaryDirectories.push(directory);
+    const endpoint = join(directory, 'missing.sock');
+
+    await expect(request(Status.make({}), () => undefined, { endpoint })).rejects.toMatchObject({
+      code: 'IPC_UNAVAILABLE',
+      message: expect.stringContaining('IPC_UNAVAILABLE'),
+    });
+  });
+
   it.each([false, true])('rejects a clean disconnect after accepted=%s', async accept => {
     const endpoint = await testEndpoint();
     const server = await disconnectingServer(endpoint, accept);
