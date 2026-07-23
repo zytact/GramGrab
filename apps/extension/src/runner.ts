@@ -1,9 +1,10 @@
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Schema } from 'effect';
 import {
   ExportResult,
   ItemFailed,
   ItemSkipped,
   ItemSucceeded,
+  InternalItemIndex,
   MediaIdentity,
   OperationFailure as ProtocolOperationFailure,
   type Export,
@@ -11,7 +12,11 @@ import {
   type ItemOutcome,
 } from '@gramgrab/protocol';
 import { browser } from './lib/browser.ts';
-import { type DownloadOperation, type DownloadOperationResult } from './download/contracts.ts';
+import {
+  createRequestId,
+  type DownloadOperation,
+  type DownloadOperationResult,
+} from './download/contracts.ts';
 import {
   executeExportPlan,
   ExportEvents,
@@ -32,7 +37,9 @@ interface RunnerRequest {
 // fallow-ignore-next-line complexity
 function toOutcome(operation: ExportOperation, result: DownloadOperationResult): ItemOutcome {
   const mediaIdentity = MediaIdentity.make({
-    itemIndex: operation.mediaIdentity?.itemIndex ?? operation.itemNumber - 1,
+    itemIndex:
+      operation.mediaIdentity?.itemIndex ??
+      Schema.decodeUnknownSync(InternalItemIndex)(operation.itemNumber - 1),
     ...(operation.mediaIdentity?.mediaId ? { mediaId: operation.mediaIdentity.mediaId } : {}),
   });
   if (result.status === 'started')
@@ -112,7 +119,7 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
       mode === 'silent' ? '_silent.mp4' : mode === 'frame' ? '_frame.jpg' : `.${extension}`;
     operations.push({
       operationId: requested.operationId,
-      requestId: crypto.randomUUID(),
+      requestId: createRequestId(),
       itemIndex: item.itemIndex,
       ...(item.mediaId ? { mediaId: item.mediaId } : {}),
       url: item.url,
@@ -136,7 +143,7 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
           void browser.runtime.sendMessage({
             type: 'RUNNER_PROGRESS',
             operationId: operation.operationId,
-            itemNumber: operation.displayIndex + 1,
+            itemNumber: requestedById.get(operation.operationId)?.itemNumber,
             phase,
           }),
       }),
@@ -146,7 +153,7 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
           browser.runtime.sendMessage({
             type: 'RUNNER_PROGRESS',
             operationId: operation.operationId,
-            itemNumber: operation.displayIndex + 1,
+            itemNumber: requestedById.get(operation.operationId)?.itemNumber,
             phase: 'direct-download',
           })
         )

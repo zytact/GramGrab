@@ -40,6 +40,7 @@ describe('executeFrameExport', () => {
 
   it('preserves a non-zero timestamp through capture, download, and history', async () => {
     const phases: string[] = [];
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL');
 
     const result = await executeFrameExport(
       operation,
@@ -56,7 +57,7 @@ describe('executeFrameExport', () => {
       })
     );
     expect(phases).toEqual(['frame-metadata', 'frame-export']);
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:media');
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:media');
   });
 
   it('defaults an omitted operation timestamp to zero', async () => {

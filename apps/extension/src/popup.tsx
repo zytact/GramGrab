@@ -4,6 +4,7 @@ import { browser } from './lib/browser';
 import {
   createOperationId,
   createRequestId,
+  DownloadFailedResult,
   type DownloadOperation,
   type DownloadOperationResult,
 } from './download/contracts';
@@ -1625,32 +1626,6 @@ function getVideoDuration(dataUrl: string): Promise<number> {
     video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
     video.addEventListener('error', onError, { once: true });
   });
-}
-
-function frameExportErrorMessage(reason: string): string {
-  switch (reason) {
-    case 'no-duration':
-      return 'Frame export failed (duration unavailable).';
-    case 'no-frame':
-      return 'Frame export failed (no video frame).';
-    case 'no-canvas':
-      return 'Frame export failed (canvas unavailable).';
-    case 'no-blob':
-      return 'Frame export failed (image export).';
-    case 'timeout':
-      return 'Frame export failed (timed out).';
-    default:
-      return 'Frame export failed.';
-  }
-}
-
-function downloadBlobAsFile(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 interface MediaItemRowProps {

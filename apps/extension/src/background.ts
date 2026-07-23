@@ -18,8 +18,10 @@ import {
   HistoryRedownloadResult,
   HistoryRedownloadStarted,
   HistoryRemoveResult,
+  HumanItemNumber,
   InspectResult,
   InspectedMedia,
+  InternalItemIndex,
   ItemFailed,
   ItemSucceeded,
   MediaIdentity,
@@ -1452,9 +1454,9 @@ async function inspectCommand(sourceUrl: string): Promise<InspectResult> {
     sourceUrl: response.sourceUrl,
     items: response.media.map((item, index) =>
       InspectedMedia.make({
-        itemNumber: index + 1,
+        itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(index + 1),
         mediaIdentity: MediaIdentity.make({
-          itemIndex: item.itemIndex,
+          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(item.itemIndex),
           ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         }),
         mediaType: item.type === 'video' ? 'video' : 'image',
@@ -1475,7 +1477,7 @@ function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
     sourceUrl: entry.sourceUrl,
     sourceKind: entry.sourceKind,
     mediaIdentity: MediaIdentity.make({
-      itemIndex: entry.itemIndex,
+      itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(entry.itemIndex),
       ...(entry.mediaId ? { mediaId: entry.mediaId } : {}),
     }),
     mediaType: entry.mediaType,
@@ -1501,11 +1503,14 @@ async function runExport(
   });
   const previous = exportQueue;
   exportQueue = previous.then(() => turn);
-  let acquired = false;
   const abort = () => discardRunner();
   try {
     await abortable(previous, signal);
-    acquired = true;
+  } catch (error) {
+    release();
+    throw error;
+  }
+  try {
     if (runnerIdleTimer) clearTimeout(runnerIdleTimer);
     runnerIdleTimer = undefined;
     runnerProgress = emit;
@@ -1526,11 +1531,9 @@ async function runExport(
     }
   } finally {
     signal.removeEventListener('abort', abort);
-    if (acquired) runnerProgress = undefined;
+    runnerProgress = undefined;
     release();
-    if (acquired) {
-      discardRunner();
-    }
+    discardRunner();
   }
 }
 
@@ -1542,9 +1545,6 @@ async function runDirectExport(
 ) {
   const inspected = await abortable(inspectCommand(command.sourceUrl), signal);
   const operations: DownloadOperation[] = [];
-  const requestedById = new Map(
-    command.operations.map(operation => [operation.operationId, operation])
-  );
   for (const requested of command.operations) {
     const item = inspected.items[requested.itemNumber - 1];
     if (
@@ -1565,7 +1565,7 @@ async function runDirectExport(
     const extension = item.mediaType === 'video' ? 'mp4' : 'jpg';
     operations.push({
       operationId: requested.operationId,
-      requestId: crypto.randomUUID(),
+      requestId: createRequestId(),
       itemIndex: item.mediaIdentity.itemIndex,
       ...(item.mediaIdentity.mediaId ? { mediaId: item.mediaIdentity.mediaId } : {}),
       url: item.url,
@@ -1595,7 +1595,10 @@ async function runDirectExport(
     outcomes: command.operations.map(requested => {
       const result = results.find(candidate => candidate.operationId === requested.operationId);
       const identity =
-        requested.mediaIdentity ?? MediaIdentity.make({ itemIndex: requested.itemNumber - 1 });
+        requested.mediaIdentity ??
+        MediaIdentity.make({
+          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(requested.itemNumber - 1),
+        });
       return result?.status === 'started'
         ? ItemSucceeded.make({
             operationId: requested.operationId,
@@ -1671,8 +1674,10 @@ async function executeCommand(
           signal.throwIfAborted();
           const entry = before.entries.find(candidate => candidate.id === entryId);
           const response = await abortable(handleRedownloadHistoryEntry({ entryId }), signal);
-          if (entry && (response.frame || response.silent)) {
-            const resolvedItem = response.frame ?? response.silent;
+          const frame = 'frame' in response ? response.frame : undefined;
+          const silent = 'silent' in response ? response.silent : undefined;
+          const resolvedItem = frame ?? silent;
+          if (entry && resolvedItem) {
             const operationId = Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID());
             const exportResult = await runExport(
               ProtocolExport.make({
@@ -1680,14 +1685,18 @@ async function executeCommand(
                 operations: [
                   ProtocolExportOperation.make({
                     operationId,
-                    itemNumber: resolvedItem.itemIndex + 1,
+                    itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(
+                      resolvedItem.itemIndex + 1
+                    ),
                     mediaIdentity: MediaIdentity.make({
-                      itemIndex: resolvedItem.itemIndex,
+                      itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(
+                        resolvedItem.itemIndex
+                      ),
                       ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
                     }),
-                    mode: response.frame
+                    mode: frame
                       ? FrameExport.make({
-                          timestampSeconds: response.frame.timestampSeconds,
+                          timestampSeconds: frame.timestampSeconds,
                         })
                       : SilentExport.make({ reencode: 'allow' }),
                   }),
@@ -1715,8 +1724,9 @@ async function executeCommand(
           const directFailed =
             'results' in response &&
             (response.failure || response.results.some(result => result.status !== 'started'));
+          const error = 'error' in response ? response.error : undefined;
           outcomes.push(
-            response.error || directFailed
+            error || directFailed
               ? HistoryRedownloadFailed.make({
                   entryId,
                   failure: ProtocolOperationFailure.make({
