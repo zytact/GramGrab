@@ -1,4 +1,4 @@
-import { createServer, type Socket } from 'node:net';
+import { createServer, Socket } from 'node:net';
 import { chmod, rm } from 'node:fs/promises';
 import { platform, userInfo } from 'node:os';
 import { Effect, Schema } from 'effect';
@@ -24,6 +24,31 @@ const endpoint = localIpcEndpoint({
 });
 const clients = new Set<Socket>();
 const HOST_VERSION = '0.0.0';
+
+async function socketIsActive(path: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const socket = new Socket();
+    const finish = (active: boolean) => {
+      socket.destroy();
+      resolve(active);
+    };
+    socket.setTimeout(250, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+    socket.connect(path);
+  });
+}
+
+export async function prepareLocalIpcEndpoint(
+  path: string,
+  currentPlatform: string
+): Promise<void> {
+  if (currentPlatform === 'win32') return;
+  if (await socketIsActive(path)) {
+    throw new Error(`Another GramGrab native host already owns ${path}`);
+  }
+  await rm(path, { force: true });
+}
 
 function writeNative(payload: Uint8Array): void {
   process.stdout.write(encodeFrame(payload));
@@ -86,16 +111,31 @@ export async function startNativeHost(): Promise<void> {
       process.stdin.destroy();
     }
   });
-  if (platform() !== 'win32') await rm(endpoint, { force: true });
+  await prepareLocalIpcEndpoint(endpoint, platform());
   const server = createServer(attachClient);
   server.on('error', error => {
     console.error(`GramGrab native host failed: ${error.message}`);
     process.exitCode = 1;
   });
   server.listen(endpoint, async () => {
-    if (platform() !== 'win32') await chmod(endpoint, 0o600);
+    if (platform() !== 'win32') {
+      try {
+        await chmod(endpoint, 0o600);
+      } catch (error) {
+        console.error(
+          `GramGrab native host could not secure its local socket: ${error instanceof Error ? error.message : String(error)}`
+        );
+        process.exitCode = 1;
+        server.close();
+      }
+    }
   });
-  const close = () => server.close();
+  const close = () => {
+    for (const client of clients) client.destroy();
+    server.close(() => {
+      if (platform() !== 'win32') void rm(endpoint, { force: true });
+    });
+  };
   process.stdin.on('end', close);
   process.on('SIGTERM', close);
   process.on('SIGINT', close);

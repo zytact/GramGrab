@@ -166,7 +166,16 @@ async function readStandardInput(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-function request(command: Command, onEvent: (event: EventPayload) => void): Promise<EventPayload> {
+export function request(
+  command: Command,
+  onEvent: (event: EventPayload) => void,
+  options: {
+    readonly signal?: AbortSignal;
+    readonly endpoint?: string;
+    readonly acceptanceTimeoutMs?: number;
+    readonly terminalTimeoutMs?: number;
+  } = {}
+): Promise<EventPayload> {
   const requestId = crypto.randomUUID();
   const value = Schema.decodeUnknownSync(Request)({
     version: PROTOCOL_VERSION,
@@ -174,12 +183,31 @@ function request(command: Command, onEvent: (event: EventPayload) => void): Prom
     command,
   });
   return new Promise((resolve, reject) => {
-    const socket = connect(endpoint);
+    const socket = connect(options.endpoint ?? endpoint);
     const decoder = new FrameDecoder();
-    const timeout = setTimeout(() => {
+    let settled = false;
+    let terminalTimeout: ReturnType<typeof setTimeout> | undefined;
+    const finish = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(acceptanceTimeout);
+      if (terminalTimeout) clearTimeout(terminalTimeout);
+      options.signal?.removeEventListener('abort', abort);
+      action();
+    };
+    const abort = () => {
       socket.destroy();
-      reject(new Error('Timed out waiting for the extension.'));
-    }, 5_000);
+      finish(() => reject(new Error('Request cancelled.')));
+    };
+    const disconnected = () => {
+      finish(() => reject(new Error('IPC disconnected before a terminal response.')));
+    };
+    const acceptanceTimeout = setTimeout(() => {
+      socket.destroy();
+      finish(() => reject(new Error('Timed out waiting for the extension.')));
+    }, options.acceptanceTimeoutMs ?? 5_000);
+    options.signal?.addEventListener('abort', abort, { once: true });
+    if (options.signal?.aborted) abort();
     socket.on('connect', () => socket.write(encodeJsonFrame(Schema.encodeSync(Request)(value))));
     socket.on('data', chunk => {
       try {
@@ -189,24 +217,30 @@ function request(command: Command, onEvent: (event: EventPayload) => void): Prom
           if (event.requestId !== requestId) continue;
           onEvent(event.event);
           if (event.event._tag === 'Accepted') {
-            clearTimeout(timeout);
+            clearTimeout(acceptanceTimeout);
+            terminalTimeout = setTimeout(
+              () => {
+                socket.destroy();
+                finish(() => reject(new Error('Timed out waiting for command completion.')));
+              },
+              options.terminalTimeoutMs ?? 30 * 60_000
+            );
             continue;
           }
           if (event.event._tag === 'Progress') continue;
-          clearTimeout(timeout);
           socket.end();
-          resolve(event.event);
+          finish(() => resolve(event.event));
         }
       } catch (error) {
-        clearTimeout(timeout);
         socket.destroy();
-        reject(error);
+        finish(() => reject(error));
       }
     });
     socket.on('error', error => {
-      clearTimeout(timeout);
-      reject(error);
+      finish(() => reject(error));
     });
+    socket.on('end', disconnected);
+    socket.on('close', disconnected);
   });
 }
 
@@ -225,9 +259,11 @@ function printProgress(event: EventPayload, json: boolean): void {
   );
 }
 
-export async function runCli(arguments_: readonly string[]): Promise<void> {
+export async function runCli(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
   const parsed = await parse(arguments_);
-  const event = await request(parsed.command, current => printProgress(current, parsed.json));
+  const event = await request(parsed.command, current => printProgress(current, parsed.json), {
+    signal,
+  });
   if (event._tag === 'Rejected') {
     process.stderr.write(`${JSON.stringify(event.failure)}\n`);
     process.exitCode = 1;
@@ -243,7 +279,10 @@ export async function runCli(arguments_: readonly string[]): Promise<void> {
 }
 
 if (import.meta.main) {
-  runCli(process.argv.slice(2)).catch(error => {
+  const controller = new AbortController();
+  process.once('SIGINT', () => controller.abort());
+  process.once('SIGTERM', () => controller.abort());
+  runCli(process.argv.slice(2), controller.signal).catch(error => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(
       process.argv.includes('--json')

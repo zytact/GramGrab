@@ -11,6 +11,9 @@
     "effect": "^3.21.2",
     "tsx": "^4.23.0"
   },
+  "devDependencies": {
+    "vite-plus": "0.1.24"
+  },
   "scripts": {
     "start": "tsx src/index.ts"
   }

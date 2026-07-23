@@ -18,6 +18,7 @@ const HOST_NAME = 'dev.zytact.gramgrab';
 const HOST_VERSION = '0.0.0';
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const RequestEnvelope = Schema.Struct({ version: Schema.Number, requestId: RequestId });
+type RequestEnvelope = Schema.Schema.Type<typeof RequestEnvelope>;
 
 let port: NativePort | undefined;
 let reconnectDelay = 1_000;
@@ -50,13 +51,20 @@ function rejectUnsupportedVersion(message: unknown): boolean {
   if (decoded._tag === 'Left') return false;
   const envelope = decoded.right;
   if (envelope.version === PROTOCOL_VERSION) return false;
-  post(
-    envelope.requestId,
-    Rejected.make({
-      failure: TransportFailure.make({ code: 'PROTOCOL_VERSION_UNSUPPORTED' }),
-    })
-  );
+  port?.postMessage(unsupportedVersionEvent(envelope));
   return true;
+}
+
+export function unsupportedVersionEvent(envelope: RequestEnvelope) {
+  return {
+    version: envelope.version,
+    requestId: envelope.requestId,
+    event: Schema.encodeSync(Rejected)(
+      Rejected.make({
+        failure: TransportFailure.make({ code: 'PROTOCOL_VERSION_UNSUPPORTED' }),
+      })
+    ),
+  };
 }
 
 function handleMessage(message: unknown): void {

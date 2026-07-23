@@ -35,11 +35,10 @@ native host is browser-started and relays length-prefixed JSON frames over a per
 on Linux and macOS or a named pipe on Windows. `GRAMGRAB_IPC_PATH` overrides the endpoint for
 development and tests.
 
-Development native-host manifest templates live in `apps/native-host/manifests`. Replace the host
-path placeholder with the absolute executable path and the Chromium extension ID placeholder with
-the installed development extension ID, then register the manifest using the browser's documented
-native-messaging location. Automatic registration remains out of scope. Concurrent browser-profile
-endpoint arbitration is part of phase 7 collision hardening.
+Development native-host manifest templates live in `apps/native-host/manifests`. The complete
+compatibility, registration, migration, and troubleshooting guide is in `docs/cli-setup.md`.
+Automatic registration remains out of scope. A second browser profile receives an explicit
+collision error and cannot remove the live profile's endpoint.
 
 Repeated item operations and `--plan -` support mixed batches. JSON mode never prompts. History
 removal and clearing must be explicit commands. Silent re-encoding uses the request policy and does

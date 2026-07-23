@@ -1,5 +1,65 @@
-import { describe, expect, it } from 'vite-plus/test';
-import { parseCliArguments } from './index.ts';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Effect, Schema } from 'effect';
+import { afterEach, describe, expect, it } from 'vite-plus/test';
+import {
+  Accepted,
+  decodeJsonFrame,
+  encodeJsonFrame,
+  Event,
+  FrameDecoder,
+  PROTOCOL_VERSION,
+  Request,
+  Status,
+} from '@gramgrab/protocol';
+import { parseCliArguments, request } from './index.ts';
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))
+  );
+});
+
+async function testEndpoint(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), 'gramgrab-cli-'));
+  temporaryDirectories.push(directory);
+  return join(directory, 'gramgrab.sock');
+}
+
+async function disconnectingServer(endpoint: string, accept: boolean) {
+  const server = createServer(socket => {
+    const decoder = new FrameDecoder();
+    socket.on('data', chunk => {
+      if (typeof chunk === 'string') return;
+      const frame = decoder.push(chunk)[0];
+      if (!frame) return;
+      const incoming = Effect.runSync(Schema.decodeUnknown(Request)(decodeJsonFrame(frame)));
+      if (accept) {
+        socket.write(
+          encodeJsonFrame(
+            Schema.encodeSync(Event)(
+              Event.make({
+                version: PROTOCOL_VERSION,
+                requestId: incoming.requestId,
+                event: Accepted.make({}),
+              })
+            )
+          )
+        );
+      }
+      socket.end();
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(endpoint, resolve);
+  });
+  return server;
+}
 
 describe('CLI capability grammar', () => {
   it('parses inspect and JSON mode', () => {
@@ -91,5 +151,24 @@ describe('CLI capability grammar', () => {
       { itemNumber: 1, mode: { _tag: 'DirectExport' } },
       { itemNumber: 3, mode: { _tag: 'FrameExport', timestampSeconds: 8 } },
     ]);
+  });
+});
+
+describe('CLI request lifecycle', () => {
+  it.each([false, true])('rejects a clean disconnect after accepted=%s', async accept => {
+    const endpoint = await testEndpoint();
+    const server = await disconnectingServer(endpoint, accept);
+
+    await expect(
+      request(Status.make({}), () => undefined, {
+        endpoint,
+        acceptanceTimeoutMs: 100,
+        terminalTimeoutMs: 100,
+      })
+    ).rejects.toThrow('IPC disconnected before a terminal response.');
+
+    await new Promise<void>((resolve, reject) =>
+      server.close(error => (error ? reject(error) : resolve()))
+    );
   });
 });
