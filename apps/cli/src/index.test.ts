@@ -98,12 +98,7 @@ describe('CLI capability grammar', () => {
   });
 
   it('defers an export without items for fresh all-item expansion', () => {
-    const parsed = parseCliArguments([
-      'export',
-      'https://www.instagram.com/p/example/',
-      '--mode',
-      'direct',
-    ]);
+    const parsed = parseCliArguments(['export', 'https://www.instagram.com/p/example/']);
     expect(parsed.command._tag).toBe('Inspect');
     expect(parsed.expandAll).toMatchObject({
       sourceUrl: 'https://www.instagram.com/p/example/',
@@ -111,7 +106,7 @@ describe('CLI capability grammar', () => {
     });
   });
 
-  it('defaults frame export to the first frame', () => {
+  it('defaults frame export to five seconds', () => {
     const parsed = parseCliArguments([
       'export',
       'https://www.instagram.com/p/example/',
@@ -120,7 +115,20 @@ describe('CLI capability grammar', () => {
     ]);
     expect(parsed.expandAll?.mode).toMatchObject({
       _tag: 'FrameExport',
-      timestampSeconds: 0,
+      timestampSeconds: 5,
+    });
+  });
+
+  it('defaults an item export to direct mode', () => {
+    const parsed = parseCliArguments([
+      'export',
+      'https://www.instagram.com/p/example/',
+      '--item',
+      '1',
+    ]);
+    expect(parsed.command).toMatchObject({
+      _tag: 'Export',
+      operations: [{ itemNumber: 1, mode: { _tag: 'DirectExport' } }],
     });
   });
 
@@ -187,7 +195,9 @@ describe('CLI capability grammar', () => {
 
 describe('CLI output', () => {
   it('documents help, all-item export, policies, plans, and exit semantics', () => {
-    expect(HELP).toContain('When --item is omitted');
+    expect(HELP).toContain('Export defaults to every item');
+    expect(HELP).toContain('default when --mode is omitted');
+    expect(HELP).toContain('--at defaults to 5 seconds');
     expect(HELP).toContain('forbid');
     expect(HELP).toContain('--plan');
     expect(HELP).toContain('Exit 0');

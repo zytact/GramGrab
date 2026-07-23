@@ -1,7 +1,11 @@
 {
   "name": "gramgrab",
+  "version": "0.1.0",
   "type": "module",
   "private": true,
+  "bin": {
+    "gramgrab": "artifacts/gramgrab.mjs"
+  },
   "license": "GPL-3.0-only",
   "scripts": {
     "build": "vp run build-all",
@@ -20,7 +24,7 @@
     "format:check": "vp fmt --check .",
     "test": "vp test run",
     "test:watch": "vp test",
-    "prepare": "vp config",
+    "prepare": "vp config && vp run package-tools",
     "typecheck": "tsc --noEmit",
     "package:firefox": "vp run package-firefox",
     "package:chromium": "vp run package-chromium",

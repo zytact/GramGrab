@@ -56,7 +56,7 @@ Usage:
   gramgrab help
   gramgrab status [--json]
   gramgrab inspect SOURCE_URL [--json]
-  gramgrab export SOURCE_URL [--item NUMBER ...] --mode direct [--json]
+  gramgrab export SOURCE_URL [--item NUMBER ...] [--mode direct] [--json]
   gramgrab export SOURCE_URL [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
   gramgrab export SOURCE_URL [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
   gramgrab export SOURCE_URL --plan FILE|- [--json]
@@ -65,12 +65,12 @@ Usage:
 
 Sources:
   Instagram post, reel, story, highlight, and profile URLs are accepted. Profile URLs resolve the
-  account avatar. When --item is omitted, export applies to every item found by a fresh inspection.
-  Repeated --item starts another operation and may specify a different mode.
+  account avatar. Export defaults to every item found by a fresh inspection. Use --item to select
+  specific items. Repeated --item starts another operation and may specify a different mode.
 
 Export modes:
-  direct  Download the original media.
-  frame   Export a video frame. --at defaults to 0 seconds.
+  direct  Download the original media. This is the default when --mode is omitted.
+  frame   Export a video frame. --at defaults to 5 seconds and clamps to the video duration.
   silent  Remove audio. forbid permits stream copy only, allow permits re-encoding when needed,
           and require always permits re-encoding. JSON mode never prompts.
 
@@ -111,13 +111,13 @@ function operationId() {
 }
 
 function exportMode(arguments_: readonly string[]): ExportMode {
-  const mode = required(option(arguments_, '--mode'), 'Missing --mode direct|frame|silent.');
+  const mode = option(arguments_, '--mode') ?? 'direct';
   const parsed =
     mode === 'direct'
       ? DirectExport.make({})
       : mode === 'frame'
         ? FrameExport.make({
-            timestampSeconds: Number(option(arguments_, '--at') ?? '0'),
+            timestampSeconds: Number(option(arguments_, '--at') ?? '5'),
           })
         : mode === 'silent'
           ? SilentExport.make({

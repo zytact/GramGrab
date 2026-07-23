@@ -18,7 +18,7 @@ fresh request ID.
 gramgrab status [--json]
 gramgrab help
 gramgrab inspect SOURCE_URL [--json]
-gramgrab export SOURCE_URL [--item NUMBER] --mode direct [--json]
+gramgrab export SOURCE_URL [--item NUMBER] [--mode direct] [--json]
 gramgrab export SOURCE_URL [--item NUMBER] --mode frame [--at SECONDS] [--json]
 gramgrab export SOURCE_URL [--item NUMBER] --mode silent --reencode forbid|allow|require [--json]
 gramgrab export SOURCE_URL --plan - [--json]
@@ -44,7 +44,8 @@ collision error and cannot remove the live profile's endpoint.
 Repeated item operations and `--plan -` support mixed batches. JSON mode never prompts. History
 removal and clearing must be explicit commands. Silent re-encoding uses the request policy and does
 not prompt in JSON mode. When `--item` is omitted, the CLI performs a fresh inspection and applies
-the selected mode to every resolved item. Frame export defaults to timestamp 0 seconds.
+the selected mode to every resolved item. When `--mode` is omitted, direct export is used. Frame
+export defaults to timestamp 5 seconds and clamps to the last valid second for shorter videos.
 
 JSON progress is newline-delimited on stderr. Numeric updates are coalesced to 0%, 25%, 50%, 75%,
 and 100% milestones per item and phase. Phase changes are always emitted, and the terminal result
