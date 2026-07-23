@@ -98,10 +98,30 @@ describe('captureFrameFromVideoEffect', () => {
     for (let i = 0; i < 5; i++) await Promise.resolve();
     fireEvent(video, 'loadedmetadata');
     for (let i = 0; i < 5; i++) await Promise.resolve();
+    fireEvent(video, 'loadeddata');
+    for (let i = 0; i < 5; i++) await Promise.resolve();
     fireEvent(video, 'seeked');
 
     const result = await resultPromise;
     expect(result._tag).toBe('Right');
+  });
+
+  it('waits for the first decoded frame at timestamp zero', async () => {
+    const video = makeVideo({ readyState: 1, duration: 10, currentTime: 0 }) as HTMLVideoElement & {
+      _listeners: Record<string, EventListenerOrEventListenerObject[]>;
+    };
+
+    const resultPromise = Effect.runPromise(
+      captureFrameFromVideoEffect(video, 0).pipe(Effect.either)
+    );
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(currentCanvas.getContext).not.toHaveBeenCalled();
+
+    fireEvent(video, 'loadeddata');
+
+    const result = await resultPromise;
+    expect(result._tag).toBe('Right');
+    expect(currentCanvas.getContext).toHaveBeenCalled();
   });
 
   it('fails with timeout when loadedmetadata never fires', async () => {

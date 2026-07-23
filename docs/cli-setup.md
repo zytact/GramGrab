@@ -53,7 +53,8 @@ user action.
 | Windows | Set the default value of `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\dev.zytact.gramgrab` to the manifest's absolute path | Set the default value of `HKCU\\Software\\Mozilla\\NativeMessagingHosts\\dev.zytact.gramgrab` to the manifest's absolute path |
 
 Chromium derivatives use vendor-specific directories or registry roots. Use that browser's native
-messaging documentation for channels other than Google Chrome.
+messaging documentation for channels other than Google Chrome. For example, Helium on Linux uses
+`~/.config/net.imput.helium/NativeMessagingHosts/dev.zytact.gramgrab.json`.
 
 ## Protocol migration policy
 

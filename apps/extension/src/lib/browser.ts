@@ -52,7 +52,9 @@ export interface BrowserShim {
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
-    search: (query: { id?: number }) => Promise<{ id: number; state?: string }[]>;
+    search: (query: {
+      id?: number;
+    }) => Promise<{ id: number; state?: string; fileSize?: number }[]>;
     onChanged: {
       addListener: (callback: (delta: DownloadDelta) => void) => void;
       removeListener: (callback: (delta: DownloadDelta) => void) => void;
@@ -63,7 +65,16 @@ export interface BrowserShim {
     set: (items: Record<string, unknown>) => Promise<void>;
     remove: (keys: string | string[]) => Promise<void>;
   };
-  windows: { update: (windowId: number, updateInfo: { focused: boolean }) => Promise<void> };
+  windows: {
+    create: (createData: {
+      url: string;
+      focused?: boolean;
+      state?: 'minimized' | 'normal';
+      type?: 'popup';
+    }) => Promise<{ id?: number; tabs?: { id?: number }[] }>;
+    update: (windowId: number, updateInfo: { focused: boolean }) => Promise<void>;
+    remove: (windowId: number) => Promise<void>;
+  };
   contextMenus: {
     create: (properties: ContextMenuCreateProperties) => void;
     removeAll: () => Promise<void>;
@@ -115,7 +126,11 @@ interface ChromeGlobal {
     sendMessage: (id: number, message: unknown, cb: (response: unknown) => void) => void;
     remove: (id: number, cb: () => void) => void;
   };
-  windows: { update: (id: number, q: unknown, cb: () => void) => void };
+  windows: {
+    create: (q: unknown, cb: (window: unknown) => void) => void;
+    update: (id: number, q: unknown, cb: () => void) => void;
+    remove: (id: number, cb: () => void) => void;
+  };
   downloads: {
     download: (
       opts: { url: string; filename?: string; saveAs?: boolean },
@@ -180,7 +195,11 @@ interface NativeBrowserGlobal {
       remove: (keys: string | string[]) => Promise<void>;
     };
   };
-  windows: { update: (windowId: number, updateInfo: { focused: boolean }) => Promise<unknown> };
+  windows: {
+    create: (createData: unknown) => Promise<{ id?: number; tabs?: { id?: number }[] }>;
+    update: (windowId: number, updateInfo: { focused: boolean }) => Promise<unknown>;
+    remove: (windowId: number) => Promise<void>;
+  };
   contextMenus: {
     create: (properties: ContextMenuCreateProperties) => void;
     removeAll: () => Promise<void>;
@@ -306,9 +325,25 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
         }),
     },
     windows: {
+      create: createData =>
+        new Promise((resolve, reject) => {
+          chrome.windows.create(createData, window => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve(window as { id?: number; tabs?: { id?: number }[] });
+          });
+        }),
       update: (windowId, updateInfo) =>
         new Promise((resolve, reject) => {
           chrome.windows.update(windowId, updateInfo, () => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve();
+          });
+        }),
+      remove: windowId =>
+        new Promise((resolve, reject) => {
+          chrome.windows.remove(windowId, () => {
             const err = lastError(chrome.runtime);
             if (err) reject(err);
             else resolve();
@@ -363,9 +398,11 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
     downloads: native.downloads,
     storage: native.storage.local,
     windows: {
+      create: createData => native.windows.create(createData),
       update: async (windowId, updateInfo) => {
         await native.windows.update(windowId, updateInfo);
       },
+      remove: windowId => native.windows.remove(windowId),
     },
     contextMenus: {
       ...noopContextMenus,
@@ -421,7 +458,11 @@ const noopShim: BrowserShim = {
     set: () => Promise.resolve(),
     remove: () => Promise.resolve(),
   },
-  windows: { update: () => Promise.resolve() },
+  windows: {
+    create: () => Promise.resolve({}),
+    update: () => Promise.resolve(),
+    remove: () => Promise.resolve(),
+  },
   contextMenus: noopContextMenus,
 };
 

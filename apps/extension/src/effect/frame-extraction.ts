@@ -37,6 +37,10 @@ export const captureFrameFromVideoEffect = (
       return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-duration' }));
     }
 
+    if (video.readyState < 2) {
+      yield* waitForEvent(video, 'loadeddata');
+    }
+
     const targetTime = Math.max(0, Math.min(Math.ceil(video.duration) - 1, timestampSeconds));
     if (Math.abs(video.currentTime - targetTime) > 0.01) {
       video.currentTime = targetTime;

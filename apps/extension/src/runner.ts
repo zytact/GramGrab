@@ -1,4 +1,4 @@
-import { Effect, Either, Layer } from 'effect';
+import { Effect, Layer } from 'effect';
 import {
   ExportResult,
   ItemFailed,
@@ -11,14 +11,7 @@ import {
   type ItemOutcome,
 } from '@gramgrab/protocol';
 import { browser } from './lib/browser.ts';
-import { captureFrameFromVideoEffect } from './effect/frame-extraction.ts';
-import { normalizeFrameFailure } from './errors/normalize.ts';
-import {
-  DownloadAcceptedResult,
-  DownloadFailedResult,
-  type DownloadOperation,
-  type DownloadOperationResult,
-} from './download/contracts.ts';
+import { type DownloadOperation, type DownloadOperationResult } from './download/contracts.ts';
 import {
   executeExportPlan,
   ExportEvents,
@@ -26,81 +19,14 @@ import {
   ExportPlan,
 } from './download/coordinator.ts';
 import type { AttemptOperation } from './download/attempt.ts';
+import { executeFrameExport } from './frame-export/executor.ts';
 import { runSilentVideoBatch } from './silent-video/batch.ts';
+import { approvedReencodeOperationIds } from './silent-video/policy.ts';
 
 interface RunnerRequest {
   readonly type: 'RUN_EXPORT';
   readonly sourceUrl: string;
   readonly command: Export;
-}
-
-// fallow-ignore-next-line complexity
-async function runFrame(
-  operation: AttemptOperation,
-  sourceUrl: string
-): Promise<DownloadOperationResult> {
-  try {
-    void browser.runtime.sendMessage({
-      type: 'RUNNER_PROGRESS',
-      operationId: operation.operationId,
-      itemNumber: operation.displayIndex + 1,
-      phase: 'frame-metadata',
-    });
-    const response = (await browser.runtime.sendMessage({
-      type: 'FETCH_VIDEO_BLOB',
-      url: operation.url,
-    })) as { dataUrl?: string };
-    if (!response.dataUrl) throw new Error('Video data was unavailable.');
-    const video = document.createElement('video');
-    video.preload = 'auto';
-    video.muted = true;
-    video.src = response.dataUrl;
-    const captured = await Effect.runPromise(
-      captureFrameFromVideoEffect(video, operation.frameTimestampSeconds ?? 0).pipe(Effect.either)
-    );
-    video.removeAttribute('src');
-    video.load();
-    if (Either.isLeft(captured))
-      return DownloadFailedResult.make({
-        operationId: operation.operationId,
-        requestId: operation.requestId,
-        status: 'failed',
-        failure: normalizeFrameFailure(captured.left.reason, captured.left),
-      });
-    void browser.runtime.sendMessage({
-      type: 'RUNNER_PROGRESS',
-      operationId: operation.operationId,
-      itemNumber: operation.displayIndex + 1,
-      phase: 'frame-export',
-    });
-    const url = URL.createObjectURL(captured.right);
-    await browser.downloads.download({ url, filename: operation.filename, saveAs: false });
-    URL.revokeObjectURL(url);
-    await browser.runtime.sendMessage({
-      type: 'RECORD_FRAME_EXPORT',
-      sourceUrl,
-      item: {
-        itemIndex: operation.itemIndex,
-        ...(operation.mediaId ? { mediaId: operation.mediaId } : {}),
-        url: operation.url,
-        filename: operation.filename,
-        mediaType: 'video',
-        frameTimestampSeconds: operation.frameTimestampSeconds ?? 0,
-      },
-    });
-    return DownloadAcceptedResult.make({
-      operationId: operation.operationId,
-      requestId: operation.requestId,
-      status: 'started',
-    });
-  } catch (cause) {
-    return DownloadFailedResult.make({
-      operationId: operation.operationId,
-      requestId: operation.requestId,
-      status: 'failed',
-      failure: normalizeFrameFailure('unexpected', cause),
-    });
-  }
 }
 
 // fallow-ignore-next-line complexity
@@ -157,6 +83,7 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
   const invalid: ItemOutcome[] = [];
   const requestedById = new Map<string, ExportOperation>();
   const approved = new Set<string>();
+  const required = new Set<string>();
   for (const requested of command.operations) {
     const item = inspected.media?.[requested.itemNumber - 1];
     if (
@@ -178,8 +105,8 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
         : requested.mode._tag === 'FrameExport'
           ? 'frame'
           : 'silent';
-    if (requested.mode._tag === 'SilentExport' && requested.mode.reencode !== 'forbid')
-      approved.add(requested.operationId);
+    if (requested.mode._tag === 'SilentExport' && requested.mode.reencode === 'require')
+      required.add(requested.operationId);
     const extension = item.type === 'video' ? 'mp4' : 'jpg';
     const suffix =
       mode === 'silent' ? '_silent.mp4' : mode === 'frame' ? '_frame.jpg' : `.${extension}`;
@@ -203,7 +130,16 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
   }
   const results: DownloadOperationResult[] = [];
   const execution = Layer.succeed(ExportExecution, {
-    frame: operation => runFrame(operation, sourceUrl),
+    frame: operation =>
+      executeFrameExport(operation, sourceUrl, {
+        onPhase: phase =>
+          void browser.runtime.sendMessage({
+            type: 'RUNNER_PROGRESS',
+            operationId: operation.operationId,
+            itemNumber: operation.displayIndex + 1,
+            phase,
+          }),
+      }),
     direct: (direct: readonly DownloadOperation[]) =>
       Promise.all(
         direct.map(operation =>
@@ -218,7 +154,17 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
         browser.runtime.sendMessage({ type: 'DOWNLOAD_MEDIA', sourceUrl, operations: direct })
       ),
     silent: (silent, progress, preflight, approvedIds) =>
-      runSilentVideoBatch(silent, async () => false, progress, sourceUrl, preflight, approvedIds),
+      runSilentVideoBatch(
+        silent,
+        candidates => Promise.resolve(approvedReencodeOperationIds(candidates, requestedById)),
+        progress,
+        sourceUrl,
+        () => {
+          for (const operationId of required) approvedIds.add(operationId);
+          preflight();
+        },
+        approvedIds
+      ),
   });
   const events = Layer.succeed(ExportEvents, {
     progress: (requestId, phase, progress) => {

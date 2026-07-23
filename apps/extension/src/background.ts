@@ -3,6 +3,7 @@ import { browser } from './lib/browser.ts';
 import { startNativeBridge } from './native-bridge.ts';
 import {
   Completed,
+  CommandResult,
   DebugExportResult,
   DebugGetResult,
   Export as ProtocolExport,
@@ -12,6 +13,7 @@ import {
   HistoryClearResult,
   HistoryEntry as ProtocolHistoryEntry,
   HistoryListResult,
+  HistoryMarker as ProtocolHistoryMarker,
   HistoryRedownloadFailed,
   HistoryRedownloadResult,
   HistoryRedownloadStarted,
@@ -27,7 +29,6 @@ import {
   Rejected,
   SilentExport,
   ValidationFailure,
-  type CommandResult,
   type EventPayload,
   type Request,
 } from '@gramgrab/protocol';
@@ -1194,6 +1195,49 @@ async function handleRecordFrameExport(msg: {
   }
 }
 
+async function handleDownloadFrameExport(
+  msg: Parameters<typeof handleRecordFrameExport>[0] & { dataUrl: string }
+): Promise<{ error: string | undefined }> {
+  try {
+    const downloadId = await browser.downloads.download({
+      url: msg.dataUrl,
+      filename: msg.item.filename,
+      saveAs: false,
+    });
+    if (!(await waitForNonEmptyDownload(downloadId))) return { error: 'Frame download failed.' };
+  } catch {
+    return { error: 'Frame download failed.' };
+  }
+  return handleRecordFrameExport(msg);
+}
+
+function waitForNonEmptyDownload(downloadId: number): Promise<boolean> {
+  return new Promise(resolve => {
+    const timeout = setTimeout(() => settle(false), 10_000);
+    const settle = (value: boolean) => {
+      clearTimeout(timeout);
+      browser.downloads.onChanged.removeListener(listener);
+      resolve(value);
+    };
+    const verify = () =>
+      void browser.downloads.search({ id: downloadId }).then(
+        items => settle((items[0]?.fileSize ?? 0) > 0),
+        () => settle(false)
+      );
+    const listener = (delta: { id: number; state?: { current?: string } }) => {
+      if (delta.id !== downloadId) return;
+      if (delta.state?.current === 'complete') verify();
+      else if (delta.state?.current === 'interrupted') settle(false);
+    };
+    browser.downloads.onChanged.addListener(listener);
+    void browser.downloads.search({ id: downloadId }).then(items => {
+      const item = items[0];
+      if (item?.state === 'complete') settle((item.fileSize ?? 0) > 0);
+      else if (item?.state === 'interrupted') settle(false);
+    });
+  });
+}
+
 async function handleFetchVideoBlob(
   msg: FetchVideoBlobMsg
 ): Promise<{ dataUrl: string | undefined; error: string | undefined }> {
@@ -1333,6 +1377,7 @@ browser.contextMenus.onClicked.addListener(info => {
 registerContextMenus();
 
 let runnerTabId: number | undefined;
+let runnerWindowId: number | undefined;
 let runnerReady: Promise<number> | undefined;
 let resolveRunnerReady: ((tabId: number) => void) | undefined;
 let runnerProgress: ((event: Progress) => void) | undefined;
@@ -1354,10 +1399,13 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 
 function discardRunner(): void {
   const tabId = runnerTabId;
+  const windowId = runnerWindowId;
   runnerTabId = undefined;
+  runnerWindowId = undefined;
   runnerReady = undefined;
   resolveRunnerReady = undefined;
-  if (tabId !== undefined) void browser.tabs.remove(tabId).catch(() => undefined);
+  if (windowId !== undefined) void browser.windows.remove(windowId).catch(() => undefined);
+  else if (tabId !== undefined) void browser.tabs.remove(tabId).catch(() => undefined);
 }
 
 async function getRunner(): Promise<number> {
@@ -1365,12 +1413,14 @@ async function getRunner(): Promise<number> {
     runnerReady = new Promise(resolve => {
       resolveRunnerReady = resolve;
     });
-    const tab = await browser.tabs.create({
+    const runnerWindow = await browser.windows.create({
       url: browser.runtime.getURL('runner.html'),
-      active: false,
+      focused: false,
+      state: 'minimized',
+      type: 'popup',
     });
-    if (tab.id === undefined) throw new Error('The extension runner could not be created.');
-    runnerTabId = tab.id;
+    runnerWindowId = runnerWindow.id;
+    runnerTabId = runnerWindow.tabs?.[0]?.id;
   }
   return Promise.race([
     runnerReady,
@@ -1378,6 +1428,15 @@ async function getRunner(): Promise<number> {
       setTimeout(() => reject(new Error('The extension runner did not become ready.')), 5_000)
     ),
   ]);
+}
+
+async function runInDocument(command: ProtocolExport): Promise<unknown> {
+  const tabId = await getRunner();
+  return browser.tabs.sendMessage(tabId, {
+    type: 'RUN_EXPORT',
+    sourceUrl: command.sourceUrl,
+    command,
+  });
 }
 
 function protocolFailure(failure: OperationFailure): ProtocolOperationFailure {
@@ -1404,7 +1463,7 @@ async function inspectCommand(sourceUrl: string): Promise<InspectResult> {
         filenameHint: item.filenameHint,
         ...(item.width ? { width: item.width } : {}),
         ...(item.height ? { height: item.height } : {}),
-        history: item.history,
+        history: ProtocolHistoryMarker.make(item.history),
       })
     ),
   });
@@ -1452,42 +1511,26 @@ async function runExport(
     runnerProgress = emit;
     signal.addEventListener('abort', abort, { once: true });
     try {
-      const tabId = await abortable(getRunner(), signal);
-      return (await abortable(
-        browser.tabs.sendMessage(tabId, {
-          type: 'RUN_EXPORT',
-          sourceUrl: command.sourceUrl,
-          command,
-        }),
-        signal
-      )) as CommandResult;
+      return Schema.decodeUnknownSync(CommandResult)(
+        await abortable(runInDocument(command), signal)
+      );
     } catch {
       if (signal.aborted) throw cancellationError();
       const staleTabId = runnerTabId;
       runnerTabId = undefined;
       runnerReady = undefined;
-      if (staleTabId !== undefined) await browser.tabs.remove(staleTabId).catch(() => undefined);
-      const tabId = await abortable(getRunner(), signal);
-      return (await abortable(
-        browser.tabs.sendMessage(tabId, {
-          type: 'RUN_EXPORT',
-          sourceUrl: command.sourceUrl,
-          command,
-        }),
-        signal
-      )) as CommandResult;
+      if (staleTabId !== undefined) discardRunner();
+      return Schema.decodeUnknownSync(CommandResult)(
+        await abortable(runInDocument(command), signal)
+      );
     }
   } finally {
     signal.removeEventListener('abort', abort);
     if (acquired) runnerProgress = undefined;
     release();
-    if (acquired)
-      runnerIdleTimer = setTimeout(() => {
-        const tabId = runnerTabId;
-        runnerTabId = undefined;
-        runnerReady = undefined;
-        if (tabId !== undefined) void browser.tabs.remove(tabId).catch(() => undefined);
-      }, 30_000);
+    if (acquired) {
+      discardRunner();
+    }
   }
 }
 
@@ -1792,6 +1835,8 @@ const messageHandlers: Record<string, MessageHandler> = {
   REDOWNLOAD_HISTORY_ENTRY: message => handleRedownloadHistoryEntry(message as { entryId: string }),
   RECORD_FRAME_EXPORT: message =>
     handleRecordFrameExport(message as Parameters<typeof handleRecordFrameExport>[0]),
+  DOWNLOAD_FRAME_EXPORT: message =>
+    handleDownloadFrameExport(message as Parameters<typeof handleDownloadFrameExport>[0]),
   RECORD_SILENT_EXPORT: message =>
     handleRecordSilentExport(message as Parameters<typeof handleRecordSilentExport>[0]),
   FETCH_VIDEO_BLOB: message => handleFetchVideoBlob(message as FetchVideoBlobMsg),

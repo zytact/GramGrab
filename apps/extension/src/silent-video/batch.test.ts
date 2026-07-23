@@ -224,7 +224,8 @@ describe('silent video batch', () => {
     let processCount = 0;
     const batch = runSilentVideoBatch(
       operations,
-      () => Promise.resolve(true),
+      candidates =>
+        Promise.resolve(new Set(candidates.map(candidate => candidate.operation.operationId))),
       () => {},
       'https://www.instagram.com/p/example/',
       () => {},
@@ -277,7 +278,8 @@ describe('silent video batch', () => {
     const operationToFail = operation(3);
     const batch = runSilentVideoBatch(
       [operationToFail],
-      () => Promise.resolve(true),
+      candidates =>
+        Promise.resolve(new Set(candidates.map(candidate => candidate.operation.operationId))),
       () => {},
       'https://www.instagram.com/p/example/',
       () => {},
@@ -319,7 +321,8 @@ describe('silent video batch', () => {
     const approved = new Set<string>();
     const firstBatch = runSilentVideoBatch(
       [first],
-      () => Promise.resolve(true),
+      candidates =>
+        Promise.resolve(new Set(candidates.map(candidate => candidate.operation.operationId))),
       () => {},
       'https://www.instagram.com/p/example/',
       () => {},
@@ -352,7 +355,8 @@ describe('silent video batch', () => {
     const second = { ...first, requestId: requestIdFrom('00000000-0000-4000-8000-000000000104') };
     const secondBatch = runSilentVideoBatch(
       [second],
-      () => Promise.resolve(true),
+      candidates =>
+        Promise.resolve(new Set(candidates.map(candidate => candidate.operation.operationId))),
       () => {},
       'https://www.instagram.com/p/example/',
       () => {},

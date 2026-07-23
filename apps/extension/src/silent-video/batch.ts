@@ -90,7 +90,7 @@ async function inspectOperations(
 async function declinedReencodes(
   candidates: readonly ReencodeCandidate[],
   approvedRequestIds: Set<string>,
-  approveReencode: (candidates: readonly ReencodeCandidate[]) => Promise<boolean>
+  approveReencode: (candidates: readonly ReencodeCandidate[]) => Promise<ReadonlySet<string>>
 ): Promise<Set<string>> {
   const undecided = candidates.filter(
     candidate =>
@@ -99,10 +99,14 @@ async function declinedReencodes(
       !approvedRequestIds.has(candidate.operation.operationId)
   );
   if (undecided.length === 0) return new Set();
-  if (!(await approveReencode(undecided)))
-    return new Set(undecided.map(candidate => candidate.operation.operationId));
-  for (const candidate of undecided) approvedRequestIds.add(candidate.operation.operationId);
-  return new Set();
+  const approved = await approveReencode(undecided);
+  const declined = new Set<string>();
+  for (const candidate of undecided) {
+    const operationId = candidate.operation.operationId;
+    if (approved.has(operationId)) approvedRequestIds.add(operationId);
+    else declined.add(operationId);
+  }
+  return declined;
 }
 
 async function recordSilentHistory(sourceUrl: string, operation: AttemptOperation) {
@@ -194,7 +198,7 @@ async function trackOwnedDownload(
 
 export async function runSilentVideoBatch(
   operations: readonly AttemptOperation[],
-  approveReencode: (candidates: readonly ReencodeCandidate[]) => Promise<boolean>,
+  approveReencode: (candidates: readonly ReencodeCandidate[]) => Promise<ReadonlySet<string>>,
   onProgress: (requestId: string, phase: string, progress: number) => void,
   sourceUrl: string,
   onPreflightComplete: () => void,

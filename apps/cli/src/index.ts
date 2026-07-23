@@ -28,6 +28,8 @@ import {
   Request,
   type Command,
   type EventPayload,
+  type ExportMode,
+  type InspectResult,
 } from '@gramgrab/protocol';
 
 export { decodeEvent, decodeRequest, PROTOCOL_VERSION } from '@gramgrab/protocol';
@@ -42,7 +44,46 @@ const endpoint = localIpcEndpoint({
 export interface ParsedCli {
   readonly command: Command;
   readonly json: boolean;
+  readonly expandAll?: {
+    readonly sourceUrl: string;
+    readonly mode: ExportMode;
+  };
 }
+
+export const HELP = `GramGrab CLI
+
+Usage:
+  gramgrab help
+  gramgrab status [--json]
+  gramgrab inspect SOURCE_URL [--json]
+  gramgrab export SOURCE_URL [--item NUMBER ...] --mode direct [--json]
+  gramgrab export SOURCE_URL [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
+  gramgrab export SOURCE_URL [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
+  gramgrab export SOURCE_URL --plan FILE|- [--json]
+  gramgrab history list|remove|clear|redownload [ENTRY_ID ...] [--json]
+  gramgrab debug get|export [--json]
+
+Sources:
+  Instagram post, reel, story, highlight, and profile URLs are accepted. Profile URLs resolve the
+  account avatar. When --item is omitted, export applies to every item found by a fresh inspection.
+  Repeated --item starts another operation and may specify a different mode.
+
+Export modes:
+  direct  Download the original media.
+  frame   Export a video frame. --at defaults to 0 seconds.
+  silent  Remove audio. forbid permits stream copy only, allow permits re-encoding when needed,
+          and require always permits re-encoding. JSON mode never prompts.
+
+Plans:
+  --plan reads an array of protocol ExportOperation objects from a file or stdin (-). Plans retain
+  stable operation IDs and optional media identities for retries.
+
+Output and exit status:
+  --json emits compact newline-delimited progress on stderr and one terminal JSON result on stdout.
+  Exit 0 means full success, 1 means rejection or a partial item failure, and 2 means invalid input
+  or transport failure. History commands affect only extension-owned history. Debug export uses the
+  extension's diagnostic preview and redaction policy.
+`;
 
 function option(arguments_: readonly string[], name: string): string | undefined {
   const index = arguments_.indexOf(name);
@@ -69,14 +110,14 @@ function operationId() {
   return Schema.decodeUnknownSync(OperationId)(crypto.randomUUID());
 }
 
-function exportOperation(arguments_: readonly string[]): ExportOperation {
+function exportMode(arguments_: readonly string[]): ExportMode {
   const mode = required(option(arguments_, '--mode'), 'Missing --mode direct|frame|silent.');
-  const exportMode =
+  const parsed =
     mode === 'direct'
       ? DirectExport.make({})
       : mode === 'frame'
         ? FrameExport.make({
-            timestampSeconds: Number(required(option(arguments_, '--at'), 'Missing --at SECONDS.')),
+            timestampSeconds: Number(option(arguments_, '--at') ?? '0'),
           })
         : mode === 'silent'
           ? SilentExport.make({
@@ -88,24 +129,36 @@ function exportOperation(arguments_: readonly string[]): ExportOperation {
               ),
             })
           : undefined;
-  if (!exportMode) throw new Error(`Unknown export mode: ${mode}`);
+  if (!parsed) throw new Error(`Unknown export mode: ${mode}`);
+  return parsed;
+}
+
+function exportOperation(arguments_: readonly string[]): ExportOperation {
   return ExportOperation.make({
     operationId: operationId(),
     itemNumber: itemNumber(option(arguments_, '--item')),
-    mode: exportMode,
+    mode: exportMode(arguments_),
   });
 }
 
-function exportCommand(arguments_: readonly string[]): Export {
+function exportCommand(arguments_: readonly string[]): ParsedCli {
   const sourceUrl = required(arguments_[1], 'Missing export SOURCE_URL.');
   if (option(arguments_, '--plan'))
     throw new Error('Structured plans must be loaded asynchronously with --plan - or a file path.');
   const itemIndexes = arguments_.flatMap((value, index) => (value === '--item' ? [index] : []));
-  if (itemIndexes.length === 0) throw new Error('Missing --item NUMBER.');
+  if (itemIndexes.length === 0)
+    return {
+      command: Inspect.make({ sourceUrl }),
+      json: arguments_.includes('--json'),
+      expandAll: { sourceUrl, mode: exportMode(arguments_) },
+    };
   const operations = itemIndexes.map((start, index) =>
     exportOperation(arguments_.slice(start, itemIndexes[index + 1] ?? arguments_.length))
   );
-  return Export.make({ sourceUrl, operations });
+  return {
+    command: Export.make({ sourceUrl, operations }),
+    json: arguments_.includes('--json'),
+  };
 }
 
 // fallow-ignore-next-line complexity
@@ -118,7 +171,7 @@ export function parseCliArguments(arguments_: readonly string[]): ParsedCli {
       command: Inspect.make({ sourceUrl: required(arguments_[1], 'Missing inspect SOURCE_URL.') }),
       json,
     };
-  if (command === 'export') return { command: exportCommand(arguments_), json };
+  if (command === 'export') return exportCommand(arguments_);
   if (command === 'history') {
     const action = arguments_[1];
     const entryIds = arguments_.slice(2).filter(value => value !== '--json');
@@ -261,38 +314,124 @@ export function request(
   });
 }
 
-function printProgress(event: EventPayload, json: boolean): void {
-  if (event._tag !== 'Progress') return;
-  process.stderr.write(
-    json
-      ? `${JSON.stringify({
-          type: 'progress',
-          operationId: event.operationId,
-          itemNumber: event.itemNumber,
-          phase: event.phase,
-          progress: event.progress,
-        })}\n`
-      : `${event.phase}${event.itemNumber ? ` - item ${event.itemNumber}` : ''}${event.progress === undefined ? '' : ` - ${Math.round(event.progress * 100)}%`}\n`
+export function createProgressPrinter(
+  json: boolean,
+  write: (value: string) => void = value => process.stderr.write(value)
+): (event: EventPayload) => void {
+  const states = new Map<string, { phase: string; milestone: number }>();
+  return event => {
+    if (event._tag !== 'Progress') return;
+    const key = progressKey(event);
+    const previous = states.get(key);
+    const milestone = progressMilestone(event.progress);
+    if (!shouldPrintProgress(previous, event.phase, milestone)) return;
+    states.set(key, {
+      phase: event.phase,
+      milestone: nextProgressMilestone(previous, event.phase, milestone),
+    });
+    const progress = milestone < 0 ? undefined : milestone / 4;
+    write(formatProgress(event, progress, json));
+  };
+}
+
+function progressKey(event: Extract<EventPayload, { readonly _tag: 'Progress' }>): string {
+  if (event.operationId) return event.operationId;
+  return event.itemNumber ? `item:${event.itemNumber}` : 'item:batch';
+}
+
+function progressMilestone(progress: number | undefined): number {
+  return progress === undefined ? -1 : Math.min(4, Math.floor(progress * 4 + 0.000_001));
+}
+
+function shouldPrintProgress(
+  previous: { phase: string; milestone: number } | undefined,
+  phase: string,
+  milestone: number
+): boolean {
+  return previous?.phase !== phase || milestone > previous.milestone;
+}
+
+function nextProgressMilestone(
+  previous: { phase: string; milestone: number } | undefined,
+  phase: string,
+  milestone: number
+): number {
+  return previous?.phase === phase ? Math.max(previous.milestone, milestone) : milestone;
+}
+
+function formatProgress(
+  event: Extract<EventPayload, { readonly _tag: 'Progress' }>,
+  progress: number | undefined,
+  json: boolean
+): string {
+  if (!json)
+    return `${event.phase}${event.itemNumber ? ` - item ${event.itemNumber}` : ''}${progress === undefined ? '' : ` - ${Math.round(progress * 100)}%`}\n`;
+  return `${JSON.stringify({
+    type: 'progress',
+    ...(event.operationId ? { operationId: event.operationId } : {}),
+    ...(event.itemNumber ? { itemNumber: event.itemNumber } : {}),
+    phase: event.phase,
+    ...(progress === undefined ? {} : { progress }),
+  })}\n`;
+}
+
+function requestsHelp(arguments_: readonly string[]): boolean {
+  return (
+    ['help', '--help', '-h'].includes(arguments_[0] ?? '') ||
+    arguments_.includes('--help') ||
+    arguments_.includes('-h')
   );
 }
 
-export async function runCli(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
-  const parsed = await parse(arguments_);
-  const event = await request(parsed.command, current => printProgress(current, parsed.json), {
-    signal,
-  });
+function printTerminal(event: EventPayload, json: boolean): void {
   if (event._tag === 'Rejected') {
     process.stderr.write(`${JSON.stringify(event.failure)}\n`);
     process.exitCode = 1;
     return;
   }
   if (event._tag !== 'Completed') throw new Error(`Unexpected terminal event: ${event._tag}`);
-  process.stdout.write(`${JSON.stringify(event.result, undefined, parsed.json ? undefined : 2)}\n`);
+  process.stdout.write(`${JSON.stringify(event.result, undefined, json ? undefined : 2)}\n`);
   if (
     event.result._tag === 'ExportResult' &&
     event.result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded')
   )
     process.exitCode = 1;
+}
+
+export async function runCli(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
+  if (requestsHelp(arguments_)) {
+    process.stdout.write(HELP);
+    return;
+  }
+  const parsed = await parse(arguments_);
+  const printProgress = createProgressPrinter(parsed.json);
+  let event = await request(parsed.command, printProgress, {
+    signal,
+  });
+  if (parsed.expandAll && event._tag === 'Completed' && event.result._tag === 'InspectResult') {
+    event = await request(expandedExport(parsed.expandAll, event.result), printProgress, {
+      signal,
+    });
+  }
+  printTerminal(event, parsed.json);
+}
+
+function expandedExport(
+  pending: NonNullable<ParsedCli['expandAll']>,
+  inspected: InspectResult
+): Export {
+  if (inspected.items.length === 0) throw new Error('Inspection returned no media items.');
+  return Export.make({
+    sourceUrl: inspected.sourceUrl,
+    operations: inspected.items.map(item =>
+      ExportOperation.make({
+        operationId: operationId(),
+        itemNumber: item.itemNumber,
+        mediaIdentity: item.mediaIdentity,
+        mode: pending.mode,
+      })
+    ),
+  });
 }
 
 if (import.meta.main) {

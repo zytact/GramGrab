@@ -11,11 +11,14 @@ import {
   encodeJsonFrame,
   Event,
   FrameDecoder,
+  HumanItemNumber,
+  OperationId,
   PROTOCOL_VERSION,
+  Progress,
   Request,
   Status,
 } from '@gramgrab/protocol';
-import { parseCliArguments, request } from './index.ts';
+import { createProgressPrinter, HELP, parseCliArguments, request } from './index.ts';
 
 const temporaryDirectories: string[] = [];
 
@@ -94,6 +97,33 @@ describe('CLI capability grammar', () => {
     });
   });
 
+  it('defers an export without items for fresh all-item expansion', () => {
+    const parsed = parseCliArguments([
+      'export',
+      'https://www.instagram.com/p/example/',
+      '--mode',
+      'direct',
+    ]);
+    expect(parsed.command._tag).toBe('Inspect');
+    expect(parsed.expandAll).toMatchObject({
+      sourceUrl: 'https://www.instagram.com/p/example/',
+      mode: { _tag: 'DirectExport' },
+    });
+  });
+
+  it('defaults frame export to the first frame', () => {
+    const parsed = parseCliArguments([
+      'export',
+      'https://www.instagram.com/p/example/',
+      '--mode',
+      'frame',
+    ]);
+    expect(parsed.expandAll?.mode).toMatchObject({
+      _tag: 'FrameExport',
+      timestampSeconds: 0,
+    });
+  });
+
   it.each([
     [['history', 'list'], 'HistoryList'],
     [['history', 'remove', 'one', 'two'], 'HistoryRemove'],
@@ -152,6 +182,38 @@ describe('CLI capability grammar', () => {
       { itemNumber: 1, mode: { _tag: 'DirectExport' } },
       { itemNumber: 3, mode: { _tag: 'FrameExport', timestampSeconds: 8 } },
     ]);
+  });
+});
+
+describe('CLI output', () => {
+  it('documents help, all-item export, policies, plans, and exit semantics', () => {
+    expect(HELP).toContain('When --item is omitted');
+    expect(HELP).toContain('forbid');
+    expect(HELP).toContain('--plan');
+    expect(HELP).toContain('Exit 0');
+  });
+
+  it('bounds JSON progress while preserving phase transitions and completion', () => {
+    const lines: string[] = [];
+    const print = createProgressPrinter(true, line => lines.push(line));
+    const operationId = Schema.decodeUnknownSync(OperationId)(
+      '00000000-0000-4000-8000-000000000001'
+    );
+    const itemNumber = Schema.decodeUnknownSync(HumanItemNumber)(1);
+    for (let index = 0; index <= 2_900; index++)
+      print(
+        Progress.make({
+          operationId,
+          itemNumber,
+          phase: index < 2_000 ? 'silent-copy' : 'silent-validation',
+          progress: index / 2_900,
+        })
+      );
+
+    expect(lines.length).toBeLessThanOrEqual(10);
+    expect(lines.some(line => line.includes('"phase":"silent-copy"'))).toBe(true);
+    expect(lines.some(line => line.includes('"phase":"silent-validation"'))).toBe(true);
+    expect(lines.at(-1)).toContain('"progress":1');
   });
 });
 
