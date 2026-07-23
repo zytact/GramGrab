@@ -13,16 +13,16 @@
 
 ## Schema & decoding
 
-| Term                      | Definition                                                                                                          | Aliases to avoid      |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| **Schema**                | An Effect `Schema` describing the expected shape of an Instagram API response                                       | Type, validator       |
-| **Tagged union**          | A `Schema.Union` discriminated by the IG `__typename` field                                                         | Sum type, variant     |
-| **Typename**              | The `__typename` string IG attaches to a node, used as the discriminator                                            | Kind, tag             |
-| **Decode**                | Running `Schema.decodeUnknown` against a raw JSON payload to produce a typed value                                  | Parse, validate       |
-| **Unknown passthrough**   | A fallback union member that accepts unrecognised `__typename` values so partial IG changes don't fail the response | Catch-all, fallback   |
-| **Strict + loud posture** | The project rule that decode failures must surface as `ResponseShapeUnknown`, never silent casts                    | Lenient parsing       |
-| **Fixture**               | A captured real IG API response stored under `src/effect/__fixtures__/` and exercised by fixture tests              | Sample, mock response |
-| **Normalizer**            | Code that walks a decoded schema value and produces the app's internal media list, skipping Unknown nodes           | Mapper, transformer   |
+| Term                      | Definition                                                                                                            | Aliases to avoid      |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| **Schema**                | An Effect `Schema` describing the expected shape of an Instagram API response                                         | Type, validator       |
+| **Tagged union**          | A `Schema.Union` discriminated by the IG `__typename` field                                                           | Sum type, variant     |
+| **Typename**              | The `__typename` string IG attaches to a node, used as the discriminator                                              | Kind, tag             |
+| **Decode**                | Running `Schema.decodeUnknown` against a raw JSON payload to produce a typed value                                    | Parse, validate       |
+| **Unknown passthrough**   | A fallback union member that accepts unrecognised `__typename` values so partial IG changes don't fail the response   | Catch-all, fallback   |
+| **Strict + loud posture** | The project rule that decode failures must surface as `ResponseShapeUnknown`, never silent casts                      | Lenient parsing       |
+| **Fixture**               | A captured real IG API response stored under `apps/extension/src/effect/__fixtures__/` and exercised by fixture tests | Sample, mock response |
+| **Normalizer**            | Code that walks a decoded schema value and produces the app's internal media list, skipping Unknown nodes             | Mapper, transformer   |
 
 ## Errors
 
@@ -64,7 +64,7 @@
 > **Dev:** "And if the outer `data` wrapper itself disappears?"
 > **Domain expert:** "Then there's no Unknown branch to absorb it — `Schema.decodeUnknown` fails at the top level and we raise `ResponseShapeUnknown`. That's the **strict + loud posture**: structural changes are loud, vocabulary changes are quiet."
 > **Dev:** "So to repair it I capture a fresh **Fixture** and update the **Schema**?"
-> **Domain expert:** "Exactly — `scripts/capture-ig-fixtures.mjs` in DevTools, drop the JSON into `src/effect/__fixtures__/`, then update `schemas.ts` until the fixture test passes."
+> **Domain expert:** "Exactly — `apps/extension/scripts/capture-ig-fixtures.mjs` in DevTools, drop the JSON into `apps/extension/src/effect/__fixtures__/`, then update `schemas.ts` until the fixture test passes."
 
 ## Flagged ambiguities
 

@@ -1,5 +1,5 @@
 node_modules/
-extension/
+/extension/
 .env
 .local/
 .fallow/

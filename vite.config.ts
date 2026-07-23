@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react';
 const browser = (process.env.BROWSER ?? 'chromium') as 'chromium' | 'firefox';
 const autoInput = { auto: true } as const;
 const viteTempInput = { pattern: 'node_modules/.vite-temp/**', base: 'workspace' as const };
+const extensionRoot = resolve(__dirname, 'apps/extension');
 const chromiumOutput = { pattern: 'extension/chromium/**', base: 'workspace' as const };
 const firefoxOutput = { pattern: 'extension/firefox/**', base: 'workspace' as const };
 const chromiumPackageOutput = {
@@ -26,12 +27,18 @@ export default defineConfig({
     },
     tasks: {
       'build-chromium': {
-        command: ['BROWSER=chromium vp build', 'BROWSER=chromium node scripts/postbuild.mjs'],
+        command: [
+          'BROWSER=chromium vp build',
+          'BROWSER=chromium node apps/extension/scripts/postbuild.mjs',
+        ],
         input: [autoInput, `!${viteTempInput.pattern}`, `!${chromiumOutput.pattern}`],
         output: [chromiumOutput],
       },
       'build-firefox': {
-        command: ['BROWSER=firefox vp build', 'BROWSER=firefox node scripts/postbuild.mjs'],
+        command: [
+          'BROWSER=firefox vp build',
+          'BROWSER=firefox node apps/extension/scripts/postbuild.mjs',
+        ],
         input: [autoInput, `!${viteTempInput.pattern}`, `!${firefoxOutput.pattern}`],
         output: [firefoxOutput],
       },
@@ -39,12 +46,12 @@ export default defineConfig({
         command: ['vp run build-chromium', 'vp run build-firefox'],
       },
       'package-chromium': {
-        command: ['vp run build-chromium', 'node scripts/package-chromium.mjs'],
+        command: ['vp run build-chromium', 'node apps/extension/scripts/package-chromium.mjs'],
         input: [autoInput, `!${viteTempInput.pattern}`, `!${chromiumOutput.pattern}`],
         output: [chromiumOutput, chromiumPackageOutput],
       },
       'package-firefox': {
-        command: ['vp run build-firefox', 'node scripts/package-firefox.mjs'],
+        command: ['vp run build-firefox', 'node apps/extension/scripts/package-firefox.mjs'],
         input: [autoInput, `!${viteTempInput.pattern}`, `!${firefoxOutput.pattern}`],
         output: [firefoxOutput, firefoxPackageOutput],
       },
@@ -197,7 +204,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['scripts/capture-ig-fixtures.mjs'],
+        files: ['apps/extension/scripts/capture-ig-fixtures.mjs'],
         env: {
           browser: true,
         },
@@ -230,17 +237,17 @@ export default defineConfig({
     ignorePatterns: ['.repos', '.agents', '.claude'],
   },
   plugins: [react()],
-  root: 'templates',
+  root: resolve(extensionRoot, 'templates'),
   build: {
-    outDir: `../extension/${browser}`,
+    outDir: resolve(__dirname, `extension/${browser}`),
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        popup: resolve(__dirname, 'templates/popup.html'),
+        popup: resolve(extensionRoot, 'templates/popup.html'),
         // background.ts is bundled directly as a JS module entry — no HTML
         // wrapper needed. Both Chromium (service_worker) and Firefox (scripts)
         // reference js/background.js in their respective manifests.
-        background: resolve(__dirname, 'src/background.ts'),
+        background: resolve(extensionRoot, 'src/background.ts'),
       },
       output: {
         entryFileNames: 'js/[name].js',

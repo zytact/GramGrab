@@ -1,6 +1,6 @@
 # Operation error model
 
-GramGrab models user operations with schema-validated failures. Low-level producers keep precise causes, while `src/errors/presentation.ts` is the single executable source for user copy, recovery actions, retry rules, and silent-input retention.
+GramGrab models user operations with schema-validated failures. Low-level producers keep precise causes, while `apps/extension/src/errors/presentation.ts` is the single executable source for user copy, recovery actions, retry rules, and silent-input retention.
 
 `OperationFailure` contains a stable `code`, a `phase`, an item or batch `scope`, and an optional diagnostic cause. Causes are never ordinary UI copy. `OperationWarning` and skip codes use separate closed vocabularies.
 

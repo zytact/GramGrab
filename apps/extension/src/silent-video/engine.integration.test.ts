@@ -92,7 +92,7 @@ describe('silent video media processing', () => {
   it('packet-copies an audiovisual MP4 into a playable video-only MP4', async () => {
     const requestId = requestIdFrom('00000000-0000-4000-8000-000000000001');
     const operationId = operationIdFrom('10000000-0000-4000-8000-000000000001');
-    const fixturePath = resolve('src/silent-video/__fixtures__/synthetic-av.mp4');
+    const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
     directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
 
     const result = await processSilentVideo(operationId, requestId, false, () => {});

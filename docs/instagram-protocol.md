@@ -1,7 +1,7 @@
 # Refreshing Instagram protocol metadata
 
 GramGrab keeps public Instagram request metadata in
-[`src/instagram-protocol/config.json`](../src/instagram-protocol/config.json). The extension and the
+[`apps/extension/src/instagram-protocol/config.json`](../apps/extension/src/instagram-protocol/config.json). The extension and the
 generated fixture capture script both consume this file, so protocol values must not be copied into
 their source files.
 
@@ -62,7 +62,7 @@ vp run update:ig-protocol --operation reelsMedia
 
 Paste the complete Copy-as-fetch request into the waiting terminal, then press Ctrl-D to end stdin.
 The updater extracts only the allowed public metadata, validates the resulting configuration through
-Effect Schema, and atomically rewrites `src/instagram-protocol/config.json`.
+Effect Schema, and atomically rewrites `apps/extension/src/instagram-protocol/config.json`.
 
 The observed candidate becomes the first candidate for the selected operation. Existing candidates
 remain behind it as ordered fallbacks. Running the updater for one operation does not replace the
@@ -73,7 +73,7 @@ other operation.
 Inspect the complete configuration change:
 
 ```bash
-git diff HEAD -- src/instagram-protocol/config.json
+git diff HEAD -- apps/extension/src/instagram-protocol/config.json
 ```
 
 Confirm that the diff contains only the allowed fields listed above. Then run the repository checks
@@ -98,7 +98,7 @@ shape:
 2. Run `vp run generate:ig-fixtures`.
 3. Paste `.local/capture-ig-fixtures.mjs` into DevTools on `https://www.instagram.com`.
 4. Sanitize the downloaded responses before replacing files in
-   `src/effect/__fixtures__/`.
+   `apps/extension/src/effect/__fixtures__/`.
 5. Update the Effect response schemas and rerun the validation commands.
 
 The generated fixture script embeds the same decoded protocol configuration, so it automatically

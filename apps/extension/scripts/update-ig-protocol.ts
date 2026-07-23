@@ -12,8 +12,11 @@ import {
 } from '../src/instagram-protocol/config.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = resolve(scriptDirectory, '..');
-const defaultConfigPath = resolve(repositoryRoot, 'src/instagram-protocol/config.json');
+const repositoryRoot = resolve(scriptDirectory, '../../..');
+const defaultConfigPath = resolve(
+  repositoryRoot,
+  'apps/extension/src/instagram-protocol/config.json'
+);
 
 const OperationName = Schema.Literal('mediaByShortcode', 'reelsMedia');
 export type OperationName = Schema.Schema.Type<typeof OperationName>;

@@ -7,7 +7,7 @@ import { Schema } from 'effect';
 import { protocolConfig } from '../src/instagram-protocol/config.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = resolve(scriptDirectory, '..');
+const repositoryRoot = resolve(scriptDirectory, '../../..');
 
 export const REQUIRED_CONFIG_KEYS = [
   'IG_HIGHLIGHT_ID',
@@ -145,7 +145,7 @@ export function renderCaptureScript(template: string, config: CaptureConfig): st
 
 export async function generateCaptureScript({
   envPath = resolve(repositoryRoot, '.env'),
-  templatePath = resolve(repositoryRoot, 'scripts/capture-ig-fixtures.mjs'),
+  templatePath = resolve(repositoryRoot, 'apps/extension/scripts/capture-ig-fixtures.mjs'),
   outputPath = resolve(repositoryRoot, '.local/capture-ig-fixtures.mjs'),
 } = {}): Promise<{ readonly outputPath: string }> {
   const [envSource, template] = await Promise.all([

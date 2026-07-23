@@ -13,9 +13,9 @@
     "lint": "vp lint .",
     "lint:fix": "vp lint . --fix",
     "fallow": "fallow",
-    "generate:ig-fixtures": "tsx scripts/generate-ig-fixture-capture.ts",
-    "sanitize:ig-fixtures": "tsx scripts/sanitize-ig-fixtures.ts",
-    "update:ig-protocol": "tsx scripts/update-ig-protocol.ts",
+    "generate:ig-fixtures": "tsx apps/extension/scripts/generate-ig-fixture-capture.ts",
+    "sanitize:ig-fixtures": "tsx apps/extension/scripts/sanitize-ig-fixtures.ts",
+    "update:ig-protocol": "tsx apps/extension/scripts/update-ig-protocol.ts",
     "format": "vp fmt .",
     "format:check": "vp fmt --check .",
     "test": "vp test run",
@@ -45,8 +45,7 @@
     "vitest": "npm:@voidzero-dev/vite-plus-test@0.1.24"
   },
   "dependencies": {
-    "effect": "^3.21.2",
-    "mediabunny": "^1.50.8"
+    "effect": "^3.21.2"
   },
   "packageManager": "pnpm@11.5.1",
   "overrides": {

@@ -14,9 +14,9 @@ await writeFile(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2) + '
 // ---------------------------------------------------------------------------
 
 await mkdir(`${outDir}/icons`, { recursive: true });
-await copyFile('icons/icon-16.png', `${outDir}/icons/icon-16.png`);
-await copyFile('icons/icon-48.png', `${outDir}/icons/icon-48.png`);
-await copyFile('icons/icon-96.png', `${outDir}/icons/icon-96.png`);
+await copyFile('apps/extension/icons/icon-16.png', `${outDir}/icons/icon-16.png`);
+await copyFile('apps/extension/icons/icon-48.png', `${outDir}/icons/icon-48.png`);
+await copyFile('apps/extension/icons/icon-96.png', `${outDir}/icons/icon-96.png`);
 
 // License and attribution notices must accompany packaged extension distributions.
 await copyFile('LICENSE', `${outDir}/LICENSE`);
