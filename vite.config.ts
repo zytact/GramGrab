@@ -99,7 +99,7 @@ export default defineConfig({
     env: {
       builtin: true,
     },
-    ignorePatterns: ['dist', 'node_modules', '.husky', 'extension', '.repos'],
+    ignorePatterns: ['dist', 'node_modules', '.husky', 'extension/**', '.repos'],
     rules: {
       'constructor-super': 'error',
       'for-direction': 'error',
@@ -268,7 +268,7 @@ export default defineConfig({
     arrowParens: 'avoid',
     endOfLine: 'lf',
     sortPackageJson: false,
-    ignorePatterns: ['.repos', '.agents', '.claude'],
+    ignorePatterns: ['extension/**', '.repos', '.agents', '.claude'],
   },
   plugins: [react()],
   root: resolve(extensionRoot, 'templates'),
