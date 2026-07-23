@@ -24,7 +24,14 @@ const operation = Schema.decodeUnknownSync(AttemptOperationSchema)({
 
 describe('executeFrameExport', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Blob(['video']))));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(new Blob(['video'])),
+      })
+    );
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:media');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     vi.mocked(captureFrameFromSource).mockResolvedValue(Either.right(new Blob(['frame'])));
