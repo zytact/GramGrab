@@ -614,6 +614,11 @@ export default function Popup() {
     removeAudioIndexes,
     url,
   ]);
+  const handleDownloadRef = useRef(handleDownload);
+
+  useEffect(() => {
+    handleDownloadRef.current = handleDownload;
+  }, [handleDownload]);
 
   const selectedCount = mediaItems.filter(m => m.selected).length;
   const allSelected = mediaItems.length > 0 && selectedCount === mediaItems.length;
@@ -846,8 +851,8 @@ export default function Popup() {
   }, [fetchIntent]);
 
   useEffect(() => {
-    if (downloadIntent > 0) void handleDownload();
-  }, [downloadIntent, handleDownload]);
+    if (downloadIntent > 0) void handleDownloadRef.current();
+  }, [downloadIntent]);
 
   return (
     <div className={`container${workspaceMode ? ' workspace-container' : ''}`}>

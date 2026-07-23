@@ -501,6 +501,62 @@ describe('Popup', () => {
     window.history.replaceState({}, '', '/popup.html');
   });
 
+  it('runs a transferred auto-start download only once', async () => {
+    const now = Date.now();
+    window.history.replaceState({}, '', '/popup.html?surface=workspace');
+    mockBrowser.storage.get.mockResolvedValueOnce({
+      'workspace-transfer-v1': {
+        version: 3,
+        createdAt: now,
+        expiresAt: now + 60_000,
+        url: 'https://www.instagram.com/p/abc123/',
+        fetchedUrl: 'https://www.instagram.com/p/abc123/',
+        status: 'done',
+        message: 'Ready',
+        mediaItems: [
+          {
+            index: 0,
+            type: 'image',
+            url: 'https://instagram.com/image.jpg',
+            filenameHint: 'image',
+            selected: true,
+          },
+        ],
+        frameExportSettings: {},
+        removeAudioIndexes: [],
+        autoStartDownload: true,
+      },
+    });
+    let downloadCalls = 0;
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: {
+        type: string;
+        operations?: { operationId: string; requestId: string }[];
+      }) => {
+        if (message.type !== 'DOWNLOAD_MEDIA') return {};
+        downloadCalls++;
+        const operation = message.operations?.[0];
+        return operation
+          ? {
+              results: [
+                {
+                  operationId: operation.operationId,
+                  requestId: operation.requestId,
+                  status: 'started',
+                },
+              ],
+            }
+          : { results: [] };
+      }
+    );
+
+    await act(async () => render(<Popup />));
+
+    await waitFor(() => expect(screen.getByText(/1 item started/)).toBeDefined());
+    expect(downloadCalls).toBe(1);
+    window.history.replaceState({}, '', '/popup.html');
+  });
+
   it('renders a batch storage prerequisite failure and downloads not-attempted originals', async () => {
     window.history.replaceState(
       {},
