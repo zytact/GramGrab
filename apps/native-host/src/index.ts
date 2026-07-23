@@ -3,6 +3,7 @@ import { chmod, rm } from 'node:fs/promises';
 import { platform, userInfo } from 'node:os';
 import { Effect, Schema } from 'effect';
 import {
+  CancelRequest,
   Completed,
   decodeEvent,
   decodeJsonFrame,
@@ -11,6 +12,9 @@ import {
   Event,
   FrameDecoder,
   localIpcEndpoint,
+  PROTOCOL_VERSION,
+  type RequestId,
+  RequestId as RequestIdSchema,
   StatusResult,
 } from '@gramgrab/protocol';
 
@@ -22,8 +26,13 @@ const endpoint = localIpcEndpoint({
   userId: platform() === 'win32' ? undefined : userInfo().uid,
   override: process.env.GRAMGRAB_IPC_PATH,
 });
-const clients = new Set<Socket>();
+const clients = new Map<Socket, Set<RequestId>>();
 const HOST_VERSION = '0.0.0';
+const ClientEnvelope = Schema.Struct({
+  version: Schema.Number,
+  requestId: RequestIdSchema,
+  _tag: Schema.optional(Schema.Literal('CancelRequest')),
+});
 
 async function socketIsActive(path: string): Promise<boolean> {
   return new Promise(resolve => {
@@ -82,18 +91,42 @@ function enrichHostMetadata(payload: Uint8Array): Uint8Array {
   }
 }
 
-function attachClient(socket: Socket): void {
-  clients.add(socket);
+function cancelRequests(
+  requestIds: ReadonlySet<RequestId>,
+  write: (payload: Uint8Array) => void
+): void {
+  for (const requestId of requestIds) {
+    const cancellation = Schema.encodeSync(CancelRequest)(
+      CancelRequest.make({ version: PROTOCOL_VERSION, requestId })
+    );
+    write(new TextEncoder().encode(JSON.stringify(cancellation)));
+  }
+}
+
+export function attachClient(
+  socket: Socket,
+  write: (payload: Uint8Array) => void = writeNative
+): void {
+  const requestIds = new Set<RequestId>();
+  clients.set(socket, requestIds);
   const decoder = new FrameDecoder();
   socket.on('data', chunk => {
     try {
       if (typeof chunk === 'string') return socket.destroy();
-      for (const frame of decoder.push(chunk)) writeNative(frame);
+      for (const frame of decoder.push(chunk)) {
+        const envelope = Schema.decodeUnknownSync(ClientEnvelope)(decodeJsonFrame(frame));
+        if (envelope._tag === 'CancelRequest') requestIds.delete(envelope.requestId);
+        else requestIds.add(envelope.requestId);
+        write(frame);
+      }
     } catch {
       socket.destroy();
     }
   });
-  socket.on('close', () => clients.delete(socket));
+  socket.on('close', () => {
+    clients.delete(socket);
+    cancelRequests(requestIds, write);
+  });
   socket.on('error', () => clients.delete(socket));
 }
 
@@ -104,7 +137,10 @@ export async function startNativeHost(): Promise<void> {
       if (typeof chunk === 'string') return process.stdin.destroy();
       for (const frame of nativeDecoder.push(chunk)) {
         const enriched = enrichHostMetadata(frame);
-        for (const client of clients) client.write(enriched);
+        const event = Effect.runSync(decodeEvent(decodeJsonFrame(frame)));
+        if (event.event._tag === 'Completed' || event.event._tag === 'Rejected')
+          for (const requestIds of clients.values()) requestIds.delete(event.requestId);
+        for (const client of clients.keys()) client.write(enriched);
       }
     } catch {
       process.exitCode = 1;
@@ -130,8 +166,11 @@ export async function startNativeHost(): Promise<void> {
       }
     }
   });
+  let closing = false;
   const close = () => {
-    for (const client of clients) client.destroy();
+    if (closing) return;
+    closing = true;
+    for (const client of clients.keys()) client.destroy();
     server.close(() => {
       if (platform() !== 'win32') void rm(endpoint, { force: true });
     });
@@ -139,6 +178,7 @@ export async function startNativeHost(): Promise<void> {
   process.stdin.on('end', close);
   process.on('SIGTERM', close);
   process.on('SIGINT', close);
+  if (process.stdin.readableEnded) close();
 }
 
 if (import.meta.main) void startNativeHost();

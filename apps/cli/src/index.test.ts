@@ -6,6 +6,7 @@ import { Effect, Schema } from 'effect';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 import {
   Accepted,
+  decodeClientMessage,
   decodeJsonFrame,
   encodeJsonFrame,
   Event,
@@ -167,6 +168,57 @@ describe('CLI request lifecycle', () => {
       })
     ).rejects.toThrow('IPC disconnected before a terminal response.');
 
+    await new Promise<void>((resolve, reject) =>
+      server.close(error => (error ? reject(error) : resolve()))
+    );
+  });
+
+  it('sends correlated cancellation after an accepted request is aborted', async () => {
+    const endpoint = await testEndpoint();
+    const messages: unknown[] = [];
+    const server = createServer(socket => {
+      const decoder = new FrameDecoder();
+      socket.on('data', chunk => {
+        if (typeof chunk === 'string') return;
+        for (const frame of decoder.push(chunk)) {
+          const incoming = Effect.runSync(decodeClientMessage(decodeJsonFrame(frame)));
+          messages.push(incoming);
+          if (!('command' in incoming)) continue;
+          socket.write(
+            encodeJsonFrame(
+              Schema.encodeSync(Event)(
+                Event.make({
+                  version: PROTOCOL_VERSION,
+                  requestId: incoming.requestId,
+                  event: Accepted.make({}),
+                })
+              )
+            )
+          );
+        }
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(endpoint, resolve);
+    });
+    const controller = new AbortController();
+    const pending = request(
+      Status.make({}),
+      event => {
+        if (event._tag === 'Accepted') controller.abort();
+      },
+      { endpoint, signal: controller.signal }
+    );
+
+    await expect(pending).rejects.toThrow('Request cancelled.');
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({
+      _tag: 'CancelRequest',
+      requestId: (messages[0] as { requestId: string }).requestId,
+    });
     await new Promise<void>((resolve, reject) =>
       server.close(error => (error ? reject(error) : resolve()))
     );

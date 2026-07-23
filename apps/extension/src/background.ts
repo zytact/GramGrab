@@ -1339,6 +1339,27 @@ let runnerProgress: ((event: Progress) => void) | undefined;
 let runnerIdleTimer: ReturnType<typeof setTimeout> | undefined;
 let exportQueue: Promise<void> = Promise.resolve();
 
+function cancellationError(): Error {
+  return new Error('Request cancelled.');
+}
+
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(cancellationError());
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(cancellationError());
+    signal.addEventListener('abort', abort, { once: true });
+    void promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+function discardRunner(): void {
+  const tabId = runnerTabId;
+  runnerTabId = undefined;
+  runnerReady = undefined;
+  resolveRunnerReady = undefined;
+  if (tabId !== undefined) void browser.tabs.remove(tabId).catch(() => undefined);
+}
+
 async function getRunner(): Promise<number> {
   if (!runnerReady) {
     runnerReady = new Promise(resolve => {
@@ -1408,52 +1429,75 @@ function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
   });
 }
 
-async function runExport(command: ProtocolExport, emit: (event: EventPayload) => void) {
+async function runExport(
+  command: ProtocolExport,
+  emit: (event: EventPayload) => void,
+  signal: AbortSignal
+) {
   if (command.operations.every(operation => operation.mode._tag === 'DirectExport'))
-    return runDirectExport(command, emit);
+    return runDirectExport(command, emit, signal);
   let release = () => {};
   const turn = new Promise<void>(resolve => {
     release = resolve;
   });
   const previous = exportQueue;
   exportQueue = previous.then(() => turn);
-  await previous;
-  if (runnerIdleTimer) clearTimeout(runnerIdleTimer);
-  runnerIdleTimer = undefined;
-  runnerProgress = emit;
+  let acquired = false;
+  const abort = () => discardRunner();
   try {
-    const tabId = await getRunner();
-    return (await browser.tabs.sendMessage(tabId, {
-      type: 'RUN_EXPORT',
-      sourceUrl: command.sourceUrl,
-      command,
-    })) as CommandResult;
-  } catch {
-    const staleTabId = runnerTabId;
-    runnerTabId = undefined;
-    runnerReady = undefined;
-    if (staleTabId !== undefined) await browser.tabs.remove(staleTabId).catch(() => undefined);
-    const tabId = await getRunner();
-    return (await browser.tabs.sendMessage(tabId, {
-      type: 'RUN_EXPORT',
-      sourceUrl: command.sourceUrl,
-      command,
-    })) as CommandResult;
-  } finally {
-    runnerProgress = undefined;
-    release();
-    runnerIdleTimer = setTimeout(() => {
-      const tabId = runnerTabId;
+    await abortable(previous, signal);
+    acquired = true;
+    if (runnerIdleTimer) clearTimeout(runnerIdleTimer);
+    runnerIdleTimer = undefined;
+    runnerProgress = emit;
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      const tabId = await abortable(getRunner(), signal);
+      return (await abortable(
+        browser.tabs.sendMessage(tabId, {
+          type: 'RUN_EXPORT',
+          sourceUrl: command.sourceUrl,
+          command,
+        }),
+        signal
+      )) as CommandResult;
+    } catch {
+      if (signal.aborted) throw cancellationError();
+      const staleTabId = runnerTabId;
       runnerTabId = undefined;
       runnerReady = undefined;
-      if (tabId !== undefined) void browser.tabs.remove(tabId).catch(() => undefined);
-    }, 30_000);
+      if (staleTabId !== undefined) await browser.tabs.remove(staleTabId).catch(() => undefined);
+      const tabId = await abortable(getRunner(), signal);
+      return (await abortable(
+        browser.tabs.sendMessage(tabId, {
+          type: 'RUN_EXPORT',
+          sourceUrl: command.sourceUrl,
+          command,
+        }),
+        signal
+      )) as CommandResult;
+    }
+  } finally {
+    signal.removeEventListener('abort', abort);
+    if (acquired) runnerProgress = undefined;
+    release();
+    if (acquired)
+      runnerIdleTimer = setTimeout(() => {
+        const tabId = runnerTabId;
+        runnerTabId = undefined;
+        runnerReady = undefined;
+        if (tabId !== undefined) void browser.tabs.remove(tabId).catch(() => undefined);
+      }, 30_000);
   }
 }
 
 // fallow-ignore-next-line complexity
-async function runDirectExport(command: ProtocolExport, emit: (event: EventPayload) => void) {
-  const inspected = await inspectCommand(command.sourceUrl);
+async function runDirectExport(
+  command: ProtocolExport,
+  emit: (event: EventPayload) => void,
+  signal: AbortSignal
+) {
+  const inspected = await abortable(inspectCommand(command.sourceUrl), signal);
   const operations: DownloadOperation[] = [];
   const requestedById = new Map(
     command.operations.map(operation => [operation.operationId, operation])
@@ -1488,6 +1532,7 @@ async function runDirectExport(command: ProtocolExport, emit: (event: EventPaylo
       mediaType: item.mediaType,
     });
   }
+  if (signal.aborted) throw cancellationError();
   const response = await handleDownloadMedia({
     sourceUrl: command.sourceUrl,
     operations,
@@ -1530,7 +1575,8 @@ async function runDirectExport(command: ProtocolExport, emit: (event: EventPaylo
 // fallow-ignore-next-line complexity
 async function executeCommand(
   request: Request,
-  emit: (event: EventPayload) => void
+  emit: (event: EventPayload) => void,
+  signal: AbortSignal
 ): Promise<void> {
   try {
     const command = request.command;
@@ -1538,15 +1584,15 @@ async function executeCommand(
     switch (command._tag) {
       case 'Inspect':
         emit(Progress.make({ phase: 'resolving' }));
-        result = await inspectCommand(command.sourceUrl);
+        result = await abortable(inspectCommand(command.sourceUrl), signal);
         break;
       case 'Export':
         emit(Progress.make({ phase: 'resolving' }));
-        result = await runExport(command, emit);
+        result = await runExport(command, emit, signal);
         break;
       case 'HistoryList': {
         emit(Progress.make({ phase: 'history' }));
-        const history = await getHistory();
+        const history = await abortable(getHistory(), signal);
         if (history.kind === 'unknown-version') throw new Error('Unsupported history version.');
         result = HistoryListResult.make({
           entries: [...history.entries].reverse().map(historyEntry),
@@ -1555,11 +1601,11 @@ async function executeCommand(
         break;
       }
       case 'HistoryRemove': {
-        const before = await getHistory();
+        const before = await abortable(getHistory(), signal);
         if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
         const known = new Set(before.entries.map(entry => entry.id));
         const removedEntryIds = command.entryIds.filter(id => known.has(id));
-        for (const id of removedEntryIds) await removeHistory(id);
+        for (const id of removedEntryIds) await abortable(removeHistory(id), signal);
         result = HistoryRemoveResult.make({
           removedEntryIds,
           unknownEntryIds: command.entryIds.filter(id => !known.has(id)),
@@ -1567,20 +1613,21 @@ async function executeCommand(
         break;
       }
       case 'HistoryClear': {
-        const before = await getHistory();
+        const before = await abortable(getHistory(), signal);
         if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
-        await clearHistory();
+        await abortable(clearHistory(), signal);
         result = HistoryClearResult.make({ clearedCount: before.entries.length });
         break;
       }
       case 'HistoryRedownload': {
-        const before = await getHistory();
+        const before = await abortable(getHistory(), signal);
         if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
         const known = new Set(before.entries.map(entry => entry.id));
         const outcomes = [];
         for (const entryId of command.entryIds.filter(id => known.has(id))) {
+          signal.throwIfAborted();
           const entry = before.entries.find(candidate => candidate.id === entryId);
-          const response = await handleRedownloadHistoryEntry({ entryId });
+          const response = await abortable(handleRedownloadHistoryEntry({ entryId }), signal);
           if (entry && (response.frame || response.silent)) {
             const resolvedItem = response.frame ?? response.silent;
             const operationId = Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID());
@@ -1603,7 +1650,8 @@ async function executeCommand(
                   }),
                 ],
               }),
-              emit
+              emit,
+              signal
             );
             const failed =
               exportResult._tag === 'ExportResult' &&
@@ -1643,6 +1691,7 @@ async function executeCommand(
         break;
       }
       case 'DebugGet': {
+        signal.throwIfAborted();
         emit(Progress.make({ phase: 'diagnostics' }));
         result = DebugGetResult.make({
           diagnosticsVersion: 1,
@@ -1660,6 +1709,7 @@ async function executeCommand(
         break;
       }
       case 'DebugExport': {
+        signal.throwIfAborted();
         const filename = `gramgrab-debug-${Date.now()}.json`;
         const report = {
           diagnosticsVersion: 1,

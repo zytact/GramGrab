@@ -102,6 +102,14 @@ export class Request extends Schema.Class<Request>('Request')({
   command: Command,
 }) {}
 
+export class CancelRequest extends Schema.TaggedClass<CancelRequest>()('CancelRequest', {
+  version: Schema.Literal(PROTOCOL_VERSION),
+  requestId: RequestId,
+}) {}
+
+export const ClientMessage = Schema.Union(Request, CancelRequest);
+export type ClientMessage = Schema.Schema.Type<typeof ClientMessage>;
+
 export const FAILURE_CODES = [
   'INPUT_INVALID_INSTAGRAM_URL',
   'SOURCE_USERNAME_UNRESOLVED',
@@ -364,4 +372,5 @@ export class Event extends Schema.Class<Event>('Event')({
 }) {}
 
 export const decodeRequest = Schema.decodeUnknown(Request);
+export const decodeClientMessage = Schema.decodeUnknown(ClientMessage);
 export const decodeEvent = Schema.decodeUnknown(Event);

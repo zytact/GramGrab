@@ -12,19 +12,33 @@ remain inside the browser extension.
 | macOS            | Implemented, manual run pending | Implemented, manual run pending | `/tmp/gramgrab-UID.sock`                                     |
 | Windows          | Implemented, manual run pending | Implemented, manual run pending | `\\.\pipe\gramgrab`                                          |
 
-Node.js 22 or newer is required when running the CLI and native host from source. The extension,
-CLI, and native host must use the same protocol version.
+Node.js 22 or newer is required. The extension, CLI, and native host must use the same protocol
+version.
+
+## Portable artifacts
+
+Run `vp run package-tools` to create the self-contained Node.js distribution under `artifacts/`.
+The directory contains the `gramgrab.mjs` CLI, the `gramgrab-native-host.mjs` host, their shared
+hashed bundle, native-host manifest templates, and `SHA256SUMS`. Copy the entire directory because
+both entry points import the shared bundle. CI builds and launches this distribution on Linux,
+macOS, and Windows and publishes one workflow artifact per operating system.
+
+On Windows, use `gramgrab.cmd` and point the native-host manifest at
+`gramgrab-native-host.cmd`. On Linux and macOS, use the executable `.mjs` entry points. If an
+archive tool discarded Unix permissions, restore them with
+`chmod 755 gramgrab.mjs gramgrab-native-host.mjs`.
 
 ## Manual native-host registration
 
 1. Install dependencies with `vp install`.
-2. Replace `__GRAMGRAB_NATIVE_HOST_PATH__` in the matching template under
-   `apps/native-host/manifests` with the absolute path to
-   `apps/native-host/bin/gramgrab-native-host.mjs`.
+2. Replace `__GRAMGRAB_NATIVE_HOST_PATH__` in the matching template under `artifacts/` with the
+   absolute path to `artifacts/gramgrab-native-host.mjs`, or
+   `artifacts/gramgrab-native-host.cmd` on Windows. When running from source, use the templates and
+   host entry point under `apps/native-host` instead.
 3. For Chromium, also replace `__GRAMGRAB_EXTENSION_ID__` with the ID shown for the unpacked
    extension.
 4. Register the completed manifest using the browser and operating-system location below.
-5. Reload the extension, then run `apps/cli/bin/gramgrab.mjs status`.
+5. Reload the extension, then run `artifacts/gramgrab.mjs status`.
 
 Automatic registration is intentionally not performed. Registration locations and policy differ
 between browser channels and managed devices, so installation remains an explicit administrator or
@@ -58,8 +72,10 @@ release produced from the same revision.
 - `PROTOCOL_VERSION_UNSUPPORTED` means the installed pieces came from different releases. Update
   the extension, CLI, and native host together.
 - A five-second timeout applies while waiting for the extension to accept a request, and a
-  30-minute deadline bounds accepted work. Ctrl+C or process termination stops the CLI wait, but an
-  operation already accepted by the extension may continue in the browser.
+  30-minute deadline bounds accepted work. Ctrl+C, process termination, client disconnect, and the
+  terminal deadline propagate correlated cancellation to the extension. Runner-backed work closes
+  its runner surface and worker. A browser download that was already accepted by the browser cannot
+  be recalled.
 - On Unix, stale socket files are removed only after a connection probe proves that no host is
   listening. The live socket is owner-only (`0600`) and is removed during normal shutdown.
 

@@ -1,7 +1,18 @@
 import { Effect, Schema } from 'effect';
 import { describe, expect, it } from 'vite-plus/test';
-import { Event, RequestId } from '@gramgrab/protocol';
-import { unsupportedVersionEvent } from './native-bridge.ts';
+import {
+  CancelRequest,
+  Event,
+  Inspect,
+  PROTOCOL_VERSION,
+  Request,
+  RequestId,
+} from '@gramgrab/protocol';
+import {
+  handleNativeMessage,
+  startNativeBridge,
+  unsupportedVersionEvent,
+} from './native-bridge.ts';
 
 describe('native bridge protocol negotiation', () => {
   it('stamps an unsupported-version rejection with the request version', () => {
@@ -14,5 +25,28 @@ describe('native bridge protocol negotiation', () => {
       _tag: 'Rejected',
       failure: { _tag: 'TransportFailure', code: 'PROTOCOL_VERSION_UNSUPPORTED' },
     });
+  });
+});
+
+describe('native bridge cancellation', () => {
+  it('registers a request before a back-to-back cancellation can arrive', () => {
+    const request = Schema.decodeUnknownSync(Request)({
+      version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(),
+      command: Inspect.make({ sourceUrl: 'https://www.instagram.com/p/example/' }),
+    });
+    let signal: AbortSignal | undefined;
+    startNativeBridge(async (_request, _emit, currentSignal) => {
+      signal = currentSignal;
+    });
+
+    handleNativeMessage(Schema.encodeSync(Request)(request));
+    handleNativeMessage(
+      Schema.encodeSync(CancelRequest)(
+        CancelRequest.make({ version: PROTOCOL_VERSION, requestId: request.requestId })
+      )
+    );
+
+    expect(signal?.aborted).toBe(true);
   });
 });

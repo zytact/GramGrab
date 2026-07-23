@@ -20,6 +20,22 @@ const firefoxPackageOutput = {
 };
 
 export default defineConfig({
+  pack: {
+    entry: {
+      gramgrab: 'apps/cli/src/index.ts',
+      'gramgrab-native-host': 'apps/native-host/src/index.ts',
+    },
+    outDir: 'artifacts',
+    clean: true,
+    format: 'esm',
+    platform: 'node',
+    target: 'node22',
+    banner: '#!/usr/bin/env node',
+    deps: {
+      alwaysBundle: ['effect'],
+      onlyBundle: ['effect'],
+    },
+  },
   run: {
     cache: {
       scripts: false, // Keep caching on explicit tasks so inputs/outputs stay well-defined.
@@ -54,6 +70,24 @@ export default defineConfig({
         command: ['vp run build-firefox', 'node apps/extension/scripts/package-firefox.mjs'],
         input: [autoInput, `!${viteTempInput.pattern}`, `!${firefoxOutput.pattern}`],
         output: [firefoxOutput, firefoxPackageOutput],
+      },
+      'package-tools': {
+        command: ['vp pack', 'node apps/native-host/scripts/package-tools.mjs'],
+        input: [
+          'apps/cli/src/**',
+          'apps/cli/bin/gramgrab.cmd',
+          'apps/native-host/bin/gramgrab-native-host.cmd',
+          'apps/native-host/src/**',
+          'apps/native-host/manifests/**',
+          'apps/native-host/scripts/package-tools.mjs',
+          'apps/native-host/scripts/verify-tools.mjs',
+          'packages/protocol/src/**',
+          'package.json',
+          'pnpm-lock.yaml',
+          'tsconfig.json',
+          'vite.config.ts',
+        ],
+        output: [{ pattern: 'artifacts/**', base: 'workspace' }],
       },
     },
   },

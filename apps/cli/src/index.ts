@@ -3,6 +3,7 @@ import { platform, userInfo } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { Effect, Schema } from 'effect';
 import {
+  CancelRequest,
   DebugExport,
   DebugGet,
   DirectExport,
@@ -186,6 +187,7 @@ export function request(
     const socket = connect(options.endpoint ?? endpoint);
     const decoder = new FrameDecoder();
     let settled = false;
+    let connected = false;
     let terminalTimeout: ReturnType<typeof setTimeout> | undefined;
     const finish = (action: () => void) => {
       if (settled) return;
@@ -195,8 +197,20 @@ export function request(
       options.signal?.removeEventListener('abort', abort);
       action();
     };
+    const cancel = () => {
+      if (!socket.destroyed && connected)
+        socket.write(
+          encodeJsonFrame(
+            Schema.encodeSync(CancelRequest)(
+              CancelRequest.make({ version: PROTOCOL_VERSION, requestId: value.requestId })
+            )
+          )
+        );
+      if (connected) socket.end();
+      else socket.destroy();
+    };
     const abort = () => {
-      socket.destroy();
+      cancel();
       finish(() => reject(new Error('Request cancelled.')));
     };
     const disconnected = () => {
@@ -208,7 +222,10 @@ export function request(
     }, options.acceptanceTimeoutMs ?? 5_000);
     options.signal?.addEventListener('abort', abort, { once: true });
     if (options.signal?.aborted) abort();
-    socket.on('connect', () => socket.write(encodeJsonFrame(Schema.encodeSync(Request)(value))));
+    socket.on('connect', () => {
+      connected = true;
+      if (!settled) socket.write(encodeJsonFrame(Schema.encodeSync(Request)(value)));
+    });
     socket.on('data', chunk => {
       try {
         if (typeof chunk === 'string') return socket.destroy();
@@ -220,7 +237,7 @@ export function request(
             clearTimeout(acceptanceTimeout);
             terminalTimeout = setTimeout(
               () => {
-                socket.destroy();
+                cancel();
                 finish(() => reject(new Error('Timed out waiting for command completion.')));
               },
               options.terminalTimeoutMs ?? 30 * 60_000
