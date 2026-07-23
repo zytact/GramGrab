@@ -27,7 +27,6 @@ vp run package:chromium   # cached build + CRX (generates/uses chromium.pem key)
 Use Vite+ as the primary workflow surface. Prefer `vp` commands and `vp run <script>` / `vp run <task>` over package-manager wrappers.
 
 Verify in order: `vp lint .` + `tsc --noEmit` together, then `vp test run` and finally `vp run fallow`.
-Never commit yourself.
 
 ## Architecture
 
