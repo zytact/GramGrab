@@ -1,6 +1,11 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["src/index.{ts,tsx,js,jsx}", "src/main.{ts,tsx,js,jsx}"],
+  "entry": [
+    "apps/extension/templates/popup.tsx",
+    "apps/extension/src/background.ts",
+    "apps/*/src/index.ts",
+    "packages/*/src/index.ts"
+  ],
   "ignorePatterns": [".repos/**"],
   "duplicates": {
     // Hide pair-only clones; focus on widespread copy-paste

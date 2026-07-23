@@ -31,10 +31,10 @@ Never commit yourself.
 
 ## Architecture
 
-- **Vite root**: `templates/`. Entry: `templates/popup.html` (React app at `src/App.tsx`). Background worker (`src/background.ts`) bundled directly as `js/background.js` — no HTML wrapper.
-- **Output**: `extension/{chromium,firefox}/`. Post-build (`scripts/postbuild.mjs`) generates per-browser `manifest.json`, copies icons, writes stub polyfill files. Chromium gets `service_worker`, Firefox gets `scripts`.
+- **Vite root**: `apps/extension/templates/`. Entry: `apps/extension/templates/popup.html` (React app at `apps/extension/src/popup.tsx`). Background worker (`apps/extension/src/background.ts`) bundled directly as `js/background.js` — no HTML wrapper.
+- **Output**: `extension/{chromium,firefox}/`. Post-build (`apps/extension/scripts/postbuild.mjs`) generates per-browser `manifest.json`, copies icons, writes stub polyfill files. Chromium gets `service_worker`, Firefox gets `scripts`.
 - **Message dispatcher** (`background.ts:639`): all listeners registered synchronously at module top. Uses `sendResponse` + `return true` (cross-browser-safe pattern), NOT Promise-return. The popup (`popup.tsx`) sends `FETCH_MEDIA`, `DOWNLOAD_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB` messages.
-- **`browser` global**: Proxy-based shim (`src/lib/browser.ts`) resolving `globalThis.browser` → `globalThis.chrome` → no-op stub. Promisifies callback APIs.
+- **`browser` global**: Proxy-based shim (`apps/extension/src/lib/browser.ts`) resolving `globalThis.browser` → `globalThis.chrome` → no-op stub. Promisifies callback APIs.
 
 ## Vendored Repositories
 
@@ -48,7 +48,7 @@ This project vendors external repositories under `.repos/`.
 
 ## Testing
 
-- Vitest + jsdom. Files: `src/**/*.test.{ts,tsx}`. Setup: `src/test/setup.ts` (polyfills Blob.arrayBuffer, installs mock `globalThis.browser`).
+- Vitest + jsdom. Files: `apps/extension/src/**/*.test.{ts,tsx}`. Setup: `apps/extension/src/test/setup.ts` (polyfills Blob.arrayBuffer, installs mock `globalThis.browser`).
 - Test helpers in `setup.ts`: `resetBrowserMocks()`, `setMockMessageHandler(type, handler)`, `getDownloadCalls()`.
 - Background tests dynamically import `background.ts` to capture the registered listener.
 - Coverage: `vp test run` generates text/json/html reports (v8 provider).
@@ -57,14 +57,14 @@ This project vendors external repositories under `.repos/`.
 
 All Instagram API responses are decoded through Effect `Schema` tagged unions — not via ad-hoc casts. The posture is **strict + loud**: schema decode failures surface as `ResponseShapeUnknown` with a user-actionable message ("Instagram changed their format — please update the extension"). Unknown `__typename` values are passed through silently (B2) so partial changes don't brick the whole response.
 
-Real API response fixtures live in `src/effect/__fixtures__/` (see the README there). They are decoded by `src/effect/schemas.fixtures.test.ts`. **Handwritten tests in `schemas.test.ts` cover edge cases only** (missing required fields, null variants, Unknown passthrough, union dispatch) — not realistic happy paths.
+Real API response fixtures live in `apps/extension/src/effect/__fixtures__/` (see the README there). They are decoded by `apps/extension/src/effect/schemas.fixtures.test.ts`. **Handwritten tests in `schemas.test.ts` cover edge cases only** (missing required fields, null variants, Unknown passthrough, union dispatch) — not realistic happy paths.
 
 **When `ResponseShapeUnknown` fires in the wild:**
 
-1. Run `scripts/capture-ig-fixtures.mjs` in the DevTools console on `instagram.com`.
-2. Replace the relevant file(s) in `src/effect/__fixtures__/`.
+1. Run `apps/extension/scripts/capture-ig-fixtures.mjs` in the DevTools console on `instagram.com`.
+2. Replace the relevant file(s) in `apps/extension/src/effect/__fixtures__/`.
 3. `vp test run` — failing fixture tests show what changed.
-4. Update `src/effect/schemas.ts` to match, re-run tests, ship.
+4. Update `apps/extension/src/effect/schemas.ts` to match, re-run tests, ship.
 
 ## Ubiquitous language
 

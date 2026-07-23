@@ -11,9 +11,6 @@ importers:
       effect:
         specifier: ^3.21.2
         version: 3.21.2
-      mediabunny:
-        specifier: ^1.50.8
-        version: 1.50.8
     devDependencies:
       '@testing-library/react':
         specifier: ^16.1.0
@@ -66,6 +63,62 @@ importers:
       vitest:
         specifier: npm:@voidzero-dev/vite-plus-test@0.1.24
         version: '@voidzero-dev/vite-plus-test@0.1.24(@types/node@25.9.1)(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(typescript@7.0.2))(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(tsx@4.23.0)(typescript@7.0.2)'
+
+  apps/cli:
+    dependencies:
+      '@gramgrab/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+
+  apps/extension:
+    dependencies:
+      '@gramgrab/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      effect:
+        specifier: ^3.21.2
+        version: 3.21.2
+      mediabunny:
+        specifier: ^1.50.8
+        version: 1.50.8
+      react:
+        specifier: ^19.2.5
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.2.5
+        version: 19.2.7(react@19.2.7)
+    devDependencies:
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@testing-library/user-event':
+        specifier: ^14.5.2
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      acorn:
+        specifier: ^8.17.0
+        version: 8.17.0
+      crx:
+        specifier: ^5.0.1
+        version: 5.0.1
+      vite-plus:
+        specifier: 0.1.24
+        version: 0.1.24(@types/node@25.9.1)(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(typescript@7.0.2))(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(tsx@4.23.0)(typescript@7.0.2)
+
+  apps/native-host:
+    dependencies:
+      '@gramgrab/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+
+  packages/protocol:
+    dependencies:
+      effect:
+        specifier: ^3.21.2
+        version: 3.21.2
+    devDependencies:
+      vite-plus:
+        specifier: 0.1.24
+        version: 0.1.24(@types/node@25.9.1)(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(typescript@7.0.2))(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(tsx@4.23.0)(typescript@7.0.2)
 
 packages:
 

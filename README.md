@@ -146,7 +146,7 @@ vp fmt .
 vp fmt --check .
 ```
 
-The Vite build root is `templates/`; `templates/popup.tsx` mounts the React popup, while `src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. Vite+ task caching is configured for the browser build and packaging workflows, so repeated `vp run build:*` and `vp run package:*` commands can replay cached outputs when inputs have not changed. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a deeper look at the codebase structure.
+The extension lives in `apps/extension`. Its Vite build root is `apps/extension/templates`; `popup.tsx` mounts the React popup, while `apps/extension/src/background.ts` is bundled directly as a JS module entry (no HTML wrapper). A post-build script generates browser-specific `manifest.json` files and copies icons into the output directories. Vite+ task caching is configured for the browser build and packaging workflows, so repeated `vp run build:*` and `vp run package:*` commands can replay cached outputs when inputs have not changed.
 
 ---
 
@@ -154,9 +154,9 @@ The Vite build root is `templates/`; `templates/popup.tsx` mounts the React popu
 
 GramGrab has a popup surface, a background worker, and shared domain modules:
 
-- **Popup UI** - `templates/popup.html` loads `templates/popup.tsx`, which mounts the React app from `src/popup.tsx`. It handles URL input, media listing, selection, previews, frame and silent-video choices, history, workspace actions, and status feedback.
-- **Background service worker** (`src/background.ts`) - handles Instagram requests, strict response decoding, browser downloads, history persistence, context-menu commands, and workspace coordination.
-- **Shared modules** - `src/effect/` contains request and schema code, `src/errors/` maps failures to recovery actions, and the `src/history/`, `src/workspace/`, `src/download/`, `src/frame-export/`, and `src/silent-video/` modules keep stateful workflows explicit and testable.
+- **Popup UI** - `apps/extension/templates/popup.html` loads `popup.tsx`, which mounts the React app from `apps/extension/src/popup.tsx`. It handles URL input, media listing, selection, previews, frame and silent-video choices, history, workspace actions, and status feedback.
+- **Background service worker** (`apps/extension/src/background.ts`) - handles Instagram requests, strict response decoding, browser downloads, history persistence, context-menu commands, and workspace coordination.
+- **Shared modules** - `apps/extension/src/effect/` contains request and schema code, while the other extension modules keep stateful workflows explicit and testable. Cross-application wire contracts live in `packages/protocol`.
 
 The popup sends messages to the background worker through the single dispatcher in `src/background.ts`. The main operations are `FETCH_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB`, `DOWNLOAD_MEDIA`, history reads and mutations, `RECORD_FRAME_EXPORT`, `RECORD_SILENT_EXPORT`, and diagnostics export. Workspace handoff uses a versioned, short-lived storage transfer coordinated by `src/workspace/coordinator.ts`, so a popup can open or replace a dedicated workspace tab without losing its current source, results, or export settings. The worker fetches media metadata from Instagram using your authenticated browser session, decodes the response, and returns normalized media items to the popup. The listener is registered synchronously and keeps asynchronous work alive with `sendResponse` plus `return true` for Chromium and Firefox compatibility.
 
@@ -192,12 +192,12 @@ To fix it:
 2. Run `vp run generate:ig-fixtures`, then paste `.local/capture-ig-fixtures.mjs` into DevTools on
    `https://www.instagram.com` (logged in).
 3. Download the raw JSON files into `.local/raw-fixtures/` and sanitize them before replacing
-   anything in `src/effect/__fixtures__/`. Run `vp run sanitize:ig-fixtures` to validate and stage
+   anything in `apps/extension/src/effect/__fixtures__/`. Run `vp run sanitize:ig-fixtures` to validate and stage
    the complete capture set, review the value-free output, then run
    `vp run sanitize:ig-fixtures -- --write` to install all eight sanitized fixtures transactionally.
    The sanitizer is the privacy boundary for committed captures.
 4. Run `vp test run` - failing tests show exactly which fields changed.
-5. Update `src/effect/schemas.ts` to match the new shape, re-run tests, ship only sanitized fixtures.
+5. Update `apps/extension/src/effect/schemas.ts` to match the new shape, re-run tests, ship only sanitized fixtures.
 
 ---
 
