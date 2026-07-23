@@ -15,6 +15,7 @@ fresh request ID.
 ## Grammar
 
 ```text
+gramgrab status [--json]
 gramgrab inspect SOURCE_URL [--json]
 gramgrab export SOURCE_URL --item NUMBER --mode direct [--json]
 gramgrab export SOURCE_URL --item NUMBER --mode frame --at SECONDS [--json]
@@ -27,6 +28,18 @@ gramgrab history redownload ENTRY_ID... [--json]
 gramgrab debug get [--json]
 gramgrab debug export [--json]
 ```
+
+`status` is the phase 3 transport probe. It uses a five-second bounded wait and reports the
+browser family, extension version, native-host version, protocol version, and compatibility. The
+native host is browser-started and relays length-prefixed JSON frames over a per-user Unix socket
+on Linux and macOS or a named pipe on Windows. `GRAMGRAB_IPC_PATH` overrides the endpoint for
+development and tests.
+
+Development native-host manifest templates live in `apps/native-host/manifests`. Replace the host
+path placeholder with the absolute executable path and the Chromium extension ID placeholder with
+the installed development extension ID, then register the manifest using the browser's documented
+native-messaging location. Automatic registration remains out of scope. Concurrent browser-profile
+endpoint arbitration is part of phase 7 collision hardening.
 
 Repeated item operations and `--plan -` support mixed batches. JSON mode never prompts. History
 removal and clearing must be explicit commands. Silent re-encoding uses the request policy and does

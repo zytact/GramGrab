@@ -17,6 +17,7 @@ import { FAILURE_PRESENTATION, WARNING_PRESENTATION } from './errors/presentatio
 import { buildDiagnostics } from './errors/diagnostics';
 import type { AttemptEntry, AttemptOperation, DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
+import { ExportCandidate, planExportOperations } from './download/coordinator';
 import {
   clampFrameSecond,
   defaultFrameSecond,
@@ -80,6 +81,29 @@ type HistoryEntry = {
   frameTimestampSeconds?: number;
   downloadedAt: number;
 };
+
+function exportCandidate(
+  item: MediaItem,
+  frameExportSettings: Record<number, FrameExportSetting>,
+  frameRuntime: Record<number, FrameRuntime>,
+  removeAudioIndexes: ReadonlySet<number>
+): ExportCandidate {
+  const setting = frameExportSettings[item.index];
+  const durationSeconds = frameRuntime[item.index]?.durationSeconds;
+  return ExportCandidate.make({
+    index: item.index,
+    itemIndex: item.itemIndex,
+    mediaId: item.mediaId,
+    type: item.type === 'video' ? 'video' : 'image',
+    url: item.url,
+    filenameHint: item.filenameHint,
+    selected: item.selected,
+    frameEnabled: setting?.enabled ?? false,
+    frameTimestampSeconds: setting?.timestampSeconds ?? 0,
+    frameDurationSeconds: durationSeconds,
+    removeAudio: removeAudioIndexes.has(item.index),
+  });
+}
 
 function diagnosticsForAttempt(
   current: DownloadAttempt | undefined,
@@ -591,34 +615,11 @@ export default function Popup() {
       setStatus('error');
       return;
     }
-    // fallow-ignore-next-line complexity
-    const operations = selected.map<AttemptOperation>(item => {
-      const setting = frameExportSettings[item.index];
-      const duration = frameRuntime[item.index]?.durationSeconds;
-      const removeAudio = item.type === 'video' && removeAudioIndexes.has(item.index);
-      const exportFrame = item.type === 'video' && setting?.enabled && !removeAudio;
-      const timestampSeconds = exportFrame
-        ? clampFrameSecond(setting.timestampSeconds, duration ?? setting.timestampSeconds + 1)
-        : undefined;
-      return {
-        operationId: createOperationId(),
-        requestId: createRequestId(),
-        itemIndex: item.itemIndex ?? item.index,
-        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-        url: item.url,
-        filename: removeAudio
-          ? `${item.filenameHint}_${item.index + 1}_silent.mp4`
-          : exportFrame
-            ? frameFilename(item.filenameHint, timestampSeconds ?? 0)
-            : `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
-        mediaType: item.type === 'video' ? 'video' : 'image',
-        originalUrl: item.url,
-        originalFilename: `${item.filenameHint}_${item.index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
-        mode: removeAudio ? 'silent' : exportFrame ? 'frame' : 'direct',
-        displayIndex: item.index,
-        ...(timestampSeconds !== undefined ? { frameTimestampSeconds: timestampSeconds } : {}),
-      };
-    });
+    const operations = planExportOperations(
+      mediaItems.map(item =>
+        exportCandidate(item, frameExportSettings, frameRuntime, removeAudioIndexes)
+      )
+    );
     if (!initialWorkspaceMode && operations.some(operation => operation.mode === 'silent')) {
       const createdAt = Date.now();
       const snapshot = {

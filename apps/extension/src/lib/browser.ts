@@ -22,11 +22,19 @@ export type OnMessageCallback = (
   sendResponse: (response: unknown) => void
 ) => boolean | void;
 
+export interface NativePort {
+  postMessage: (message: unknown) => void;
+  disconnect: () => void;
+  onMessage: { addListener: (callback: (message: unknown) => void) => void };
+  onDisconnect: { addListener: (callback: () => void) => void };
+}
+
 export interface BrowserShim {
   runtime: {
     getURL: (path: string) => string;
     getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
+    connectNative: (application: string) => NativePort;
     onMessage: {
       addListener: (callback: OnMessageCallback) => void;
     };
@@ -92,6 +100,7 @@ interface ChromeRuntime {
   getManifest?: () => { version?: string };
   lastError?: { message?: string };
   sendMessage: (msg: unknown, callback: (response: unknown) => void) => void;
+  connectNative?: (application: string) => NativePort;
   onMessage: { addListener: (callback: OnMessageCallback) => void };
 }
 
@@ -139,6 +148,7 @@ interface NativeBrowserGlobal {
     getURL: (path: string) => string;
     getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
+    connectNative?: (application: string) => NativePort;
     onMessage: { addListener: (callback: OnMessageCallback) => void };
   };
   tabs: {
@@ -197,6 +207,7 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             else resolve(response);
           });
         }),
+      connectNative: application => chrome.runtime.connectNative?.(application) ?? noopNativePort,
       onMessage: {
         addListener: callback => chrome.runtime.onMessage.addListener(callback),
       },
@@ -314,7 +325,10 @@ function hasNativeStorageLocal(value: unknown): value is NativeBrowserGlobal {
 
 function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
   return {
-    runtime: native.runtime,
+    runtime: {
+      ...native.runtime,
+      connectNative: application => native.runtime.connectNative?.(application) ?? noopNativePort,
+    },
     tabs: {
       query: queryInfo => native.tabs.query(queryInfo),
       create: createProperties => native.tabs.create(createProperties),
@@ -351,11 +365,19 @@ const noopContextMenus: BrowserShim['contextMenus'] = {
   onShown: { addListener: () => {} },
 };
 
+const noopNativePort: NativePort = {
+  postMessage: () => {},
+  disconnect: () => {},
+  onMessage: { addListener: () => {} },
+  onDisconnect: { addListener: () => {} },
+};
+
 const noopShim: BrowserShim = {
   runtime: {
     getURL: path => path,
     getManifest: () => ({}),
     sendMessage: () => Promise.resolve(undefined),
+    connectNative: () => noopNativePort,
     onMessage: { addListener: () => {} },
   },
   tabs: {

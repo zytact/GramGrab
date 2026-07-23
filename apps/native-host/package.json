@@ -3,7 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "gramgrab-native-host": "bin/gramgrab-native-host.mjs"
+  },
   "dependencies": {
-    "@gramgrab/protocol": "workspace:*"
+    "@gramgrab/protocol": "workspace:*",
+    "effect": "^3.21.2",
+    "tsx": "^4.23.0"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts"
   }
 }

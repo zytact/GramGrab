@@ -1,5 +1,6 @@
 import { Effect, Schema } from 'effect';
 import { browser } from './lib/browser.ts';
+import { startNativeBridge } from './native-bridge.ts';
 import {
   canonicalizeInstagramUrl,
   WORKSPACE_TRANSFER_TTL_MS,
@@ -64,6 +65,8 @@ import {
 } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from './errors/normalize.ts';
+
+startNativeBridge();
 
 const DOWNLOAD_CONCURRENCY = 3;
 
