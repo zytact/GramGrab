@@ -6,7 +6,7 @@
   "dependencies": {
     "@gramgrab/protocol": "workspace:*",
     "effect": "^3.22.0",
-    "mediabunny": "^1.50.8",
+    "mediabunny": "^1.51.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
