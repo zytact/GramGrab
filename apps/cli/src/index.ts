@@ -66,19 +66,24 @@ export const HELP = `GramGrab CLI
 Usage:
   gramgrab help
   gramgrab status [--json]
-  gramgrab inspect SOURCE_URL [--json]
-  gramgrab export SOURCE_URL [--item NUMBER ...] [--mode direct] [--json]
-  gramgrab export SOURCE_URL [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
-  gramgrab export SOURCE_URL [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
-  gramgrab export SOURCE_URL --plan FILE|- [--json]
+  gramgrab inspect SOURCE [--json]
+  gramgrab export SOURCE [--item NUMBER ...] [--mode direct] [--json]
+  gramgrab export SOURCE [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
+  gramgrab export SOURCE [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
+  gramgrab export SOURCE --plan FILE|- [--json]
   gramgrab history list|remove|clear|redownload [ENTRY_ID ...] [--json]
   gramgrab debug get|export [--json]
 
 Sources:
-  Instagram post, reel, story, highlight, and profile URLs are accepted. For Stories only, a bare
-  username is accepted in place of SOURCE_URL. Profile URLs resolve the account avatar. Export
-  defaults to every item found by a fresh inspection. Use --item to select specific items. Repeated
-  --item starts another operation and may specify a different mode.
+  SOURCE may be an Instagram post, reel, story, highlight, or profile URL. A bare username (without
+  @) targets that account's active Stories. Profile URLs resolve the account avatar.
+
+Examples:
+  gramgrab inspect instagram
+  gramgrab export instagram --item 3 --mode frame --at 5
+
+  Export defaults to every item found by a fresh inspection. Use --item to select specific items.
+  Repeated --item starts another operation and may specify a different mode.
 
 Export modes:
   direct  Download the original media. This is the default when --mode is omitted.
@@ -107,9 +112,23 @@ function required(value: string | undefined, message: string): string {
   return value;
 }
 
+const INSTAGRAM_USERNAME = /^[a-zA-Z0-9._]{1,30}$/;
+
 function resolveSourceUrl(value: string | undefined, message: string): string {
   const source = required(value, message);
-  return source.includes('://') ? source : `https://www.instagram.com/stories/${source}/`;
+  if (source.startsWith('-')) throw new Error(message);
+  if (INSTAGRAM_USERNAME.test(source)) return `https://www.instagram.com/stories/${source}/`;
+  if (URL.canParse(source)) {
+    const url = new URL(source);
+    if (
+      /^https?:$/.test(url.protocol) &&
+      ['instagram.com', 'www.instagram.com'].includes(url.hostname)
+    )
+      return source;
+  }
+  throw new Error(
+    'Invalid SOURCE: expected an Instagram URL or bare username containing only letters, numbers, periods, or underscores.'
+  );
 }
 
 function requiredIds(values: readonly string[]): readonly string[] {
@@ -159,7 +178,7 @@ function exportOperation(arguments_: readonly string[]): ExportOperation {
 }
 
 function exportCommand(arguments_: readonly string[]): ParsedCli {
-  const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE_URL.');
+  const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE.');
   if (option(arguments_, '--plan'))
     throw new Error('Structured plans must be loaded asynchronously with --plan - or a file path.');
   const itemIndexes = arguments_.flatMap((value, index) => (value === '--item' ? [index] : []));
@@ -186,7 +205,7 @@ export function parseCliArguments(arguments_: readonly string[]): ParsedCli {
   if (command === 'inspect')
     return {
       command: Inspect.make({
-        sourceUrl: resolveSourceUrl(arguments_[1], 'Missing inspect SOURCE_URL.'),
+        sourceUrl: resolveSourceUrl(arguments_[1], 'Missing inspect SOURCE.'),
       }),
       json,
     };
@@ -226,7 +245,7 @@ async function parse(arguments_: readonly string[]): Promise<ParsedCli> {
   if (arguments_[0] !== 'export') throw new Error('--plan is only valid with export.');
   const input = plan === '-' ? await readStandardInput() : await readFile(plan, 'utf8');
   const value: unknown = JSON.parse(input);
-  const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE_URL.');
+  const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE.');
   const command = await Effect.runPromise(
     Schema.decodeUnknown(Export)({ sourceUrl, operations: value })
   );

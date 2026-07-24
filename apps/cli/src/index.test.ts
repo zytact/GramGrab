@@ -75,12 +75,27 @@ describe('CLI capability grammar', () => {
     });
   });
 
-  it('resolves a bare username to its Stories', () => {
-    const parsed = parseCliArguments(['inspect', 'instagram']);
+  it('resolves a valid bare username to its Stories', () => {
+    const parsed = parseCliArguments(['inspect', 'test_user']);
     expect(parsed.command).toMatchObject({
       _tag: 'Inspect',
-      sourceUrl: 'https://www.instagram.com/stories/instagram/',
+      sourceUrl: 'https://www.instagram.com/stories/test_user/',
     });
+  });
+
+  it.each([
+    '@instagram',
+    'instagram/user',
+    'instagram.com/stories/instagram',
+    'not-an-instagram-url',
+  ])('rejects invalid source shorthand %s', source => {
+    expect(() => parseCliArguments(['inspect', source])).toThrow(
+      'expected an Instagram URL or bare username'
+    );
+  });
+
+  it('reports a missing source when an option occupies its position', () => {
+    expect(() => parseCliArguments(['inspect', '--json'])).toThrow('Missing inspect SOURCE.');
   });
 
   it.each([
@@ -210,9 +225,9 @@ describe('CLI capability grammar', () => {
 
 describe('CLI output', () => {
   it('documents help, all-item export, policies, plans, and exit semantics', () => {
-    expect(HELP).toContain(
-      'For Stories only, a bare\n  username is accepted in place of SOURCE_URL'
-    );
+    expect(HELP).toContain('gramgrab inspect SOURCE');
+    expect(HELP).toContain('A bare username (without\n  @) targets');
+    expect(HELP).toContain('gramgrab export instagram --item 3 --mode frame --at 5');
     expect(HELP).toContain('defaults to every item found by a fresh inspection');
     expect(HELP).toContain('default when --mode is omitted');
     expect(HELP).toContain('--at defaults to 5 seconds');
