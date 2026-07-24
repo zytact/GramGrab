@@ -100,7 +100,7 @@ Parse the JSON to list specific files and exports that became unused.
 ```yaml
 - name: Fallow analysis
   run: npx fallow dead-code --ci > fallow.sarif
-  continue-on-error: true # --ci sets --fail-on-issues; continue to upload SARIF even if issues found
+  continue-on-error: true  # --ci sets --fail-on-issues; continue to upload SARIF even if issues found
 
 - name: Upload SARIF
   uses: github/codeql-action/upload-sarif@v3
@@ -111,17 +111,30 @@ Parse the JSON to list specific files and exports that became unused.
 ### GitHub Actions: Using the Official Action
 
 ```yaml
-- uses: fallow-rs/fallow@v2
+- uses: fallow-rs/fallow@v3
   with:
     command: dead-code
     fail-on-issues: true
     changed-since: main
 ```
 
+### GitHub Actions: Security Delta Gate
+
+Fail a PR only when it introduces new security candidates (or makes existing ones newly reachable). Gated failures exit with code 8; the `issues` output counts only matching gate candidates. PR comment and review renderers skip security envelopes.
+
+```yaml
+- uses: fallow-rs/fallow@v3
+  with:
+    command: security
+    security-gate: new   # or newly-reachable (needs a base ref via changed-since or PR auto-scoping)
+```
+
+GitLab equivalent: `FALLOW_COMMAND: "security"` with `FALLOW_SECURITY_GATE: "new"`.
+
 ### GitHub Actions: With Health Score
 
 ```yaml
-- uses: fallow-rs/fallow@v2
+- uses: fallow-rs/fallow@v3
   with:
     score: true
     changed-since: main
@@ -132,10 +145,10 @@ Computes a health score (0-100 with letter grade) in combined mode and enables t
 ### GitHub Actions: Severity-Aware PR Quality Gate (Audit)
 
 ```yaml
-- uses: fallow-rs/fallow@v2
+- uses: fallow-rs/fallow@v3
   with:
     command: audit
-    gate: new-only # default; fails only on findings introduced by this PR
+    gate: new-only        # default; fails only on findings introduced by this PR
     fail-on-issues: true
 ```
 
@@ -144,7 +157,7 @@ Runs `fallow audit` to combine dead-code + complexity + duplication scoped to ch
 The action exposes `outputs.verdict` (`pass`/`warn`/`fail`) and `outputs.gate` for downstream conditionals; `outputs.issues` holds the introduced count under `gate: new-only` and the total count under `gate: all`.
 
 ```yaml
-- uses: fallow-rs/fallow@v2
+- uses: fallow-rs/fallow@v3
   id: fallow
   with:
     command: audit
@@ -161,12 +174,12 @@ Three additional outputs surface silent failures in the action's PR comment / re
 The official action supports inline PR annotations via GitHub workflow commands. This does not require Advanced Security (unlike SARIF upload) and works on any GitHub plan.
 
 ```yaml
-- uses: fallow-rs/fallow@v2
+- uses: fallow-rs/fallow@v3
   with:
     command: dead-code
     changed-since: main
     annotations: true
-    max-annotations: 50 # default: 50, limits annotation count
+    max-annotations: 50   # default: 50, limits annotation count
 ```
 
 Annotations appear as inline warnings on the PR diff. They work with all commands (`dead-code`, `dupes`, `health`, and the default combined mode). The `max-annotations` input prevents annotation flooding on large projects.
@@ -205,11 +218,11 @@ include:
 fallow:
   extends: .fallow
   variables:
-    FALLOW_COMMAND: 'dead-code'
-    FALLOW_FAIL_ON_ISSUES: 'true'
+    FALLOW_COMMAND: "dead-code"
+    FALLOW_FAIL_ON_ISSUES: "true"
 ```
 
-Generates Code Quality reports (inline MR annotations) automatically. In MR pipelines, `--changed-since` is automatically set to the target branch — no manual configuration needed.
+Generates Code Quality reports (inline MR annotations) automatically. In MR pipelines, `--changed-since` is automatically set to the target branch; no manual configuration needed.
 
 If runners cannot reach `raw.githubusercontent.com`, run `fallow ci-template gitlab --vendor`, commit the generated `ci/` and `action/` files, and use GitLab's local include syntax:
 
@@ -227,11 +240,12 @@ include:
 fallow:
   extends: .fallow
   variables:
-    FALLOW_COMMENT: 'true'
-    FALLOW_SUMMARY_SCOPE: 'diff'
+    FALLOW_COMMENT: "true"
+    FALLOW_SUMMARY_SCOPE: "diff"
+    FALLOW_PR_COMMENT_LAYOUT: "gate-only"
 ```
 
-Posts a summary comment on the MR with issue counts and findings. In MR pipelines, `--changed-since` is auto-detected from `$CI_MERGE_REQUEST_TARGET_BRANCH_NAME`, so only issues from changed files are reported. `FALLOW_SUMMARY_SCOPE: "diff"` also hides project-level dependency/catalog/override findings whose anchor line is outside the diff. Requires `GITLAB_TOKEN` CI/CD variable (project access token with `api` scope); `CI_JOB_TOKEN` is read-only for MR notes in the official GitLab API.
+Posts a summary comment on the MR with issue counts and findings. In MR pipelines, `--changed-since` is auto-detected from `$CI_MERGE_REQUEST_TARGET_BRANCH_NAME`, so only issues from changed files are reported. `FALLOW_SUMMARY_SCOPE: "diff"` also hides project-level dependency/catalog/override findings whose anchor line is outside the diff. `FALLOW_PR_COMMENT_LAYOUT: "gate-only"` keeps the sticky comment compact when GitLab Code Quality is the primary review surface. Requires `GITLAB_TOKEN` CI/CD variable (project access token with `api` scope); `CI_JOB_TOKEN` is read-only for MR notes in the official GitLab API.
 
 ### GitLab CI: With Inline Code Review Comments
 
@@ -242,8 +256,8 @@ include:
 fallow:
   extends: .fallow
   variables:
-    FALLOW_REVIEW: 'true'
-    FALLOW_REVIEW_GUIDANCE: 'true'
+    FALLOW_REVIEW: "true"
+    FALLOW_REVIEW_GUIDANCE: "true"
 ```
 
 Posts inline review comments directly on the MR diff lines where issues were found. `FALLOW_REVIEW_GUIDANCE: "true"` adds collapsed "What to do" guidance blocks to each inline finding. This gives developers precise feedback without leaving the code review flow. Can be combined with `FALLOW_COMMENT: "true"` for both a summary and inline comments. Requires `GITLAB_TOKEN`.
@@ -257,14 +271,15 @@ include:
 fallow:
   extends: .fallow
   variables:
-    FALLOW_COMMENT: 'true'
-    FALLOW_SUMMARY_SCOPE: 'diff'
-    FALLOW_REVIEW: 'true'
-    FALLOW_REVIEW_GUIDANCE: 'true'
-    FALLOW_FAIL_ON_ISSUES: 'true'
+    FALLOW_COMMENT: "true"
+    FALLOW_SUMMARY_SCOPE: "diff"
+    FALLOW_PR_COMMENT_LAYOUT: "gate-only"
+    FALLOW_REVIEW: "true"
+    FALLOW_REVIEW_GUIDANCE: "true"
+    FALLOW_FAIL_ON_ISSUES: "true"
 ```
 
-Posts both a summary comment and inline review comments on the MR. `FALLOW_SUMMARY_SCOPE: "diff"` only affects the sticky summary; inline review comments remain anchored to diff lines. The template auto-detects the package manager (npm/pnpm/yarn) from lockfiles, so review comments show the correct commands for the project (e.g., `pnpm remove` instead of `npm uninstall`).
+Posts both a summary comment and inline review comments on the MR. `FALLOW_SUMMARY_SCOPE: "diff"` and `FALLOW_PR_COMMENT_LAYOUT` only affect the sticky summary; inline review comments remain anchored to diff lines. The template auto-detects the package manager (npm/pnpm/yarn) from lockfiles, so review comments show the correct commands for the project (e.g., `pnpm remove` instead of `npm uninstall`).
 
 ### GitLab CI: With Health Score and Trend
 
@@ -275,9 +290,9 @@ include:
 fallow:
   extends: .fallow
   variables:
-    FALLOW_SCORE: 'true'
-    FALLOW_TREND: 'true'
-    FALLOW_COMMENT: 'true'
+    FALLOW_SCORE: "true"
+    FALLOW_TREND: "true"
+    FALLOW_COMMENT: "true"
 ```
 
 Computes the health score and compares against saved snapshots. The MR comment includes a health delta header showing score changes. `FALLOW_TREND` implies `FALLOW_SCORE`.
@@ -426,7 +441,6 @@ fallow migrate
 ```
 
 Creates `.fallowrc.json` with mapped settings:
-
 - knip `rules`/`exclude`/`include` → fallow `rules` (error/warn/off)
 - knip `ignore` → fallow `ignorePatterns`
 - knip `ignoreDependencies` → fallow `ignoreDependencies`
@@ -466,7 +480,6 @@ fallow migrate
 ```
 
 Maps jscpd settings:
-
 - `minTokens` → `duplicates.minTokens`
 - `minLines` → `duplicates.minLines`
 - `threshold` → `duplicates.threshold`
@@ -480,12 +493,12 @@ fallow dupes --format json --quiet
 
 ### Detection mode mapping
 
-| jscpd                  | fallow                                     |
-| ---------------------- | ------------------------------------------ |
-| Default (exact tokens) | `strict`                                   |
-| —                      | `mild` (fallow default, syntax normalized) |
-| —                      | `weak` (literal normalization)             |
-| —                      | `semantic` (variable rename detection)     |
+| jscpd | fallow |
+|-------|--------|
+| Default (exact tokens) | `strict` |
+| n/a | `mild` (fallow default, syntax normalized) |
+| n/a | `weak` (literal normalization) |
+| n/a | `semantic` (variable rename detection) |
 
 ---
 
@@ -500,7 +513,6 @@ fallow fix --dry-run --format json --quiet
 ### Step 2: Review each proposed change
 
 Parse the JSON `changes` array. Each entry shows:
-
 - `path`: file to be modified
 - `action`: what will happen (`remove_export`, `remove_dependency`)
 - `name`: the symbol or dependency being removed
@@ -545,20 +557,17 @@ fallow dead-code --format json --quiet --production
 ```
 
 Differences:
-
 - Excludes: `*.test.*`, `*.spec.*`, `*.stories.*`, `__tests__/**`, `__mocks__/**`
 - Only analyzes: `start`, `build`, `serve`, `preview`, `prepare` scripts
 - Skips: unused devDependency detection
 - Adds: type-only production dependency detection
 
 Use production mode for:
-
 - Checking what ships to users
 - Finding dependencies that should be devDependencies
 - CI pipelines focused on production bundle
 
 Use full mode for:
-
 - Complete codebase hygiene
 - Finding unused test utilities
 - Auditing devDependency usage
@@ -606,7 +615,7 @@ The export is genuinely unused. Consider removing it or marking it as intentiona
 
 ```typescript
 // fallow-ignore-next-line unused-export
-export const publicApi = createWidget(); // Used by external consumers
+export const publicApi = createWidget();  // Used by external consumers
 ```
 
 ---
@@ -626,7 +635,6 @@ This adds duplication context to dead code findings, identifying clone instances
 ### Step 2: Prioritize cleanup
 
 Focus on findings that are BOTH dead code and duplicated:
-
 - Unused files containing duplicate code → delete the file entirely
 - Unused exports that are clones of other exports → remove the duplicate
 
@@ -634,7 +642,7 @@ Focus on findings that are BOTH dead code and duplicated:
 
 ## Custom Plugin Setup
 
-For frameworks not covered by the 118 built-in plugins.
+For frameworks not covered by the 123 built-in plugins.
 
 ### Option 1: Inline framework config
 
@@ -645,9 +653,9 @@ For frameworks not covered by the 118 built-in plugins.
     {
       "name": "my-framework",
       "enablers": ["my-framework"],
-      "entryPoints": ["src/routes/**/*.ts", "src/middleware/**/*.ts"],
-    },
-  ],
+      "entryPoints": ["src/routes/**/*.ts", "src/middleware/**/*.ts"]
+    }
+  ]
 }
 ```
 
@@ -662,9 +670,9 @@ Create `.fallow/plugins/my-framework.jsonc`:
   "entryPoints": ["src/routes/**/*.ts"],
   "alwaysUsedFiles": ["src/bootstrap.ts"],
   "usedExports": {
-    "src/config.ts": ["default"],
+    "src/config.ts": ["default"]
   },
-  "toolingDependencies": ["my-framework-cli"],
+  "toolingDependencies": ["my-framework-cli"]
 }
 ```
 
@@ -673,7 +681,7 @@ Create `.fallow/plugins/my-framework.jsonc`:
 ```jsonc
 // .fallowrc.json
 {
-  "plugins": ["tools/plugins/"],
+  "plugins": ["tools/plugins/"]
 }
 ```
 
@@ -717,7 +725,7 @@ Use this when Claude Code is allowed to run Git commands in a repository that al
 The pattern is a local agent gate, not a Git hook. Claude Code intercepts its own `Bash` tool calls before execution. When Claude tries `git commit` or `git push`, the hook runs:
 
 ```bash
-fallow audit --format json --quiet --explain
+fallow audit --format json --quiet --explain --gate-marker agent
 ```
 
 Behavior:
@@ -769,17 +777,16 @@ Manual files:
 Prefer `fallow hooks install --target agent` to install this file. The script is written and maintained by fallow itself; the canonical source is [`crates/cli/src/setup_hooks/fallow-gate.sh`](https://github.com/fallow-rs/fallow/blob/main/crates/cli/src/setup_hooks/fallow-gate.sh).
 
 Behavior you can rely on:
-
 - Runs only when the intercepted command matches `git commit` or `git push`; otherwise exits 0.
 - Resolves `fallow` from PATH first, then `npx --no-install fallow` as a fallback. Skips with a stderr notice if neither is available or if `jq` is missing.
-- Enforces a version floor via `FALLOW_GATE_MIN_VERSION` (default `2.46.0`). Binaries below the floor are blocked with an upgrade hint. Set the env var to the empty string to disable the check.
-- Runs `fallow audit --format json --quiet --explain` and, on verdict=`fail`, writes the full JSON envelope to stderr preceded by `fallow-gate: blocked by fallow <version> at <binary>` so the responsible binary is always identifiable.
+- Enforces a version floor via `FALLOW_GATE_MIN_VERSION` (default `2.85.0`). Binaries below the floor are blocked with an upgrade hint. Set the env var to the empty string to disable the check.
+- Runs `fallow audit --format json --quiet --explain --gate-marker agent` and, on verdict=`fail`, writes the full JSON envelope to stderr preceded by `fallow-gate: blocked by fallow <version> at <binary>` so the responsible binary is always identifiable. The gate marker lets local Impact record blocked-then-cleared agent gate events when Impact is enabled.
 - On runtime error (`{"error": true, ...}`) or unexpected non-zero exit, fails open with a one-line stderr notice; warn verdicts pass through silently.
 
 Codex fallback (add to repo root `AGENTS.md`):
 
 ```md
-Before any `git commit` or `git push`, run `fallow audit --format json --quiet --explain`. If the verdict is `fail`, fix the reported findings before retrying. Treat JSON runtime errors like `{ "error": true, ... }` as non-blocking.
+Before any `git commit` or `git push`, run `fallow audit --format json --quiet --explain --gate-marker agent`. If the verdict is `fail`, fix the reported findings before retrying. Treat JSON runtime errors like `{ "error": true, ... }` as non-blocking.
 ```
 
 Keep `fallow audit` in CI alongside this local gate. The hook only runs for Claude Code, not for human pushes or other agents, so it is a reinforcement layer rather than a replacement for server-side enforcement.
@@ -796,4 +803,4 @@ Use `--force` to remove a hook script that the user has edited (the marker is no
 
 ### Distinguish from `fallow hooks install --target git`
 
-`fallow hooks install --target git` is a different target: it scaffolds a shell-level Git pre-commit hook under `.git/hooks/` that runs `fallow` on changed files. That is the _human_ enforcement path. `fallow hooks install --target agent` is the _agent_ enforcement path, targeting `.claude/` and `AGENTS.md`. Both can live in the same repo: git hooks catch human commits, the agent gate catches agent commits.
+`fallow hooks install --target git` is a different target: it scaffolds a shell-level Git pre-commit hook under `.git/hooks/` that runs `fallow` on changed files. That is the *human* enforcement path. `fallow hooks install --target agent` is the *agent* enforcement path, targeting `.claude/` and `AGENTS.md`. Both can live in the same repo: git hooks catch human commits, the agent gate catches agent commits.

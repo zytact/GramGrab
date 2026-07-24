@@ -23,7 +23,7 @@ Always preview with `--dry-run` before applying. This is a destructive operation
 
 ## Don't Create Config Unless Needed
 
-Fallow works with zero configuration for most projects thanks to 118 auto-detecting framework plugins. Creating an unnecessary config file can mask issues or override detection behavior.
+Fallow works with zero configuration for most projects thanks to 123 auto-detecting framework plugins. Creating an unnecessary config file can mask issues or override detection behavior.
 
 ```bash
 # WRONG: creating config for a standard Next.js project
@@ -36,7 +36,6 @@ fallow dead-code --format json --quiet
 ```
 
 Only create a config when you need to:
-
 - Change rule severity levels for incremental adoption
 - Add custom ignore patterns or ignore dependencies
 - Specify additional entry points not auto-detected
@@ -68,7 +67,7 @@ The `--changed-since` flag limits analysis to files modified since a git ref. It
 # This only shows issues in files changed since main
 fallow dead-code --format json --quiet --changed-since main
 
-# Same for duplication — only clone groups involving changed files
+# Same for duplication, only clone groups involving changed files
 fallow dupes --format json --quiet --changed-since main
 
 # This shows ALL issues in the project
@@ -76,6 +75,18 @@ fallow dead-code --format json --quiet
 ```
 
 Don't use `--changed-since` when auditing the full project. Use it for PR checks and incremental CI.
+
+---
+
+## Svelte Event Findings Are Project-Wide Listener Checks
+
+`unused-svelte-event` reports a Svelte `createEventDispatcher` event that has no reachable listener in the project. This is different from `unused-component-emit`, which checks whether a Vue component ever emits its declared event.
+
+```bash
+fallow dead-code --format json --quiet --unused-svelte-events
+```
+
+Dynamic event names, dispatcher values that escape the component, and projects without a declared Svelte dependency are abstained to avoid false positives.
 
 ---
 
@@ -131,13 +142,13 @@ Fallow fully resolves `export *` and named re-export chains through barrel files
 
 ```typescript
 // src/utils.ts
-export const helper = () => {}; // NOT flagged, used via barrel chain
+export const helper = () => {};  // NOT flagged, used via barrel chain
 
 // src/index.ts (barrel)
 export * from './utils';
 
 // src/app.ts
-import { helper } from './index'; // Resolves through the chain
+import { helper } from './index';  // Resolves through the chain
 ```
 
 If an export IS flagged as unused despite being in a barrel file, it means no downstream consumer actually imports it. The barrel file re-exports it, but nobody uses it from there.
@@ -146,11 +157,11 @@ If an export IS flagged as unused despite being in a barrel file, it means no do
 
 ## Exit Code 1 vs 2
 
-| Code | Meaning                                                          | Action                    |
-| ---- | ---------------------------------------------------------------- | ------------------------- |
-| 0    | No error-severity issues                                         | Success                   |
-| 1    | Error-severity issues found                                      | Review findings           |
-| 2    | Runtime error (`fix` without `--yes` in non-TTY, invalid config) | Fix config or add `--yes` |
+| Code | Meaning | Action |
+|------|---------|--------|
+| 0 | No error-severity issues | Success |
+| 1 | Error-severity issues found | Review findings |
+| 2 | Runtime error (`fix` without `--yes` in non-TTY, invalid config) | Fix config or add `--yes` |
 
 Exit code 1 is triggered by issues with `"error"` severity in the rules config. Without a rules section, all issue types default to `"error"`. Use the rules system to control which issues fail CI:
 
@@ -161,8 +172,8 @@ Exit code 1 is triggered by issues with `"error"` severity in the rules config. 
     "unused-files": "error",
     "unused-dependencies": "error",
     "unused-exports": "warn",
-    "unused-types": "warn",
-  },
+    "unused-types": "warn"
+  }
 }
 ```
 
@@ -316,13 +327,17 @@ If you use utility decorators that DO NOT imply reflective use (Playwright's `@s
 ```jsonc
 // .fallowrc.json
 {
-  "ignoreDecorators": ["@step"],
+  "ignoreDecorators": ["@step"]
 }
 ```
 
 Conservative semantics: a method carrying any decorator NOT in the list still gets skipped. So `@step` + `@Inject` on the same method stays treated as framework-managed. Matching rule: entries containing `.` (`"decorators.log"`) match the full dotted path; bare entries (`"step"` or `"decorators"`) match the leftmost segment, so a single bare `"decorators"` entry collapses an entire `@decorators.*` namespace. Both `"@step"` and `"step"` round-trip equivalently. Unmatched entries (a decorator name in the config that never appears in your codebase) surface as a one-time warning at end of run.
 
 The default empty list preserves today's skip-all behavior, so existing NestJS / Angular / TypeORM projects see no change.
+
+### Angular `@Input()` / `@Output()` are still covered by the component rules
+
+The skip above applies only to generic `unused-class-member` detection. The dedicated Angular component rules (`unused-component-input` for `@Input()` / signal `input()` / `model()`, and `unused-component-output` for `@Output()` / signal `output()`, both default `warn`, gated on `@angular/core`) scope usage to the component itself: an input is dead when it is read by no code in its own class body or template (inline `template` or external `templateUrl`), and an output is dead when it is emitted (`.emit()`) nowhere in its own component. The scope is the component, not the project: an input that a parent binds via `[input]="..."` but the component itself never reads IS flagged, because the parent binding is satisfied while the value goes unused inside the component. These rules abstain on the whole component for any `extends` clause, a `{...this}` spread, JS-reserved-word names, accessor (`get` / `set`) inputs, and observable-stream `@Output`s (only `new EventEmitter()` initializers are harvested); `model()` is treated as input-only. Suppress an individual finding with `// fallow-ignore-next-line unused-component-input` or `-output`.
 
 ---
 
@@ -386,7 +401,7 @@ Fallow detects `// fallow-ignore` comments and `@expected-unused` JSDoc tags tha
 ```typescript
 // STALE: the export below is actually used now
 // fallow-ignore-next-line unused-export
-export const helper = () => {}; // imported in app.ts
+export const helper = () => {};  // imported in app.ts
 ```
 
 Use `--stale-suppressions` to filter for only stale suppression findings. The `stale-suppressions` rule defaults to `warn`. Set to `error` in CI to enforce suppression hygiene:
@@ -394,8 +409,8 @@ Use `--stale-suppressions` to filter for only stale suppression findings. The `s
 ```jsonc
 {
   "rules": {
-    "stale-suppressions": "error",
-  },
+    "stale-suppressions": "error"
+  }
 }
 ```
 
@@ -434,9 +449,7 @@ export const Layout = () => (
       <link rel="stylesheet" href="/static/style.css" />
       <script src="/static/app.js"></script>
     </head>
-    <body>
-      <h1>Hello</h1>
-    </body>
+    <body><h1>Hello</h1></body>
   </html>
 );
 ```
@@ -465,13 +478,31 @@ Fallow marks `src/fragments/user-fields.graphql` or `src/fragments/user-fields.g
 
 ---
 
+## Tailwind v4 `@theme` Tokens Are Conservative Cleanup Candidates
+
+When `fallow health --css` reports `css_analytics.unused_theme_tokens`, treat the rows as dead-design-token candidates, not as auto-fix instructions. A Tailwind v4 `@theme` token such as `--color-brand` is considered used when fallow sees a generated utility suffix such as `bg-brand` or `text-brand`, a `var(--color-brand)` read, an `@apply` utility, a Tailwind arbitrary value such as `rounded-[--radius-card]`, or another `@theme` token that references it.
+
+The detector intentionally abstains when a Tailwind plugin or published CSS surface could consume tokens invisibly. Always run the row's `actions[].command` verification before deleting a token, and do not run `fallow fix` for these rows.
+
+The same Tailwind v4 projects also get `css_analytics.token_consumers`, the reverse index: per `@theme` token, where it is consumed (a `consumer_count` plus a located `consumers[]` sample tagged `theme-var` / `css-var` / `utility` / `apply`), so you can read a token's blast radius before changing it. Treat `consumer_count` as a static lower bound: a computed class name such as `bg-${color}` is invisible to the scan, so a `0` here is the same "nothing fallow can see consumes this" population as `unused_theme_tokens`, not a deletion proof. `token_consumers` is descriptive context with no `actions[]`; drive any deletion off `unused_theme_tokens` and its verification command.
+
+`token_consumers` also covers CSS-in-JS token DEFINITIONS (StyleX `defineVars`, vanilla-extract `createTheme` / `createThemeContract` / `createGlobalTheme`, and PandaCSS `defineTokens`), disambiguated by the consumer `kind`: StyleX and vanilla-extract entries use `kind` `js-member`, `token` is the binding-qualified dotted access path (`vars.color.primary`), and `namespace` is the defining binding (`vars`); PandaCSS entries use the defining binding plus token path (`tokens.colors.brand`) and `token(...)` consumers are tagged `js-call`. The cross-file scan uses fallow's shared import resolver, so relative imports, tsconfig `paths` aliases, and workspace package imports can resolve to the token definition. Dynamic import strings, unresolved aliases, generated package state, and computed token access still keep `consumer_count` a lower bound, and unlike Tailwind there is no corroborating dead-token finding, so a CSS-in-JS `consumer_count` of `0` is a weaker signal. Gated on a declared CSS-in-JS library (`@stylexjs/stylex`, `@vanilla-extract/css`, or `@pandacss/dev`).
+
+## CSS Health Candidates Are Advisory
+
+`fallow health --css` also emits advisory cleanup and typo candidates in `css_analytics.unreferenced_css_classes` (a plain-CSS class defined but matched by no `class`/`className` in project markup), `css_analytics.unresolved_class_references` (the reverse: a markup class one edit away from a defined class, a likely typo), `css_analytics.unused_font_faces`, `css_analytics.undefined_keyframes`, and `css_analytics.font_size_unit_mix`. Treat them like review prompts, not confirmed defects. Run each row's `actions[].command` before changing CSS, because fonts, classes, animations, and type scales can be driven by inline styles, JavaScript, CMS templates, or preprocessor expansion that static analysis intentionally does not execute.
+
+`fallow health --css` also derives `styling_health`, a descriptive A-F grade (and 0-100 `score`) for CSS quality, scored SEPARATELY from the code `health_score`. It is descriptive-only: it never gates an exit code, badge, or CI, and never affects the code score, so do NOT branch automation on it. Read it as a design-system credibility signal. It weights design-token DRIFT over byte-identical repetition: the `token_erosion` penalty includes a hardcoded-value-sprawl term over distinct `box-shadow` / `border-radius` / `line-height` values, but counts only HARDCODED literals: a system that references its scale via `var(--*)` scores 0 sprawl regardless of how many tokens it defines (so "tokenize repeated values" is the remedy the human output suggests). A grade from a thin CSS surface (or predominantly compile-time-atomic CSS-in-JS like StyleX/Panda) is marked `confidence: "low"` with a reason. `styling_health.formula_version` bumps when the rubric is recalibrated; if you diff the score/grade over time, gate on it and re-baseline at a bump rather than reading the step-change as a regression.
+
+---
+
 ## Library Packages: Use `publicPackages` Instead of Visibility Tags
 
 In monorepos, shared library packages have exported APIs consumed by external consumers not visible to fallow. Instead of annotating every export with `/** @public */` (or `@internal`, `@beta`, `@alpha`), use the `publicPackages` config to mark entire workspace packages as public libraries. Exports and exported enum/class members from these packages are excluded from unused API detection.
 
 ```jsonc
 {
-  "publicPackages": ["@myorg/shared-lib", "@myorg/ui-kit"],
+  "publicPackages": ["@myorg/shared-lib", "@myorg/ui-kit"]
 }
 ```
 
@@ -485,7 +516,7 @@ Files loaded at runtime via plugin systems, locale directories, or lazy module p
 
 ```jsonc
 {
-  "dynamicallyLoaded": ["plugins/**/*.ts", "locales/**/*.json"],
+  "dynamicallyLoaded": ["plugins/**/*.ts", "locales/**/*.json"]
 }
 ```
 
@@ -507,12 +538,8 @@ Fallow tracks class member usage through instance variables. If you instantiate 
 
 ```typescript
 class MyService {
-  greet() {
-    return 'hello';
-  } // NOT flagged: used via instance
-  unused() {
-    return 'bye';
-  } // Flagged: never called
+  greet() { return 'hello'; }   // NOT flagged: used via instance
+  unused() { return 'bye'; }    // Flagged: never called
 }
 
 const svc = new MyService();
@@ -529,10 +556,10 @@ In `--production` mode, fallow detects production dependencies that are only imp
 
 ```typescript
 // If "zod" is in dependencies (not devDependencies):
-import type { ZodSchema } from 'zod'; // Flagged as type-only dependency
+import type { ZodSchema } from 'zod';  // Flagged as type-only dependency
 
 // This is a real import, not type-only:
-import { z } from 'zod'; // NOT flagged
+import { z } from 'zod';  // NOT flagged
 ```
 
 ```bash
@@ -554,9 +581,9 @@ Fallow detects production dependencies that are only imported from test files (`
 ```typescript
 // If "msw" is in dependencies (not devDependencies):
 // src/handlers.test.ts
-import { setupServer } from 'msw/node'; // Flagged as test-only dependency
+import { setupServer } from 'msw/node';  // Flagged as test-only dependency
 
-// src/app.ts — no imports of "msw" here
+// src/app.ts: no imports of "msw" here
 ```
 
 ```bash
@@ -575,8 +602,8 @@ The `test-only-dependencies` rule defaults to `warn`. Suppress with `"test-only-
 
 These are separate features and can be used independently or together:
 
-- **`FALLOW_COMMENT: "true"`** — posts a single summary comment on the MR with issue counts and a findings table
-- **`FALLOW_REVIEW: "true"`** — posts inline code review comments on the exact MR diff lines where issues were found
+- **`FALLOW_COMMENT: "true"`**: posts a single summary comment on the MR with issue counts and a findings table
+- **`FALLOW_REVIEW: "true"`**: posts inline code review comments on the exact MR diff lines where issues were found
 
 ```yaml
 # WRONG: expecting inline review comments from FALLOW_COMMENT
@@ -608,12 +635,12 @@ fallow license refresh: your stored license is too stale to refresh. Reactivate 
 
 Stable codes the CLI surfaces today:
 
-| Code                  | Operation            | Meaning                                                                         |
-| --------------------- | -------------------- | ------------------------------------------------------------------------------- |
-| `token_stale`         | `refresh`            | Stored JWT is more than 45 days past its `exp`. Reactivate.                     |
-| `invalid_token`       | `refresh`            | Stored JWT is missing required claims (e.g. `sub`). Reactivate.                 |
-| `unauthorized`        | `refresh` or `trial` | Auth failed. Reactivate.                                                        |
-| `rate_limit_exceeded` | `trial`              | Trial endpoint is capped at 5 per hour per IP. Wait or use a different network. |
+| Code | Operation | Meaning |
+|------|-----------|---------|
+| `token_stale` | `refresh` | Stored JWT is more than 45 days past its `exp`. Reactivate. |
+| `invalid_token` | `refresh` | Stored JWT is missing required claims (e.g. `sub`). Reactivate. |
+| `unauthorized` | `refresh` or `trial` | Auth failed. Reactivate. |
+| `rate_limit_exceeded` | `trial` | Trial endpoint is capped at 5 per hour per IP. Wait or use a different network. |
 
 To detect a rate-limited trial signup in CI:
 
@@ -634,10 +661,10 @@ The official GitLab CI template automatically sets `--changed-since origin/$CI_M
 ```yaml
 # UNNECESSARY: changed-since is auto-detected in MR pipelines
 variables:
-  FALLOW_CHANGED_SINCE: 'origin/main'
+  FALLOW_CHANGED_SINCE: "origin/main"
 
 # CORRECT: let the template auto-detect
-# (no FALLOW_CHANGED_SINCE needed — it reads the MR target branch)
+# (no FALLOW_CHANGED_SINCE needed, it reads the MR target branch)
 ```
 
 Override `FALLOW_CHANGED_SINCE` only when you need a specific ref (e.g., a release branch) or want to disable auto-detection by setting it to an empty string.
@@ -648,4 +675,4 @@ Override `FALLOW_CHANGED_SINCE` only when you need a specific ref (e.g., a relea
 
 The GitLab CI template auto-detects the project's package manager from lockfiles (`package-lock.json` for npm, `pnpm-lock.yaml` for pnpm, `yarn.lock` for yarn). MR comments and review comments use the correct commands for the detected manager.
 
-This means review comments will show `pnpm remove lodash` instead of `npm uninstall lodash` in a pnpm project. No configuration is needed — detection is automatic.
+This means review comments will show `pnpm remove lodash` instead of `npm uninstall lodash` in a pnpm project. No configuration is needed; detection is automatic.
