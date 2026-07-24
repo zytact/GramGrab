@@ -76,10 +76,10 @@ describe('CLI capability grammar', () => {
   });
 
   it('resolves a bare username to its Stories', () => {
-    const parsed = parseCliArguments(['inspect', 'povofpriya_']);
+    const parsed = parseCliArguments(['inspect', 'instagram']);
     expect(parsed.command).toMatchObject({
       _tag: 'Inspect',
-      sourceUrl: 'https://www.instagram.com/stories/povofpriya_/',
+      sourceUrl: 'https://www.instagram.com/stories/instagram/',
     });
   });
 
@@ -115,9 +115,9 @@ describe('CLI capability grammar', () => {
   });
 
   it('exports Stories from a bare username', () => {
-    const parsed = parseCliArguments(['export', 'povofpriya_']);
+    const parsed = parseCliArguments(['export', 'instagram']);
     expect(parsed.expandAll).toMatchObject({
-      sourceUrl: 'https://www.instagram.com/stories/povofpriya_/',
+      sourceUrl: 'https://www.instagram.com/stories/instagram/',
     });
   });
 

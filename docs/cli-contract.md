@@ -31,8 +31,7 @@ gramgrab debug export [--json]
 ```
 
 A bare username in place of `SOURCE_URL` resolves the account's current Stories, for example
-`gramgrab inspect povofpriya_` resolves
-`https://www.instagram.com/stories/povofpriya_/`.
+`gramgrab inspect instagram` resolves `https://www.instagram.com/stories/instagram/`.
 
 `status` is the phase 3 transport probe. It uses a five-second bounded wait and reports the
 browser family, extension version, native-host version, protocol version, and compatibility. The
