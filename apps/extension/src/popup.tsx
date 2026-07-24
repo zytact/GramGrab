@@ -854,6 +854,31 @@ export default function Popup() {
     if (downloadIntent > 0) void handleDownloadRef.current();
   }, [downloadIntent]);
 
+  const mediaListModel = {
+    mediaItems,
+    intrinsicDimensions,
+    allSelected,
+    fallbackLoading,
+    fallbackFailed,
+    frameExportSettings,
+    removeAudioIndexes,
+    frameRuntime,
+    attempt: downloadAttempt.attempt,
+  };
+  const mediaListActions = {
+    onPreviewError: handlePreviewError,
+    onToggle: toggleItem,
+    onToggleAll: toggleAll,
+    onToggleExportFrame: toggleExportFrame,
+    onToggleRemoveAudio: toggleRemoveAudio,
+    onChangeFrameTimestamp: changeFrameTimestamp,
+    onRetryFrameMetadata: loadFrameMetadata,
+    onRetryFrameExport: (index: number) => void handleExportFrame(index),
+    onVideoRef: handleVideoRef,
+    onVideoMetadata: handleVideoMetadata,
+    onIntrinsicDimensions: handleIntrinsicDimensions,
+  };
+
   return (
     <div className={`container${workspaceMode ? ' workspace-container' : ''}`}>
       <header className="ext-header">
@@ -950,28 +975,10 @@ export default function Popup() {
             </div>
 
             <MediaListSection
-              mediaItems={mediaItems}
+              model={mediaListModel}
+              actions={mediaListActions}
               workspaceMode={workspaceMode}
-              intrinsicDimensions={intrinsicDimensions}
-              allSelected={allSelected}
-              fallbackLoading={fallbackLoading}
-              fallbackFailed={fallbackFailed}
-              frameExportSettings={frameExportSettings}
-              removeAudioIndexes={removeAudioIndexes}
-              frameRuntime={frameRuntime}
-              attempt={downloadAttempt.attempt}
               disabled={isBusy}
-              onPreviewError={handlePreviewError}
-              onToggle={toggleItem}
-              onToggleAll={toggleAll}
-              onToggleExportFrame={toggleExportFrame}
-              onToggleRemoveAudio={toggleRemoveAudio}
-              onChangeFrameTimestamp={changeFrameTimestamp}
-              onRetryFrameMetadata={loadFrameMetadata}
-              onRetryFrameExport={index => void handleExportFrame(index)}
-              onVideoRef={handleVideoRef}
-              onVideoMetadata={handleVideoMetadata}
-              onIntrinsicDimensions={handleIntrinsicDimensions}
             />
 
             <div className="ext-section">
@@ -1084,21 +1091,26 @@ export default function Popup() {
         <span className={`status-text ${status}`}>{message}</span>
       </div>
 
-      <WorkspaceActions
-        workspaceMode={workspaceMode}
-        selectedCount={selectedCount}
-        mediaCount={mediaItems.length}
-        allSelected={allSelected}
-        isBusy={isBusy}
-        isDownloading={status === 'downloading'}
-        onToggleAll={toggleAll}
-        onDownload={handleDownload}
-        workspaceExists={workspaceExists}
-        hasTransferableSession={hasTransferableSession}
-        confirmReplace={confirmReplace}
-        setConfirmReplace={setConfirmReplace}
-        onReplace={handleReplaceWorkspace}
-      />
+      {workspaceMode ? (
+        <WorkspaceSelectionActions
+          selectedCount={selectedCount}
+          mediaCount={mediaItems.length}
+          allSelected={allSelected}
+          isBusy={isBusy}
+          isDownloading={status === 'downloading'}
+          onToggleAll={toggleAll}
+          onDownload={handleDownload}
+        />
+      ) : (
+        <WorkspaceReplacementAction
+          workspaceExists={workspaceExists}
+          hasTransferableSession={hasTransferableSession}
+          confirmReplace={confirmReplace}
+          isBusy={isBusy}
+          setConfirmReplace={setConfirmReplace}
+          onReplace={handleReplaceWorkspace}
+        />
+      )}
 
       <footer className="ext-footer">
         <span className="footer-brand">GramGrab</span>
@@ -1338,8 +1350,7 @@ function PopupHeader({
   );
 }
 
-function WorkspaceActions({
-  workspaceMode,
+function WorkspaceSelectionActions({
   selectedCount,
   mediaCount,
   allSelected,
@@ -1347,13 +1358,7 @@ function WorkspaceActions({
   isDownloading,
   onToggleAll,
   onDownload,
-  workspaceExists,
-  hasTransferableSession,
-  confirmReplace,
-  setConfirmReplace,
-  onReplace,
 }: {
-  workspaceMode: boolean;
   selectedCount: number;
   mediaCount: number;
   allSelected: boolean;
@@ -1361,35 +1366,45 @@ function WorkspaceActions({
   isDownloading: boolean;
   onToggleAll: () => void;
   onDownload: () => Promise<void>;
+}) {
+  return (
+    <div className="workspace-action-bar">
+      <span>{selectedCount} selected</span>
+      <button
+        type="button"
+        className="workspace-secondary"
+        onClick={onToggleAll}
+        disabled={!mediaCount}
+      >
+        {allSelected ? 'Clear all' : 'Select all'}
+      </button>
+      <button
+        type="button"
+        className="workspace-download"
+        onClick={() => void onDownload()}
+        disabled={selectedCount === 0 || isBusy}
+      >
+        {isDownloading ? 'Downloading…' : 'Download selected'}
+      </button>
+    </div>
+  );
+}
+
+function WorkspaceReplacementAction({
+  workspaceExists,
+  hasTransferableSession,
+  confirmReplace,
+  isBusy,
+  setConfirmReplace,
+  onReplace,
+}: {
   workspaceExists: boolean;
   hasTransferableSession: boolean;
   confirmReplace: boolean;
+  isBusy: boolean;
   setConfirmReplace: (value: boolean) => void;
   onReplace: () => Promise<void>;
 }) {
-  if (workspaceMode) {
-    return (
-      <div className="workspace-action-bar">
-        <span>{selectedCount} selected</span>
-        <button
-          type="button"
-          className="workspace-secondary"
-          onClick={onToggleAll}
-          disabled={!mediaCount}
-        >
-          {allSelected ? 'Clear all' : 'Select all'}
-        </button>
-        <button
-          type="button"
-          className="workspace-download"
-          onClick={() => void onDownload()}
-          disabled={selectedCount === 0 || isBusy}
-        >
-          {isDownloading ? 'Downloading…' : 'Download selected'}
-        </button>
-      </div>
-    );
-  }
   if (!workspaceExists || !hasTransferableSession) return null;
   return (
     <div className="workspace-replace">
@@ -1452,32 +1467,8 @@ function renderFetchButtonLabel(status: Status) {
   );
 }
 
-function MediaListSection({
-  mediaItems,
-  workspaceMode,
-  intrinsicDimensions,
-  allSelected,
-  fallbackLoading,
-  fallbackFailed,
-  frameExportSettings,
-  removeAudioIndexes,
-  frameRuntime,
-  attempt,
-  disabled,
-  onPreviewError,
-  onToggle,
-  onToggleAll,
-  onToggleExportFrame,
-  onToggleRemoveAudio,
-  onChangeFrameTimestamp,
-  onRetryFrameMetadata,
-  onRetryFrameExport,
-  onVideoRef,
-  onVideoMetadata,
-  onIntrinsicDimensions,
-}: {
+type MediaListModel = {
   mediaItems: MediaItem[];
-  workspaceMode: boolean;
   intrinsicDimensions: Record<number, { width: number; height: number }>;
   allSelected: boolean;
   fallbackLoading: Set<number>;
@@ -1486,7 +1477,9 @@ function MediaListSection({
   removeAudioIndexes: Set<number>;
   frameRuntime: Record<number, FrameRuntime>;
   attempt: ReturnType<typeof useDownloadAttempt>['attempt'];
-  disabled: boolean;
+};
+
+type MediaListActions = {
   onPreviewError: (item: MediaItem) => void;
   onToggle: (index: number) => void;
   onToggleAll: () => void;
@@ -1498,6 +1491,16 @@ function MediaListSection({
   onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
   onVideoMetadata: (index: number, durationSeconds: number) => void;
   onIntrinsicDimensions: (item: MediaItem, width: number, height: number) => void;
+};
+
+function useMediaMasonry({
+  mediaItems,
+  workspaceMode,
+  intrinsicDimensions,
+}: {
+  mediaItems: MediaItem[];
+  workspaceMode: boolean;
+  intrinsicDimensions: Record<number, { width: number; height: number }>;
 }) {
   const masonryRef = useRef<HTMLDivElement>(null);
   const [masonryWidth, setMasonryWidth] = useState(0);
@@ -1522,6 +1525,50 @@ function MediaListSection({
     observer.observe(element);
     return () => observer.disconnect();
   }, [workspaceMode]);
+
+  return { masonryRef, masonryColumns };
+}
+
+function MediaListSection({
+  model,
+  actions,
+  workspaceMode,
+  disabled,
+}: {
+  model: MediaListModel;
+  actions: MediaListActions;
+  workspaceMode: boolean;
+  disabled: boolean;
+}) {
+  const {
+    mediaItems,
+    intrinsicDimensions,
+    allSelected,
+    fallbackLoading,
+    fallbackFailed,
+    frameExportSettings,
+    removeAudioIndexes,
+    frameRuntime,
+    attempt,
+  } = model;
+  const {
+    onPreviewError,
+    onToggle,
+    onToggleAll,
+    onToggleExportFrame,
+    onToggleRemoveAudio,
+    onChangeFrameTimestamp,
+    onRetryFrameMetadata,
+    onRetryFrameExport,
+    onVideoRef,
+    onVideoMetadata,
+    onIntrinsicDimensions,
+  } = actions;
+  const { masonryRef, masonryColumns } = useMediaMasonry({
+    mediaItems,
+    workspaceMode,
+    intrinsicDimensions,
+  });
 
   const renderItem = (item: MediaItem) => (
     <MediaItemRow
