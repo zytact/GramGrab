@@ -75,6 +75,14 @@ describe('CLI capability grammar', () => {
     });
   });
 
+  it('resolves a bare username to its Stories', () => {
+    const parsed = parseCliArguments(['inspect', 'povofpriya_']);
+    expect(parsed.command).toMatchObject({
+      _tag: 'Inspect',
+      sourceUrl: 'https://www.instagram.com/stories/povofpriya_/',
+    });
+  });
+
   it.each([
     ['direct', [], 'DirectExport'],
     ['frame', ['--at', '7'], 'FrameExport'],
@@ -103,6 +111,13 @@ describe('CLI capability grammar', () => {
     expect(parsed.expandAll).toMatchObject({
       sourceUrl: 'https://www.instagram.com/p/example/',
       mode: { _tag: 'DirectExport' },
+    });
+  });
+
+  it('exports Stories from a bare username', () => {
+    const parsed = parseCliArguments(['export', 'povofpriya_']);
+    expect(parsed.expandAll).toMatchObject({
+      sourceUrl: 'https://www.instagram.com/stories/povofpriya_/',
     });
   });
 

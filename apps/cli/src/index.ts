@@ -75,9 +75,10 @@ Usage:
   gramgrab debug get|export [--json]
 
 Sources:
-  Instagram post, reel, story, highlight, and profile URLs are accepted. Profile URLs resolve the
-  account avatar. Export defaults to every item found by a fresh inspection. Use --item to select
-  specific items. Repeated --item starts another operation and may specify a different mode.
+  Instagram post, reel, story, highlight, and profile URLs are accepted. A bare username resolves
+  that account's Stories. Profile URLs resolve the account avatar. Export defaults to every item
+  found by a fresh inspection. Use --item to select specific items. Repeated --item starts another
+  operation and may specify a different mode.
 
 Export modes:
   direct  Download the original media. This is the default when --mode is omitted.
@@ -104,6 +105,11 @@ function option(arguments_: readonly string[], name: string): string | undefined
 function required(value: string | undefined, message: string): string {
   if (!value) throw new Error(message);
   return value;
+}
+
+function resolveSourceUrl(value: string | undefined, message: string): string {
+  const source = required(value, message);
+  return source.includes('://') ? source : `https://www.instagram.com/stories/${source}/`;
 }
 
 function requiredIds(values: readonly string[]): readonly string[] {
@@ -153,7 +159,7 @@ function exportOperation(arguments_: readonly string[]): ExportOperation {
 }
 
 function exportCommand(arguments_: readonly string[]): ParsedCli {
-  const sourceUrl = required(arguments_[1], 'Missing export SOURCE_URL.');
+  const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE_URL.');
   if (option(arguments_, '--plan'))
     throw new Error('Structured plans must be loaded asynchronously with --plan - or a file path.');
   const itemIndexes = arguments_.flatMap((value, index) => (value === '--item' ? [index] : []));
@@ -179,7 +185,9 @@ export function parseCliArguments(arguments_: readonly string[]): ParsedCli {
   if (command === 'status') return { command: Status.make({}), json };
   if (command === 'inspect')
     return {
-      command: Inspect.make({ sourceUrl: required(arguments_[1], 'Missing inspect SOURCE_URL.') }),
+      command: Inspect.make({
+        sourceUrl: resolveSourceUrl(arguments_[1], 'Missing inspect SOURCE_URL.'),
+      }),
       json,
     };
   if (command === 'export') return exportCommand(arguments_);
@@ -218,7 +226,7 @@ async function parse(arguments_: readonly string[]): Promise<ParsedCli> {
   if (arguments_[0] !== 'export') throw new Error('--plan is only valid with export.');
   const input = plan === '-' ? await readStandardInput() : await readFile(plan, 'utf8');
   const value: unknown = JSON.parse(input);
-  const sourceUrl = required(arguments_[1], 'Missing export SOURCE_URL.');
+  const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE_URL.');
   const command = await Effect.runPromise(
     Schema.decodeUnknown(Export)({ sourceUrl, operations: value })
   );
