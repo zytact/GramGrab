@@ -210,6 +210,8 @@ describe('CLI capability grammar', () => {
 
 describe('CLI output', () => {
   it('documents help, all-item export, policies, plans, and exit semantics', () => {
+    expect(HELP).toContain('inspect SOURCE_URL|USERNAME');
+    expect(HELP).toContain('export SOURCE_URL|USERNAME');
     expect(HELP).toContain('Export defaults to every item');
     expect(HELP).toContain('default when --mode is omitted');
     expect(HELP).toContain('--at defaults to 5 seconds');

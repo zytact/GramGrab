@@ -17,11 +17,11 @@ fresh request ID.
 ```text
 gramgrab status [--json]
 gramgrab help
-gramgrab inspect SOURCE_URL [--json]
-gramgrab export SOURCE_URL [--item NUMBER] [--mode direct] [--json]
-gramgrab export SOURCE_URL [--item NUMBER] --mode frame [--at SECONDS] [--json]
-gramgrab export SOURCE_URL [--item NUMBER] --mode silent --reencode forbid|allow|require [--json]
-gramgrab export SOURCE_URL --plan - [--json]
+gramgrab inspect SOURCE_URL|USERNAME [--json]
+gramgrab export SOURCE_URL|USERNAME [--item NUMBER] [--mode direct] [--json]
+gramgrab export SOURCE_URL|USERNAME [--item NUMBER] --mode frame [--at SECONDS] [--json]
+gramgrab export SOURCE_URL|USERNAME [--item NUMBER] --mode silent --reencode forbid|allow|require [--json]
+gramgrab export SOURCE_URL|USERNAME --plan - [--json]
 gramgrab history list [--json]
 gramgrab history remove ENTRY_ID... [--json]
 gramgrab history clear [--json]

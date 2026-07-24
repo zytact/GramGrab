@@ -66,11 +66,11 @@ export const HELP = `GramGrab CLI
 Usage:
   gramgrab help
   gramgrab status [--json]
-  gramgrab inspect SOURCE_URL [--json]
-  gramgrab export SOURCE_URL [--item NUMBER ...] [--mode direct] [--json]
-  gramgrab export SOURCE_URL [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
-  gramgrab export SOURCE_URL [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
-  gramgrab export SOURCE_URL --plan FILE|- [--json]
+  gramgrab inspect SOURCE_URL|USERNAME [--json]
+  gramgrab export SOURCE_URL|USERNAME [--item NUMBER ...] [--mode direct] [--json]
+  gramgrab export SOURCE_URL|USERNAME [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
+  gramgrab export SOURCE_URL|USERNAME [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
+  gramgrab export SOURCE_URL|USERNAME --plan FILE|- [--json]
   gramgrab history list|remove|clear|redownload [ENTRY_ID ...] [--json]
   gramgrab debug get|export [--json]
 
