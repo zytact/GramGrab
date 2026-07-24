@@ -17,11 +17,11 @@ fresh request ID.
 ```text
 gramgrab status [--json]
 gramgrab help
-gramgrab inspect SOURCE_URL|USERNAME [--json]
-gramgrab export SOURCE_URL|USERNAME [--item NUMBER] [--mode direct] [--json]
-gramgrab export SOURCE_URL|USERNAME [--item NUMBER] --mode frame [--at SECONDS] [--json]
-gramgrab export SOURCE_URL|USERNAME [--item NUMBER] --mode silent --reencode forbid|allow|require [--json]
-gramgrab export SOURCE_URL|USERNAME --plan - [--json]
+gramgrab inspect SOURCE_URL [--json]
+gramgrab export SOURCE_URL [--item NUMBER] [--mode direct] [--json]
+gramgrab export SOURCE_URL [--item NUMBER] --mode frame [--at SECONDS] [--json]
+gramgrab export SOURCE_URL [--item NUMBER] --mode silent --reencode forbid|allow|require [--json]
+gramgrab export SOURCE_URL --plan - [--json]
 gramgrab history list [--json]
 gramgrab history remove ENTRY_ID... [--json]
 gramgrab history clear [--json]
@@ -30,8 +30,8 @@ gramgrab debug get [--json]
 gramgrab debug export [--json]
 ```
 
-A bare username in place of `SOURCE_URL` resolves the account's current Stories, for example
-`gramgrab inspect instagram` resolves `https://www.instagram.com/stories/instagram/`.
+For Stories only, a bare username may replace `SOURCE_URL`. For example, `gramgrab inspect
+instagram` resolves `https://www.instagram.com/stories/instagram/`.
 
 `status` is the phase 3 transport probe. It uses a five-second bounded wait and reports the
 browser family, extension version, native-host version, protocol version, and compatibility. The

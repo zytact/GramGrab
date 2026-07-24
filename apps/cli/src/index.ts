@@ -66,19 +66,19 @@ export const HELP = `GramGrab CLI
 Usage:
   gramgrab help
   gramgrab status [--json]
-  gramgrab inspect SOURCE_URL|USERNAME [--json]
-  gramgrab export SOURCE_URL|USERNAME [--item NUMBER ...] [--mode direct] [--json]
-  gramgrab export SOURCE_URL|USERNAME [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
-  gramgrab export SOURCE_URL|USERNAME [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
-  gramgrab export SOURCE_URL|USERNAME --plan FILE|- [--json]
+  gramgrab inspect SOURCE_URL [--json]
+  gramgrab export SOURCE_URL [--item NUMBER ...] [--mode direct] [--json]
+  gramgrab export SOURCE_URL [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
+  gramgrab export SOURCE_URL [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
+  gramgrab export SOURCE_URL --plan FILE|- [--json]
   gramgrab history list|remove|clear|redownload [ENTRY_ID ...] [--json]
   gramgrab debug get|export [--json]
 
 Sources:
-  Instagram post, reel, story, highlight, and profile URLs are accepted. A bare username resolves
-  that account's Stories. Profile URLs resolve the account avatar. Export defaults to every item
-  found by a fresh inspection. Use --item to select specific items. Repeated --item starts another
-  operation and may specify a different mode.
+  Instagram post, reel, story, highlight, and profile URLs are accepted. For Stories only, a bare
+  username is accepted in place of SOURCE_URL. Profile URLs resolve the account avatar. Export
+  defaults to every item found by a fresh inspection. Use --item to select specific items. Repeated
+  --item starts another operation and may specify a different mode.
 
 Export modes:
   direct  Download the original media. This is the default when --mode is omitted.
