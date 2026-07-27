@@ -84,6 +84,17 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     ['refetch-source', 'open-in-instagram'],
     'after-refetch'
   ),
+  MEDIA_DASH_ONLY_UNSUPPORTED: policy(
+    'Instant video format unsupported',
+    'This Instant only provides DASH video, which GramGrab cannot export yet.',
+    ['copy-diagnostics']
+  ),
+  INSTANT_NOT_ACTIVE: policy(
+    'Instant no longer active',
+    'This Instant is no longer present in the active feed.',
+    ['refetch-source'],
+    'after-refetch'
+  ),
   MEDIA_NETWORK_FAILED: policy(
     'Could not load the media',
     'Retry once, then fetch the source again.',

@@ -7,8 +7,9 @@ their source files.
 
 The configuration contains only:
 
-- the Instagram App ID and ASBD ID
-- GraphQL `doc_id` and `query_hash` candidates
+- the default Instagram App ID and ASBD ID
+- operation-specific public app-ID overrides and friendly names
+- GraphQL `doc_id`, `client_doc_id`, and `query_hash` candidates
 - GraphQL endpoints and transports
 - the fallback order for each existing request family
 
@@ -23,6 +24,7 @@ The updater requires an explicit operation because it does not classify captured
 | ------------------ | ------------------------------------------------------- |
 | `mediaByShortcode` | Posts, Reels, and sidecars fetched from a shortcode     |
 | `reelsMedia`       | Stories and Highlights fetched through reels media data |
+| `instantsFeed`     | The authenticated active Instants feed                  |
 
 These are configuration keys for existing code paths. They do not represent separate discovery
 problems, and values such as `shortcode`, `reel_ids`, and `highlight_reel_ids` are runtime inputs,
@@ -36,6 +38,7 @@ Use a browser profile that is already logged in to Instagram:
 2. Trigger the GramGrab request family that needs updating:
    - open a Post, Reel, or sidecar for `mediaByShortcode`
    - open a Story or Highlight for `reelsMedia`
+   - open the active Instants feed for `instantsFeed`
 3. Select the relevant Instagram GraphQL request.
 4. Choose **Copy** > **Copy as fetch**.
 
@@ -58,6 +61,12 @@ For Stories and Highlights, run:
 
 ```bash
 vp run update:ig-protocol --operation reelsMedia
+```
+
+For active Instants, run:
+
+```bash
+vp run update:ig-protocol --operation instantsFeed
 ```
 
 Paste the complete Copy-as-fetch request into the waiting terminal, then press Ctrl-D to end stdin.
@@ -107,7 +116,7 @@ uses the newly captured candidate order.
 ## Troubleshooting
 
 - **The command prints usage and exits:** use `vp run update:ig-protocol --operation <operation>`.
-- **No `doc_id` or `query_hash`:** the copied request is not a supported GraphQL operation. Capture
+- **No `doc_id`, `client_doc_id`, or `query_hash`:** the copied request is not a supported GraphQL operation. Capture
   the request that returns the media data for the selected request family.
 - **The wrong operation was selected:** restore the JSON from Git, then rerun the updater with the
   correct explicit operation. The updater deliberately does not guess.

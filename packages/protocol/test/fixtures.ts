@@ -11,6 +11,7 @@ export const requestFixtures: readonly unknown[] = [
     requestId,
     command: { _tag: 'Inspect', sourceUrl: 'https://www.instagram.com/p/example/' },
   },
+  { version: 1, requestId, command: { _tag: 'InstantsInspect' } },
   {
     version: 1,
     requestId,
@@ -30,6 +31,14 @@ export const requestFixtures: readonly unknown[] = [
           mode: { _tag: 'SilentExport', reencode: 'allow' },
         },
       ],
+    },
+  },
+  {
+    version: 1,
+    requestId,
+    command: {
+      _tag: 'InstantsExport',
+      operations: [{ operationId, itemNumber: 1, mediaIdentity, mode: { _tag: 'DirectExport' } }],
     },
   },
   { version: 1, requestId, command: { _tag: 'HistoryList' } },
@@ -67,6 +76,19 @@ const resultFixtures: readonly unknown[] = [
     ],
   },
   {
+    _tag: 'InstantsInspectResult',
+    items: [
+      {
+        itemNumber: 1,
+        mediaIdentity,
+        mediaType: 'image',
+        url: 'https://cdn.example/instant.jpg',
+        filenameHint: 'creator_instant_1',
+        creatorUsername: 'creator',
+      },
+    ],
+  },
+  {
     _tag: 'ExportResult',
     outcomes: [
       { _tag: 'ItemSucceeded', operationId, itemNumber: 1, mediaIdentity },
@@ -90,8 +112,11 @@ const resultFixtures: readonly unknown[] = [
     entries: [
       {
         id: 'history-1',
-        sourceUrl: 'https://www.instagram.com/p/example/',
-        sourceKind: 'post',
+        origin: {
+          kind: 'source',
+          sourceUrl: 'https://www.instagram.com/p/example/',
+          sourceKind: 'post',
+        },
         mediaIdentity,
         mediaType: 'video',
         filenameHint: 'example.mp4',

@@ -70,6 +70,22 @@
           ]
         }
       ]
+    },
+    "instantsFeed": {
+      "appId": "124024574287414",
+      "friendlyName": "IGQuickSnapGetQuickSnapsQuery",
+      "candidates": [
+        {
+          "kind": "client_doc_id",
+          "id": "13779138904809319315782061537",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query",
+              "transport": "form"
+            }
+          ]
+        }
+      ]
     }
   }
 }

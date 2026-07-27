@@ -9,15 +9,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { Schema } from 'effect';
 import {
+  DirectExport,
   Export,
   ExportOperation,
   FrameExport,
   HumanItemNumber,
+  InstantsExport,
+  InternalItemIndex,
+  MediaIdentity,
   OperationId,
   PROTOCOL_VERSION,
   Request,
 } from '@gramgrab/protocol';
 import { protocolConfig } from './instagram-protocol/config.ts';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 type Listener = (
   msg: unknown,
@@ -75,7 +81,15 @@ function makeFakeBrowser() {
       search: vi.fn().mockResolvedValue([{ id: 1, state: 'complete', fileSize: 100 }]),
       onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
     },
+    cookies: {
+      get: vi.fn().mockResolvedValue({ value: 'current-csrf-token' }),
+    },
     storage: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
+    },
+    sessionStorage: {
       get: vi.fn().mockResolvedValue({}),
       set: vi.fn().mockResolvedValue(undefined),
       remove: vi.fn().mockResolvedValue(undefined),
@@ -125,13 +139,25 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function instantFixture(name: string): unknown {
+  return JSON.parse(
+    readFileSync(join(process.cwd(), 'apps/extension/src/effect/__fixtures__', name), 'utf8')
+  );
+}
+
 function missingShortcodeResponse(): Response {
   return jsonResponse({ data: {}, errors: [{ message: 'not found' }] });
 }
 
+function fetchMock(
+  implementation: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+): typeof fetch {
+  return Object.assign(vi.fn(implementation), { preconnect: vi.fn() });
+}
+
 function installFetchSequence(responses: readonly Response[]): void {
   let index = 0;
-  globalThis.fetch = vi.fn<typeof fetch>(async () => {
+  globalThis.fetch = fetchMock(async () => {
     const response = responses[index++];
     if (!response) throw new Error('Unexpected extra configured GraphQL request');
     return response;
@@ -224,7 +250,7 @@ describe('background dispatcher', () => {
       linkUrl: 'http://instagram.com/stories/person/123/',
     });
     await vi.waitFor(() => {
-      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith(
+      expect(fakeBrowserObj.fakeBrowser.sessionStorage.set).toHaveBeenCalledWith(
         expect.objectContaining({
           'workspace-transfer-v1': expect.objectContaining({
             url: 'https://www.instagram.com/stories/person/',
@@ -319,6 +345,55 @@ describe('background dispatcher', () => {
           }),
         })
       )
+    );
+  });
+
+  it('direct native Instant export reconciles a reordered feed by media ID', async () => {
+    const fixture = instantFixture('instants-photo.json') as {
+      data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };
+    };
+    const target = fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]!;
+    const targetId = String(target.id);
+    const other = structuredClone(target);
+    other.id = 'other-instant';
+    for (const candidate of (target.image_versions2 as { candidates: { url: string }[] })
+      .candidates)
+      candidate.url = 'https://cdn.instagram.com/fresh-target.jpg';
+    for (const candidate of (other.image_versions2 as { candidates: { url: string }[] }).candidates)
+      candidate.url = 'https://cdn.instagram.com/wrong-item.jpg';
+    fixture.data.xdt_get_quick_snaps.items_ordered_by_time = [other, target];
+    globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+    await loadBackground();
+    const operationId = Schema.decodeUnknownSync(OperationId)(
+      '00000000-0000-4000-8000-000000000002'
+    );
+    const request = Schema.decodeUnknownSync(Request)({
+      version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(),
+      command: InstantsExport.make({
+        operations: [
+          ExportOperation.make({
+            operationId,
+            itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(1),
+            mediaIdentity: MediaIdentity.make({
+              itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(0),
+              mediaId: targetId,
+            }),
+            mode: DirectExport.make({}),
+          }),
+        ],
+      }),
+    });
+
+    fakeBrowserObj.getNativeMessageListener()?.(Schema.encodeSync(Request)(request));
+
+    await vi.waitFor(() =>
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://cdn.instagram.com/fresh-target.jpg' })
+      )
+    );
+    expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://cdn.instagram.com/wrong-item.jpg' })
     );
   });
 
@@ -481,7 +556,165 @@ describe('background dispatcher', () => {
     });
   });
 
+  describe('Instant history re-download', () => {
+    const historyStore = (mediaId: string) => ({
+      'download-history': {
+        version: 3,
+        entries: [
+          {
+            id: 'instant-history',
+            origin: { kind: 'instants' },
+            itemIndex: 0,
+            mediaId,
+            mediaType: 'image',
+            filenameHint: 'original_filename',
+            exportMode: 'direct',
+            downloadedAt: 1,
+            outcome: 'accepted',
+          },
+        ],
+      },
+    });
+
+    it('uses fresh media identity after the active feed reorders', async () => {
+      const fixture = instantFixture('instants-photo.json') as {
+        data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };
+      };
+      const target = fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]!;
+      const mediaId = String(target.id);
+      const other = structuredClone(target);
+      other.id = 'other-instant';
+      const targetImages = target.image_versions2 as {
+        candidates: { url: string }[];
+      };
+      const otherImages = other.image_versions2 as {
+        candidates: { url: string }[];
+      };
+      for (const candidate of targetImages.candidates)
+        candidate.url = 'https://cdn.instagram.com/fresh-target.jpg';
+      for (const candidate of otherImages.candidates)
+        candidate.url = 'https://cdn.instagram.com/wrong-item.jpg';
+      fixture.data.xdt_get_quick_snaps.items_ordered_by_time = [other, target];
+      fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(historyStore(mediaId));
+      globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+
+      const response = await invoke(await loadBackground(), {
+        type: 'REDOWNLOAD_HISTORY_ENTRY',
+        entryId: 'instant-history',
+      });
+
+      expect(response).toMatchObject({ results: [{ status: 'started' }] });
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://cdn.instagram.com/fresh-target.jpg' })
+      );
+    });
+
+    it('keeps History and reports an inactive Instant without downloading', async () => {
+      fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(historyStore('expired-instant'));
+      globalThis.fetch = fetchMock(async () => jsonResponse(instantFixture('instants-empty.json')));
+
+      const response = await invoke(await loadBackground(), {
+        type: 'REDOWNLOAD_HISTORY_ENTRY',
+        entryId: 'instant-history',
+      });
+
+      expect(response).toMatchObject({
+        error: 'This Instant is no longer active. History was kept.',
+        failureCode: 'INSTANT_NOT_ACTIVE',
+      });
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
+      expect(fakeBrowserObj.fakeBrowser.storage.remove).not.toHaveBeenCalled();
+    });
+
+    it('preserves authentication failure identity while refreshing Instant History', async () => {
+      fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(historyStore('instant-media'));
+      globalThis.fetch = fetchMock(async () => jsonResponse({}, 401));
+
+      const response = await invoke(await loadBackground(), {
+        type: 'REDOWNLOAD_HISTORY_ENTRY',
+        entryId: 'instant-history',
+      });
+
+      expect(response).toMatchObject({ failureCode: 'IG_NOT_AUTHENTICATED' });
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
+    });
+  });
+
   // ── FETCH_MEDIA (shortcode fallback) ─────────────────────────────────────
+
+  describe('FETCH_INSTANTS', () => {
+    it.each([
+      ['photo', 'instants-photo.json', 1],
+      ['video', 'instants-video.json', 1],
+      ['empty', 'instants-empty.json', 0],
+      ['unknown typename', 'instants-unknown.json', 0],
+    ])('loads the sanitized %s fixture', async (_label, name, expectedCount) => {
+      const fixture = instantFixture(name);
+      globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+      const response = (await invoke(await loadBackground(), { type: 'FETCH_INSTANTS' })) as {
+        media?: unknown[];
+        failure?: unknown;
+      };
+      expect(response.failure).toBeUndefined();
+      expect(response.media).toHaveLength(expectedCount);
+      const [input, init] = vi.mocked(globalThis.fetch).mock.calls[0]!;
+      expect(input).toBe(
+        protocolConfig.operations.instantsFeed?.candidates[0]?.requests[0]?.endpoint
+      );
+      expect(init?.headers).toEqual(
+        expect.objectContaining({
+          'X-IG-App-ID': protocolConfig.operations.instantsFeed?.appId,
+          'X-FB-Friendly-Name': 'IGQuickSnapGetQuickSnapsQuery',
+          'X-CSRFToken': 'current-csrf-token',
+        })
+      );
+      expect(fakeBrowserObj.fakeBrowser.cookies.get).toHaveBeenCalledWith({
+        url: 'https://www.instagram.com/',
+        name: 'csrftoken',
+      });
+      const body = init?.body;
+      expect(body).toBeInstanceOf(URLSearchParams);
+      if (!(body instanceof URLSearchParams)) throw new Error('Expected an Instant form body');
+      expect(body.toString()).not.toContain('seen');
+    });
+
+    it.each([
+      [
+        'instants-photo.json',
+        'https://sanitized.invalid/media/26/instant-image',
+        'sanitized_person_3_username',
+      ],
+      [
+        'instants-video.json',
+        'https://sanitized.invalid/media/27/instant-video',
+        'sanitized_person_4_username',
+      ],
+    ])('selects the verified candidate policy for %s', async (name, url, username) => {
+      const fixture = instantFixture(name);
+      globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+      const response = (await invoke(await loadBackground(), { type: 'FETCH_INSTANTS' })) as {
+        media?: { url: string; creatorUsername?: string }[];
+      };
+      expect(response.media?.[0]).toMatchObject({ url, creatorUsername: username });
+    });
+
+    it('fails loudly for an invalid known shape and DASH-only video', async () => {
+      for (const [name, code] of [
+        ['instants-invalid-known.json', 'IG_RESPONSE_SHAPE_UNKNOWN'],
+        ['instants-dash-only.json', 'MEDIA_DASH_ONLY_UNSUPPORTED'],
+      ] as const) {
+        vi.resetModules();
+        fakeBrowserObj = makeFakeBrowser();
+        globalThis.browser = fakeBrowserObj.fakeBrowser;
+        const fixture = instantFixture(name);
+        globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+        const response = (await invoke(await loadBackground(), { type: 'FETCH_INSTANTS' })) as {
+          failure?: { code: string };
+        };
+        expect(response.failure?.code).toBe(code);
+      }
+    });
+  });
 
   describe('FETCH_MEDIA — shortcode fallback', () => {
     it('tries the next configured request when the first response has no node', async () => {

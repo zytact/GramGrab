@@ -158,9 +158,9 @@ GramGrab has a popup surface, a background worker, and shared domain modules:
 - **Background service worker** (`apps/extension/src/background.ts`) - handles Instagram requests, strict response decoding, browser downloads, history persistence, context-menu commands, and workspace coordination.
 - **Shared modules** - `apps/extension/src/effect/` contains request and schema code, while the other extension modules keep stateful workflows explicit and testable. Cross-application wire contracts live in `packages/protocol`.
 
-The popup sends messages to the background worker through the single dispatcher in `src/background.ts`. The main operations are `FETCH_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB`, `DOWNLOAD_MEDIA`, history reads and mutations, `RECORD_FRAME_EXPORT`, `RECORD_SILENT_EXPORT`, and diagnostics export. Workspace handoff uses a versioned, short-lived storage transfer coordinated by `src/workspace/coordinator.ts`, so a popup can open or replace a dedicated workspace tab without losing its current source, results, or export settings. The worker fetches media metadata from Instagram using your authenticated browser session, decodes the response, and returns normalized media items to the popup. The listener is registered synchronously and keeps asynchronous work alive with `sendResponse` plus `return true` for Chromium and Firefox compatibility.
+The popup sends messages to the background worker through the single dispatcher in `src/background.ts`. The main operations are `FETCH_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB`, `DOWNLOAD_MEDIA`, history reads and mutations, `RECORD_FRAME_EXPORT`, `RECORD_SILENT_EXPORT`, and diagnostics export. Workspace handoff uses a versioned, short-lived, memory-only browser-session transfer coordinated by `src/workspace/coordinator.ts`, so a popup can open or replace a dedicated workspace tab without losing its current source, results, or export settings. The worker fetches media metadata from Instagram using your authenticated browser session, decodes the response, and returns normalized media items to the popup. The listener is registered synchronously and keeps asynchronous work alive with `sendResponse` plus `return true` for Chromium and Firefox compatibility.
 
-> GramGrab does not use an application backend or third-party analytics service. The extension makes requests from your browser to Instagram endpoints and the `fbcdn.net` media CDN, using the browser's authenticated session where required. It stores download history and short-lived workspace handoff data in the browser's extension storage; media URLs and diagnostics can also exist transiently in in-memory UI state while an operation is active.
+> GramGrab does not use an application backend or third-party analytics service. The extension makes requests from your browser to Instagram endpoints and the `fbcdn.net` media CDN, using the browser's authenticated session where required. It stores download history in extension-local storage and keeps short-lived workspace handoff data only in memory-backed browser-session storage; media URLs and diagnostics can also exist transiently in active UI state.
 
 ---
 
@@ -170,6 +170,7 @@ The popup sends messages to the background worker through the single dispatcher 
 | --------------------------- | ----------------------------------------------------------------- |
 | `downloads`                 | Save media files and debug exports to disk                        |
 | `storage`                   | Persist download history and workspace handoff state              |
+| `cookies`                   | Read the current Instagram CSRF token for Instants requests       |
 | `activeTab`                 | Temporarily access the current tab when GramGrab is invoked       |
 | `tabs`                      | Read and manage tabs for URL detection and the GramGrab workspace |
 | `contextMenus`              | Add GramGrab actions to page and link context menus               |

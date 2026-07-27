@@ -28,6 +28,17 @@ const getRequest = `fetch("https://www.instagram.com/graphql/query/?query_hash=n
   "method": "GET"
 });`;
 
+const instantsRequest = `fetch("https://www.instagram.com/graphql/query", {
+  "headers": {
+    "x-csrftoken": "never-persist-this",
+    "x-fb-friendly-name": "IGQuickSnapGetQuickSnapsQuery",
+    "x-ig-app-id": "moonshot-app-id"
+  },
+  "body": "client_doc_id=new-client-doc-id&fb_api_req_friendly_name=IGQuickSnapGetQuickSnapsQuery&variables=%7B%7D",
+  "method": "POST",
+  "credentials": "include"
+});`;
+
 const initialConfig = {
   schemaVersion: 1,
   client: { appId: 'old-app-id', asbdId: 'old-asbd-id' },
@@ -64,6 +75,7 @@ describe('Copy-as-fetch protocol updater', () => {
   it('accepts Vite+ arguments with or without a separator', () => {
     expect(parseOperation(['--operation', 'mediaByShortcode'])).toBe('mediaByShortcode');
     expect(parseOperation(['--', '--operation', 'reelsMedia'])).toBe('reelsMedia');
+    expect(parseOperation(['--operation', 'instantsFeed'])).toBe('instantsFeed');
   });
 
   it('extracts only public protocol metadata from a form POST', () => {
@@ -120,6 +132,23 @@ describe('Copy-as-fetch protocol updater', () => {
     expect(saved).not.toContain('private-subject');
   });
 
+  it('stores Instant-specific public metadata without replacing the default web client', async () => {
+    const configPath = await temporaryConfig();
+    const updated = await updateProtocolConfig({
+      source: instantsRequest,
+      operation: 'instantsFeed',
+      configPath,
+    });
+
+    expect(updated.client).toEqual(initialConfig.client);
+    expect(updated.operations.instantsFeed).toMatchObject({
+      appId: 'moonshot-app-id',
+      friendlyName: 'IGQuickSnapGetQuickSnapsQuery',
+      candidates: [{ kind: 'client_doc_id', id: 'new-client-doc-id' }],
+    });
+    expect(JSON.stringify(updated)).not.toContain('never-persist-this');
+  });
+
   it('rejects unrelated or ambiguous input without modifying the configuration', async () => {
     const configPath = await temporaryConfig();
     const before = await readFile(configPath, 'utf8');
@@ -131,7 +160,7 @@ describe('Copy-as-fetch protocol updater', () => {
         operation: 'mediaByShortcode',
         configPath,
       })
-    ).rejects.toThrow('exactly one doc_id or query_hash');
+    ).rejects.toThrow('exactly one doc_id, query_hash, or client_doc_id');
     expect(await readFile(configPath, 'utf8')).toBe(before);
   });
 

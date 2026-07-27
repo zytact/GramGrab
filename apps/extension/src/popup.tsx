@@ -51,6 +51,7 @@ interface MediaItem {
   previewUrl?: string;
   width?: number;
   height?: number;
+  creatorUsername?: string;
 }
 
 interface PreviewResponse {
@@ -70,8 +71,7 @@ type FrameRuntime = {
 };
 type HistoryEntry = {
   id: string;
-  sourceUrl: string;
-  sourceKind: string;
+  origin: { kind: 'source'; sourceUrl: string; sourceKind: string } | { kind: 'instants' };
   itemIndex: number;
   mediaType: string;
   filenameHint: string;
@@ -144,6 +144,7 @@ export default function Popup() {
     initialWorkspaceMode ? (new URLSearchParams(window.location.search).get('source') ?? '') : ''
   );
   const [fetchedUrl, setFetchedUrl] = useState('');
+  const [acquisition, setAcquisition] = useState<'source' | 'instants'>('source');
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -185,6 +186,7 @@ export default function Popup() {
 
   const handleFetch = useMediaFetch({
     url,
+    acquisition,
     setFetchedUrl,
     setMediaItems: replaceMediaItems,
     setFrameExportSettings,
@@ -407,7 +409,9 @@ export default function Popup() {
           error: undefined,
         },
       }));
-      const result = await executeFrameExport(operation, fetchedUrl || url);
+      const result = await executeFrameExport(operation, fetchedUrl || url, {
+        originKind: acquisition,
+      });
       if (result.status === 'started') {
         setFrameRuntime(previous => ({
           ...previous,
@@ -431,17 +435,18 @@ export default function Popup() {
       }
       return result;
     },
-    [fetchedUrl, frameRuntime, url]
+    [acquisition, fetchedUrl, frameRuntime, url]
   );
 
   const executeDirect = useCallback(
     (operations: readonly DownloadOperation[]) =>
       browser.runtime.sendMessage({
         type: 'DOWNLOAD_MEDIA',
-        sourceUrl: fetchedUrl || url,
+        ...(acquisition === 'source' ? { sourceUrl: fetchedUrl || url } : {}),
+        originKind: acquisition,
         operations,
       }),
-    [fetchedUrl, url]
+    [acquisition, fetchedUrl, url]
   );
 
   const requestReencodeApproval = useCallback(
@@ -477,7 +482,8 @@ export default function Popup() {
         onProgress,
         fetchedUrl || url,
         onPreflightComplete,
-        approvedRequestIds
+        approvedRequestIds,
+        acquisition
       ),
     onAccepted: operations =>
       setMediaItems(previous =>
@@ -523,6 +529,52 @@ export default function Popup() {
     },
   });
   clearAttemptRef.current = downloadAttempt.clear;
+
+  const refetchAndRetry = useCallback(async () => {
+    if (acquisition !== 'instants' || !downloadAttempt.attempt) {
+      await handleFetch();
+      return;
+    }
+    setStatus('fetching');
+    setMessage('Refreshing active Instants…');
+    const response = (await browser.runtime.sendMessage({ type: 'FETCH_INSTANTS' })) as {
+      media?: Omit<MediaItem, 'index' | 'selected'>[];
+      failure?: OperationFailure;
+      error?: string;
+    };
+    if (response.failure) {
+      setSourceFailure(response.failure);
+      setStatus('error');
+      setMessage(
+        `${FAILURE_PRESENTATION[response.failure.code].title}. ${FAILURE_PRESENTATION[response.failure.code].explanation}`
+      );
+      return;
+    }
+    if (response.error || !response.media) {
+      setStatus('error');
+      setMessage('GramGrab could not refresh active Instants.');
+      return;
+    }
+    const selectedMediaIds = new Set(
+      mediaItems.flatMap(item => (item.selected && item.mediaId ? [item.mediaId] : []))
+    );
+    const refreshed = response.media.map((item, index) => ({
+      ...item,
+      index,
+      selected: item.mediaId ? selectedMediaIds.has(item.mediaId) : false,
+    }));
+    replaceMediaItems(refreshed);
+    setSourceFailure(undefined);
+    await downloadAttempt.retryWithFreshMedia(
+      refreshed.map(item => ({
+        displayIndex: item.index,
+        itemIndex: item.itemIndex ?? item.index,
+        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+        type: item.type,
+        url: item.url,
+      }))
+    );
+  }, [acquisition, downloadAttempt, handleFetch, mediaItems, replaceMediaItems]);
 
   useEffect(() => {
     const progressMessage = silentProgressMessage(downloadAttempt.attempt?.entries);
@@ -573,7 +625,8 @@ export default function Popup() {
     if (!initialWorkspaceMode && operations.some(operation => operation.mode === 'silent')) {
       const createdAt = Date.now();
       const snapshot = {
-        version: 3 as const,
+        version: 4 as const,
+        acquisition: { kind: acquisition } as const,
         createdAt,
         expiresAt: createdAt + 60_000,
         url,
@@ -605,6 +658,7 @@ export default function Popup() {
     await downloadAttempt.start(operations);
   }, [
     downloadAttempt,
+    acquisition,
     fetchedUrl,
     frameExportSettings,
     frameRuntime,
@@ -622,6 +676,22 @@ export default function Popup() {
 
   const selectedCount = mediaItems.filter(m => m.selected).length;
   const allSelected = mediaItems.length > 0 && selectedCount === mediaItems.length;
+
+  const switchAcquisition = useCallback(
+    (next: 'source' | 'instants') => {
+      if (next === acquisition || isWorkspaceBusy(status)) return;
+      setAcquisition(next);
+      setFetchedUrl('');
+      replaceMediaItems([]);
+      setFrameExportSettings({});
+      setRemoveAudioIndexes(new Set());
+      setSourceFailure(undefined);
+      clearAttemptRef.current();
+      setStatus('idle');
+      setMessage(next === 'instants' ? 'Ready to load active Instants.' : 'Awaiting URL.');
+    },
+    [acquisition, replaceMediaItems, status]
+  );
 
   const toggleAll = useCallback(() => {
     const newSelected = !allSelected;
@@ -648,7 +718,7 @@ export default function Popup() {
   const canDownloadOriginal = hasRecoveryAction('download-original');
   const canTryReencode = hasRecoveryAction('try-reencode');
   const canRefetchSource = hasRecoveryAction('refetch-source');
-  const canOpenInstagram = hasRecoveryAction('open-in-instagram');
+  const canOpenInstagram = acquisition === 'source' && hasRecoveryAction('open-in-instagram');
   const canReloadWorkspace = hasRecoveryAction('reload-workspace');
   const previewDiagnostics = useCallback(
     (trigger: HTMLButtonElement) => {
@@ -717,6 +787,7 @@ export default function Popup() {
           filenameHint: string;
           timestampSeconds: number;
           sourceUrl: string;
+          originKind: 'source' | 'instants';
         };
         silent?: {
           itemIndex: number;
@@ -724,6 +795,7 @@ export default function Popup() {
           url: string;
           filenameHint: string;
           sourceUrl: string;
+          originKind: 'source' | 'instants';
         };
       };
       if (response.silent) {
@@ -738,7 +810,8 @@ export default function Popup() {
           selected: true,
         };
         const snapshot = {
-          version: 3 as const,
+          version: 4 as const,
+          acquisition: { kind: response.silent.originKind } as const,
           createdAt,
           expiresAt: createdAt + 60_000,
           url: response.silent.sourceUrl,
@@ -779,7 +852,8 @@ export default function Popup() {
             displayIndex: 0,
             frameTimestampSeconds: timestampSeconds,
           },
-          response.frame.sourceUrl
+          response.frame.sourceUrl,
+          { originKind: response.frame.originKind }
         );
         setMessage(
           result.status === 'started'
@@ -829,6 +903,8 @@ export default function Popup() {
     fetchIntent,
     downloadIntent,
   } = useWorkspaceSurface({
+    acquisition,
+    setAcquisition,
     url,
     setUrl,
     fetchedUrl,
@@ -919,23 +995,51 @@ export default function Popup() {
           />
         ) : (
           <>
-            <div className="ext-section">
-              <div className="field-label">Source URL</div>
-              <input
-                className={`url-input${autoDetected ? ' detected' : ''}`}
-                type="url"
-                placeholder="Paste an Instagram URL…"
-                value={url}
+            <div className="ext-section source-mode" role="group" aria-label="Result source">
+              <button
+                type="button"
+                className="workspace-secondary"
+                aria-pressed={acquisition === 'source'}
                 disabled={isBusy}
-                onChange={e => handleUrlChange(e.currentTarget.value)}
-                onBlur={() => setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)}
-                onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
-              />
+                onClick={() => switchAcquisition('source')}
+              >
+                From URL
+              </button>
+              <button
+                type="button"
+                className="workspace-secondary"
+                aria-pressed={acquisition === 'instants'}
+                disabled={isBusy}
+                onClick={() => switchAcquisition('instants')}
+              >
+                Instants
+              </button>
             </div>
+
+            {acquisition === 'source' && (
+              <div className="ext-section">
+                <label className="field-label" htmlFor="source-url">
+                  Source URL
+                </label>
+                <input
+                  id="source-url"
+                  className={`url-input${autoDetected ? ' detected' : ''}`}
+                  type="url"
+                  placeholder="Paste an Instagram URL…"
+                  value={url}
+                  disabled={isBusy}
+                  onChange={e => handleUrlChange(e.currentTarget.value)}
+                  onBlur={() =>
+                    setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)
+                  }
+                  onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
+                />
+              </div>
+            )}
 
             <div className="ext-section">
               <button className="btn" onClick={handleFetch} disabled={isBusy}>
-                {renderFetchButtonLabel(status)}
+                {renderFetchButtonLabel(status, acquisition)}
               </button>
               {sourceFailure && (
                 <section className="download-attempt-summary" aria-live="polite">
@@ -946,10 +1050,10 @@ export default function Popup() {
                     <button
                       type="button"
                       className="workspace-secondary"
-                      onClick={() => void handleFetch()}
+                      onClick={() => void refetchAndRetry()}
                       disabled={isBusy}
                     >
-                      Fetch source again
+                      {acquisition === 'instants' ? 'Refresh feed and retry' : 'Fetch source again'}
                     </button>
                   )}
                   {canOpenInstagram && (
@@ -1019,10 +1123,10 @@ export default function Popup() {
                     <button
                       type="button"
                       className="workspace-secondary"
-                      onClick={() => void handleFetch()}
+                      onClick={() => void refetchAndRetry()}
                       disabled={isBusy}
                     >
-                      Fetch source again
+                      {acquisition === 'instants' ? 'Refresh feed and retry' : 'Fetch source again'}
                     </button>
                   )}
                   {canOpenInstagram && (
@@ -1269,16 +1373,20 @@ function HistoryView({
               {entry.filenameHint}
             </span>
             <div className="history-entry-footer">
-              <a
-                className="history-source-link"
-                href={entry.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={`Open source for item ${entry.itemIndex + 1}`}
-                title={entry.sourceUrl}
-              >
-                Open source ↗
-              </a>
+              {entry.origin.kind === 'source' ? (
+                <a
+                  className="history-source-link"
+                  href={entry.origin.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Open source for item ${entry.itemIndex + 1}`}
+                  title={entry.origin.sourceUrl}
+                >
+                  Open source ↗
+                </a>
+              ) : (
+                <span className="history-source-link">Active Instants feed</span>
+              )}
               <button
                 className="history-redownload"
                 type="button"
@@ -1456,12 +1564,14 @@ function renderDownloadButtonLabel(status: Status, selectedCount: number) {
   return selectedCount > 0 ? `Download ${selectedCount} Selected` : 'Download Selected';
 }
 
-function renderFetchButtonLabel(status: Status) {
+function renderFetchButtonLabel(status: Status, acquisition: 'source' | 'instants') {
   return status === 'fetching' ? (
     <>
       <span className="btn-spinner" />
       Fetching…
     </>
+  ) : acquisition === 'instants' ? (
+    'Load Instants'
   ) : (
     'Fetch Media'
   );
@@ -1963,6 +2073,7 @@ function MediaItemRow(props: MediaItemRowProps) {
           </span>
         )}
         <span className="item-filename">{item.filenameHint}</span>
+        {item.creatorUsername && <span className="item-creator">@{item.creatorUsername}</span>}
         {attemptEntry?.outcome.status === 'pending' && (
           <span className="download-item-status pending">
             {attemptEntry.outcome.phase

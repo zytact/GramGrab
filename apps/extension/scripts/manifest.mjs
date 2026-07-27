@@ -1,6 +1,7 @@
 const permissionDocumentation = [
   { permission: 'downloads', reason: 'Save media files and debug exports to disk' },
   { permission: 'storage', reason: 'Persist download history and workspace handoff state' },
+  { permission: 'cookies', reason: 'Read the current Instagram CSRF token for Instants requests' },
   {
     permission: 'activeTab',
     reason: 'Temporarily access the current tab when GramGrab is invoked',

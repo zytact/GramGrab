@@ -68,6 +68,14 @@ export interface BrowserShim {
     set: (items: Record<string, unknown>) => Promise<void>;
     remove: (keys: string | string[]) => Promise<void>;
   };
+  sessionStorage: {
+    get: (keys?: unknown) => Promise<Record<string, unknown>>;
+    set: (items: Record<string, unknown>) => Promise<void>;
+    remove: (keys: string | string[]) => Promise<void>;
+  };
+  cookies: {
+    get: (details: { url: string; name: string }) => Promise<{ value: string } | null>;
+  };
   windows: {
     create: (createData: {
       url: string;
@@ -155,6 +163,17 @@ interface ChromeGlobal {
       set: (items: Record<string, unknown>, cb?: () => void) => void;
       remove: (keys: string | string[], cb?: () => void) => void;
     };
+    session?: {
+      get: (keys: unknown, cb: (result: Record<string, unknown>) => void) => void;
+      set: (items: Record<string, unknown>, cb?: () => void) => void;
+      remove: (keys: string | string[], cb?: () => void) => void;
+    };
+  };
+  cookies: {
+    get: (
+      details: { url: string; name: string },
+      callback: (cookie: { value: string } | null) => void
+    ) => void;
   };
   contextMenus: {
     create: (properties: ContextMenuCreateProperties) => void;
@@ -199,6 +218,14 @@ interface NativeBrowserGlobal {
       set: (items: Record<string, unknown>) => Promise<void>;
       remove: (keys: string | string[]) => Promise<void>;
     };
+    session?: {
+      get: (keys?: unknown) => Promise<Record<string, unknown>>;
+      set: (items: Record<string, unknown>) => Promise<void>;
+      remove: (keys: string | string[]) => Promise<void>;
+    };
+  };
+  cookies: {
+    get: (details: { url: string; name: string }) => Promise<{ value: string } | null>;
   };
   windows: {
     create: (createData: unknown) => Promise<{ id?: number; tabs?: { id?: number }[] }>;
@@ -225,6 +252,7 @@ function lastError(cr: ChromeRuntime): Error | undefined {
 
 function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
   const contextMenus = chrome.contextMenus ?? noopContextMenus;
+  const session = chrome.storage.session;
   return {
     runtime: {
       getURL: path => chrome.runtime.getURL(path),
@@ -332,6 +360,30 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
           });
         }),
     },
+    sessionStorage: session
+      ? {
+          get: keys =>
+            new Promise((resolve, reject) => {
+              session.get(keys, result => {
+                const err = lastError(chrome.runtime);
+                if (err) reject(err);
+                else resolve(result);
+              });
+            }),
+          set: items => callbackPromise(chrome, callback => session.set(items, callback)),
+          remove: keys => callbackPromise(chrome, callback => session.remove(keys, callback)),
+        }
+      : unavailableSessionStorage,
+    cookies: {
+      get: details =>
+        new Promise((resolve, reject) => {
+          chrome.cookies.get(details, cookie => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve(cookie);
+          });
+        }),
+    },
     windows: {
       create: createData =>
         new Promise((resolve, reject) => {
@@ -406,6 +458,8 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
     },
     downloads: native.downloads,
     storage: native.storage.local,
+    sessionStorage: native.storage.session ?? unavailableSessionStorage,
+    cookies: native.cookies ?? noopCookies,
     windows: {
       create: createData => native.windows.create(createData),
       update: async (windowId, updateInfo) => {
@@ -446,6 +500,22 @@ const noopRuntimeStartup: BrowserShim['runtime']['onStartup'] = {
   addListener: () => {},
 };
 
+const noopCookies: BrowserShim['cookies'] = {
+  get: () => Promise.resolve(null),
+};
+
+const unavailableSessionStorage: BrowserShim['sessionStorage'] = {
+  get: () => Promise.reject(new Error('Session storage is unavailable.')),
+  set: () => Promise.reject(new Error('Session storage is unavailable.')),
+  remove: () => Promise.reject(new Error('Session storage is unavailable.')),
+};
+
+const noopStorage: BrowserShim['storage'] = {
+  get: () => Promise.resolve({}),
+  set: () => Promise.resolve(),
+  remove: () => Promise.resolve(),
+};
+
 const noopShim: BrowserShim = {
   runtime: {
     getURL: path => path,
@@ -467,11 +537,9 @@ const noopShim: BrowserShim = {
     search: () => Promise.resolve([]),
     onChanged: { addListener: () => {}, removeListener: () => {} },
   },
-  storage: {
-    get: () => Promise.resolve({}),
-    set: () => Promise.resolve(),
-    remove: () => Promise.resolve(),
-  },
+  storage: noopStorage,
+  sessionStorage: noopStorage,
+  cookies: noopCookies,
   windows: {
     create: () => Promise.resolve({}),
     update: () => Promise.resolve(),

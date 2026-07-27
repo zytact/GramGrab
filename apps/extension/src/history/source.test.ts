@@ -37,7 +37,7 @@ describe('history reconciliation', () => {
     );
   });
 
-  it('rejects ambiguous duplicate IDs unless the saved index disambiguates them', () => {
+  it('rejects duplicate IDs even when one remains at the stale saved index', () => {
     const candidates = [image, { ...image, itemIndex: 8 }];
     expect(
       reconcileHistoryEntry(
@@ -50,6 +50,13 @@ describe('history reconciliation', () => {
         { itemIndex: 8, mediaId: 'stable-media', mediaType: 'image' },
         candidates
       ).kind
-    ).toBe('found');
+    ).toBe('ambiguous');
+  });
+
+  it('requires a durable ID match to preserve the saved media type', () => {
+    expect(
+      reconcileHistoryEntry({ itemIndex: 4, mediaId: 'stable-media', mediaType: 'video' }, [image])
+        .kind
+    ).toBe('missing');
   });
 });

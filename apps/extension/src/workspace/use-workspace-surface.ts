@@ -26,6 +26,8 @@ import type { FrameExportSetting } from '../frame-export/timestamp';
 type SurfaceStatus = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
 interface WorkspaceSurfaceOptions {
+  acquisition: 'source' | 'instants';
+  setAcquisition: Dispatch<SetStateAction<'source' | 'instants'>>;
   url: string;
   setUrl: Dispatch<SetStateAction<string>>;
   fetchedUrl: string;
@@ -43,6 +45,11 @@ interface WorkspaceSurfaceOptions {
   setAutoDetected: Dispatch<SetStateAction<boolean>>;
 }
 
+function settledWorkspaceStatus(status: SurfaceStatus): WorkspaceSnapshot['status'] {
+  if (status === 'error' || status === 'done') return status;
+  return 'idle';
+}
+
 function workspaceSnapshot({
   url,
   fetchedUrl,
@@ -51,6 +58,7 @@ function workspaceSnapshot({
   mediaItems,
   frameExportSettings,
   removeAudioIndexes,
+  acquisition,
 }: Pick<
   WorkspaceSurfaceOptions,
   | 'url'
@@ -60,21 +68,35 @@ function workspaceSnapshot({
   | 'mediaItems'
   | 'frameExportSettings'
   | 'removeAudioIndexes'
+  | 'acquisition'
 >): WorkspaceSnapshot {
   const createdAt = Date.now();
-  const resultsMatchDraftSource = fetchedUrl === url.trim();
-  const settledStatus = status === 'error' ? 'error' : status === 'done' ? 'done' : 'idle';
-  return {
-    version: 3,
+  const resultsMatchDraftSource = acquisition === 'instants' || fetchedUrl === url.trim();
+  const snapshot = {
+    version: 4,
+    acquisition: { kind: acquisition },
     createdAt,
     expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
     url,
-    fetchedUrl: resultsMatchDraftSource ? fetchedUrl : '',
-    status: resultsMatchDraftSource ? settledStatus : 'idle',
-    message: resultsMatchDraftSource ? message : 'Ready to fetch media.',
-    mediaItems: resultsMatchDraftSource ? mediaItems : [],
-    frameExportSettings: resultsMatchDraftSource ? frameExportSettings : {},
-    removeAudioIndexes: resultsMatchDraftSource ? [...removeAudioIndexes] : [],
+  } as const;
+  if (!resultsMatchDraftSource)
+    return {
+      ...snapshot,
+      fetchedUrl: '',
+      status: 'idle',
+      message: 'Ready to fetch media.',
+      mediaItems: [],
+      frameExportSettings: {},
+      removeAudioIndexes: [],
+    };
+  return {
+    ...snapshot,
+    fetchedUrl,
+    status: settledWorkspaceStatus(status),
+    message,
+    mediaItems,
+    frameExportSettings,
+    removeAudioIndexes: [...removeAudioIndexes],
   };
 }
 
@@ -93,6 +115,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
         const session = optionsRef.current;
         if (snapshot) {
           session.setUrl(snapshot.url);
+          session.setAcquisition(snapshot.acquisition.kind);
           session.setFetchedUrl(snapshot.fetchedUrl);
           session.setStatus(snapshot.status);
           session.setMessage(snapshot.message);
@@ -142,17 +165,20 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
 
   const snapshot = useCallback(() => workspaceSnapshot(options), [options]);
   const busy = isBusy(options.status);
-  const hasTransferableSession = isInstagramSource(options.url) || options.mediaItems.length > 0;
+  const hasTransferableSession =
+    options.acquisition === 'instants' ||
+    isInstagramSource(options.url) ||
+    options.mediaItems.length > 0;
 
   useEffect(() => {
     if (!workspaceMode) return;
     const publish = () =>
-      browser.storage.set({ [WORKSPACE_STATUS_KEY]: { busy, updatedAt: Date.now() } });
+      browser.sessionStorage.set({ [WORKSPACE_STATUS_KEY]: { busy, updatedAt: Date.now() } });
     void publish();
     const interval = window.setInterval(() => void publish(), 3_000);
     return () => {
       window.clearInterval(interval);
-      void browser.storage.remove(WORKSPACE_STATUS_KEY);
+      void browser.sessionStorage.remove(WORKSPACE_STATUS_KEY);
     };
   }, [busy, workspaceMode]);
 

@@ -16,6 +16,8 @@ import {
   HistoryRemove,
   HumanItemNumber,
   Inspect,
+  InstantsInspect,
+  InstantsExport,
   OperationId,
   SilentExport,
   Status,
@@ -30,6 +32,7 @@ import {
   type EventPayload,
   type ExportMode,
   type InspectResult,
+  type InstantsInspectResult,
 } from '@gramgrab/protocol';
 
 export { decodeEvent, decodeRequest, PROTOCOL_VERSION } from '@gramgrab/protocol';
@@ -56,7 +59,8 @@ export interface ParsedCli {
   readonly command: Command;
   readonly json: boolean;
   readonly expandAll?: {
-    readonly sourceUrl: string;
+    readonly sourceUrl?: string;
+    readonly origin: 'source' | 'instants';
     readonly mode: ExportMode;
   };
 }
@@ -67,6 +71,8 @@ Usage:
   gramgrab help
   gramgrab status [--json]
   gramgrab inspect SOURCE [--json]
+  gramgrab instants inspect [--json]
+  gramgrab instants export [--item NUMBER ...] [--mode direct|frame|silent] [--json]
   gramgrab export SOURCE [--item NUMBER ...] [--mode direct] [--json]
   gramgrab export SOURCE [--item NUMBER ...] --mode frame [--at SECONDS] [--json]
   gramgrab export SOURCE [--item NUMBER ...] --mode silent --reencode forbid|allow|require [--json]
@@ -177,6 +183,19 @@ function exportOperation(arguments_: readonly string[]): ExportOperation {
   });
 }
 
+function validateInstantsArguments(arguments_: readonly string[], action: 'inspect' | 'export') {
+  const valueOptions =
+    action === 'inspect' ? new Set<string>() : new Set(['--item', '--mode', '--at', '--reencode']);
+  for (let index = 2; index < arguments_.length; index++) {
+    const argument = arguments_[index]!;
+    if (argument === '--json') continue;
+    if (!valueOptions.has(argument))
+      throw new Error(`gramgrab instants ${action} does not accept a Source argument.`);
+    const value = arguments_[++index];
+    if (!value || value.startsWith('--')) throw new Error(`Missing value for ${argument}.`);
+  }
+}
+
 function exportCommand(arguments_: readonly string[]): ParsedCli {
   const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE.');
   if (option(arguments_, '--plan'))
@@ -186,7 +205,7 @@ function exportCommand(arguments_: readonly string[]): ParsedCli {
     return {
       command: Inspect.make({ sourceUrl }),
       json: arguments_.includes('--json'),
-      expandAll: { sourceUrl, mode: exportMode(arguments_) },
+      expandAll: { sourceUrl, origin: 'source', mode: exportMode(arguments_) },
     };
   const operations = itemIndexes.map((start, index) =>
     exportOperation(arguments_.slice(start, itemIndexes[index + 1] ?? arguments_.length))
@@ -210,6 +229,37 @@ export function parseCliArguments(arguments_: readonly string[]): ParsedCli {
       json,
     };
   if (command === 'export') return exportCommand(arguments_);
+  if (command === 'instants') {
+    const action = arguments_[1];
+    const instantArguments = [action ?? '', ...arguments_.slice(2)];
+    if (action === 'inspect') {
+      validateInstantsArguments(arguments_, action);
+      return { command: InstantsInspect.make({}), json };
+    }
+    if (action === 'export') {
+      validateInstantsArguments(arguments_, action);
+      const itemIndexes = instantArguments.flatMap((value, index) =>
+        value === '--item' ? [index] : []
+      );
+      if (itemIndexes.length === 0)
+        return {
+          command: InstantsInspect.make({}),
+          json,
+          expandAll: { origin: 'instants', mode: exportMode(instantArguments) },
+        };
+      return {
+        command: InstantsExport.make({
+          operations: itemIndexes.map((start, index) =>
+            exportOperation(
+              instantArguments.slice(start, itemIndexes[index + 1] ?? instantArguments.length)
+            )
+          ),
+        }),
+        json,
+      };
+    }
+    throw new Error('Usage: gramgrab instants inspect|export');
+  }
   if (command === 'history') {
     const action = arguments_[1];
     const entryIds = arguments_.slice(2).filter(value => value !== '--json');
@@ -456,7 +506,11 @@ export async function runCli(arguments_: readonly string[], signal?: AbortSignal
   let event = await request(parsed.command, printProgress, {
     signal,
   });
-  if (parsed.expandAll && event._tag === 'Completed' && event.result._tag === 'InspectResult') {
+  if (
+    parsed.expandAll &&
+    event._tag === 'Completed' &&
+    (event.result._tag === 'InspectResult' || event.result._tag === 'InstantsInspectResult')
+  ) {
     event = await request(expandedExport(parsed.expandAll, event.result), printProgress, {
       signal,
     });
@@ -466,20 +520,20 @@ export async function runCli(arguments_: readonly string[], signal?: AbortSignal
 
 function expandedExport(
   pending: NonNullable<ParsedCli['expandAll']>,
-  inspected: InspectResult
-): Export {
+  inspected: InspectResult | InstantsInspectResult
+): Export | InstantsExport {
   if (inspected.items.length === 0) throw new Error('Inspection returned no media items.');
-  return Export.make({
-    sourceUrl: inspected.sourceUrl,
-    operations: inspected.items.map(item =>
-      ExportOperation.make({
-        operationId: operationId(),
-        itemNumber: item.itemNumber,
-        mediaIdentity: item.mediaIdentity,
-        mode: pending.mode,
-      })
-    ),
-  });
+  const operations = inspected.items.map(item =>
+    ExportOperation.make({
+      operationId: operationId(),
+      itemNumber: item.itemNumber,
+      mediaIdentity: item.mediaIdentity,
+      mode: pending.mode,
+    })
+  );
+  return pending.origin === 'instants'
+    ? InstantsExport.make({ operations })
+    : Export.make({ sourceUrl: pending.sourceUrl!, operations });
 }
 
 if (import.meta.main) {

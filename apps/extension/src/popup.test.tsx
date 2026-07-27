@@ -26,6 +26,11 @@ const mockBrowser = {
     set: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
   },
+  sessionStorage: {
+    get: vi.fn().mockResolvedValue({}),
+    set: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+  },
 };
 
 globalThis.browser = mockBrowser as typeof globalThis.browser;
@@ -91,7 +96,7 @@ describe('Popup', () => {
     await user.click(screen.getByRole('button', { name: 'Open in tab' }));
 
     await waitFor(() => {
-      expect(mockBrowser.storage.set).toHaveBeenLastCalledWith(
+      expect(mockBrowser.sessionStorage.set).toHaveBeenLastCalledWith(
         expect.objectContaining({
           'workspace-transfer-v1': expect.objectContaining({
             url: 'https://www.instagram.com/p/new-source/',
@@ -146,6 +151,50 @@ describe('Popup', () => {
         url: 'https://www.instagram.com/p/abc123/',
       });
     });
+  });
+
+  it('switches to Instants, replaces URL results, and renders attributed media', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        media: [{ url: 'https://media.example/source.jpg', type: 'image', filenameHint: 'source' }],
+      })
+      .mockResolvedValueOnce({
+        acquisition: 'instants',
+        media: [
+          {
+            url: 'https://media.example/instant.jpg',
+            type: 'image',
+            filenameHint: 'creator_instant_1',
+            creatorUsername: 'creator',
+          },
+        ],
+      });
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByText('Fetch Media'));
+    await screen.findByText('source');
+
+    await user.click(screen.getByRole('button', { name: 'Instants' }));
+    expect(screen.queryByLabelText('Source URL')).toBeNull();
+    expect(screen.queryByText('source')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Load Instants' }));
+
+    await waitFor(() => {
+      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'FETCH_INSTANTS' });
+      expect(screen.getByText('@creator')).toBeDefined();
+    });
+  });
+
+  it('renders an empty active Instants feed as a successful empty state', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      acquisition: 'instants',
+      media: [],
+    });
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'Instants' }));
+    await user.click(screen.getByRole('button', { name: 'Load Instants' }));
+    expect(await screen.findByText('No active Instants.')).toBeDefined();
   });
 
   it('displays media items after successful fetch', async () => {
@@ -443,6 +492,93 @@ describe('Popup', () => {
     expect(submissions[1]?.[0]?.filename).toBe(firstSubmission[1]?.filename);
   });
 
+  it('refreshes an expired Instant by media identity before retrying its download', async () => {
+    const user = userEvent.setup();
+    let instantFetches = 0;
+    const submissions: { itemIndex: number; mediaId?: string; url: string }[][] = [];
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: {
+        type: string;
+        operations?: {
+          operationId: string;
+          requestId: string;
+          itemIndex: number;
+          mediaId?: string;
+          url: string;
+        }[];
+      }) => {
+        if (message.type === 'FETCH_INSTANTS') {
+          instantFetches++;
+          return {
+            acquisition: 'instants',
+            media:
+              instantFetches === 1
+                ? [
+                    {
+                      itemIndex: 0,
+                      mediaId: 'instant-1',
+                      url: 'https://instagram.com/stale.jpg',
+                      type: 'image',
+                      filenameHint: 'creator_instant-1',
+                    },
+                  ]
+                : [
+                    {
+                      itemIndex: 0,
+                      mediaId: 'other',
+                      url: 'https://instagram.com/other.jpg',
+                      type: 'image',
+                      filenameHint: 'other',
+                    },
+                    {
+                      itemIndex: 1,
+                      mediaId: 'instant-1',
+                      url: 'https://instagram.com/fresh.jpg',
+                      type: 'image',
+                      filenameHint: 'creator_instant-1',
+                    },
+                  ],
+          };
+        }
+        if (message.type !== 'DOWNLOAD_MEDIA') return {};
+        const operations = message.operations ?? [];
+        submissions.push(operations);
+        return {
+          results: operations.map(operation => ({
+            operationId: operation.operationId,
+            requestId: operation.requestId,
+            status: submissions.length === 1 ? 'failed' : 'started',
+            ...(submissions.length === 1
+              ? {
+                  failure: {
+                    code: 'BROWSER_DOWNLOAD_NETWORK_FAILED',
+                    phase: 'browser-download',
+                    scope: 'item',
+                  },
+                }
+              : {}),
+          })),
+        };
+      }
+    );
+
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'Instants' }));
+    await user.click(screen.getByRole('button', { name: 'Load Instants' }));
+    await user.click(screen.getByRole('button', { name: 'Download 1 Selected' }));
+    await user.click(screen.getByRole('button', { name: 'Refresh feed and retry' }));
+
+    await waitFor(() => expect(screen.getByText(/1 started, 0 failed/)).toBeDefined());
+    expect(submissions).toHaveLength(2);
+    expect(submissions[1]).toEqual([
+      expect.objectContaining({
+        itemIndex: 1,
+        mediaId: 'instant-1',
+        url: 'https://instagram.com/fresh.jpg',
+      }),
+    ]);
+  });
+
   it('offers the same failed-item retry in the workspace surface', async () => {
     window.history.replaceState(
       {},
@@ -504,7 +640,7 @@ describe('Popup', () => {
   it('runs a transferred auto-start download only once', async () => {
     const now = Date.now();
     window.history.replaceState({}, '', '/popup.html?surface=workspace');
-    mockBrowser.storage.get.mockResolvedValueOnce({
+    mockBrowser.sessionStorage.get.mockResolvedValueOnce({
       'workspace-transfer-v1': {
         version: 3,
         createdAt: now,

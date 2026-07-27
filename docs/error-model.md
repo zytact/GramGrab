@@ -29,6 +29,8 @@ The table is the compatibility contract. "Cause" means the technical cause may b
 | `SOURCE_UNEXPECTED_FAILURE`            | batch | once automatically                      | `refetch-source`, `copy-diagnostics`    | cause, copy offered | extension boundary       |
 | `MEDIA_URL_EXPIRED`                    | item  | after refetch                           | `refetch-source`                        | cause               | upstream signed URL      |
 | `MEDIA_NOT_FOUND`                      | item  | after refetch                           | `refetch-source`, `open-in-instagram`   | cause               | upstream media           |
+| `MEDIA_DASH_ONLY_UNSUPPORTED`          | item  | never                                   | `copy-diagnostics`                      | cause, copy offered | media capability         |
+| `INSTANT_NOT_ACTIVE`                   | item  | after refetch                           | `refetch-source`                        | cause               | upstream media           |
 | `MEDIA_NETWORK_FAILED`                 | item  | once per operation                      | `retry-operation`, `refetch-source`     | cause               | network                  |
 | `MEDIA_RESPONSE_EMPTY`                 | item  | once per operation                      | `retry-operation`, `refetch-source`     | cause               | network protocol         |
 | `BROWSER_DOWNLOAD_BLOCKED`             | item  | after user action                       | `retry-operation`                       | cause               | browser                  |

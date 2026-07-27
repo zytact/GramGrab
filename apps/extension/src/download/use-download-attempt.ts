@@ -10,11 +10,13 @@ import {
   failedOperations,
   pendingOperations,
   prepareOriginalFallback,
+  prepareRefetchedRetry,
   prepareReencodeRetry,
   prepareRetry,
   summarizeAttempt,
   type AttemptOperation,
   type DownloadAttempt,
+  type RefetchedMedia,
 } from './attempt.ts';
 import { type OperationFailure } from '../errors/contracts.ts';
 import { executeExportPlan, ExportEvents, ExportExecution, ExportPlan } from './coordinator.ts';
@@ -121,6 +123,18 @@ export function useDownloadAttempt({
     await submit(pendingOperations(next));
   }, [commit, submit]);
 
+  const retryWithFreshMedia = useCallback(
+    async (media: readonly RefetchedMedia[]) => {
+      const next = prepareRefetchedRetry(attemptRef.current, media);
+      if (next === attemptRef.current || !next) return;
+      commit(next);
+      const pending = pendingOperations(next);
+      if (pending.length > 0) await submit(pending);
+      else onSettled?.(next);
+    },
+    [commit, onSettled, submit]
+  );
+
   const downloadOriginals = useCallback(async () => {
     const next = prepareOriginalFallback(attemptRef.current);
     if (next === attemptRef.current) return;
@@ -149,6 +163,7 @@ export function useDownloadAttempt({
     summaryRef: summaryRef as RefObject<HTMLElement>,
     start,
     retry,
+    retryWithFreshMedia,
     downloadOriginals,
     tryReencode,
     clear,
