@@ -38,6 +38,8 @@ One especially useful contribution was the Instagram fixture workflow. When Inst
 
 Codex also helped shape major additions such as the dedicated workspace tab, adaptive media previews, download history, silent-video export, and the structured error model. Because Effect is less represented in current models' training data than mainstream TypeScript libraries, the Effect repository is vendored under `.repos/effect/` as read-only reference material. This lets Codex inspect upstream source, tests, and conventions before writing Effect code instead of relying on incomplete model knowledge. I kept the final product and engineering decisions, while using Codex to explore tradeoffs, implement them, review the resulting diffs, and catch regressions before each PR.
 
+Note: I have continued developing it after the hackathon, so there are more features here currently than when I submitted.
+
 ---
 
 ## Requirements
