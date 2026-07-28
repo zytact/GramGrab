@@ -16,7 +16,7 @@
     "dev:firefox": "BROWSER=firefox vp build --watch",
     "lint": "vp lint .",
     "lint:fix": "vp lint . --fix",
-    "fallow": "fallow",
+    "fallow": "fallow audit --base origin/main",
     "generate:ig-fixtures": "tsx apps/extension/scripts/generate-ig-fixture-capture.ts",
     "sanitize:ig-fixtures": "tsx apps/extension/scripts/sanitize-ig-fixtures.ts",
     "update:ig-protocol": "tsx apps/extension/scripts/update-ig-protocol.ts",
