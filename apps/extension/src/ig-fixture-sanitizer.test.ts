@@ -267,6 +267,105 @@ describe('IG fixture sanitizer policy and transformation', () => {
     expect(urls.every(value => new URL(value).hostname === 'sanitized.invalid')).toBe(true);
   });
 
+  it('sanitizes live Instant caption, prompt, filter, and identity metadata', () => {
+    const result = sanitizeBatch(
+      oneFile('instants-photo.json', {
+        data: {
+          xdt_get_quick_snaps: {
+            items_ordered_by_time: [
+              {
+                strong_id__: 'synthetic-media-id',
+                context__: null,
+                id: 'synthetic-media-id',
+                taken_at: 1_700_000_000,
+                media_type: 1,
+                video_duration: null,
+                wearable_attribution_info: null,
+                video_dash_manifest: null,
+                image_versions2: {
+                  candidates: [
+                    {
+                      width: 640,
+                      height: 640,
+                      url: 'https://media.synthetic.example/instant?token=synthetic-secret',
+                      scans_profile: null,
+                    },
+                  ],
+                },
+                video_versions: null,
+                prompt_info: {
+                  id: 'synthetic-prompt-secret',
+                  text: 'synthetic-prompt-text-secret',
+                },
+                audience: 'mutual_followers',
+                caption: {
+                  __typename: 'XDTCommentDict',
+                  strong_id__: 'synthetic-caption-secret',
+                  pk: 'synthetic-caption-secret',
+                  text: 'synthetic-caption-text-secret',
+                },
+                user: {
+                  __typename: 'XDTUserDict',
+                  strong_id__: 'synthetic-person-id',
+                  id: 'synthetic-person-id',
+                  __is_XDTUserDict: true,
+                  fbid_v2: 'synthetic-facebook-id',
+                  full_name: 'Synthetic Person',
+                  username: 'synthetic_person',
+                  account_badges: [],
+                  profile_pic_id: 'synthetic-profile-media-id',
+                  profile_pic_url:
+                    'https://avatar.synthetic.example/picture?token=synthetic-secret',
+                },
+                source_type: 3,
+                quick_snap_info: { filter_key: 'synthetic-filter-secret' },
+                __typename: 'XDTMediaDict',
+                __is_XDTMediaDict: true,
+              },
+            ],
+            sample_items: [],
+          },
+        },
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const serialized = JSON.stringify(result.files.get('instants-photo.json'));
+    expect(serialized).toContain('SANITIZED_CAPTION_1');
+    expect(serialized).toContain('SANITIZED_INSTANT_PROMPT_1');
+    expect(serialized).toContain('SANITIZED_INSTANT_FILTER_1');
+    expect(serialized).toContain('XDTCommentDict');
+    expect(serialized).not.toContain('synthetic-secret');
+    expect(serialized).not.toContain('synthetic-caption');
+    expect(serialized).not.toContain('synthetic-prompt');
+    expect(serialized).not.toContain('synthetic-filter');
+  });
+
+  it('sanitizes live Instant video version identifiers', () => {
+    const result = sanitizeBatch(
+      oneFile('instants-video.json', {
+        data: {
+          xdt_get_quick_snaps: {
+            items_ordered_by_time: [
+              {
+                video_versions: [
+                  {
+                    id: 'synthetic-video-version-secret',
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const serialized = JSON.stringify(result.files.get('instants-video.json'));
+    expect(serialized).toContain('SANITIZED_INSTANT_VIDEO_VERSION_ID_1');
+    expect(serialized).not.toContain('synthetic-video-version-secret');
+  });
+
   it('preserves nulls and empty strings and rejects malformed embedded JSON', () => {
     const value = shortcodeVideo();
     const first = sanitizeBatch(oneFile('shortcode-video.json', value));

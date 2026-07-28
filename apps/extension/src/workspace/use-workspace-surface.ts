@@ -24,6 +24,12 @@ import {
 import type { FrameExportSetting } from '../frame-export/timestamp';
 
 type SurfaceStatus = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
+type FetchTarget = 'source' | 'instants';
+
+interface FetchIntent {
+  id: number;
+  target: FetchTarget;
+}
 
 interface WorkspaceSurfaceOptions {
   acquisition: 'source' | 'instants';
@@ -104,10 +110,13 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
   const workspaceMode = new URLSearchParams(window.location.search).get('surface') === 'workspace';
   const [workspaceExists, setWorkspaceExists] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
-  const [fetchIntent, setFetchIntent] = useState(0);
+  const [fetchIntent, setFetchIntent] = useState<FetchIntent>();
   const [downloadIntent, setDownloadIntent] = useState(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  const requestFetch = useCallback((target: FetchTarget) => {
+    setFetchIntent(current => ({ id: (current?.id ?? 0) + 1, target }));
+  }, []);
 
   useEffect(() => {
     if (workspaceMode) {
@@ -123,7 +132,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
           session.setFrameExportSettings(snapshot.frameExportSettings);
           session.setRemoveAudioIndexes(new Set(snapshot.removeAudioIndexes));
           if (snapshot.autoStartDownload) setDownloadIntent(intent => intent + 1);
-          if (snapshot.intent === 'fetch') setFetchIntent(intent => intent + 1);
+          if (snapshot.intent === 'fetch') requestFetch(snapshot.acquisition.kind);
           return;
         }
         const source = new URLSearchParams(window.location.search).get('source') ?? '';
@@ -146,7 +155,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
         }
       })
       .catch(() => {});
-  }, [workspaceMode]);
+  }, [requestFetch, workspaceMode]);
 
   useEffect(() => {
     if (!workspaceMode)
@@ -213,6 +222,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
     handleReplaceWorkspace,
     hasTransferableSession,
     fetchIntent,
+    requestFetch,
     downloadIntent,
   };
 }

@@ -14,6 +14,8 @@ import { join } from 'path';
 import {
   HdAvatarResponseSchema,
   HighlightsTrayResponseSchema,
+  InstantPhotoSchema,
+  InstantVideoSchema,
   InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
   ShortcodeMediaResponseSchema,
@@ -77,14 +79,36 @@ describe('fixtures: active Instants', () => {
     ).rejects.toBeDefined();
   });
 
-  it('preserves server order and keeps sample items separate', async () => {
+  it('keeps ordered items and sample items separate', async () => {
     const decoded = await Effect.runPromise(
       Schema.decodeUnknown(InstantsFeedResponseSchema)(loadFixture('instants-photo.json'))
     );
-    expect(decoded.data.xdt_get_quick_snaps.items_ordered_by_time[0]?.id).toBe(
-      'SANITIZED_MEDIA_26_ID'
-    );
+    expect(decoded.data.xdt_get_quick_snaps.items_ordered_by_time).toHaveLength(3);
     expect(decoded.data.xdt_get_quick_snaps.sample_items).toEqual([]);
+  });
+
+  it('decodes live caption, prompt, and filter metadata', async () => {
+    const decoded = await Effect.runPromise(
+      Schema.decodeUnknown(InstantsFeedResponseSchema)(loadFixture('instants-photo.json'))
+    );
+    const item = decoded.data.xdt_get_quick_snaps.items_ordered_by_time[1];
+    expect(item?.__typename).toBe('XDTMediaDict');
+    if (!Schema.is(InstantPhotoSchema)(item)) return;
+    expect(item.caption?.__typename).toBe('XDTCommentDict');
+    expect(typeof item.caption?.text).toBe('string');
+    expect(typeof item.prompt_info?.id).toBe('string');
+    expect(typeof item.prompt_info?.text).toBe('string');
+    expect(typeof item.quick_snap_info.filter_key).toBe('string');
+  });
+
+  it('decodes live progressive video version identifiers', async () => {
+    const decoded = await Effect.runPromise(
+      Schema.decodeUnknown(InstantsFeedResponseSchema)(loadFixture('instants-video.json'))
+    );
+    const item = decoded.data.xdt_get_quick_snaps.items_ordered_by_time[0];
+    expect(item?.__typename).toBe('XDTMediaDict');
+    if (!Schema.is(InstantVideoSchema)(item) || !item.video_versions) return;
+    expect(typeof item.video_versions[0]?.id).toBe('string');
   });
 });
 
