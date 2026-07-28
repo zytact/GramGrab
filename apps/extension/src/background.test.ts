@@ -644,7 +644,7 @@ describe('background dispatcher', () => {
 
   describe('FETCH_INSTANTS', () => {
     it.each([
-      ['photo', 'instants-photo.json', 1],
+      ['photo', 'instants-photo.json', 3],
       ['video', 'instants-video.json', 1],
       ['empty', 'instants-empty.json', 0],
       ['unknown typename', 'instants-unknown.json', 0],
@@ -681,13 +681,13 @@ describe('background dispatcher', () => {
     it.each([
       [
         'instants-photo.json',
-        'https://sanitized.invalid/media/26/instant-image',
-        'sanitized_person_3_username',
+        'https://sanitized.invalid/media/46/instant-image',
+        'sanitized_person_14_username',
       ],
       [
         'instants-video.json',
-        'https://sanitized.invalid/media/27/instant-video',
-        'sanitized_person_4_username',
+        'https://sanitized.invalid/media/50/instant-video',
+        'sanitized_person_15_username',
       ],
     ])('selects the verified candidate policy for %s', async (name, url, username) => {
       const fixture = instantFixture(name);

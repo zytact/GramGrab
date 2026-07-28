@@ -285,20 +285,36 @@ const InstantUserSchema = Schema.Struct({
   profile_pic_url: Schema.String,
 });
 
+const InstantCaptionSchema = Schema.Struct({
+  __typename: Schema.Literal('XDTCommentDict'),
+  strong_id__: Schema.String,
+  pk: Schema.String,
+  text: Schema.String,
+});
+
+const InstantPromptInfoSchema = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String,
+});
+
+const InstantQuickSnapInfoSchema = Schema.Struct({
+  filter_key: Schema.optional(Schema.String),
+});
+
 const InstantBaseFields = {
   __typename: Schema.Literal('XDTMediaDict'),
   id: Schema.String,
   taken_at: Schema.Number,
   source_type: Schema.Number,
   audience: Schema.String,
-  caption: Schema.Null,
+  caption: Schema.NullOr(InstantCaptionSchema),
   user: InstantUserSchema,
-  quick_snap_info: Schema.Struct({}),
-  prompt_info: Schema.Null,
+  quick_snap_info: InstantQuickSnapInfoSchema,
+  prompt_info: Schema.NullOr(InstantPromptInfoSchema),
   wearable_attribution_info: Schema.Null,
 } as const;
 
-const InstantPhotoSchema = Schema.Struct({
+export const InstantPhotoSchema = Schema.Struct({
   ...InstantBaseFields,
   media_type: Schema.Literal(1),
   image_versions2: Schema.Struct({ candidates: Schema.Array(InstantCandidateSchema) }),
@@ -307,7 +323,7 @@ const InstantPhotoSchema = Schema.Struct({
   video_duration: Schema.Null,
 });
 
-const InstantVideoSchema = Schema.Struct({
+export const InstantVideoSchema = Schema.Struct({
   ...InstantBaseFields,
   media_type: Schema.Literal(2),
   image_versions2: Schema.NullOr(
@@ -316,6 +332,7 @@ const InstantVideoSchema = Schema.Struct({
   video_versions: Schema.NullOr(
     Schema.Array(
       Schema.Struct({
+        id: Schema.optional(Schema.String),
         width: Schema.Number,
         height: Schema.Number,
         type: Schema.Number,

@@ -3,50 +3,185 @@
     "xdt_get_quick_snaps": {
       "items_ordered_by_time": [
         {
-          "__typename": "XDTMediaDict",
-          "id": "SANITIZED_MEDIA_26_ID",
-          "taken_at": 1700000001,
+          "strong_id__": "SANITIZED_MEDIA_46_ID",
+          "context__": null,
+          "id": "SANITIZED_MEDIA_46_ID",
+          "taken_at": 1785212527,
           "media_type": 1,
-          "source_type": 4,
-          "audience": "mutual_followers",
-          "caption": null,
-          "user": {
-            "id": "SANITIZED_PERSON_3_ID",
-            "username": "SANITIZED_PERSON_3_USERNAME",
-            "full_name": "SANITIZED_PERSON_3_FULL_NAME",
-            "profile_pic_url": "https://sanitized.invalid/person/3/profile-picture"
-          },
+          "video_duration": null,
+          "wearable_attribution_info": null,
+          "video_dash_manifest": null,
           "image_versions2": {
             "candidates": [
               {
-                "width": 640,
-                "height": 640,
-                "url": "https://sanitized.invalid/media/26/instant-image"
+                "width": 984,
+                "height": 984,
+                "url": "https://sanitized.invalid/media/46/instant-image",
+                "scans_profile": null
               },
               {
-                "width": 1440,
-                "height": 1440,
-                "url": "https://sanitized.invalid/media/26/instant-image"
+                "width": 720,
+                "height": 720,
+                "url": "https://sanitized.invalid/media/46/instant-image",
+                "scans_profile": null
+              },
+              {
+                "width": 640,
+                "height": 640,
+                "url": "https://sanitized.invalid/media/46/instant-image",
+                "scans_profile": null
               }
             ]
           },
           "video_versions": null,
-          "video_dash_manifest": null,
-          "video_duration": null,
-          "quick_snap_info": {},
           "prompt_info": null,
-          "wearable_attribution_info": null
+          "audience": "mutual_followers",
+          "caption": null,
+          "user": {
+            "__typename": "XDTUserDict",
+            "strong_id__": "SANITIZED_PERSON_14_ID",
+            "id": "SANITIZED_PERSON_14_ID",
+            "__is_XDTUserDict": true,
+            "fbid_v2": "SANITIZED_PERSON_14_FB_ID",
+            "full_name": "SANITIZED_PERSON_14_FULL_NAME",
+            "username": "SANITIZED_PERSON_14_USERNAME",
+            "account_badges": [],
+            "profile_pic_id": "SANITIZED_MEDIA_47_PROFILE_PICTURE_ID",
+            "profile_pic_url": "https://sanitized.invalid/person/14/profile-picture"
+          },
+          "source_type": 3,
+          "quick_snap_info": {
+            "filter_key": ""
+          },
+          "__typename": "XDTMediaDict",
+          "__is_XDTMediaDict": true
+        },
+        {
+          "strong_id__": "SANITIZED_MEDIA_48_ID",
+          "context__": null,
+          "id": "SANITIZED_MEDIA_48_ID",
+          "taken_at": 1785212536,
+          "media_type": 1,
+          "video_duration": null,
+          "wearable_attribution_info": null,
+          "video_dash_manifest": null,
+          "image_versions2": {
+            "candidates": [
+              {
+                "width": 984,
+                "height": 984,
+                "url": "https://sanitized.invalid/media/48/instant-image",
+                "scans_profile": null
+              },
+              {
+                "width": 720,
+                "height": 720,
+                "url": "https://sanitized.invalid/media/48/instant-image",
+                "scans_profile": null
+              },
+              {
+                "width": 640,
+                "height": 640,
+                "url": "https://sanitized.invalid/media/48/instant-image",
+                "scans_profile": null
+              }
+            ]
+          },
+          "video_versions": null,
+          "prompt_info": {
+            "id": "SANITIZED_INSTANT_PROMPT_ID_1",
+            "text": "SANITIZED_INSTANT_PROMPT_1"
+          },
+          "audience": "mutual_followers",
+          "caption": {
+            "__typename": "XDTCommentDict",
+            "strong_id__": "SANITIZED_CAPTION_ID_1",
+            "pk": "SANITIZED_CAPTION_ID_1",
+            "text": "SANITIZED_CAPTION_1"
+          },
+          "user": {
+            "__typename": "XDTUserDict",
+            "strong_id__": "SANITIZED_PERSON_14_ID",
+            "id": "SANITIZED_PERSON_14_ID",
+            "__is_XDTUserDict": true,
+            "fbid_v2": "SANITIZED_PERSON_14_FB_ID",
+            "full_name": "SANITIZED_PERSON_14_FULL_NAME",
+            "username": "SANITIZED_PERSON_14_USERNAME",
+            "account_badges": [],
+            "profile_pic_id": "SANITIZED_MEDIA_47_PROFILE_PICTURE_ID",
+            "profile_pic_url": "https://sanitized.invalid/person/14/profile-picture"
+          },
+          "source_type": 3,
+          "quick_snap_info": {
+            "filter_key": ""
+          },
+          "__typename": "XDTMediaDict",
+          "__is_XDTMediaDict": true
+        },
+        {
+          "strong_id__": "SANITIZED_MEDIA_49_ID",
+          "context__": null,
+          "id": "SANITIZED_MEDIA_49_ID",
+          "taken_at": 1785217817,
+          "media_type": 1,
+          "video_duration": null,
+          "wearable_attribution_info": null,
+          "video_dash_manifest": null,
+          "image_versions2": {
+            "candidates": [
+              {
+                "width": 984,
+                "height": 984,
+                "url": "https://sanitized.invalid/media/49/instant-image",
+                "scans_profile": null
+              },
+              {
+                "width": 720,
+                "height": 720,
+                "url": "https://sanitized.invalid/media/49/instant-image",
+                "scans_profile": null
+              },
+              {
+                "width": 640,
+                "height": 640,
+                "url": "https://sanitized.invalid/media/49/instant-image",
+                "scans_profile": null
+              }
+            ]
+          },
+          "video_versions": null,
+          "prompt_info": null,
+          "audience": "mutual_followers",
+          "caption": null,
+          "user": {
+            "__typename": "XDTUserDict",
+            "strong_id__": "SANITIZED_PERSON_14_ID",
+            "id": "SANITIZED_PERSON_14_ID",
+            "__is_XDTUserDict": true,
+            "fbid_v2": "SANITIZED_PERSON_14_FB_ID",
+            "full_name": "SANITIZED_PERSON_14_FULL_NAME",
+            "username": "SANITIZED_PERSON_14_USERNAME",
+            "account_badges": [],
+            "profile_pic_id": "SANITIZED_MEDIA_47_PROFILE_PICTURE_ID",
+            "profile_pic_url": "https://sanitized.invalid/person/14/profile-picture"
+          },
+          "source_type": 3,
+          "quick_snap_info": {
+            "filter_key": ""
+          },
+          "__typename": "XDTMediaDict",
+          "__is_XDTMediaDict": true
         }
       ],
       "sample_items": [],
-      "latest_reaction_timestamp": 0,
+      "latest_reaction_timestamp": 1783080607,
       "ranking_request_id": "SANITIZED_RANKING_REQUEST_1",
       "is_hidden": false,
       "has_unseen_from_top_bffs": false,
-      "gtm_train_text": "",
-      "gtm_video_text": "",
-      "gtm_filters_text": "",
-      "gtm_recap_text": ""
+      "gtm_train_text": "SANITIZED_PRESENTATION_TEXT_1",
+      "gtm_video_text": "SANITIZED_PRESENTATION_TEXT_2",
+      "gtm_filters_text": "SANITIZED_PRESENTATION_TEXT_3",
+      "gtm_recap_text": "SANITIZED_PRESENTATION_TEXT_4"
     }
   }
 }

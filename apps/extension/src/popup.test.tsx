@@ -79,6 +79,19 @@ describe('Popup', () => {
     });
   });
 
+  it('announces history loading errors while the history view is open', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: { type: string }) =>
+        message.type === 'GET_DOWNLOAD_HISTORY' ? { error: 'History is unavailable.' } : {}
+    );
+    await act(async () => render(<Popup />));
+
+    await user.click(screen.getByRole('button', { name: 'History' }));
+
+    expect((await screen.findByRole('status')).textContent).toBe('History is unavailable.');
+  });
+
   it('does not transfer previous results after the draft source changes', async () => {
     const user = userEvent.setup();
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -88,7 +101,7 @@ describe('Popup', () => {
       render(<Popup />);
     });
     await user.click(screen.getByText('Fetch Media'));
-    await waitFor(() => expect(screen.getByText(/1 item found/i)).toBeDefined());
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('1 item found'));
 
     const input = screen.getByPlaceholderText(/Paste an Instagram URL/i);
     await user.clear(input);
@@ -174,10 +187,8 @@ describe('Popup', () => {
     await user.click(screen.getByText('Fetch Media'));
     await screen.findByText('source');
 
-    await user.click(screen.getByRole('button', { name: 'Instants' }));
-    expect(screen.queryByLabelText('Source URL')).toBeNull();
-    expect(screen.queryByText('source')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Load Instants' }));
+    expect(screen.queryByText('source')).toBeNull();
 
     await waitFor(() => {
       expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'FETCH_INSTANTS' });
@@ -192,7 +203,6 @@ describe('Popup', () => {
       media: [],
     });
     await act(async () => render(<Popup />));
-    await user.click(screen.getByRole('button', { name: 'Instants' }));
     await user.click(screen.getByRole('button', { name: 'Load Instants' }));
     expect(await screen.findByText('No active Instants.')).toBeDefined();
   });
@@ -218,9 +228,7 @@ describe('Popup', () => {
     const fetchButton = screen.getByText('Fetch Media');
     await user.click(fetchButton);
 
-    await waitFor(() => {
-      expect(screen.getByText(/2 items found — select and download/i)).toBeDefined();
-    });
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('2 items found'));
   });
 
   it('displays error message from fetch', async () => {
@@ -563,7 +571,6 @@ describe('Popup', () => {
     );
 
     await act(async () => render(<Popup />));
-    await user.click(screen.getByRole('button', { name: 'Instants' }));
     await user.click(screen.getByRole('button', { name: 'Load Instants' }));
     await user.click(screen.getByRole('button', { name: 'Download 1 Selected' }));
     await user.click(screen.getByRole('button', { name: 'Refresh feed and retry' }));
@@ -577,6 +584,60 @@ describe('Popup', () => {
         url: 'https://instagram.com/fresh.jpg',
       }),
     ]);
+  });
+
+  it('announces an Instant refresh error without clearing the existing results', async () => {
+    const user = userEvent.setup();
+    let instantFetches = 0;
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: {
+        type: string;
+        operations?: { operationId: string; requestId: string }[];
+      }) => {
+        if (message.type === 'FETCH_INSTANTS') {
+          instantFetches++;
+          return instantFetches === 1
+            ? {
+                media: [
+                  {
+                    itemIndex: 0,
+                    mediaId: 'instant-1',
+                    url: 'https://instagram.com/stale.jpg',
+                    type: 'image',
+                    filenameHint: 'creator_instant-1',
+                  },
+                ],
+              }
+            : { error: 'offline' };
+        }
+        if (message.type !== 'DOWNLOAD_MEDIA') return {};
+        const operation = message.operations?.[0];
+        return operation
+          ? {
+              results: [
+                {
+                  operationId: operation.operationId,
+                  requestId: operation.requestId,
+                  status: 'failed',
+                  failure: {
+                    code: 'BROWSER_DOWNLOAD_NETWORK_FAILED',
+                    phase: 'browser-download',
+                    scope: 'item',
+                  },
+                },
+              ],
+            }
+          : { results: [] };
+      }
+    );
+
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'Load Instants' }));
+    await user.click(screen.getByRole('button', { name: 'Download 1 Selected' }));
+    await user.click(screen.getByRole('button', { name: 'Refresh feed and retry' }));
+
+    expect(await screen.findByText('GramGrab could not refresh active Instants.')).toBeDefined();
+    expect(screen.getByText('creator_instant-1')).toBeDefined();
   });
 
   it('offers the same failed-item retry in the workspace surface', async () => {
@@ -688,7 +749,7 @@ describe('Popup', () => {
 
     await act(async () => render(<Popup />));
 
-    await waitFor(() => expect(screen.getByText(/1 item started/)).toBeDefined());
+    await waitFor(() => expect(screen.getByText(/1 started, 0 failed/)).toBeDefined());
     expect(downloadCalls).toBe(1);
     window.history.replaceState({}, '', '/popup.html');
   });

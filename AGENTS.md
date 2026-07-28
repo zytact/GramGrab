@@ -65,9 +65,9 @@ Real API response fixtures live in `apps/extension/src/effect/__fixtures__/` (se
 3. `vp test run` — failing fixture tests show what changed.
 4. Update `apps/extension/src/effect/schemas.ts` to match, re-run tests, ship.
 
-## Ubiquitous language
+## Domain language
 
-This repo has a domain glossary at `UBIQUITOUS_LANGUAGE.md`.
+This repo has a domain glossary at `CONTEXT.md`.
 
 Read it when working on domain terminology, product concepts, naming, business rules, user-facing language, or when interpreting ambiguous terms (notably the overloaded **Reel** and **Unknown**). Prefer the canonical terms defined there, and avoid aliases listed as discouraged.
 

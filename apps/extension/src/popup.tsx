@@ -757,6 +757,7 @@ export default function Popup() {
       error?: string;
     };
     if (response.error) {
+      setStatus('error');
       setMessage(response.error);
       return;
     }
@@ -862,9 +863,11 @@ export default function Popup() {
               : 'Frame download started.'
             : 'Frame export failed. Download the original video or try again.'
         );
+        if (result.status === 'failed') setStatus('error');
       } else {
         const failed = response.results?.find(result => result.status === 'failed');
         const failure = failed?.failure ? FAILURE_PRESENTATION[failed.failure.code] : undefined;
+        if (response.error || failure) setStatus('error');
         setMessage(
           response.error ??
             (failure ? `${failure.title}. ${failure.explanation}` : 'Download started.')
@@ -880,16 +883,20 @@ export default function Popup() {
       type: 'DELETE_HISTORY_ENTRY',
       entryId,
     })) as { entries?: HistoryEntry[]; error?: string };
-    if (response.error) setMessage(response.error);
-    else setHistoryEntries(response.entries ?? []);
+    if (response.error) {
+      setStatus('error');
+      setMessage(response.error);
+    } else setHistoryEntries(response.entries ?? []);
   }, []);
   const clearDownloadHistory = useCallback(async () => {
     if (!window.confirm('Clear all download history?')) return;
     const response = (await browser.runtime.sendMessage({ type: 'CLEAR_DOWNLOAD_HISTORY' })) as {
       error?: string;
     };
-    if (response.error) setMessage(response.error);
-    else setHistoryEntries([]);
+    if (response.error) {
+      setStatus('error');
+      setMessage(response.error);
+    } else setHistoryEntries([]);
   }, []);
 
   const {
@@ -901,6 +908,7 @@ export default function Popup() {
     handleReplaceWorkspace,
     hasTransferableSession,
     fetchIntent,
+    requestFetch,
     downloadIntent,
   } = useWorkspaceSurface({
     acquisition,
@@ -922,14 +930,23 @@ export default function Popup() {
     setAutoDetected,
   });
 
+  const triggerFetch = useCallback(
+    (target: 'source' | 'instants') => {
+      switchAcquisition(target);
+      requestFetch(target);
+    },
+    [requestFetch, switchAcquisition]
+  );
+
   useEffect(() => {
-    if (fetchIntent > 0) void handleFetchRef.current();
-  }, [fetchIntent]);
+    if (fetchIntent && fetchIntent.target === acquisition) void handleFetchRef.current();
+  }, [acquisition, fetchIntent]);
 
   useEffect(() => {
     if (downloadIntent > 0) void handleDownloadRef.current();
   }, [downloadIntent]);
 
+  const emptyMessage = status === 'done' && mediaItems.length === 0 ? message : 'No media yet.';
   const mediaListModel = {
     mediaItems,
     intrinsicDimensions,
@@ -940,6 +957,7 @@ export default function Popup() {
     removeAudioIndexes,
     frameRuntime,
     attempt: downloadAttempt.attempt,
+    emptyMessage,
   };
   const mediaListActions = {
     onPreviewError: handlePreviewError,
@@ -962,29 +980,18 @@ export default function Popup() {
           workspaceMode={workspaceMode}
           workspaceExists={workspaceExists}
           isBusy={isBusy}
+          showHistory={showHistory}
+          onToggleHistory={() => (showHistory ? setShowHistory(false) : openHistory())}
           onOpenWorkspace={handleOpenWorkspace}
         />
       </header>
 
       <div className="ext-body">
-        <div className="history-nav" aria-label="Popup view">
-          <button
-            className="workspace-secondary"
-            type="button"
-            onClick={() => setShowHistory(false)}
-            aria-pressed={!showHistory}
-          >
-            Results
-          </button>
-          <button
-            className="workspace-secondary"
-            type="button"
-            onClick={openHistory}
-            aria-pressed={showHistory}
-          >
-            History
-          </button>
-        </div>
+        {status === 'error' && (
+          <p className="status-message error" role="status" aria-live="polite">
+            {message}
+          </p>
+        )}
         {showHistory ? (
           <HistoryView
             entries={historyEntries}
@@ -995,36 +1002,13 @@ export default function Popup() {
           />
         ) : (
           <>
-            <div className="ext-section source-mode" role="group" aria-label="Result source">
-              <button
-                type="button"
-                className="workspace-secondary"
-                aria-pressed={acquisition === 'source'}
-                disabled={isBusy}
-                onClick={() => switchAcquisition('source')}
-              >
-                From URL
-              </button>
-              <button
-                type="button"
-                className="workspace-secondary"
-                aria-pressed={acquisition === 'instants'}
-                disabled={isBusy}
-                onClick={() => switchAcquisition('instants')}
-              >
-                Instants
-              </button>
-            </div>
-
-            {acquisition === 'source' && (
-              <div className="ext-section">
-                <label className="field-label" htmlFor="source-url">
-                  Source URL
-                </label>
+            <div className="ext-section fetch-section">
+              <div className="fetch-row">
                 <input
                   id="source-url"
                   className={`url-input${autoDetected ? ' detected' : ''}`}
                   type="url"
+                  aria-label="Instagram source URL"
                   placeholder="Paste an Instagram URL…"
                   value={url}
                   disabled={isBusy}
@@ -1032,15 +1016,31 @@ export default function Popup() {
                   onBlur={() =>
                     setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)
                   }
-                  onKeyDown={e => e.key === 'Enter' && !isBusy && handleFetch()}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !isBusy && url.trim()) triggerFetch('source');
+                  }}
                 />
+                <button
+                  className="btn"
+                  onClick={() => triggerFetch('source')}
+                  disabled={isBusy || !url.trim()}
+                >
+                  {renderFetchButtonLabel(status, acquisition)}
+                </button>
               </div>
-            )}
-
-            <div className="ext-section">
-              <button className="btn" onClick={handleFetch} disabled={isBusy}>
-                {renderFetchButtonLabel(status, acquisition)}
-              </button>
+              {autoDetected && status === 'idle' && (
+                <p className="detected-hint">Instagram URL detected — ready to fetch.</p>
+              )}
+              <div className="instants-row">
+                <button
+                  type="button"
+                  className="instants-btn"
+                  onClick={() => triggerFetch('instants')}
+                  disabled={isBusy}
+                >
+                  {renderInstantsButtonLabel(status, acquisition)}
+                </button>
+              </div>
               {sourceFailure && (
                 <section className="download-attempt-summary" aria-live="polite">
                   <strong>{FAILURE_PRESENTATION[sourceFailure.code].title}</strong>
@@ -1188,11 +1188,6 @@ export default function Popup() {
             </div>
           </>
         )}
-      </div>
-
-      <div className="status-bar">
-        <span className={`status-dot ${status}`} />
-        <span className={`status-text ${status}`}>{message}</span>
       </div>
 
       {workspaceMode ? (
@@ -1426,11 +1421,15 @@ function PopupHeader({
   workspaceMode,
   workspaceExists,
   isBusy,
+  showHistory,
+  onToggleHistory,
   onOpenWorkspace,
 }: {
   workspaceMode: boolean;
   workspaceExists: boolean;
   isBusy: boolean;
+  showHistory: boolean;
+  onToggleHistory: () => void;
   onOpenWorkspace: () => Promise<void>;
 }) {
   return (
@@ -1439,7 +1438,14 @@ function PopupHeader({
         Gram<em>Grab</em>
       </div>
       <div className="ext-meta">
-        <span className="ext-subtitle">Media Extractor</span>
+        <button
+          className="workspace-secondary"
+          type="button"
+          onClick={onToggleHistory}
+          aria-pressed={showHistory}
+        >
+          {showHistory ? 'Results' : 'History'}
+        </button>
         {!workspaceMode && (
           <button
             className="workspace-launch"
@@ -1565,15 +1571,24 @@ function renderDownloadButtonLabel(status: Status, selectedCount: number) {
 }
 
 function renderFetchButtonLabel(status: Status, acquisition: 'source' | 'instants') {
-  return status === 'fetching' ? (
+  return status === 'fetching' && acquisition === 'source' ? (
     <>
       <span className="btn-spinner" />
       Fetching…
     </>
-  ) : acquisition === 'instants' ? (
-    'Load Instants'
   ) : (
     'Fetch Media'
+  );
+}
+
+function renderInstantsButtonLabel(status: Status, acquisition: 'source' | 'instants') {
+  return status === 'fetching' && acquisition === 'instants' ? (
+    <>
+      <span className="btn-spinner" />
+      Loading Instants…
+    </>
+  ) : (
+    'Load Instants'
   );
 }
 
@@ -1587,6 +1602,7 @@ type MediaListModel = {
   removeAudioIndexes: Set<number>;
   frameRuntime: Record<number, FrameRuntime>;
   attempt: ReturnType<typeof useDownloadAttempt>['attempt'];
+  emptyMessage: string;
 };
 
 type MediaListActions = {
@@ -1660,6 +1676,7 @@ function MediaListSection({
     removeAudioIndexes,
     frameRuntime,
     attempt,
+    emptyMessage,
   } = model;
   const {
     onPreviewError,
@@ -1712,7 +1729,7 @@ function MediaListSection({
     <div className="ext-section" style={{ flex: 1 }}>
       {mediaItems.length > 0 && (
         <div className="media-header">
-          <span className="media-count-label">
+          <span className="media-count-label" role="status" aria-live="polite">
             <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
           </span>
           <label className="select-all-label">
@@ -1729,7 +1746,9 @@ function MediaListSection({
 
       <div ref={masonryRef} className={`media-list${workspaceMode ? ' workspace-media-list' : ''}`}>
         {mediaItems.length === 0 ? (
-          <p className="media-empty">No media yet.</p>
+          <p className="media-empty" aria-live="polite">
+            {emptyMessage}
+          </p>
         ) : workspaceMode ? (
           masonryColumns.map((column, index) => (
             <div className="workspace-masonry-column" key={index}>

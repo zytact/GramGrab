@@ -2,7 +2,15 @@
   "data": {
     "xdt_get_quick_snaps": {
       "items_ordered_by_time": [],
-      "sample_items": []
+      "sample_items": [],
+      "latest_reaction_timestamp": 1783080607,
+      "ranking_request_id": "SANITIZED_RANKING_REQUEST_1",
+      "is_hidden": false,
+      "has_unseen_from_top_bffs": false,
+      "gtm_train_text": "SANITIZED_PRESENTATION_TEXT_1",
+      "gtm_video_text": "SANITIZED_PRESENTATION_TEXT_2",
+      "gtm_filters_text": "SANITIZED_PRESENTATION_TEXT_3",
+      "gtm_recap_text": "SANITIZED_PRESENTATION_TEXT_4"
     }
   }
 }
