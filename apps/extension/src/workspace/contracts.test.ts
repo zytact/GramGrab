@@ -8,7 +8,8 @@ import {
 } from './contracts';
 
 const snapshot: WorkspaceSnapshot = {
-  version: 3,
+  version: 4,
+  acquisition: { kind: 'source' },
   createdAt: 1,
   expiresAt: Date.now() + 60_000,
   url: 'https://www.instagram.com/p/example/',
@@ -70,6 +71,12 @@ describe('workspace contracts', () => {
     expect(olderSnapshot.mediaItems[0]).not.toHaveProperty('height');
   });
 
+  it('rejects a version 4 snapshot without an explicit acquisition origin', () => {
+    const invalid: Partial<WorkspaceSnapshot> = { ...snapshot };
+    delete invalid.acquisition;
+    expect(upgradeWorkspaceSnapshot(invalid)).toBeUndefined();
+  });
+
   it('upgrades version 1 frame selections to default frame timestamps', () => {
     const legacy = {
       ...snapshot,
@@ -78,7 +85,8 @@ describe('workspace contracts', () => {
     };
     const upgraded = upgradeWorkspaceSnapshot(legacy);
     expect(upgraded).toMatchObject({
-      version: 3,
+      version: 4,
+      acquisition: { kind: 'source' },
       removeAudioIndexes: [],
       frameExportSettings: { 0: { enabled: true, timestampSeconds: 5 } },
     });

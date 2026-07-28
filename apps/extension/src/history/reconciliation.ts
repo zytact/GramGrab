@@ -17,11 +17,11 @@ export function reconcileHistoryEntry(
 ): Reconciliation {
   if (entry.mediaId) {
     const candidates = items.filter(item => item.mediaId === entry.mediaId);
-    if (candidates.length === 1) return { kind: 'found', item: candidates[0]! };
-    if (candidates.length > 1) {
-      const atIndex = candidates.find(item => item.itemIndex === entry.itemIndex);
-      return atIndex ? { kind: 'found', item: atIndex } : { kind: 'ambiguous' };
-    }
+    if (candidates.length === 1)
+      return candidates[0]!.type === entry.mediaType
+        ? { kind: 'found', item: candidates[0]! }
+        : { kind: 'missing' };
+    if (candidates.length > 1) return { kind: 'ambiguous' };
     return { kind: 'missing' };
   }
   const item = items.find(candidate => candidate.itemIndex === entry.itemIndex);

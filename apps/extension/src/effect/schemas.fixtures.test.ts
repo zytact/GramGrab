@@ -14,6 +14,7 @@ import { join } from 'path';
 import {
   HdAvatarResponseSchema,
   HighlightsTrayResponseSchema,
+  InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
   ShortcodeMediaResponseSchema,
   WebProfileInfoResponseSchema,
@@ -53,6 +54,37 @@ describe('fixtures: highlights.json', () => {
     expect(video.video_resources.length).toBeGreaterThan(0);
     expect(typeof video.video_resources[0]?.src).toBe('string');
     expect(typeof video.display_url).toBe('string');
+  });
+});
+
+describe('fixtures: active Instants', () => {
+  it.each([
+    'instants-photo.json',
+    'instants-video.json',
+    'instants-empty.json',
+    'instants-unknown.json',
+  ])('decodes %s', async name => {
+    await expect(
+      Effect.runPromise(Schema.decodeUnknown(InstantsFeedResponseSchema)(loadFixture(name)))
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects a changed known typename shape', async () => {
+    await expect(
+      Effect.runPromise(
+        Schema.decodeUnknown(InstantsFeedResponseSchema)(loadFixture('instants-invalid-known.json'))
+      )
+    ).rejects.toBeDefined();
+  });
+
+  it('preserves server order and keeps sample items separate', async () => {
+    const decoded = await Effect.runPromise(
+      Schema.decodeUnknown(InstantsFeedResponseSchema)(loadFixture('instants-photo.json'))
+    );
+    expect(decoded.data.xdt_get_quick_snaps.items_ordered_by_time[0]?.id).toBe(
+      'SANITIZED_MEDIA_26_ID'
+    );
+    expect(decoded.data.xdt_get_quick_snaps.sample_items).toEqual([]);
   });
 });
 

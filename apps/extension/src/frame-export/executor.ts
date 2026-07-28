@@ -14,6 +14,7 @@ export type FrameExportPhase = 'frame-metadata' | 'frame-export';
 
 export interface FrameExecutorOptions {
   readonly onPhase?: (phase: FrameExportPhase) => void;
+  readonly originKind?: 'source' | 'instants';
 }
 
 function blobAsDataUrl(blob: Blob): Promise<string> {
@@ -57,6 +58,7 @@ export async function executeFrameExport(
       type: 'DOWNLOAD_FRAME_EXPORT',
       dataUrl: await blobAsDataUrl(captured.right),
       sourceUrl,
+      originKind: options.originKind ?? 'source',
       item: {
         itemIndex: operation.itemIndex,
         ...(operation.mediaId ? { mediaId: operation.mediaId } : {}),

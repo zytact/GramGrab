@@ -109,11 +109,16 @@ async function declinedReencodes(
   return declined;
 }
 
-async function recordSilentHistory(sourceUrl: string, operation: AttemptOperation) {
+async function recordSilentHistory(
+  sourceUrl: string,
+  operation: AttemptOperation,
+  originKind: 'source' | 'instants'
+) {
   try {
     return (await browser.runtime.sendMessage({
       type: 'RECORD_SILENT_EXPORT',
       sourceUrl,
+      originKind,
       item: operation,
     })) as { error?: string };
   } catch {
@@ -127,7 +132,8 @@ async function processCandidate(
   sourceUrl: string,
   onProgress: (requestId: string, phase: string, progress: number) => void,
   ownership: OwnershipState,
-  approvedOperationIds: ReadonlySet<string>
+  approvedOperationIds: ReadonlySet<string>,
+  originKind: 'source' | 'instants'
 ): Promise<DownloadOperationResult> {
   const { operation, preflight } = candidate;
   try {
@@ -152,7 +158,7 @@ async function processCandidate(
     const warning = processed.alreadySilent
       ? undefined
       : await trackOwnedDownload(operation, downloadId, url, client, ownership);
-    const historyWarning = (await recordSilentHistory(sourceUrl, operation)).error;
+    const historyWarning = (await recordSilentHistory(sourceUrl, operation, originKind)).error;
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,
       requestId: operation.requestId,
@@ -202,7 +208,8 @@ export async function runSilentVideoBatch(
   onProgress: (requestId: string, phase: string, progress: number) => void,
   sourceUrl: string,
   onPreflightComplete: () => void,
-  approvedRequestIds: Set<string>
+  approvedRequestIds: Set<string>,
+  originKind: 'source' | 'instants' = 'source'
 ): Promise<OperationBatchOutcome> {
   const client = new SilentVideoClient();
   const ownership: OwnershipState = { activeDownloads: 0, batchComplete: false };
@@ -237,7 +244,8 @@ export async function runSilentVideoBatch(
               sourceUrl,
               onProgress,
               ownership,
-              approvedRequestIds
+              approvedRequestIds,
+              originKind
             )
       );
     }

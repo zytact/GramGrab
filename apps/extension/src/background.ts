@@ -20,6 +20,8 @@ import {
   HistoryRemoveResult,
   HumanItemNumber,
   InspectResult,
+  InstantsInspectResult,
+  InstantsExport as ProtocolInstantsExport,
   InspectedMedia,
   InternalItemIndex,
   ItemFailed,
@@ -57,6 +59,7 @@ import {
   fetchBlobAsDataUrl,
   fetchHdAvatarUser,
   fetchHighlightsTray,
+  fetchInstantsFeed,
   fetchReelsMedia,
   fetchWebProfileInfoUser,
   graphqlFetch as graphqlFetchEffect,
@@ -77,6 +80,9 @@ import {
 import type {
   HdAvatarUser,
   HighlightsTrayItem,
+  InstantItem,
+  InstantPhoto,
+  InstantVideo,
   ReelItem,
   ShortcodeImage,
   ShortcodeNode,
@@ -90,6 +96,7 @@ import {
   GraphQLRequestFailed,
   HttpError,
   InvalidInstagramUrl,
+  MediaDashOnlyUnsupported,
   NetworkError,
   RateLimited,
   ResponseShapeUnknown,
@@ -98,6 +105,7 @@ import {
 } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from './errors/normalize.ts';
+import { FAILURE_PRESENTATION } from './errors/presentation.ts';
 
 const DOWNLOAD_CONCURRENCY = 3;
 
@@ -211,6 +219,7 @@ interface MediaItem {
   height?: number;
   takenAt?: number;
   filenameHint: string;
+  creatorUsername?: string;
 }
 
 function withItemIndexes(items: MediaItem[]): MediaItem[] {
@@ -606,6 +615,100 @@ function createStoryImageItem(reelId: string, item: StoryImageItem): MediaItem |
     : undefined;
 }
 
+function sanitizedUsername(value: string): string {
+  const sanitized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9._]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 30);
+  return sanitized || 'instagram_user';
+}
+
+function validMediaUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function bestInstantImage(candidates: readonly { width: number; height: number; url: string }[]) {
+  return candidates
+    .filter(
+      candidate => candidate.width > 0 && candidate.height > 0 && validMediaUrl(candidate.url)
+    )
+    .sort((a, b) => b.width * b.height - a.width * a.height)[0];
+}
+
+export function firstUniqueProgressiveVideo(
+  candidates: readonly { width: number; height: number; url: string }[]
+) {
+  const seen = new Set<string>();
+  return candidates.find(candidate => {
+    if (!validMediaUrl(candidate.url) || seen.has(candidate.url)) return false;
+    seen.add(candidate.url);
+    return true;
+  });
+}
+
+function instantFilename(username: string, mediaId: string, takenAt: number): string {
+  return `${sanitizedUsername(username)}_instant_${takenAt}_${mediaId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+}
+
+function normalizeInstantPhoto(item: InstantPhoto): MediaItem | undefined {
+  const image = bestInstantImage(item.image_versions2.candidates);
+  if (!image) return undefined;
+  const username = sanitizedUsername(item.user.username);
+  return {
+    itemIndex: 0,
+    mediaId: item.id,
+    type: 'image',
+    url: image.url,
+    width: image.width,
+    height: image.height,
+    takenAt: item.taken_at,
+    filenameHint: instantFilename(username, item.id, item.taken_at),
+    creatorUsername: username,
+  };
+}
+
+function normalizeInstantVideo(
+  item: InstantVideo
+): Effect.Effect<MediaItem | undefined, MediaDashOnlyUnsupported> {
+  const video = firstUniqueProgressiveVideo(item.video_versions ?? []);
+  if (!video && item.video_dash_manifest)
+    return Effect.fail(new MediaDashOnlyUnsupported({ mediaId: item.id }));
+  if (!video) return Effect.succeed(undefined);
+  const poster = bestInstantImage(item.image_versions2?.candidates ?? []);
+  const username = sanitizedUsername(item.user.username);
+  return Effect.succeed({
+    itemIndex: 0,
+    mediaId: item.id,
+    type: 'video',
+    url: video.url,
+    ...(poster ? { previewUrl: poster.url } : {}),
+    width: video.width,
+    height: video.height,
+    takenAt: item.taken_at,
+    filenameHint: instantFilename(username, item.id, item.taken_at),
+    creatorUsername: username,
+  });
+}
+
+const normalizeInstantItems = Effect.fn(function* (items: readonly InstantItem[]) {
+  const normalized: MediaItem[] = [];
+  for (const item of items) {
+    if (!('media_type' in item)) {
+      console.warn('[GramGrab] unknown Instant __typename:', item.__typename);
+      continue;
+    }
+    const media =
+      item.media_type === 1 ? normalizeInstantPhoto(item) : yield* normalizeInstantVideo(item);
+    if (media) normalized.push(media);
+  }
+  return withItemIndexes(normalized);
+});
+
 // ---------------------------------------------------------------------------
 // Shared Effect pipelines — parse → fetch → normalize
 // ---------------------------------------------------------------------------
@@ -635,9 +738,10 @@ function configuredGraphqlRequest(
   variables: Record<string, unknown>
 ) {
   const headers = configuredGraphqlHeaders(request);
+  const operationKey = candidate.kind === 'client_doc_id' ? 'doc_id' : candidate.kind;
   return request.transport === 'form'
-    ? graphqlPostEffect(request.endpoint, candidate.id, variables, headers, candidate.kind)
-    : graphqlFetchEffect(request.endpoint, candidate.kind, candidate.id, variables, headers);
+    ? graphqlPostEffect(request.endpoint, candidate.id, variables, headers, operationKey)
+    : graphqlFetchEffect(request.endpoint, operationKey, candidate.id, variables, headers);
 }
 
 function resolveShortcodeResponseNode(decoded: ShortcodeMediaResponse) {
@@ -763,7 +867,7 @@ const fetchConfiguredReelsMedia = (
     for (const { candidate, request } of configuredRequests(protocolConfig.operations.reelsMedia)) {
       const result = yield* fetchReelsMedia(
         request.endpoint,
-        candidate.kind,
+        candidate.kind === 'client_doc_id' ? 'doc_id' : candidate.kind,
         candidate.id,
         variables,
         configuredGraphqlHeaders(request),
@@ -840,6 +944,40 @@ const fetchProfileMediaItems = (
   );
 };
 
+const fetchInstantMediaItems = (): Effect.Effect<
+  MediaItem[],
+  | GraphQLRequestFailed
+  | RateLimited
+  | NetworkError
+  | ResponseShapeUnknown
+  | MediaDashOnlyUnsupported
+> => {
+  const operation = protocolConfig.operations.instantsFeed;
+  if (!operation) return Effect.fail(new ResponseShapeUnknown({ context: 'instants_protocol' }));
+  const candidate = operation.candidates[0]!;
+  const request = candidate.requests[0]!;
+  if (candidate.kind !== 'client_doc_id' || !operation.friendlyName)
+    return Effect.fail(new ResponseShapeUnknown({ context: 'instants_protocol' }));
+  return Effect.tryPromise({
+    try: () => browser.cookies.get({ url: 'https://www.instagram.com/', name: 'csrftoken' }),
+    catch: cause => new NetworkError({ cause }),
+  }).pipe(
+    Effect.flatMap(cookie =>
+      fetchInstantsFeed(
+        request.endpoint,
+        candidate.id,
+        operation.friendlyName!,
+        cookie?.value ?? '',
+        {
+          ...IG_API_GRAPHQL_HEADERS,
+          'X-IG-App-ID': operation.appId ?? protocolConfig.client.appId,
+        }
+      )
+    ),
+    Effect.flatMap(normalizeInstantItems)
+  );
+};
+
 const resolveMediaEffect = (
   url: string
 ): Effect.Effect<
@@ -878,6 +1016,10 @@ interface FetchMediaMsg {
   url: string;
 }
 
+interface FetchInstantsMsg {
+  type: 'FETCH_INSTANTS';
+}
+
 function hasValidMediaDimensions(
   item: MediaItem
 ): item is MediaItem & { width: number; height: number } {
@@ -902,6 +1044,7 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
         previewUrl?: string;
         width?: number;
         height?: number;
+        creatorUsername?: string;
       }[]
     | undefined;
   error: string | undefined;
@@ -939,6 +1082,35 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
       previewUrl: item.previewUrl,
       history: historyMarker(stored.entries, source.url, item),
       ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
+      ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
+    })),
+    error: undefined,
+  };
+}
+
+async function handleFetchInstants(_msg: FetchInstantsMsg) {
+  const result = await runOperationHandler(
+    fetchInstantMediaItems().pipe(Effect.map(items => ({ items }))),
+    { items: undefined as MediaItem[] | undefined },
+    normalizeSourceFailure
+  );
+  if (result.failure || !result.items)
+    return { media: undefined, error: undefined, failure: result.failure };
+  const stored = await getHistory();
+  if (stored.kind === 'unknown-version')
+    return { media: undefined, error: 'Download history uses a newer version.' };
+  return {
+    acquisition: 'instants' as const,
+    media: result.items.map(item => ({
+      url: item.url,
+      itemIndex: item.itemIndex,
+      ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+      type: item.type,
+      filenameHint: item.filenameHint,
+      ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
+      ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
+      history: historyMarker(stored.entries, { kind: 'instants' }, item),
+      ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
     })),
     error: undefined,
   };
@@ -946,11 +1118,15 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
 
 function historyMarker(
   entries: readonly DownloadHistoryEntry[],
-  sourceUrl: string,
+  origin: DownloadHistoryEntry['origin'] | string,
   item: MediaItem
 ): HistoryMarker {
   const matches = entries.filter(
-    entry => entry.sourceUrl === sourceUrl && reconcileHistoryEntry(entry, [item]).kind === 'found'
+    entry =>
+      (typeof origin === 'string'
+        ? entry.origin.kind === 'source' && entry.origin.sourceUrl === origin
+        : entry.origin.kind === origin.kind) &&
+      reconcileHistoryEntry(entry, [item]).kind === 'found'
   );
   const latest = matches.reduce<number | undefined>(
     (value, entry) =>
@@ -990,7 +1166,7 @@ function historyFilenameHint(filename: string): string {
 
 async function downloadItem(
   operation: DownloadOperation,
-  source: ReturnType<typeof historySource>
+  origin: DownloadHistoryEntry['origin'] | undefined
 ): Promise<DownloadAttempt> {
   try {
     await browser.downloads.download({
@@ -998,9 +1174,9 @@ async function downloadItem(
       filename: operation.filename,
       saveAs: false,
     });
-    if (source) {
+    if (origin) {
       try {
-        await appendAcceptedHistory(operation, source);
+        await appendAcceptedHistory(operation, origin);
       } catch {
         return {
           operation,
@@ -1045,12 +1221,11 @@ interface AcceptedHistoryOperation {
 
 async function appendAcceptedHistory(
   item: AcceptedHistoryOperation,
-  source: NonNullable<ReturnType<typeof historySource>>
+  origin: DownloadHistoryEntry['origin']
 ) {
   await appendHistory({
     id: createHistoryId(),
-    sourceUrl: source.url,
-    sourceKind: source.kind,
+    origin,
     itemIndex: item.itemIndex,
     ...(item.mediaId ? { mediaId: item.mediaId } : {}),
     mediaType: item.mediaType,
@@ -1088,8 +1263,14 @@ async function handleDownloadMedia(message: unknown): Promise<DownloadMediaRespo
         scope: 'batch',
       }),
     });
+  const origin =
+    request.originKind === 'instants'
+      ? ({ kind: 'instants' } as const)
+      : source
+        ? ({ kind: 'source', sourceUrl: source.url, sourceKind: source.kind } as const)
+        : undefined;
   const attempts = await mapWithConcurrency(request.operations, DOWNLOAD_CONCURRENCY, operation =>
-    downloadItem(operation, source)
+    downloadItem(operation, origin)
   );
   return DownloadMediaResponse.make({ results: attempts.map(attempt => attempt.result) });
 }
@@ -1114,19 +1295,37 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
     return { error: 'Download history uses a newer version.' };
   const entry = history.entries.find(candidate => candidate.id === msg.entryId);
   if (!entry) return { error: 'This history entry no longer exists.' };
-  const resolved = await runHandler(
-    resolveMediaEffect(entry.sourceUrl).pipe(Effect.map(items => ({ items }))),
-    {
-      items: undefined as MediaItem[] | undefined,
-    }
-  );
-  if (resolved.error || !resolved.items)
+  const resolved =
+    entry.origin.kind === 'instants'
+      ? await runOperationHandler(
+          fetchInstantMediaItems().pipe(Effect.map(items => ({ items }))),
+          {
+            items: undefined as MediaItem[] | undefined,
+          },
+          normalizeSourceFailure
+        )
+      : await runOperationHandler(
+          resolveMediaEffect(entry.origin.sourceUrl).pipe(Effect.map(items => ({ items }))),
+          { items: undefined as MediaItem[] | undefined },
+          normalizeSourceFailure
+        );
+  if (resolved.failure) {
+    const presentation = FAILURE_PRESENTATION[resolved.failure.code];
     return {
-      error: `${resolved.error ?? 'Unable to refetch this source.'} History was not changed.`,
+      error: `${presentation.title}. ${presentation.explanation} History was not changed.`,
+      failureCode: resolved.failure.code,
     };
+  }
+  if (!resolved.items) return { error: 'Unable to refetch this source. History was not changed.' };
   const match = reconcileHistoryEntry(entry, resolved.items);
   if (match.kind === 'missing')
-    return { error: 'This item is no longer available at its original source. History was kept.' };
+    return {
+      error:
+        entry.origin.kind === 'instants'
+          ? 'This Instant is no longer active. History was kept.'
+          : 'This item is no longer available at its original source. History was kept.',
+      ...(entry.origin.kind === 'instants' ? { failureCode: 'INSTANT_NOT_ACTIVE' as const } : {}),
+    };
   if (match.kind === 'ambiguous')
     return {
       error: 'GramGrab could not safely match this item after refetching. History was kept.',
@@ -1140,7 +1339,8 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
         url: item.url,
         filenameHint: item.filenameHint,
         timestampSeconds: entry.frameTimestampSeconds ?? 5,
-        sourceUrl: entry.sourceUrl,
+        sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
+        originKind: entry.origin.kind,
       },
       error: undefined,
     };
@@ -1152,14 +1352,16 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         url: item.url,
         filenameHint: item.filenameHint,
-        sourceUrl: entry.sourceUrl,
+        sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
+        originKind: entry.origin.kind,
       },
       error: undefined,
     };
   }
   return handleDownloadMedia({
     type: 'DOWNLOAD_MEDIA',
-    sourceUrl: entry.sourceUrl,
+    ...(entry.origin.kind === 'source' ? { sourceUrl: entry.origin.sourceUrl } : {}),
+    originKind: entry.origin.kind,
     operations: [
       {
         operationId: createOperationId(),
@@ -1178,6 +1380,7 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
 
 async function handleRecordFrameExport(msg: {
   sourceUrl: string;
+  originKind?: 'source' | 'instants';
   item: {
     itemIndex: number;
     mediaId?: string;
@@ -1187,10 +1390,15 @@ async function handleRecordFrameExport(msg: {
     frameTimestampSeconds: number;
   };
 }): Promise<{ error: string | undefined }> {
-  const source = historySource(msg.sourceUrl);
-  if (!source) return { error: 'Invalid Instagram URL.' };
+  const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
+  if (msg.originKind !== 'instants' && !source) return { error: 'Invalid Instagram URL.' };
   try {
-    await appendAcceptedHistory({ ...msg.item, exportMode: 'frame' }, source);
+    await appendAcceptedHistory(
+      { ...msg.item, exportMode: 'frame' },
+      msg.originKind === 'instants'
+        ? { kind: 'instants' }
+        : { kind: 'source', sourceUrl: source!.url, sourceKind: source!.kind }
+    );
     return { error: undefined };
   } catch {
     return { error: 'Frame downloaded, but history could not be saved.' };
@@ -1250,12 +1458,18 @@ async function handleFetchVideoBlob(
 
 async function handleRecordSilentExport(msg: {
   sourceUrl: string;
+  originKind?: 'source' | 'instants';
   item: AcceptedHistoryOperation;
 }): Promise<{ error: string | undefined }> {
-  const source = historySource(msg.sourceUrl);
-  if (!source) return { error: 'Invalid Instagram URL.' };
+  const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
+  if (msg.originKind !== 'instants' && !source) return { error: 'Invalid Instagram URL.' };
   try {
-    await appendAcceptedHistory({ ...msg.item, exportMode: 'silent' }, source);
+    await appendAcceptedHistory(
+      { ...msg.item, exportMode: 'silent' },
+      msg.originKind === 'instants'
+        ? { kind: 'instants' }
+        : { kind: 'source', sourceUrl: source!.url, sourceKind: source!.kind }
+    );
     return { error: undefined };
   } catch {
     return { error: 'Silent video downloaded, but history could not be saved.' };
@@ -1317,7 +1531,8 @@ function contextTargetUrl(info: { pageUrl?: string; linkUrl?: string }): string 
 function workspaceCommand(url: string, intent: 'open' | 'fetch'): WorkspaceSnapshot {
   const createdAt = Date.now();
   return {
-    version: 3,
+    version: 4,
+    acquisition: { kind: 'source' },
     createdAt,
     expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
     url,
@@ -1432,11 +1647,14 @@ async function getRunner(): Promise<number> {
   ]);
 }
 
-async function runInDocument(command: ProtocolExport): Promise<unknown> {
+type ProtocolExportCommand = ProtocolExport | ProtocolInstantsExport;
+
+async function runInDocument(command: ProtocolExportCommand): Promise<unknown> {
   const tabId = await getRunner();
   return browser.tabs.sendMessage(tabId, {
     type: 'RUN_EXPORT',
-    sourceUrl: command.sourceUrl,
+    sourceUrl: command._tag === 'Export' ? command.sourceUrl : '',
+    originKind: command._tag === 'InstantsExport' ? 'instants' : 'source',
     command,
   });
 }
@@ -1471,11 +1689,36 @@ async function inspectCommand(sourceUrl: string): Promise<InspectResult> {
   });
 }
 
+async function inspectInstantsCommand(): Promise<InstantsInspectResult> {
+  const response = await handleFetchInstants({ type: 'FETCH_INSTANTS' });
+  if (response.failure) throw protocolFailure(response.failure);
+  if (!response.media)
+    throw ProtocolOperationFailure.make({ code: 'SOURCE_MEDIA_NOT_FOUND', scope: 'batch' });
+  return InstantsInspectResult.make({
+    items: response.media.map((item, index) =>
+      InspectedMedia.make({
+        itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(index + 1),
+        mediaIdentity: MediaIdentity.make({
+          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(item.itemIndex),
+          ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+        }),
+        mediaType: item.type === 'video' ? 'video' : 'image',
+        url: item.url,
+        ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
+        filenameHint: item.filenameHint,
+        ...(item.width ? { width: item.width } : {}),
+        ...(item.height ? { height: item.height } : {}),
+        ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
+        history: ProtocolHistoryMarker.make(item.history),
+      })
+    ),
+  });
+}
+
 function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
   return ProtocolHistoryEntry.make({
     id: entry.id,
-    sourceUrl: entry.sourceUrl,
-    sourceKind: entry.sourceKind,
+    origin: entry.origin,
     mediaIdentity: MediaIdentity.make({
       itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(entry.itemIndex),
       ...(entry.mediaId ? { mediaId: entry.mediaId } : {}),
@@ -1491,7 +1734,7 @@ function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
 }
 
 async function runExport(
-  command: ProtocolExport,
+  command: ProtocolExportCommand,
   emit: (event: EventPayload) => void,
   signal: AbortSignal
 ) {
@@ -1539,20 +1782,30 @@ async function runExport(
 
 // fallow-ignore-next-line complexity
 async function runDirectExport(
-  command: ProtocolExport,
+  command: ProtocolExportCommand,
   emit: (event: EventPayload) => void,
   signal: AbortSignal
 ) {
-  const inspected = await abortable(inspectCommand(command.sourceUrl), signal);
+  const inspected =
+    command._tag === 'InstantsExport'
+      ? await abortable(inspectInstantsCommand(), signal)
+      : await abortable(inspectCommand(command.sourceUrl), signal);
   const operations: DownloadOperation[] = [];
   for (const requested of command.operations) {
-    const item = inspected.items[requested.itemNumber - 1];
+    const requestedMediaId = requested.mediaIdentity?.mediaId;
+    const matches = requestedMediaId
+      ? inspected.items.filter(item => item.mediaIdentity.mediaId === requestedMediaId)
+      : [];
+    const item = requestedMediaId
+      ? matches.length === 1
+        ? matches[0]
+        : undefined
+      : inspected.items[requested.itemNumber - 1];
     if (
       !item ||
       (requested.mediaIdentity &&
-        (requested.mediaIdentity.itemIndex !== item.mediaIdentity.itemIndex ||
-          (requested.mediaIdentity.mediaId !== undefined &&
-            requested.mediaIdentity.mediaId !== item.mediaIdentity.mediaId)))
+        !requestedMediaId &&
+        requested.mediaIdentity.itemIndex !== item.mediaIdentity.itemIndex)
     )
       continue;
     emit(
@@ -1577,7 +1830,8 @@ async function runDirectExport(
   }
   if (signal.aborted) throw cancellationError();
   const response = await handleDownloadMedia({
-    sourceUrl: command.sourceUrl,
+    ...(command._tag === 'Export' ? { sourceUrl: command.sourceUrl } : {}),
+    originKind: command._tag === 'InstantsExport' ? 'instants' : 'source',
     operations,
   });
   const batchFailure = response.failure;
@@ -1632,7 +1886,15 @@ async function executeCommand(
         emit(Progress.make({ phase: 'resolving' }));
         result = await abortable(inspectCommand(command.sourceUrl), signal);
         break;
+      case 'InstantsInspect':
+        emit(Progress.make({ phase: 'resolving' }));
+        result = await abortable(inspectInstantsCommand(), signal);
+        break;
       case 'Export':
+        emit(Progress.make({ phase: 'resolving' }));
+        result = await runExport(command, emit, signal);
+        break;
+      case 'InstantsExport':
         emit(Progress.make({ phase: 'resolving' }));
         result = await runExport(command, emit, signal);
         break;
@@ -1679,32 +1941,50 @@ async function executeCommand(
           const resolvedItem = frame ?? silent;
           if (entry && resolvedItem) {
             const operationId = Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID());
-            const exportResult = await runExport(
-              ProtocolExport.make({
-                sourceUrl: entry.sourceUrl,
-                operations: [
-                  ProtocolExportOperation.make({
-                    operationId,
-                    itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(
-                      resolvedItem.itemIndex + 1
-                    ),
-                    mediaIdentity: MediaIdentity.make({
-                      itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(
-                        resolvedItem.itemIndex
-                      ),
-                      ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
-                    }),
-                    mode: frame
-                      ? FrameExport.make({
-                          timestampSeconds: frame.timestampSeconds,
-                        })
-                      : SilentExport.make({ reencode: 'allow' }),
-                  }),
-                ],
-              }),
-              emit,
-              signal
-            );
+            const historyExport =
+              entry.origin.kind === 'instants'
+                ? ProtocolInstantsExport.make({
+                    operations: [
+                      ProtocolExportOperation.make({
+                        operationId,
+                        itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(
+                          resolvedItem.itemIndex + 1
+                        ),
+                        mediaIdentity: MediaIdentity.make({
+                          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(
+                            resolvedItem.itemIndex
+                          ),
+                          ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
+                        }),
+                        mode: frame
+                          ? FrameExport.make({ timestampSeconds: frame.timestampSeconds })
+                          : SilentExport.make({ reencode: 'allow' }),
+                      }),
+                    ],
+                  })
+                : ProtocolExport.make({
+                    sourceUrl: entry.origin.sourceUrl,
+                    operations: [
+                      ProtocolExportOperation.make({
+                        operationId,
+                        itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(
+                          resolvedItem.itemIndex + 1
+                        ),
+                        mediaIdentity: MediaIdentity.make({
+                          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(
+                            resolvedItem.itemIndex
+                          ),
+                          ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
+                        }),
+                        mode: frame
+                          ? FrameExport.make({
+                              timestampSeconds: frame.timestampSeconds,
+                            })
+                          : SilentExport.make({ reencode: 'allow' }),
+                      }),
+                    ],
+                  });
+            const exportResult = await runExport(historyExport, emit, signal);
             const failed =
               exportResult._tag === 'ExportResult' &&
               exportResult.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded');
@@ -1725,12 +2005,16 @@ async function executeCommand(
             'results' in response &&
             (response.failure || response.results.some(result => result.status !== 'started'));
           const error = 'error' in response ? response.error : undefined;
+          const failureCode =
+            'failureCode' in response && response.failureCode
+              ? response.failureCode
+              : 'MEDIA_NOT_FOUND';
           outcomes.push(
             error || directFailed
               ? HistoryRedownloadFailed.make({
                   entryId,
                   failure: ProtocolOperationFailure.make({
-                    code: 'MEDIA_NOT_FOUND',
+                    code: failureCode,
                     scope: 'item',
                   }),
                 })
@@ -1824,6 +2108,7 @@ type MessageHandler = (message: unknown) => Promise<unknown>;
 
 const messageHandlers: Record<string, MessageHandler> = {
   FETCH_MEDIA: message => handleFetchMedia(message as FetchMediaMsg),
+  FETCH_INSTANTS: message => handleFetchInstants(message as FetchInstantsMsg),
   GET_PREVIEW_URL: message => handleGetPreviewUrl(message as GetPreviewUrlMsg),
   DOWNLOAD_MEDIA: message => handleDownloadMedia(message),
   GET_DOWNLOAD_HISTORY: () => handleGetDownloadHistory(),

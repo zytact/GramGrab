@@ -1,6 +1,6 @@
 import { createRequestId, DownloadOperation, type DownloadOperationResult } from './contracts.ts';
 import { Schema } from 'effect';
-import type { OperationFailure, OperationWarning, SkipCode } from '../errors/contracts.ts';
+import { OperationFailure, type OperationWarning, type SkipCode } from '../errors/contracts.ts';
 import { FAILURE_PRESENTATION, retryable } from '../errors/presentation.ts';
 
 export const AttemptOperationSchema = Schema.Struct({
@@ -27,6 +27,14 @@ export interface AttemptEntry {
 export interface DownloadAttempt {
   readonly entries: readonly AttemptEntry[];
   readonly batchFailure?: OperationFailure;
+}
+
+export interface RefetchedMedia {
+  readonly displayIndex: number;
+  readonly itemIndex: number;
+  readonly mediaId?: string;
+  readonly type: string;
+  readonly url: string;
 }
 
 export type AttemptAction =
@@ -168,6 +176,58 @@ export function prepareRetry(attempt: DownloadAttempt | undefined): DownloadAtte
   return operationIds.size === 0
     ? attempt
     : attemptReducer(attempt, { type: 'retry', operationIds });
+}
+
+export function prepareRefetchedRetry(
+  attempt: DownloadAttempt | undefined,
+  media: readonly RefetchedMedia[]
+): DownloadAttempt | undefined {
+  if (!attempt) return attempt;
+  let changed = false;
+  const byMediaId = new Map<string, RefetchedMedia[]>();
+  for (const item of media) {
+    if (!item.mediaId) continue;
+    const matches = byMediaId.get(item.mediaId) ?? [];
+    matches.push(item);
+    byMediaId.set(item.mediaId, matches);
+  }
+  const entries = attempt.entries.map(entry => {
+    if (
+      entry.outcome.status !== 'failed' ||
+      !FAILURE_PRESENTATION[entry.outcome.failure.code].actions.includes('refetch-source')
+    )
+      return entry;
+    changed = true;
+    const matches = entry.operation.mediaId ? byMediaId.get(entry.operation.mediaId) : undefined;
+    const refreshed = matches?.length === 1 ? matches[0] : undefined;
+    if (!refreshed || refreshed.type !== entry.operation.mediaType)
+      return {
+        ...entry,
+        outcome: {
+          status: 'failed' as const,
+          failure: OperationFailure.make({
+            code: 'INSTANT_NOT_ACTIVE',
+            phase: 'media-transfer',
+            scope: 'item',
+          }),
+        },
+      };
+    return {
+      ...entry,
+      operation: {
+        ...entry.operation,
+        requestId: createRequestId(),
+        displayIndex: refreshed.displayIndex,
+        itemIndex: refreshed.itemIndex,
+        url: refreshed.url,
+        originalUrl: refreshed.url,
+      },
+      outcome: { status: 'pending' as const },
+      executionCount: entry.executionCount + 1,
+      manualRetryCount: entry.manualRetryCount + 1,
+    };
+  });
+  return changed ? { entries } : attempt;
 }
 
 export function prepareOriginalFallback(

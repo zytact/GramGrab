@@ -1,0 +1,14 @@
+{
+  "data": {
+    "xdt_get_quick_snaps": {
+      "items_ordered_by_time": [
+        {
+          "__typename": "XDTMediaDict",
+          "id": "instant-invalid-001",
+          "media_type": 1
+        }
+      ],
+      "sample_items": []
+    }
+  }
+}

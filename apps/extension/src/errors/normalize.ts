@@ -9,6 +9,7 @@ import {
   HttpError,
   InvalidInstagramUrl,
   MediaNotFound,
+  MediaDashOnlyUnsupported,
   NetworkError,
   RateLimited,
   ResponseShapeUnknown,
@@ -36,6 +37,8 @@ export function normalizeSourceFailure(cause: unknown): OperationFailure {
     return failure('SOURCE_USERNAME_UNRESOLVED', 'source', cause, 'batch');
   if (cause instanceof MediaNotFound)
     return failure('SOURCE_MEDIA_NOT_FOUND', 'source', cause, 'batch');
+  if (cause instanceof MediaDashOnlyUnsupported)
+    return failure('MEDIA_DASH_ONLY_UNSUPPORTED', 'source', cause);
   if (cause instanceof RateLimited) return failure('IG_RATE_LIMITED', 'source', cause, 'batch');
   if (cause instanceof ResponseShapeUnknown)
     return failure('IG_RESPONSE_SHAPE_UNKNOWN', 'source', cause, 'batch');

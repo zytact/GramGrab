@@ -30,6 +30,7 @@
     const { appId: APP_ID, asbdId: ASBD_ID } = PROTOCOL_CONFIG.client;
     const SHORTCODE_CANDIDATES = PROTOCOL_CONFIG.operations.mediaByShortcode.candidates;
     const REELS_CANDIDATES = PROTOCOL_CONFIG.operations.reelsMedia.candidates;
+    const INSTANTS_OPERATION = PROTOCOL_CONFIG.operations.instantsFeed;
 
     // Arrays under these keys hold tagged-union variants (story items can be
     // video vs image, sidecar children can be video vs image, tray lists every
@@ -203,7 +204,68 @@
       throw new Error(`No reels media: ${JSON.stringify(failures)}`);
     }
 
+    async function instantsFetch() {
+      const candidate = INSTANTS_OPERATION.candidates[0];
+      const request = candidate.requests[0];
+      const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '';
+      const friendlyName = INSTANTS_OPERATION.friendlyName;
+      const body = new URLSearchParams({
+        method: 'post',
+        pretty: 'false',
+        format: 'json',
+        server_timestamps: 'true',
+        locale: 'user',
+        purpose: 'fetch',
+        fb_api_req_friendly_name: friendlyName,
+        enable_canonical_naming: 'true',
+        enable_canonical_variable_overrides: 'true',
+        enable_canonical_naming_ambiguous_type_prefixing: 'true',
+        variables: JSON.stringify({ request: {} }),
+        client_doc_id: candidate.id,
+      });
+      const response = await fetch(request.endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-IG-App-ID': INSTANTS_OPERATION.appId,
+          'X-FB-Friendly-Name': friendlyName,
+          'X-Client-Doc-Id': candidate.id,
+          'X-CSRFToken': csrf,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body,
+      });
+      return readJsonResponse(response);
+    }
+
     const steps = [
+      {
+        label: 'Instants photo, video, and empty active-feed fixtures',
+        run: async () => {
+          const { status, json, text } = await instantsFetch();
+          if (status < 200 || status >= 300 || !json?.data?.xdt_get_quick_snaps) {
+            throw new Error(`Instants request failed (${status}): ${text ?? 'invalid shape'}`);
+          }
+          const feed = json.data.xdt_get_quick_snaps;
+          const photoItems = feed.items_ordered_by_time.filter(item => item.media_type === 1);
+          const videoItems = feed.items_ordered_by_time.filter(item => item.media_type === 2);
+          if (photoItems.length === 0 || videoItems.length === 0) {
+            throw new Error('Capture requires at least one active photo and video Instant');
+          }
+          const fixture = items => ({
+            data: {
+              xdt_get_quick_snaps: {
+                ...feed,
+                items_ordered_by_time: items,
+                sample_items: [],
+              },
+            },
+          });
+          dl('instants-photo.json', trim(fixture(photoItems)));
+          dl('instants-video.json', trim(fixture(videoItems)));
+          dl('instants-empty.json', trim(fixture([])));
+        },
+      },
       {
         label: 'highlights.json (reels_media / GraphHighlightReel)',
         run: async () => {

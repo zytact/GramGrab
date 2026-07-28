@@ -9,6 +9,7 @@ import {
 const expectedPermissions = [
   'downloads',
   'storage',
+  'cookies',
   'activeTab',
   'tabs',
   'contextMenus',

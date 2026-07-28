@@ -10,6 +10,7 @@ import {
 import {
   attemptReducer,
   failedOperations,
+  prepareRefetchedRetry,
   summarizeAttempt,
   type AttemptOperation,
 } from './attempt.ts';
@@ -157,6 +158,124 @@ describe('download attempt reducer', () => {
       warnings: 1,
       skipped: 0,
       notAttempted: 0,
+    });
+  });
+
+  it('reconciles an Instant retry by media identity after the feed reorders', () => {
+    const item = { ...operation(), mediaId: 'media-1' };
+    const fresh = attemptReducer(undefined, { type: 'fresh', operations: [item] })!;
+    const settled = attemptReducer(fresh, {
+      type: 'settle',
+      results: [
+        DownloadFailedResult.make({
+          operationId: item.operationId,
+          requestId: item.requestId,
+          status: 'failed',
+          failure: OperationFailure.make({
+            code: 'BROWSER_DOWNLOAD_NETWORK_FAILED',
+            phase: 'browser-download',
+            scope: 'item',
+          }),
+        }),
+      ],
+    })!;
+    const retried = prepareRefetchedRetry(settled, [
+      {
+        displayIndex: 0,
+        itemIndex: 0,
+        mediaId: 'other',
+        type: 'image',
+        url: 'https://cdn.instagram.com/other.jpg',
+      },
+      {
+        displayIndex: 1,
+        itemIndex: 1,
+        mediaId: 'media-1',
+        type: 'image',
+        url: 'https://cdn.instagram.com/fresh.jpg',
+      },
+    ])!;
+    expect(retried.entries[0]).toMatchObject({
+      operation: {
+        operationId: item.operationId,
+        itemIndex: 1,
+        mediaId: 'media-1',
+        url: 'https://cdn.instagram.com/fresh.jpg',
+      },
+      outcome: { status: 'pending' },
+    });
+    expect(retried.entries[0]?.operation.requestId).not.toBe(item.requestId);
+  });
+
+  it('marks a missing Instant inactive without retrying a different feed position', () => {
+    const item = { ...operation(), mediaId: 'media-1' };
+    const settled = attemptReducer(
+      attemptReducer(undefined, { type: 'fresh', operations: [item] }),
+      {
+        type: 'settle',
+        results: [
+          DownloadFailedResult.make({
+            operationId: item.operationId,
+            requestId: item.requestId,
+            status: 'failed',
+            failure: OperationFailure.make({
+              code: 'MEDIA_NETWORK_FAILED',
+              phase: 'media-transfer',
+              scope: 'item',
+            }),
+          }),
+        ],
+      }
+    )!;
+    const retried = prepareRefetchedRetry(settled, [
+      {
+        displayIndex: 0,
+        itemIndex: 0,
+        mediaId: 'other',
+        type: 'image',
+        url: 'https://cdn.instagram.com/other.jpg',
+      },
+    ])!;
+    expect(retried.entries[0]?.outcome).toMatchObject({
+      status: 'failed',
+      failure: { code: 'INSTANT_NOT_ACTIVE' },
+    });
+  });
+
+  it('does not retry an ambiguous duplicate Instant identity', () => {
+    const item = { ...operation(), mediaId: 'media-1' };
+    const settled = attemptReducer(
+      attemptReducer(undefined, { type: 'fresh', operations: [item] }),
+      {
+        type: 'settle',
+        results: [
+          DownloadFailedResult.make({
+            operationId: item.operationId,
+            requestId: item.requestId,
+            status: 'failed',
+            failure: OperationFailure.make({
+              code: 'MEDIA_NETWORK_FAILED',
+              phase: 'media-transfer',
+              scope: 'item',
+            }),
+          }),
+        ],
+      }
+    )!;
+    const duplicate = {
+      displayIndex: 0,
+      itemIndex: 0,
+      mediaId: 'media-1',
+      type: 'image',
+      url: 'https://cdn.instagram.com/a.jpg',
+    };
+    const retried = prepareRefetchedRetry(settled, [
+      duplicate,
+      { ...duplicate, displayIndex: 1, itemIndex: 1, url: 'https://cdn.instagram.com/b.jpg' },
+    ])!;
+    expect(retried.entries[0]?.outcome).toMatchObject({
+      status: 'failed',
+      failure: { code: 'INSTANT_NOT_ACTIVE' },
     });
   });
 });

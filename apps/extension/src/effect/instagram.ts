@@ -10,10 +10,12 @@ import {
 import {
   HdAvatarResponseSchema,
   HighlightsTrayResponseSchema,
+  InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
   WebProfileInfoResponseSchema,
 } from './schemas.ts';
 import type { HdAvatarUser, HighlightsTrayItem, ReelItem, WebProfileInfoUser } from './schemas.ts';
+import type { InstantItem } from './schemas.ts';
 
 const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
   Schedule.compose(Schedule.recurs(3))
@@ -129,6 +131,62 @@ export const graphqlPost = (
     })
   );
 };
+
+export const fetchInstantsFeed = (
+  url: string,
+  clientDocumentId: string,
+  friendlyName: string,
+  csrfToken: string,
+  headers: Record<string, string>
+): Effect.Effect<
+  readonly InstantItem[],
+  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+> =>
+  Effect.gen(function* () {
+    const variables = JSON.stringify({ request: {} });
+    const body = new URLSearchParams({
+      method: 'post',
+      pretty: 'false',
+      format: 'json',
+      server_timestamps: 'true',
+      locale: 'user',
+      purpose: 'fetch',
+      fb_api_req_friendly_name: friendlyName,
+      enable_canonical_naming: 'true',
+      enable_canonical_variable_overrides: 'true',
+      enable_canonical_naming_ambiguous_type_prefixing: 'true',
+      variables,
+      client_doc_id: clientDocumentId,
+    });
+    const res = yield* Effect.tryPromise({
+      try: () =>
+        fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-FB-Friendly-Name': friendlyName,
+            'X-Client-Doc-Id': clientDocumentId,
+            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+          },
+          body,
+        }),
+      catch: cause => new NetworkError({ cause }),
+    });
+    if (!res.ok) {
+      if (res.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
+      return yield* Effect.fail(new GraphQLRequestFailed({ status: res.status }));
+    }
+    const raw = yield* Effect.tryPromise({
+      try: () => res.json() as Promise<unknown>,
+      catch: cause => new NetworkError({ cause }),
+    });
+    const decoded = yield* Schema.decodeUnknown(InstantsFeedResponseSchema)(raw).pipe(
+      Effect.mapError(() => new ResponseShapeUnknown({ context: 'instants_feed' }))
+    );
+    return decoded.data.xdt_get_quick_snaps.items_ordered_by_time;
+  });
 
 export const fetchBlobAsDataUrl = (url: string) =>
   Effect.gen(function* () {

@@ -27,6 +27,9 @@ export class MediaNotFound extends Data.TaggedError('MediaNotFound')<{ hint: str
 export class ResponseShapeUnknown extends Data.TaggedError('ResponseShapeUnknown')<{
   context: string;
 }> {}
+export class MediaDashOnlyUnsupported extends Data.TaggedError('MediaDashOnlyUnsupported')<{
+  mediaId: string;
+}> {}
 
 // Downloads
 export class BrowserDownloadFailed extends Data.TaggedError('BrowserDownloadFailed')<{
@@ -50,6 +53,7 @@ type AppError =
   | GraphQLRequestFailed
   | MediaNotFound
   | ResponseShapeUnknown
+  | MediaDashOnlyUnsupported
   | BrowserDownloadFailed
   | VideoFrameExtractionFailed;
 
@@ -67,6 +71,7 @@ const matchAppError = pipe(
     MediaNotFound: e => `No media found: ${e.hint}`,
     ResponseShapeUnknown: e =>
       `Instagram changed their response format (${e.context}). The extension needs an update — please check for a new release.`,
+    MediaDashOnlyUnsupported: () => 'This Instant only provides unsupported DASH video.',
     BrowserDownloadFailed: e => `Download failed for ${e.url}: ${String(e.cause)}`,
     VideoFrameExtractionFailed: e => `Frame extraction failed: ${e.reason}`,
   })

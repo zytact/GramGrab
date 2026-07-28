@@ -2,6 +2,9 @@ export type FixtureFilename =
   | 'avatar.json'
   | 'highlights-tray.json'
   | 'highlights.json'
+  | 'instants-photo.json'
+  | 'instants-video.json'
+  | 'instants-empty.json'
   | 'shortcode-image.json'
   | 'shortcode-sidecar.json'
   | 'shortcode-video.json'
@@ -17,6 +20,9 @@ export const FIXTURE_FILENAMES: ReadonlyArray<FixtureFilename> = [
   'shortcode-video.json',
   'story.json',
   'web-profile-info.json',
+  'instants-photo.json',
+  'instants-video.json',
+  'instants-empty.json',
 ];
 
 export type PrimitiveType = 'boolean' | 'number' | 'string';
@@ -529,6 +535,45 @@ const sidecarEmptyContainers: FixturePolicy['emptyContainers'] = [
   emptyArray(`${sidecarChild}.edge_media_to_tagged_user.edges`),
 ];
 
+const instantFeed = 'data.xdt_get_quick_snaps';
+const instantItem = `${instantFeed}.items_ordered_by_time[]`;
+const instantRules: ReadonlyArray<PolicyRule> = [
+  preserve(`${instantItem}.__typename`),
+  entityField(`${instantItem}.id`, 'MEDIA', instantItem, 'ID', ['string'], 'MEDIA_ID'),
+  preserve(`${instantItem}.taken_at`, ['number']),
+  preserve(`${instantItem}.media_type`, ['number']),
+  preserve(`${instantItem}.source_type`, ['number']),
+  preserve(`${instantItem}.audience`),
+  opaque(`${instantItem}.caption`, 'CAPTION'),
+  ...person(`${instantItem}.user`),
+  preserve(`${instantItem}.image_versions2.candidates[].width`, ['number']),
+  preserve(`${instantItem}.image_versions2.candidates[].height`, ['number']),
+  url(`${instantItem}.image_versions2.candidates[].url`, 'INSTANT_IMAGE', 'MEDIA', instantItem),
+  preserve(`${instantItem}.video_versions[].width`, ['number']),
+  preserve(`${instantItem}.video_versions[].height`, ['number']),
+  preserve(`${instantItem}.video_versions[].type`, ['number']),
+  url(`${instantItem}.video_versions[].url`, 'INSTANT_VIDEO', 'MEDIA', instantItem),
+  opaque(`${instantItem}.video_dash_manifest`, 'DASH_MANIFEST'),
+  preserve(`${instantItem}.video_duration`, ['number']),
+  opaque(`${instantItem}.prompt_info`, 'INSTANT_PROMPT'),
+  opaque(`${instantItem}.wearable_attribution_info`, 'WEARABLE_ATTRIBUTION'),
+  preserve(`${instantFeed}.latest_reaction_timestamp`, ['number']),
+  opaque(`${instantFeed}.ranking_request_id`, 'RANKING_REQUEST'),
+  preserve(`${instantFeed}.is_hidden`, ['boolean']),
+  preserve(`${instantFeed}.has_unseen_from_top_bffs`, ['boolean']),
+  opaque(`${instantFeed}.gtm_train_text`, 'PRESENTATION_TEXT'),
+  opaque(`${instantFeed}.gtm_video_text`, 'PRESENTATION_TEXT'),
+  opaque(`${instantFeed}.gtm_filters_text`, 'PRESENTATION_TEXT'),
+  opaque(`${instantFeed}.gtm_recap_text`, 'PRESENTATION_TEXT'),
+];
+
+const instantEmptyContainers: FixturePolicy['emptyContainers'] = [
+  emptyArray(`${instantFeed}.items_ordered_by_time`),
+  emptyArray(`${instantFeed}.sample_items`),
+  emptyObject(`${instantItem}.quick_snap_info`),
+  emptyArray(`${instantItem}.video_versions`),
+];
+
 export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> = {
   'avatar.json': {
     rules: [preserve('status')],
@@ -546,6 +591,9 @@ export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> 
     rules: [...reel('data.reels_media[]'), ...graphqlErrors],
     emptyContainers: storyEmptyContainers,
   },
+  'instants-photo.json': { rules: instantRules, emptyContainers: instantEmptyContainers },
+  'instants-video.json': { rules: instantRules, emptyContainers: instantEmptyContainers },
+  'instants-empty.json': { rules: instantRules, emptyContainers: instantEmptyContainers },
   'shortcode-image.json': {
     rules: [...shortcodeCommon, ...graphqlErrors],
     emptyContainers: shortcodeEmptyContainers,

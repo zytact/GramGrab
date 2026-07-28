@@ -4,7 +4,8 @@ import {
   DOWNLOAD_HISTORY_LIMIT,
   DOWNLOAD_HISTORY_VERSION,
   type DownloadHistoryEntry,
-  type DownloadHistoryStoreV2,
+  type DownloadHistoryStoreV3,
+  type LegacyDownloadHistoryEntry,
   type HistoryReadResult,
 } from './contracts.ts';
 import { historySource } from './source.ts';
@@ -20,15 +21,16 @@ function validEntry(value: unknown): value is DownloadHistoryEntry {
 }
 
 function hasValidIdentity(item: Partial<DownloadHistoryEntry>): boolean {
-  if (typeof item.id !== 'string' || typeof item.sourceUrl !== 'string') return false;
-  const source = historySource(item.sourceUrl);
-  return source?.url === item.sourceUrl && source?.kind === item.sourceKind;
+  if (typeof item.id !== 'string' || !item.origin) return false;
+  if (item.origin.kind === 'instants') return true;
+  const source = historySource(item.origin.sourceUrl);
+  return source?.url === item.origin.sourceUrl && source?.kind === item.origin.sourceKind;
 }
 
 // fallow-ignore-next-line complexity
 function hasValidMedia(item: Partial<DownloadHistoryEntry>): boolean {
   return Boolean(
-    validKinds.has(item.sourceKind ?? '') &&
+    (item.origin?.kind === 'instants' || validKinds.has(item.origin?.sourceKind ?? '')) &&
     Number.isSafeInteger(item.itemIndex) &&
     item.itemIndex! >= 0 &&
     (item.mediaId === undefined || typeof item.mediaId === 'string') &&
@@ -51,17 +53,32 @@ function hasValidOutcome(item: Partial<DownloadHistoryEntry>): boolean {
 function decode(value: unknown): HistoryReadResult {
   if (value === undefined) return { kind: 'ok', entries: [], repaired: false };
   const store = value as
-    | (Omit<Partial<DownloadHistoryStoreV2>, 'version'> & { version?: number })
+    | (Omit<Partial<DownloadHistoryStoreV3>, 'version'> & { version?: number })
     | null;
   if (!store || typeof store.version !== 'number' || !Array.isArray(store.entries))
     return { kind: 'ok', entries: [], repaired: true };
-  if (store.version !== 1 && store.version !== DOWNLOAD_HISTORY_VERSION)
+  if (store.version !== 1 && store.version !== 2 && store.version !== DOWNLOAD_HISTORY_VERSION)
     return { kind: 'unknown-version', entries: [] };
-  const entries = store.entries.filter(validEntry);
+  const entries = store.entries.flatMap(entry => {
+    if (store.version === DOWNLOAD_HISTORY_VERSION) return validEntry(entry) ? [entry] : [];
+    const legacy = entry as unknown as Partial<LegacyDownloadHistoryEntry>;
+    if (typeof legacy.sourceUrl !== 'string' || !legacy.sourceKind) return [];
+    const migrated = {
+      ...legacy,
+      origin: {
+        kind: 'source' as const,
+        sourceUrl: legacy.sourceUrl,
+        sourceKind: legacy.sourceKind,
+      },
+    };
+    delete (migrated as { sourceUrl?: string }).sourceUrl;
+    delete (migrated as { sourceKind?: string }).sourceKind;
+    return validEntry(migrated) ? [migrated] : [];
+  });
   return {
     kind: 'ok',
     entries,
-    repaired: store.version === 1 || entries.length !== store.entries.length,
+    repaired: store.version !== DOWNLOAD_HISTORY_VERSION || entries.length !== store.entries.length,
   };
 }
 

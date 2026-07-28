@@ -18,10 +18,14 @@ fresh request ID.
 gramgrab status [--json]
 gramgrab help
 gramgrab inspect SOURCE [--json]
+gramgrab instants inspect [--json]
 gramgrab export SOURCE [--item NUMBER] [--mode direct] [--json]
 gramgrab export SOURCE [--item NUMBER] --mode frame [--at SECONDS] [--json]
 gramgrab export SOURCE [--item NUMBER] --mode silent --reencode forbid|allow|require [--json]
 gramgrab export SOURCE --plan - [--json]
+gramgrab instants export [--item NUMBER] [--mode direct] [--json]
+gramgrab instants export [--item NUMBER] --mode frame [--at SECONDS] [--json]
+gramgrab instants export [--item NUMBER] --mode silent --reencode forbid|allow|require [--json]
 gramgrab history list [--json]
 gramgrab history remove ENTRY_ID... [--json]
 gramgrab history clear [--json]
@@ -51,6 +55,8 @@ removal and clearing must be explicit commands. Silent re-encoding uses the requ
 not prompt in JSON mode. When `--item` is omitted, the CLI performs a fresh inspection and applies
 the selected mode to every resolved item. When `--mode` is omitted, direct export is used. Frame
 export defaults to timestamp 5 seconds and clamps to the last valid second for shorter videos.
+The `instants` commands never accept a Source. They inspect the authenticated active feed afresh,
+preserve its server order, and apply the same item numbering and export-mode rules.
 
 JSON progress is newline-delimited on stderr. Numeric updates are coalesced to 0%, 25%, 50%, 75%,
 and 100% milestones per item and phase. Phase changes are always emitted, and the terminal result
@@ -62,6 +68,8 @@ unsuccessful item outcome, and exit 2 means argument, validation, or transport f
 | Existing behavior                                                        | Protocol command or event                                 | Progress and edge behavior                                                                      |
 | ------------------------------------------------------------------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Resolve Post, shortcode Reel, Sidecar, Story, Highlight, or Avatar media | `Inspect`                                                 | `resolving`; source and Instagram failures retain their registered codes                        |
+| Inspect the authenticated active Instants feed                           | `InstantsInspect`                                         | `resolving`; no Source or seen-state mutation                                                   |
+| Export active Instant photos and videos                                  | `InstantsExport.operations`                               | Fresh inspection supplies signed URLs and stable media identity                                 |
 | Select one or more media items                                           | `Export.operations`                                       | Reject zero, negative, missing, or out-of-range human item numbers before execution             |
 | Download an original image or video                                      | `DirectExport`                                            | `direct-download`; success means the browser accepted the download                              |
 | Export a video frame                                                     | `FrameExport`                                             | `frame-metadata`, then `frame-export`; original download remains an explicit recovery action    |

@@ -1,0 +1,63 @@
+{
+  "data": {
+    "xdt_get_quick_snaps": {
+      "items_ordered_by_time": [
+        {
+          "__typename": "XDTMediaDict",
+          "id": "SANITIZED_MEDIA_27_ID",
+          "taken_at": 1700000002,
+          "media_type": 2,
+          "source_type": 4,
+          "audience": "mutual_followers",
+          "caption": null,
+          "user": {
+            "id": "SANITIZED_PERSON_4_ID",
+            "username": "SANITIZED_PERSON_4_USERNAME",
+            "full_name": "SANITIZED_PERSON_4_FULL_NAME",
+            "profile_pic_url": "https://sanitized.invalid/person/4/profile-picture"
+          },
+          "image_versions2": {
+            "candidates": [
+              {
+                "width": 320,
+                "height": 320,
+                "url": "https://sanitized.invalid/media/27/instant-image"
+              },
+              {
+                "width": 640,
+                "height": 640,
+                "url": "https://sanitized.invalid/media/27/instant-image"
+              }
+            ]
+          },
+          "video_versions": [
+            {
+              "width": 720,
+              "height": 720,
+              "type": 101,
+              "url": "https://sanitized.invalid/media/27/instant-video"
+            },
+            {
+              "width": 720,
+              "height": 720,
+              "type": 102,
+              "url": "https://sanitized.invalid/media/27/instant-video"
+            },
+            {
+              "width": 720,
+              "height": 720,
+              "type": 103,
+              "url": "https://sanitized.invalid/media/27/instant-video"
+            }
+          ],
+          "video_dash_manifest": "SANITIZED_DASH_MANIFEST_1",
+          "video_duration": 1.8,
+          "quick_snap_info": {},
+          "prompt_info": null,
+          "wearable_attribution_info": null
+        }
+      ],
+      "sample_items": []
+    }
+  }
+}

@@ -13,10 +13,14 @@ export interface WorkspaceMediaItem {
   previewUrl?: string;
   width?: number;
   height?: number;
+  creatorUsername?: string;
 }
 
+export type WorkspaceAcquisition = { kind: 'source' } | { kind: 'instants' };
+
 export interface WorkspaceSnapshot {
-  version: 3;
+  version: 4;
+  acquisition: WorkspaceAcquisition;
   createdAt: number;
   expiresAt: number;
   url: string;
@@ -32,14 +36,21 @@ export interface WorkspaceSnapshot {
 
 interface LegacyWorkspaceSnapshot extends Omit<
   WorkspaceSnapshot,
-  'version' | 'frameExportSettings'
+  'version' | 'frameExportSettings' | 'acquisition'
 > {
   version: 1;
   exportFrameIndexes: number[];
 }
 
-interface WorkspaceSnapshotV2 extends Omit<WorkspaceSnapshot, 'version' | 'removeAudioIndexes'> {
+interface WorkspaceSnapshotV2 extends Omit<
+  WorkspaceSnapshot,
+  'version' | 'removeAudioIndexes' | 'acquisition'
+> {
   version: 2;
+}
+
+interface WorkspaceSnapshotV3 extends Omit<WorkspaceSnapshot, 'version' | 'acquisition'> {
+  version: 3;
 }
 
 export const WORKSPACE_TRANSFER_KEY = 'workspace-transfer-v1';
@@ -195,6 +206,7 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
       ...(isPositiveFinitePair(item.width, item.height)
         ? { width: item.width, height: item.height }
         : {}),
+      ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
     })),
     frameExportSettings: Object.fromEntries(
       Object.entries(snapshot.frameExportSettings).flatMap(([index, setting]) =>
@@ -237,9 +249,16 @@ function isValidSnapshot(value: unknown): value is WorkspaceSnapshot {
     const indexes = Array.isArray(snapshot.exportFrameIndexes) ? snapshot.exportFrameIndexes : [];
     return indexes.every(index => Number.isSafeInteger(index) && index >= 0);
   }
+  if (
+    snapshot.version === 4 &&
+    snapshot.acquisition?.kind !== 'source' &&
+    snapshot.acquisition?.kind !== 'instants'
+  )
+    return false;
   return (
     (snapshot.version === 2 ||
-      (snapshot.version === 3 && Array.isArray(snapshot.removeAudioIndexes))) &&
+      ((snapshot.version === 3 || snapshot.version === 4) &&
+        Array.isArray(snapshot.removeAudioIndexes))) &&
     typeof snapshot.frameExportSettings === 'object' &&
     snapshot.frameExportSettings !== null
   );
@@ -247,14 +266,31 @@ function isValidSnapshot(value: unknown): value is WorkspaceSnapshot {
 
 export function upgradeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | undefined {
   if (!isValidSnapshot(value)) return undefined;
-  const snapshot = value as WorkspaceSnapshot | WorkspaceSnapshotV2 | LegacyWorkspaceSnapshot;
-  if (snapshot.version === 3) return snapshot;
-  if (snapshot.version === 2) return { ...snapshot, version: 3, removeAudioIndexes: [] };
+  const snapshot = value as
+    | WorkspaceSnapshot
+    | WorkspaceSnapshotV3
+    | WorkspaceSnapshotV2
+    | LegacyWorkspaceSnapshot;
+  if (snapshot.version === 4) return snapshot;
+  if (snapshot.version === 3) return { ...snapshot, version: 4, acquisition: { kind: 'source' } };
+  if (snapshot.version === 2)
+    return {
+      ...snapshot,
+      version: 4,
+      acquisition: { kind: 'source' },
+      removeAudioIndexes: [],
+    };
   const settings = Object.fromEntries(
     (snapshot.exportFrameIndexes ?? []).map(index => [
       index,
       { enabled: true, timestampSeconds: 5 },
     ])
   );
-  return { ...snapshot, version: 3, frameExportSettings: settings, removeAudioIndexes: [] };
+  return {
+    ...snapshot,
+    version: 4,
+    acquisition: { kind: 'source' },
+    frameExportSettings: settings,
+    removeAudioIndexes: [],
+  };
 }

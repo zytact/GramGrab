@@ -54,6 +54,8 @@ export class Inspect extends Schema.TaggedClass<Inspect>()('Inspect', {
   sourceUrl: Schema.String.pipe(Schema.nonEmptyString()),
 }) {}
 
+export class InstantsInspect extends Schema.TaggedClass<InstantsInspect>()('InstantsInspect', {}) {}
+
 export class Status extends Schema.TaggedClass<Status>()('Status', {}) {}
 
 export class Echo extends Schema.TaggedClass<Echo>()('Echo', {
@@ -62,6 +64,10 @@ export class Echo extends Schema.TaggedClass<Echo>()('Echo', {
 
 export class Export extends Schema.TaggedClass<Export>()('Export', {
   sourceUrl: Schema.String.pipe(Schema.nonEmptyString()),
+  operations: Schema.Array(ExportOperation).pipe(Schema.minItems(1)),
+}) {}
+
+export class InstantsExport extends Schema.TaggedClass<InstantsExport>()('InstantsExport', {
   operations: Schema.Array(ExportOperation).pipe(Schema.minItems(1)),
 }) {}
 
@@ -86,7 +92,9 @@ export const Command = Schema.Union(
   Status,
   Echo,
   Inspect,
+  InstantsInspect,
   Export,
+  InstantsExport,
   HistoryList,
   HistoryRemove,
   HistoryClear,
@@ -124,6 +132,8 @@ export const FAILURE_CODES = [
   'SOURCE_UNEXPECTED_FAILURE',
   'MEDIA_URL_EXPIRED',
   'MEDIA_NOT_FOUND',
+  'MEDIA_DASH_ONLY_UNSUPPORTED',
+  'INSTANT_NOT_ACTIVE',
   'MEDIA_NETWORK_FAILED',
   'MEDIA_RESPONSE_EMPTY',
   'BROWSER_DOWNLOAD_BLOCKED',
@@ -224,6 +234,7 @@ export class InspectedMedia extends Schema.Class<InspectedMedia>('InspectedMedia
   width: Schema.optional(Schema.Number.pipe(Schema.positive())),
   height: Schema.optional(Schema.Number.pipe(Schema.positive())),
   history: Schema.optional(HistoryMarker),
+  creatorUsername: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
 }) {}
 
 export class InspectResult extends Schema.TaggedClass<InspectResult>()('InspectResult', {
@@ -231,14 +242,25 @@ export class InspectResult extends Schema.TaggedClass<InspectResult>()('InspectR
   items: Schema.Array(InspectedMedia),
 }) {}
 
+export class InstantsInspectResult extends Schema.TaggedClass<InstantsInspectResult>()(
+  'InstantsInspectResult',
+  { items: Schema.Array(InspectedMedia) }
+) {}
+
 export class ExportResult extends Schema.TaggedClass<ExportResult>()('ExportResult', {
   outcomes: Schema.Array(ItemOutcome),
 }) {}
 
 export class HistoryEntry extends Schema.Class<HistoryEntry>('HistoryEntry')({
   id: Schema.String.pipe(Schema.nonEmptyString()),
-  sourceUrl: Schema.String.pipe(Schema.nonEmptyString()),
-  sourceKind: Schema.Literal('post', 'reel', 'story', 'highlight', 'profile'),
+  origin: Schema.Union(
+    Schema.Struct({
+      kind: Schema.Literal('source'),
+      sourceUrl: Schema.String.pipe(Schema.nonEmptyString()),
+      sourceKind: Schema.Literal('post', 'reel', 'story', 'highlight', 'profile'),
+    }),
+    Schema.Struct({ kind: Schema.Literal('instants') })
+  ),
   mediaIdentity: MediaIdentity,
   mediaType: Schema.Literal('image', 'video'),
   filenameHint: Schema.String.pipe(Schema.nonEmptyString()),
@@ -330,7 +352,8 @@ export const CommandResult = Schema.Union(
   HistoryClearResult,
   HistoryRedownloadResult,
   DebugGetResult,
-  DebugExportResult
+  DebugExportResult,
+  InstantsInspectResult
 );
 export type CommandResult = Schema.Schema.Type<typeof CommandResult>;
 

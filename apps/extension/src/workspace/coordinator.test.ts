@@ -3,7 +3,8 @@ import { openWorkspace, replaceWorkspace } from './coordinator';
 import type { WorkspaceSnapshot } from './contracts';
 
 const snapshot: WorkspaceSnapshot = {
-  version: 3,
+  version: 4,
+  acquisition: { kind: 'source' },
   createdAt: 1,
   expiresAt: Date.now() + 60_000,
   url: 'https://www.instagram.com/p/example/',
@@ -27,6 +28,11 @@ const mockBrowser = {
     set: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn(),
   },
+  sessionStorage: {
+    get: vi.fn(),
+    set: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn(),
+  },
   windows: { update: vi.fn().mockResolvedValue(undefined) },
 };
 
@@ -36,13 +42,15 @@ describe('replaceWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockBrowser.tabs.create.mockResolvedValue({ id: 9 });
-    mockBrowser.storage.set.mockResolvedValue(undefined);
+    mockBrowser.sessionStorage.set.mockResolvedValue(undefined);
   });
 
   it('creates a workspace when none exists', async () => {
     mockBrowser.tabs.query.mockResolvedValue([]);
 
     await expect(replaceWorkspace(snapshot)).resolves.toBe('created');
+    expect(mockBrowser.sessionStorage.set).toHaveBeenCalled();
+    expect(mockBrowser.storage.set).not.toHaveBeenCalled();
     expect(mockBrowser.tabs.create).toHaveBeenCalledWith({
       active: true,
       url: expect.stringMatching(

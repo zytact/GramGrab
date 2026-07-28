@@ -22,7 +22,7 @@ export async function findWorkspaceTab() {
 }
 
 export async function isWorkspaceReportedBusy(): Promise<boolean> {
-  const value = (await browser.storage.get(WORKSPACE_STATUS_KEY))[WORKSPACE_STATUS_KEY];
+  const value = (await browser.sessionStorage.get(WORKSPACE_STATUS_KEY))[WORKSPACE_STATUS_KEY];
   if (!value || typeof value !== 'object') return false;
   const status = value as { busy?: unknown; updatedAt?: unknown };
   return (
@@ -40,7 +40,7 @@ async function focusWorkspace(tab: { id?: number; windowId?: number }): Promise<
 async function createWorkspace(snapshot: WorkspaceSnapshot): Promise<'created'> {
   const offerId = crypto.randomUUID();
   const sanitized = sanitizeSnapshot(snapshot);
-  await browser.storage.set({
+  await browser.sessionStorage.set({
     [WORKSPACE_TRANSFER_KEY]: sanitized,
     [`${WORKSPACE_TRANSFER_KEY}:${offerId}`]: sanitized,
   });
@@ -81,7 +81,7 @@ async function replaceWorkspaceNow(snapshot: WorkspaceSnapshot): Promise<'replac
   if (!existing?.id) return createWorkspace(snapshot);
   const offerId = crypto.randomUUID();
   const sanitized = sanitizeSnapshot(snapshot);
-  await browser.storage.set({
+  await browser.sessionStorage.set({
     [WORKSPACE_TRANSFER_KEY]: sanitized,
     [`${WORKSPACE_TRANSFER_KEY}:${offerId}`]: sanitized,
   });
@@ -100,8 +100,8 @@ async function replaceWorkspaceNow(snapshot: WorkspaceSnapshot): Promise<'replac
 export async function claimWorkspaceTransfer(): Promise<WorkspaceSnapshot | undefined> {
   const offerId = new URLSearchParams(globalThis.location?.search ?? '').get('offer');
   const key = offerId ? `${WORKSPACE_TRANSFER_KEY}:${offerId}` : WORKSPACE_TRANSFER_KEY;
-  const values = await browser.storage.get(key);
+  const values = await browser.sessionStorage.get(key);
   const candidate = values[key];
-  await browser.storage.remove(offerId ? [key, WORKSPACE_TRANSFER_KEY] : key);
+  await browser.sessionStorage.remove(offerId ? [key, WORKSPACE_TRANSFER_KEY] : key);
   return upgradeWorkspaceSnapshot(candidate);
 }

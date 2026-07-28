@@ -1,0 +1,52 @@
+{
+  "data": {
+    "xdt_get_quick_snaps": {
+      "items_ordered_by_time": [
+        {
+          "__typename": "XDTMediaDict",
+          "id": "SANITIZED_MEDIA_26_ID",
+          "taken_at": 1700000001,
+          "media_type": 1,
+          "source_type": 4,
+          "audience": "mutual_followers",
+          "caption": null,
+          "user": {
+            "id": "SANITIZED_PERSON_3_ID",
+            "username": "SANITIZED_PERSON_3_USERNAME",
+            "full_name": "SANITIZED_PERSON_3_FULL_NAME",
+            "profile_pic_url": "https://sanitized.invalid/person/3/profile-picture"
+          },
+          "image_versions2": {
+            "candidates": [
+              {
+                "width": 640,
+                "height": 640,
+                "url": "https://sanitized.invalid/media/26/instant-image"
+              },
+              {
+                "width": 1440,
+                "height": 1440,
+                "url": "https://sanitized.invalid/media/26/instant-image"
+              }
+            ]
+          },
+          "video_versions": null,
+          "video_dash_manifest": null,
+          "video_duration": null,
+          "quick_snap_info": {},
+          "prompt_info": null,
+          "wearable_attribution_info": null
+        }
+      ],
+      "sample_items": [],
+      "latest_reaction_timestamp": 0,
+      "ranking_request_id": "SANITIZED_RANKING_REQUEST_1",
+      "is_hidden": false,
+      "has_unseen_from_top_bffs": false,
+      "gtm_train_text": "",
+      "gtm_video_text": "",
+      "gtm_filters_text": "",
+      "gtm_recap_text": ""
+    }
+  }
+}

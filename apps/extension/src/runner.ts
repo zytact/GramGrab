@@ -8,6 +8,7 @@ import {
   MediaIdentity,
   OperationFailure as ProtocolOperationFailure,
   type Export,
+  type InstantsExport,
   type ExportOperation,
   type ItemOutcome,
 } from '@gramgrab/protocol';
@@ -31,7 +32,31 @@ import { approvedReencodeOperationIds } from './silent-video/policy.ts';
 interface RunnerRequest {
   readonly type: 'RUN_EXPORT';
   readonly sourceUrl: string;
-  readonly command: Export;
+  readonly originKind: 'source' | 'instants';
+  readonly command: Export | InstantsExport;
+}
+
+interface InspectedRunnerMedia {
+  readonly url: string;
+  readonly itemIndex: number;
+  readonly mediaId?: string;
+  readonly type: 'image' | 'video';
+  readonly filenameHint: string;
+}
+
+export function resolveRequestedRunnerMedia(
+  media: readonly InspectedRunnerMedia[],
+  requested: ExportOperation
+): InspectedRunnerMedia | undefined {
+  const mediaId = requested.mediaIdentity?.mediaId;
+  if (mediaId) {
+    const matches = media.filter(item => item.mediaId === mediaId);
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+  const item = media[requested.itemNumber - 1];
+  if (requested.mediaIdentity && requested.mediaIdentity.itemIndex !== item?.itemIndex)
+    return undefined;
+  return item;
 }
 
 // fallow-ignore-next-line complexity
@@ -73,30 +98,18 @@ function toOutcome(operation: ExportOperation, result: DownloadOperationResult):
 }
 
 // fallow-ignore-next-line complexity
-async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult> {
-  const inspected = (await browser.runtime.sendMessage({
-    type: 'FETCH_MEDIA',
-    url: sourceUrl,
-  })) as {
-    media?: readonly {
-      url: string;
-      itemIndex: number;
-      mediaId?: string;
-      type: 'image' | 'video';
-      filenameHint: string;
-    }[];
-  };
+async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<ExportResult> {
+  const inspected = (await browser.runtime.sendMessage(
+    originKind === 'instants' ? { type: 'FETCH_INSTANTS' } : { type: 'FETCH_MEDIA', url: sourceUrl }
+  )) as { media?: readonly InspectedRunnerMedia[] };
   const operations: AttemptOperation[] = [];
   const invalid: ItemOutcome[] = [];
   const requestedById = new Map<string, ExportOperation>();
   const approved = new Set<string>();
   const required = new Set<string>();
   for (const requested of command.operations) {
-    const item = inspected.media?.[requested.itemNumber - 1];
-    if (
-      !item ||
-      (requested.mediaIdentity && requested.mediaIdentity.itemIndex !== item.itemIndex)
-    ) {
+    const item = resolveRequestedRunnerMedia(inspected.media ?? [], requested);
+    if (!item) {
       invalid.push(
         ItemFailed.make({
           operationId: requested.operationId,
@@ -139,6 +152,7 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
   const execution = Layer.succeed(ExportExecution, {
     frame: operation =>
       executeFrameExport(operation, sourceUrl, {
+        originKind,
         onPhase: phase =>
           void browser.runtime.sendMessage({
             type: 'RUNNER_PROGRESS',
@@ -158,7 +172,12 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
           })
         )
       ).then(() =>
-        browser.runtime.sendMessage({ type: 'DOWNLOAD_MEDIA', sourceUrl, operations: direct })
+        browser.runtime.sendMessage({
+          type: 'DOWNLOAD_MEDIA',
+          ...(originKind === 'source' ? { sourceUrl } : {}),
+          originKind,
+          operations: direct,
+        })
       ),
     silent: (silent, progress, preflight, approvedIds) =>
       runSilentVideoBatch(
@@ -170,7 +189,8 @@ async function run({ sourceUrl, command }: RunnerRequest): Promise<ExportResult>
           for (const operationId of required) approvedIds.add(operationId);
           preflight();
         },
-        approvedIds
+        approvedIds,
+        originKind
       ),
   });
   const events = Layer.succeed(ExportEvents, {

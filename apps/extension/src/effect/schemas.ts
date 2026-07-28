@@ -267,3 +267,90 @@ export const HighlightsTrayResponseSchema = Schema.Struct({
 });
 
 export type HighlightsTrayItem = Schema.Schema.Type<typeof HighlightsTrayItemSchema>;
+
+// ---------------------------------------------------------------------------
+// Active Instants - strict known shapes with unknown typename passthrough
+// ---------------------------------------------------------------------------
+
+const InstantCandidateSchema = Schema.Struct({
+  width: Schema.Number,
+  height: Schema.Number,
+  url: Schema.String,
+});
+
+const InstantUserSchema = Schema.Struct({
+  id: Schema.String,
+  username: Schema.String,
+  full_name: Schema.String,
+  profile_pic_url: Schema.String,
+});
+
+const InstantBaseFields = {
+  __typename: Schema.Literal('XDTMediaDict'),
+  id: Schema.String,
+  taken_at: Schema.Number,
+  source_type: Schema.Number,
+  audience: Schema.String,
+  caption: Schema.Null,
+  user: InstantUserSchema,
+  quick_snap_info: Schema.Struct({}),
+  prompt_info: Schema.Null,
+  wearable_attribution_info: Schema.Null,
+} as const;
+
+const InstantPhotoSchema = Schema.Struct({
+  ...InstantBaseFields,
+  media_type: Schema.Literal(1),
+  image_versions2: Schema.Struct({ candidates: Schema.Array(InstantCandidateSchema) }),
+  video_versions: Schema.Null,
+  video_dash_manifest: Schema.Null,
+  video_duration: Schema.Null,
+});
+
+const InstantVideoSchema = Schema.Struct({
+  ...InstantBaseFields,
+  media_type: Schema.Literal(2),
+  image_versions2: Schema.NullOr(
+    Schema.Struct({ candidates: Schema.Array(InstantCandidateSchema) })
+  ),
+  video_versions: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        width: Schema.Number,
+        height: Schema.Number,
+        type: Schema.Number,
+        url: Schema.String,
+      })
+    )
+  ),
+  video_dash_manifest: Schema.NullOr(Schema.String),
+  video_duration: Schema.NullOr(Schema.Number),
+});
+
+const InstantUnknownSchema = Schema.Struct({
+  __typename: Schema.String.pipe(
+    Schema.filter(value => value !== 'XDTMediaDict', {
+      message: () => 'known Instant typename must match its strict shape',
+    })
+  ),
+  id: Schema.optional(Schema.String),
+});
+
+const InstantItemSchema = Schema.Union(
+  InstantPhotoSchema,
+  InstantVideoSchema,
+  InstantUnknownSchema
+);
+
+export const InstantsFeedResponseSchema = Schema.Struct({
+  data: Schema.Struct({
+    xdt_get_quick_snaps: Schema.Struct({
+      items_ordered_by_time: Schema.Array(InstantItemSchema),
+      sample_items: Schema.Array(InstantItemSchema),
+    }),
+  }),
+});
+
+export type InstantItem = Schema.Schema.Type<typeof InstantItemSchema>;
+export type InstantPhoto = Schema.Schema.Type<typeof InstantPhotoSchema>;
+export type InstantVideo = Schema.Schema.Type<typeof InstantVideoSchema>;

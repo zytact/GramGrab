@@ -22,6 +22,7 @@ export class DownloadMediaRequest extends Schema.Class<DownloadMediaRequest>(
   'DownloadMediaRequest'
 )({
   sourceUrl: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
+  originKind: Schema.optional(Schema.Literal('source', 'instants')),
   operations: Schema.Array(DownloadOperation),
 }) {}
 

@@ -33,7 +33,7 @@ export class ProtocolRequest extends Schema.Class<ProtocolRequest>('ProtocolRequ
 }) {}
 
 export class ProtocolCandidate extends Schema.Class<ProtocolCandidate>('ProtocolCandidate')({
-  kind: Schema.Literal('doc_id', 'query_hash'),
+  kind: Schema.Literal('doc_id', 'query_hash', 'client_doc_id'),
   id: NonEmptyString,
   requests: Schema.Array(ProtocolRequest).pipe(
     Schema.filter(requests => requests.length > 0, { message: () => 'must not be empty' })
@@ -41,6 +41,8 @@ export class ProtocolCandidate extends Schema.Class<ProtocolCandidate>('Protocol
 }) {}
 
 export class ProtocolOperation extends Schema.Class<ProtocolOperation>('ProtocolOperation')({
+  appId: Schema.optional(NonEmptyString),
+  friendlyName: Schema.optional(NonEmptyString),
   candidates: Schema.Array(ProtocolCandidate).pipe(
     Schema.filter(candidates => candidates.length > 0, { message: () => 'must not be empty' })
   ),
@@ -52,6 +54,7 @@ export class ProtocolConfig extends Schema.Class<ProtocolConfig>('ProtocolConfig
   operations: Schema.Struct({
     mediaByShortcode: ProtocolOperation,
     reelsMedia: ProtocolOperation,
+    instantsFeed: Schema.optional(ProtocolOperation),
   }),
 }) {}
 

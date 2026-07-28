@@ -4,6 +4,7 @@ import { Context, Effect, Either, Layer, Schema } from 'effect';
 import {
   HdAvatarResponseSchema,
   HighlightsTrayResponseSchema,
+  InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
   ShortcodeMediaResponseSchema,
   WebProfileInfoResponseSchema,
@@ -167,7 +168,7 @@ const batchContractDiagnostics = (
       diagnostics.push({
         filename: entry,
         path: '',
-        expected: 'one of the eight required fixture files',
+        expected: 'one of the required fixture files',
         observed: 'unexpected entry',
         category: 'batch-contract',
       });
@@ -213,42 +214,30 @@ const sanitizerDiagnostics = (
 ): ReadonlyArray<SafeDiagnostic> => violations.map(violation => violation);
 
 const endpointFailure = (filename: FixtureFilename) => () => EndpointSchemaError.make({ filename });
+const endpointDecoder =
+  <A, I>(schema: Schema.Schema<A, I>) =>
+  (value: unknown) =>
+    Schema.decodeUnknown(schema)(value).pipe(Effect.asVoid);
+
+const endpointDecoders = {
+  'avatar.json': endpointDecoder(HdAvatarResponseSchema),
+  'highlights-tray.json': endpointDecoder(HighlightsTrayResponseSchema),
+  'highlights.json': endpointDecoder(ReelsMediaResponseSchema),
+  'story.json': endpointDecoder(ReelsMediaResponseSchema),
+  'instants-photo.json': endpointDecoder(InstantsFeedResponseSchema),
+  'instants-video.json': endpointDecoder(InstantsFeedResponseSchema),
+  'instants-empty.json': endpointDecoder(InstantsFeedResponseSchema),
+  'shortcode-image.json': endpointDecoder(ShortcodeMediaResponseSchema),
+  'shortcode-sidecar.json': endpointDecoder(ShortcodeMediaResponseSchema),
+  'shortcode-video.json': endpointDecoder(ShortcodeMediaResponseSchema),
+  'web-profile-info.json': endpointDecoder(WebProfileInfoResponseSchema),
+};
 
 const validateEndpoint = (
   filename: FixtureFilename,
   value: JsonValue
-): Effect.Effect<void, EndpointSchemaError> => {
-  switch (filename) {
-    case 'avatar.json':
-      return Schema.decodeUnknown(HdAvatarResponseSchema)(value).pipe(
-        Effect.asVoid,
-        Effect.mapError(endpointFailure(filename))
-      );
-    case 'highlights-tray.json':
-      return Schema.decodeUnknown(HighlightsTrayResponseSchema)(value).pipe(
-        Effect.asVoid,
-        Effect.mapError(endpointFailure(filename))
-      );
-    case 'highlights.json':
-    case 'story.json':
-      return Schema.decodeUnknown(ReelsMediaResponseSchema)(value).pipe(
-        Effect.asVoid,
-        Effect.mapError(endpointFailure(filename))
-      );
-    case 'shortcode-image.json':
-    case 'shortcode-sidecar.json':
-    case 'shortcode-video.json':
-      return Schema.decodeUnknown(ShortcodeMediaResponseSchema)(value).pipe(
-        Effect.asVoid,
-        Effect.mapError(endpointFailure(filename))
-      );
-    case 'web-profile-info.json':
-      return Schema.decodeUnknown(WebProfileInfoResponseSchema)(value).pipe(
-        Effect.asVoid,
-        Effect.mapError(endpointFailure(filename))
-      );
-  }
-};
+): Effect.Effect<void, EndpointSchemaError> =>
+  endpointDecoders[filename](value).pipe(Effect.mapError(endpointFailure(filename)));
 
 const isPrimitive = (value: JsonValue): value is boolean | number | string | null =>
   value === null || typeof value !== 'object';

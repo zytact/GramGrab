@@ -79,7 +79,17 @@ describe('protocol version 1', () => {
   });
 
   it('preserves operation identity while transport retries receive fresh request identities', () => {
-    const original = Schema.decodeUnknownSync(Request)(requestFixtures[1]);
+    const exportFixture = requestFixtures.find(
+      fixture =>
+        typeof fixture === 'object' &&
+        fixture !== null &&
+        'command' in fixture &&
+        typeof fixture.command === 'object' &&
+        fixture.command !== null &&
+        '_tag' in fixture.command &&
+        fixture.command._tag === 'Export'
+    );
+    const original = Schema.decodeUnknownSync(Request)(exportFixture);
     const encoded = Schema.encodeSync(Request)(original);
     const retry = Schema.decodeUnknownSync(Request)({
       ...encoded,
@@ -98,6 +108,8 @@ describe('protocol version 1', () => {
     expect(Schema.decodeUnknownSync(RequestId)(requestId)).toBe(requestId);
     expect(Schema.decodeUnknownSync(OperationId)(operationId)).toBe(operationId);
     expect(FAILURE_CODES).toContain('SILENT_REENCODE_FAILED');
-    expect(FAILURE_CODES).toHaveLength(40);
+    expect(FAILURE_CODES).toContain('MEDIA_DASH_ONLY_UNSUPPORTED');
+    expect(FAILURE_CODES).toContain('INSTANT_NOT_ACTIVE');
+    expect(FAILURE_CODES).toHaveLength(42);
   });
 });

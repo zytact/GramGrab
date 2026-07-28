@@ -98,6 +98,53 @@ describe('CLI capability grammar', () => {
     expect(() => parseCliArguments(['inspect', '--json'])).toThrow('Missing inspect SOURCE.');
   });
 
+  it('parses Instant inspection without a Source', () => {
+    expect(parseCliArguments(['instants', 'inspect', '--json'])).toMatchObject({
+      json: true,
+      command: { _tag: 'InstantsInspect' },
+    });
+  });
+
+  it('rejects Source arguments for Instant commands', () => {
+    expect(() => parseCliArguments(['instants', 'inspect', 'username'])).toThrow(
+      'does not accept a Source argument'
+    );
+    expect(() => parseCliArguments(['instants', 'export', 'username'])).toThrow(
+      'does not accept a Source argument'
+    );
+  });
+
+  it('defaults Instant export to every freshly inspected item', () => {
+    expect(parseCliArguments(['instants', 'export'])).toMatchObject({
+      command: { _tag: 'InstantsInspect' },
+      expandAll: { origin: 'instants', mode: { _tag: 'DirectExport' } },
+    });
+  });
+
+  it('parses repeated Instant export selections and existing modes', () => {
+    const parsed = parseCliArguments([
+      'instants',
+      'export',
+      '--item',
+      '1',
+      '--mode',
+      'direct',
+      '--item',
+      '2',
+      '--mode',
+      'silent',
+      '--reencode',
+      'allow',
+    ]);
+    expect(parsed.command).toMatchObject({
+      _tag: 'InstantsExport',
+      operations: [
+        { itemNumber: 1, mode: { _tag: 'DirectExport' } },
+        { itemNumber: 2, mode: { _tag: 'SilentExport', reencode: 'allow' } },
+      ],
+    });
+  });
+
   it.each([
     ['direct', [], 'DirectExport'],
     ['frame', ['--at', '7'], 'FrameExport'],
@@ -226,6 +273,7 @@ describe('CLI capability grammar', () => {
 describe('CLI output', () => {
   it('documents help, all-item export, policies, plans, and exit semantics', () => {
     expect(HELP).toContain('gramgrab inspect SOURCE');
+    expect(HELP).toContain('gramgrab instants inspect');
     expect(HELP).toContain('A bare username (without\n  @) targets');
     expect(HELP).toContain('gramgrab export instagram --item 3 --mode frame --at 5');
     expect(HELP).toContain('defaults to every item found by a fresh inspection');

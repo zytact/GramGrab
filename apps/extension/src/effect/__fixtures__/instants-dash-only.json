@@ -1,0 +1,36 @@
+{
+  "data": {
+    "xdt_get_quick_snaps": {
+      "items_ordered_by_time": [
+        {
+          "__typename": "XDTMediaDict",
+          "id": "instant-dash-001",
+          "taken_at": 1700000002,
+          "media_type": 2,
+          "source_type": 4,
+          "audience": "mutual_followers",
+          "caption": null,
+          "user": {
+            "id": "user-002",
+            "username": "video_creator",
+            "full_name": "Video Creator",
+            "profile_pic_url": "https://sanitized.invalid/person/1/profile-picture"
+          },
+          "image_versions2": {
+            "candidates": [
+              { "width": 320, "height": 320, "url": "https://sanitized.invalid/media/1/poster" },
+              { "width": 640, "height": 640, "url": "https://sanitized.invalid/media/1/poster" }
+            ]
+          },
+          "video_versions": [],
+          "video_dash_manifest": "<MPD>synthetic</MPD>",
+          "video_duration": 1.8,
+          "quick_snap_info": {},
+          "prompt_info": null,
+          "wearable_attribution_info": null
+        }
+      ],
+      "sample_items": []
+    }
+  }
+}

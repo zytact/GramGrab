@@ -18,12 +18,13 @@ const defaultConfigPath = resolve(
   'apps/extension/src/instagram-protocol/config.json'
 );
 
-const OperationName = Schema.Literal('mediaByShortcode', 'reelsMedia');
+const OperationName = Schema.Literal('mediaByShortcode', 'reelsMedia', 'instantsFeed');
 export type OperationName = Schema.Schema.Type<typeof OperationName>;
 
 export class ProtocolObservation extends Schema.Class<ProtocolObservation>('ProtocolObservation')({
   appId: Schema.NonEmptyString,
-  asbdId: Schema.NonEmptyString,
+  asbdId: Schema.optional(Schema.NonEmptyString),
+  friendlyName: Schema.optional(Schema.NonEmptyString),
   candidate: ProtocolCandidate,
 }) {}
 
@@ -100,25 +101,27 @@ function requiredHeader(headers: ReadonlyMap<string, string>, name: string): str
 }
 
 function extractIdentifier(parameters: URLSearchParams): {
-  readonly kind: 'doc_id' | 'query_hash';
+  readonly kind: 'doc_id' | 'query_hash' | 'client_doc_id';
   readonly id: string;
 } {
   const docId = parameters.get('doc_id')?.trim();
   const queryHash = parameters.get('query_hash')?.trim();
-  if ((!docId && !queryHash) || (docId && queryHash)) {
-    throw new Error('Request must contain exactly one doc_id or query_hash');
+  const clientDocumentId = parameters.get('client_doc_id')?.trim();
+  const identifiers = [docId, queryHash, clientDocumentId].filter(Boolean);
+  if (identifiers.length !== 1) {
+    throw new Error('Request must contain exactly one doc_id, query_hash, or client_doc_id');
   }
-  return docId ? { kind: 'doc_id', id: docId } : { kind: 'query_hash', id: queryHash ?? '' };
+  if (docId) return { kind: 'doc_id', id: docId };
+  if (queryHash) return { kind: 'query_hash', id: queryHash };
+  return { kind: 'client_doc_id', id: clientDocumentId ?? '' };
 }
 
-export function extractProtocolObservation(source: string): ProtocolObservation {
-  const call = findFetchCall(source);
+function instagramRequest(call: CallExpression): { url: URL; options: ObjectExpression } {
   const endpointSource = staticString(call.arguments[0]);
   const options = call.arguments[1];
   if (!endpointSource || options?.type !== 'ObjectExpression') {
     throw new Error('Copy-as-fetch request must use a literal URL and options object');
   }
-
   let url: URL;
   try {
     url = new URL(endpointSource);
@@ -128,21 +131,26 @@ export function extractProtocolObservation(source: string): ProtocolObservation 
   if (url.protocol !== 'https:' || url.hostname !== 'www.instagram.com') {
     throw new Error('Copy-as-fetch request must target https://www.instagram.com');
   }
+  return { url, options };
+}
 
+function requestParameters(
+  url: URL,
+  options: ObjectExpression
+): { transport: 'query' | 'form'; parameters: URLSearchParams } {
   const method = (staticString(objectProperty(options, 'method')) ?? 'GET').toUpperCase();
-  const transport = method === 'GET' ? 'query' : method === 'POST' ? 'form' : undefined;
-  if (!transport) throw new Error('Only GET and POST Copy-as-fetch requests are supported');
-
-  let parameters: URLSearchParams;
-  if (transport === 'query') {
-    parameters = url.searchParams;
-  } else {
-    const body = staticString(objectProperty(options, 'body'));
-    if (body === undefined) {
-      throw new Error('POST Copy-as-fetch request must contain a literal form body');
-    }
-    parameters = new URLSearchParams(body);
+  if (method === 'GET') return { transport: 'query', parameters: url.searchParams };
+  if (method !== 'POST') throw new Error('Only GET and POST Copy-as-fetch requests are supported');
+  const body = staticString(objectProperty(options, 'body'));
+  if (body === undefined) {
+    throw new Error('POST Copy-as-fetch request must contain a literal form body');
   }
+  return { transport: 'form', parameters: new URLSearchParams(body) };
+}
+
+export function extractProtocolObservation(source: string): ProtocolObservation {
+  const { url, options } = instagramRequest(findFetchCall(source));
+  const { transport, parameters } = requestParameters(url, options);
   const identifier = extractIdentifier(parameters);
   const headers = extractHeaders(options);
   const request = Schema.decodeUnknownSync(ProtocolRequest)({
@@ -152,7 +160,11 @@ export function extractProtocolObservation(source: string): ProtocolObservation 
 
   return decodeObservation({
     appId: requiredHeader(headers, 'x-ig-app-id'),
-    asbdId: requiredHeader(headers, 'x-asbd-id'),
+    asbdId: headers.get('x-asbd-id')?.trim() || undefined,
+    friendlyName:
+      headers.get('x-fb-friendly-name')?.trim() ||
+      parameters.get('fb_api_req_friendly_name')?.trim() ||
+      undefined,
     candidate: {
       ...identifier,
       requests: [request],
@@ -164,43 +176,72 @@ function sameRequest(left: ProtocolRequest, right: ProtocolRequest): boolean {
   return left.endpoint === right.endpoint && left.transport === right.transport;
 }
 
-function mergeObservation(
+function mergeCandidates(
   config: ProtocolConfig,
   operation: OperationName,
   observation: ProtocolObservation
-): ProtocolConfig {
-  const currentOperation = config.operations[operation];
-  const matchingCandidate = currentOperation.candidates.find(
+) {
+  const current = config.operations[operation]?.candidates ?? [];
+  const matching = current.find(
     candidate =>
       candidate.kind === observation.candidate.kind && candidate.id === observation.candidate.id
   );
   const observedRequest = observation.candidate.requests[0];
   if (!observedRequest) throw new Error('Observed candidate has no request transport');
-  const mergedCandidate = {
-    kind: observation.candidate.kind,
-    id: observation.candidate.id,
-    requests: [
-      observedRequest,
-      ...(matchingCandidate?.requests.filter(request => !sameRequest(request, observedRequest)) ??
-        []),
-    ],
-  };
-  const candidates = [
-    mergedCandidate,
-    ...currentOperation.candidates.filter(
+  const requests = [
+    observedRequest,
+    ...(matching?.requests.filter(request => !sameRequest(request, observedRequest)) ?? []),
+  ];
+  return [
+    { kind: observation.candidate.kind, id: observation.candidate.id, requests },
+    ...current.filter(
       candidate =>
         candidate.kind !== observation.candidate.kind || candidate.id !== observation.candidate.id
     ),
   ];
+}
+
+function mergedOperations(
+  config: ProtocolConfig,
+  operation: OperationName,
+  observation: ProtocolObservation,
+  candidates: ReturnType<typeof mergeCandidates>
+) {
+  const operations = {
+    mediaByShortcode:
+      operation === 'mediaByShortcode' ? { candidates } : config.operations.mediaByShortcode,
+    reelsMedia: operation === 'reelsMedia' ? { candidates } : config.operations.reelsMedia,
+    ...(config.operations.instantsFeed ? { instantsFeed: config.operations.instantsFeed } : {}),
+  };
+  if (operation !== 'instantsFeed') return operations;
+  return {
+    ...operations,
+    instantsFeed: {
+      appId: observation.appId,
+      friendlyName: observation.friendlyName,
+      candidates,
+    },
+  };
+}
+
+function mergeObservation(
+  config: ProtocolConfig,
+  operation: OperationName,
+  observation: ProtocolObservation
+): ProtocolConfig {
+  const candidates = mergeCandidates(config, operation, observation);
+  const client =
+    operation === 'instantsFeed'
+      ? config.client
+      : {
+          appId: observation.appId,
+          asbdId: observation.asbdId ?? config.client.asbdId,
+        };
 
   return decodeProtocolConfig({
     schemaVersion: config.schemaVersion,
-    client: { appId: observation.appId, asbdId: observation.asbdId },
-    operations: {
-      mediaByShortcode:
-        operation === 'mediaByShortcode' ? { candidates } : config.operations.mediaByShortcode,
-      reelsMedia: operation === 'reelsMedia' ? { candidates } : config.operations.reelsMedia,
-    },
+    client,
+    operations: mergedOperations(config, operation, observation, candidates),
   });
 }
 
@@ -233,7 +274,9 @@ export async function updateProtocolConfig({
 export function parseOperation(arguments_: readonly string[]): OperationName {
   const normalizedArguments = arguments_[0] === '--' ? arguments_.slice(1) : arguments_;
   if (normalizedArguments.length !== 2 || normalizedArguments[0] !== '--operation') {
-    throw new Error('Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia>');
+    throw new Error(
+      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|instantsFeed>'
+    );
   }
   return Schema.decodeUnknownSync(OperationName)(normalizedArguments[1]);
 }
@@ -253,7 +296,7 @@ async function runCommand(): Promise<void> {
   const operation = parseOperation(process.argv.slice(2));
   const source = await readStdin();
   const updated = await updateProtocolConfig({ source, operation });
-  const candidate = updated.operations[operation].candidates[0];
+  const candidate = updated.operations[operation]?.candidates[0];
   if (!candidate) throw new Error('Updated operation has no protocol candidate');
   process.stdout.write(
     `Updated ${operation} with ${candidate.kind}=${candidate.id} in ${defaultConfigPath}\n`

@@ -73,6 +73,11 @@ type MockBrowser = {
     set: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
   };
+  sessionStorage: {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
+  };
   windows: { update: ReturnType<typeof vi.fn> };
 };
 
@@ -123,6 +128,11 @@ const mockBrowserInstance: MockBrowser = {
     set: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
   },
+  sessionStorage: {
+    get: vi.fn().mockResolvedValue({}),
+    set: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+  },
   windows: { update: vi.fn().mockResolvedValue(undefined) },
 };
 
@@ -139,6 +149,7 @@ export const setMockMessageHandler = (type: string, handler: (msg: unknown) => u
 };
 
 export const getDownloadCalls = () => mockDownloads.downloads;
+export const getMockBrowser = () => mockBrowserInstance;
 
 /**
  * Loads background.ts fresh (via vi.resetModules) and wires browser.runtime.sendMessage
