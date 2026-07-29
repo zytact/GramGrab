@@ -440,6 +440,13 @@ body::before {
   flex-shrink: 0;
 }
 
+.loading-button-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

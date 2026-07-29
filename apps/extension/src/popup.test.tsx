@@ -318,11 +318,74 @@ describe('Popup', () => {
     const fetchButton = screen.getByText('Fetch Media');
     await user.click(fetchButton);
 
-    expect(screen.getByText('Fetching…')).toBeDefined();
+    expect(
+      screen.getByRole('button', { name: 'Fetching…' }).querySelector('.btn-spinner')
+    ).not.toBeNull();
 
     await act(async () => {
       resolveFetch!({ media: [], error: undefined });
     });
+  });
+
+  it('shows a spinner while a history download starts', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      (message: { type: string }) => {
+        if (message.type === 'GET_DOWNLOAD_HISTORY')
+          return Promise.resolve({
+            entries: [
+              {
+                id: 'history-1',
+                origin: {
+                  kind: 'source',
+                  sourceUrl: 'https://www.instagram.com/p/abc123/',
+                  sourceKind: 'post',
+                },
+                itemIndex: 0,
+                mediaType: 'image',
+                filenameHint: 'saved-image',
+                downloadedAt: Date.now(),
+              },
+            ],
+          });
+        if (message.type === 'REDOWNLOAD_HISTORY_ENTRY') return new Promise(() => {});
+        return Promise.resolve({});
+      }
+    );
+
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'History' }));
+    await user.click(await screen.findByRole('button', { name: 'Re-download' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Starting…' }).querySelector('.btn-spinner')
+    ).not.toBeNull();
+  });
+
+  it('shows a spinner in the workspace download action', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/popup.html?surface=workspace&source=https%3A%2F%2Fwww.instagram.com%2Fp%2Fabc123%2F'
+    );
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      (message: { type: string }) => {
+        if (message.type === 'FETCH_MEDIA')
+          return Promise.resolve({
+            media: [{ url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'first' }],
+          });
+        if (message.type === 'DOWNLOAD_MEDIA') return new Promise(() => {});
+        return Promise.resolve({});
+      }
+    );
+
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'Fetch Media' }));
+    await user.click(await screen.findByRole('button', { name: 'Download selected' }));
+
+    expect(document.querySelector('.workspace-download .btn-spinner')).not.toBeNull();
+    window.history.replaceState({}, '', '/popup.html');
   });
 
   it('shows "No media found" when fetch returns empty', async () => {

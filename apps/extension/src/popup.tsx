@@ -1388,7 +1388,11 @@ function HistoryView({
                 disabled={busyId === entry.id}
                 onClick={() => onRedownload(entry.id)}
               >
-                {busyId === entry.id ? 'Starting…' : 'Re-download'}
+                {busyId === entry.id ? (
+                  <LoadingButtonLabel>Starting…</LoadingButtonLabel>
+                ) : (
+                  'Re-download'
+                )}
               </button>
               <button
                 className="history-remove"
@@ -1498,7 +1502,11 @@ function WorkspaceSelectionActions({
         onClick={() => void onDownload()}
         disabled={selectedCount === 0 || isBusy}
       >
-        {isDownloading ? 'Downloading…' : 'Download selected'}
+        {isDownloading ? (
+          <LoadingButtonLabel>Downloading…</LoadingButtonLabel>
+        ) : (
+          'Download selected'
+        )}
       </button>
     </div>
   );
@@ -1559,12 +1567,7 @@ function shouldSkipFallbackPreview(
 
 function renderDownloadButtonLabel(status: Status, selectedCount: number) {
   if (status === 'downloading') {
-    return (
-      <>
-        <span className="btn-spinner" />
-        Downloading…
-      </>
-    );
+    return <LoadingButtonLabel>Downloading…</LoadingButtonLabel>;
   }
 
   return selectedCount > 0 ? `Download ${selectedCount} Selected` : 'Download Selected';
@@ -1572,10 +1575,7 @@ function renderDownloadButtonLabel(status: Status, selectedCount: number) {
 
 function renderFetchButtonLabel(status: Status, acquisition: 'source' | 'instants') {
   return status === 'fetching' && acquisition === 'source' ? (
-    <>
-      <span className="btn-spinner" />
-      Fetching…
-    </>
+    <LoadingButtonLabel>Fetching…</LoadingButtonLabel>
   ) : (
     'Fetch Media'
   );
@@ -1583,12 +1583,18 @@ function renderFetchButtonLabel(status: Status, acquisition: 'source' | 'instant
 
 function renderInstantsButtonLabel(status: Status, acquisition: 'source' | 'instants') {
   return status === 'fetching' && acquisition === 'instants' ? (
-    <>
-      <span className="btn-spinner" />
-      Loading Instants…
-    </>
+    <LoadingButtonLabel>Loading Instants…</LoadingButtonLabel>
   ) : (
     'Load Instants'
+  );
+}
+
+function LoadingButtonLabel({ children }: { children: string }) {
+  return (
+    <span className="loading-button-label">
+      <span className="btn-spinner" aria-hidden="true" />
+      {children}
+    </span>
   );
 }
 
