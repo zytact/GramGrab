@@ -1024,6 +1024,7 @@ export default function Popup() {
                   className="btn"
                   onClick={() => triggerFetch('source')}
                   disabled={isBusy || !url.trim()}
+                  aria-busy={status === 'fetching' && acquisition === 'source'}
                 >
                   {renderFetchButtonLabel(status, acquisition)}
                 </button>
@@ -1037,6 +1038,7 @@ export default function Popup() {
                   className="instants-btn"
                   onClick={() => triggerFetch('instants')}
                   disabled={isBusy}
+                  aria-busy={status === 'fetching' && acquisition === 'instants'}
                 >
                   {renderInstantsButtonLabel(status, acquisition)}
                 </button>
@@ -1182,6 +1184,7 @@ export default function Popup() {
                 className="btn"
                 onClick={handleDownload}
                 disabled={selectedCount === 0 || isBusy}
+                aria-busy={status === 'downloading'}
               >
                 {renderDownloadButtonLabel(status, selectedCount)}
               </button>
@@ -1388,11 +1391,7 @@ function HistoryView({
                 disabled={busyId === entry.id}
                 onClick={() => onRedownload(entry.id)}
               >
-                {busyId === entry.id ? (
-                  <LoadingButtonLabel>Starting…</LoadingButtonLabel>
-                ) : (
-                  'Re-download'
-                )}
+                {busyId === entry.id ? 'Starting…' : 'Re-download'}
               </button>
               <button
                 className="history-remove"
@@ -1501,6 +1500,7 @@ function WorkspaceSelectionActions({
         className="workspace-download"
         onClick={() => void onDownload()}
         disabled={selectedCount === 0 || isBusy}
+        aria-busy={isDownloading}
       >
         {isDownloading ? (
           <LoadingButtonLabel>Downloading…</LoadingButtonLabel>
