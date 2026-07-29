@@ -440,6 +440,27 @@ body::before {
   flex-shrink: 0;
 }
 
+.loading-button-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn[aria-busy='true'] {
+  border-color: var(--brand);
+  background: var(--brand-dim);
+  color: var(--text);
+  cursor: wait;
+  opacity: 1;
+}
+
+.instants-btn[aria-busy='true'],
+.workspace-download[aria-busy='true'] {
+  cursor: wait;
+  opacity: 1;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

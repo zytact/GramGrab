@@ -299,7 +299,7 @@ describe('Popup', () => {
     expect(screen.getByText(/schema detail/)).toBeDefined();
   });
 
-  it('shows downloading state', async () => {
+  it('shows an animated spinner while fetching media', async () => {
     const user = userEvent.setup();
     let resolveFetch: (value: unknown) => void;
     const fetchPromise = new Promise(resolve => {
@@ -318,11 +318,63 @@ describe('Popup', () => {
     const fetchButton = screen.getByText('Fetch Media');
     await user.click(fetchButton);
 
-    expect(screen.getByText('Fetching…')).toBeDefined();
+    const loadingButton = screen.getByRole('button', { name: 'Fetching…' });
+    expect(loadingButton.getAttribute('aria-busy')).toBe('true');
+    expect(loadingButton.querySelector('.btn-spinner')).not.toBeNull();
 
     await act(async () => {
       resolveFetch!({ media: [], error: undefined });
     });
+  });
+
+  it('shows an animated spinner while downloading media', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      (message: { type: string }) => {
+        if (message.type === 'FETCH_MEDIA')
+          return Promise.resolve({
+            media: [{ url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'first' }],
+          });
+        if (message.type === 'DOWNLOAD_MEDIA') return new Promise(() => {});
+        return Promise.resolve({});
+      }
+    );
+
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'Fetch Media' }));
+    await user.click(await screen.findByRole('button', { name: 'Download 1 Selected' }));
+
+    const loadingButton = screen.getByRole('button', { name: 'Downloading…' });
+    expect(loadingButton.getAttribute('aria-busy')).toBe('true');
+    expect(loadingButton.querySelector('.btn-spinner')).not.toBeNull();
+  });
+
+  it('shows a spinner in the workspace download action', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/popup.html?surface=workspace&source=https%3A%2F%2Fwww.instagram.com%2Fp%2Fabc123%2F'
+    );
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      (message: { type: string }) => {
+        if (message.type === 'FETCH_MEDIA')
+          return Promise.resolve({
+            media: [{ url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'first' }],
+          });
+        if (message.type === 'DOWNLOAD_MEDIA') return new Promise(() => {});
+        return Promise.resolve({});
+      }
+    );
+
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'Fetch Media' }));
+    await user.click(await screen.findByRole('button', { name: 'Download selected' }));
+
+    const loadingButton = document.querySelector('.workspace-download');
+    expect(loadingButton?.getAttribute('aria-busy')).toBe('true');
+    expect(loadingButton?.querySelector('.btn-spinner')).not.toBeNull();
+    window.history.replaceState({}, '', '/popup.html');
   });
 
   it('shows "No media found" when fetch returns empty', async () => {
