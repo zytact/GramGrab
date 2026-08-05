@@ -1,6 +1,6 @@
 # GramGrab
 
-GramGrab resolves Instagram sources into media that a person can inspect and download. This context defines the product language shared by its browser extension and CLI.
+GramGrab resolves supported Instagram and WhatsApp media into items that a person can inspect and download. This context defines the product language shared by its browser extension and CLI.
 
 ## Language
 
@@ -51,6 +51,10 @@ _Avoid_: Album, carousel, gallery
 **Story**:
 An ephemeral media item in an Instagram account's current 24-hour collection.
 _Avoid_: Snap, Story Reel
+
+**Status**:
+An ephemeral media item in a WhatsApp contact's current 24-hour collection.
+_Avoid_: Story, WhatsApp Story
 
 **Instant**:
 A photo or video available through Instagram's active Instants feed.

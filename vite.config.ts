@@ -275,6 +275,7 @@ export default defineConfig({
   build: {
     outDir: resolve(__dirname, `extension/${browser}`),
     emptyOutDir: true,
+    modulePreload: false,
     rollupOptions: {
       input: {
         popup: resolve(extensionRoot, 'templates/popup.html'),
