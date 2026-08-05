@@ -93,7 +93,7 @@ body {
   font-family: var(--font-mono);
   background: var(--bg);
   color: var(--text);
-  width: 380px;
+  width: min(680px, 100vw);
   min-height: 540px;
   margin: 0;
   padding: 0;
