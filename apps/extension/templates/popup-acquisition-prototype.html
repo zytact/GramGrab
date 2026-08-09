@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GramGrab acquisition prototype</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap');
+      * {
+        box-sizing: border-box;
+      }
+      :root {
+        color-scheme: dark;
+        --bg: #141210;
+        --surface: #1c1a17;
+        --panel: #252320;
+        --line: #3d3831;
+        --text: #e8e0d4;
+        --mid: #a79b8c;
+        --muted: #71675b;
+        --amber: #e19a4d;
+        --green: #88ad68;
+        --red: #d16c64;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: start center;
+        padding: 24px 24px 110px;
+        background: #0d0c0b;
+        color: var(--text);
+        font:
+          13px/1.5 'DM Mono',
+          monospace;
+      }
+      button,
+      input {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      .prototype-note {
+        width: min(680px, 100%);
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 8px;
+      }
+      .popup {
+        width: min(680px, 100%);
+        min-height: 540px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: 0 22px 70px #0009;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 17px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      .logo {
+        font:
+          30px/1 'Instrument Serif',
+          serif;
+      }
+      .logo em {
+        color: var(--amber);
+      }
+      .eyebrow {
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+      .ghost,
+      .secondary {
+        color: var(--mid);
+        border: 1px solid var(--line);
+        background: transparent;
+        padding: 8px 10px;
+      }
+      .primary {
+        color: #17120d;
+        border: 1px solid var(--amber);
+        background: var(--amber);
+        padding: 10px 14px;
+        font-weight: 500;
+      }
+      .primary:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .platform {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--mid);
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+      .dot.off {
+        background: var(--muted);
+      }
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font:
+          34px/1.08 'Instrument Serif',
+          serif;
+      }
+      h2 {
+        font:
+          24px/1.1 'Instrument Serif',
+          serif;
+      }
+      .sub {
+        color: var(--mid);
+      }
+      .fine {
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .rule {
+        border-top: 1px solid var(--line);
+      }
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .spread {
+        justify-content: space-between;
+      }
+      .grow {
+        flex: 1;
+      }
+      .url {
+        width: 100%;
+        background: #13110f;
+        color: var(--text);
+        border: 1px solid var(--line);
+        padding: 11px 12px;
+      }
+      .notice {
+        padding: 12px;
+        border-left: 2px solid var(--amber);
+        background: #e19a4d0d;
+        color: var(--mid);
+      }
+      .error {
+        border-color: var(--red);
+        background: #d16c640d;
+      }
+      .success {
+        border-color: var(--green);
+        background: #88ad680d;
+      }
+      .media {
+        height: 150px;
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(135deg, #42372c, #181512 65%);
+        border: 1px solid var(--line);
+      }
+      .media::after {
+        content: 'VISIBLE STATUS  •  VIDEO  •  0:12';
+        position: absolute;
+        left: 12px;
+        bottom: 10px;
+        color: #fff;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+      }
+      .media::before {
+        content: '';
+        position: absolute;
+        width: 170px;
+        height: 170px;
+        border-radius: 50%;
+        background: #a76d3c66;
+        right: 55px;
+        top: -42px;
+        box-shadow: 90px 85px 0 #5e774f55;
+      }
+      .checks label {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 0;
+        border-top: 1px solid #ffffff0a;
+      }
+      .checks input {
+        accent-color: var(--amber);
+      }
+      .variant-a main {
+        padding: 22px;
+      }
+      .variant-a .hero {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 18px;
+        align-items: start;
+      }
+      .variant-a .action-card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        background: #171512;
+      }
+      .variant-a .state-copy {
+        margin: 8px 0 18px;
+      }
+      .variant-b main {
+        display: grid;
+        grid-template-columns: 175px 1fr;
+        min-height: 470px;
+      }
+      .variant-b nav {
+        border-right: 1px solid var(--line);
+        padding: 14px;
+        display: grid;
+        align-content: start;
+        gap: 5px;
+      }
+      .variant-b nav button {
+        text-align: left;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        padding: 10px;
+      }
+      .variant-b nav button.active {
+        color: var(--text);
+        background: var(--panel);
+        border-left: 2px solid var(--amber);
+      }
+      .variant-b .content {
+        padding: 24px;
+      }
+      .variant-b .capture-line {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: end;
+        margin-top: 24px;
+      }
+      .variant-b .privacy {
+        margin-top: 24px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+      .existing-surface {
+        min-height: 330px;
+        display: grid;
+        place-content: center;
+        gap: 8px;
+        padding: 24px;
+        border: 1px dashed var(--line);
+        background: #13110f;
+        text-align: center;
+      }
+      .variant-c header {
+        border: 0;
+      }
+      .variant-c main {
+        padding: 6px 20px 22px;
+      }
+      .variant-c .command {
+        border: 1px solid var(--line);
+        background: #151310;
+      }
+      .variant-c .command-head {
+        padding: 14px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+      }
+      .variant-c .command-body {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        min-height: 285px;
+      }
+      .variant-c .rail {
+        padding: 12px;
+        border-right: 1px solid var(--line);
+      }
+      .variant-c .step {
+        color: var(--muted);
+        padding: 9px 0;
+      }
+      .variant-c .step.active {
+        color: var(--amber);
+      }
+      .variant-c .stage {
+        padding: 20px;
+        display: grid;
+        align-content: center;
+        gap: 14px;
+      }
+      .variant-c .action-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+      .variant-c footer {
+        padding: 14px 20px;
+        display: flex;
+        justify-content: space-between;
+        border-top: 1px solid var(--line);
+      }
+      .prototype-bar {
+        position: fixed;
+        z-index: 20;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px;
+        background: #f4ede3;
+        color: #17130f;
+        border-radius: 999px;
+        box-shadow: 0 8px 30px #000a;
+      }
+      .prototype-bar button,
+      .prototype-bar select {
+        border: 0;
+        background: transparent;
+        color: inherit;
+        padding: 7px 10px;
+      }
+      .prototype-bar select {
+        border-left: 1px solid #bdb3a6;
+        border-right: 1px solid #bdb3a6;
+      }
+      .prototype-bar .state-select {
+        max-width: 210px;
+      }
+      @media (max-width: 570px) {
+        body {
+          padding: 0 0 105px;
+        }
+        .prototype-note {
+          padding: 8px;
+        }
+        .popup {
+          border-inline: 0;
+        }
+        .variant-a .hero,
+        .variant-b main,
+        .variant-c .command-body {
+          grid-template-columns: 1fr;
+        }
+        .variant-b nav,
+        .variant-c .rail {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+          display: flex;
+          overflow: auto;
+        }
+        .variant-a .hero {
+          gap: 12px;
+        }
+        .prototype-bar {
+          width: calc(100% - 18px);
+          justify-content: center;
+        }
+        .prototype-bar select {
+          min-width: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Three variants of platform-aware popup acquisition, switchable via ?variant=A|B|C. -->
+    <div class="prototype-note">Throwaway prototype • no downloads or browser access occur</div>
+    <div id="app"></div>
+    <div class="prototype-bar" aria-label="Prototype controls">
+      <button id="previous" aria-label="Previous variant">←</button>
+      <select id="variant" aria-label="Variant">
+        <option value="A">A — Context first</option>
+        <option value="B">B — Platform modes</option>
+        <option value="C">C — Guided capture</option>
+      </select>
+      <select id="state" class="state-select" aria-label="Active tab state">
+        <option value="instagram">Instagram post</option>
+        <option value="whatsapp-disclosure">WhatsApp first use</option>
+        <option value="whatsapp-ready">WhatsApp ready</option>
+        <option value="whatsapp-empty">WhatsApp no Status</option>
+        <option value="unsupported">Unsupported tab</option>
+        <option value="results">Results and exports</option>
+        <option value="failure">Recoverable failure</option>
+      </select>
+      <button id="next" aria-label="Next variant">→</button>
+    </div>
+    <script>
+      const variants = ['A', 'B', 'C'];
+      const labels = {
+        instagram: 'Instagram post',
+        'whatsapp-disclosure': 'WhatsApp first use',
+        'whatsapp-ready': 'WhatsApp Visible Status',
+        'whatsapp-empty': 'WhatsApp Web',
+        unsupported: 'Unsupported tab',
+        results: '2 items ready',
+        failure: 'Capture interrupted',
+      };
+      const details = {
+        instagram: {
+          platform: 'Instagram',
+          title: 'Fetch this Instagram post',
+          copy: 'We found a supported Instagram post in the active tab. Review the address, then fetch it explicitly.',
+          action: 'Fetch media',
+        },
+        'whatsapp-disclosure': {
+          platform: 'WhatsApp',
+          title: 'Before using WhatsApp Status',
+          copy: 'WhatsApp controls view receipts. GramGrab does not provide anonymous viewing. Captured media is held only in memory for the active download and is discarded shortly afterward.',
+          action: 'Continue',
+        },
+        'whatsapp-ready': {
+          platform: 'WhatsApp',
+          title: 'Capture the Visible Status',
+          copy: 'A supported photo or video Status is already visible in WhatsApp Web. GramGrab captures only that item after you click.',
+          action: 'Capture Visible Status',
+        },
+        'whatsapp-empty': {
+          platform: 'WhatsApp',
+          title: 'Open a photo or video Status',
+          copy: 'WhatsApp Web is active, but no supported Visible Status is open. Open one, wait for it to load, then return here.',
+          action: '',
+        },
+        unsupported: {
+          platform: 'Unsupported',
+          title: 'Choose Instagram or WhatsApp Web',
+          copy: 'GramGrab works with supported Instagram pages and the photo or video Status currently visible in WhatsApp Web.',
+          action: 'Unavailable',
+        },
+        results: {
+          platform: 'Instagram',
+          title: '2 media items ready',
+          copy: 'Choose an applicable export for each item here, or hand the whole session to the larger workspace.',
+          action: 'Download selected',
+        },
+        failure: {
+          platform: 'WhatsApp',
+          title: 'The Status changed during capture',
+          copy: 'Reopen the intended Status, keep this tab active, and click retry. GramGrab will never capture the next Status automatically.',
+          action: 'Retry capture',
+        },
+      };
+      let variant = new URLSearchParams(location.search).get('variant') || 'A';
+      let state = new URLSearchParams(location.search).get('state') || 'whatsapp-ready';
+      let platform = new URLSearchParams(location.search).get('platform');
+      if (!variants.includes(variant)) variant = 'A';
+      if (!details[state]) state = 'whatsapp-ready';
+      if (!platform)
+        platform = state.startsWith('whatsapp') || state === 'failure' ? 'whatsapp' : 'instagram';
+      const header = () =>
+        '<header><div class="logo">Gram<em>Grab</em></div><div class="row"><button class="ghost">History</button><button class="ghost">Open in tab</button></div></header>';
+      const preview = () => (state === 'results' ? '<div class="media"></div>' : '');
+      const exportsPanel = () =>
+        state === 'results'
+          ? `<div class="checks"><label>Original <input type="checkbox" checked></label><label>Frame at 00:05 <input type="checkbox"></label><label>Silent video <input type="checkbox"></label><label>Provenance stamping <input type="checkbox"></label></div>`
+          : '';
+      const notice = () =>
+        state === 'failure'
+          ? '<div class="notice error">Manual retry only • The intended Status must be visible again.</div>'
+          : state === 'whatsapp-ready'
+            ? '<div class="notice">One click captures one visible item. Viewing receipts remain controlled by WhatsApp.</div>'
+            : state === 'whatsapp-empty'
+              ? '<div class="notice">Text-only, sticker, and link Statuses are not supported.</div>'
+              : '';
+      function A(d) {
+        return `<div class="popup variant-a">${header()}<main><div class="hero"><section class="stack"><div><div class="eyebrow">Active tab • ${labels[state]}</div><h1>${d.title}</h1><p class="sub state-copy">${d.copy}</p></div>${state === 'instagram' ? '<div class="row"><input class="url grow" value="https://instagram.com/p/example" aria-label="Instagram URL"><button class="primary">Fetch media</button></div>' : ''}${preview()}${notice()}</section><aside class="action-card stack"><div class="eyebrow">Next action</div><h2>${state === 'results' ? 'Choose outputs' : 'You stay in control'}</h2>${exportsPanel()}<button class="primary" ${state === 'unsupported' ? 'disabled' : ''}>${d.action}</button>${state === 'results' ? '<button class="secondary">Open in workspace ↗</button>' : ''}<p class="fine">Nothing happens until you click.</p></aside></div></main></div>`;
+      }
+      function B(d) {
+        const instagram = `<section class="content"><div class="existing-surface"><div class="eyebrow">Existing Instagram surface</div><h2>Mounted here unchanged</h2><p class="fine">Current controls, spacing, states, results, exports, recovery, and workspace behavior remain exactly as implemented.</p></div></section>`;
+        const whatsappResult = `<section class="content"><div class="existing-surface"><div class="eyebrow">Existing result surface</div><h2>Reused with applicable controls</h2><p class="fine">The current media-item and export UI is mounted here. Workspace handoff, redownload, and persistence-dependent exports are omitted for WhatsApp.</p></div></section>`;
+        const whatsappFailure = `<section class="content"><div class="existing-surface"><div class="eyebrow">Existing failure surface</div><h2>Reused with WhatsApp policy</h2><p class="fine">Current inline failure presentation is mounted here with WhatsApp-specific copy, recovery actions, and structural diagnostics.</p></div></section>`;
+        const action = d.action
+          ? `<button class="primary" ${state === 'unsupported' ? 'disabled' : ''}>${d.action}</button>`
+          : '';
+        const whatsapp = `<section class="content stack"><div class="eyebrow">${labels[state]}</div><h1>${d.title}</h1><p class="sub">${d.copy}</p>${preview()}${notice()}${exportsPanel()}<div class="capture-line"><p class="fine">Browser extension only • one Visible Status per click</p>${action}</div><div class="privacy fine">WhatsApp media stays in memory for the active transfer and is not available for later redownload.</div></section>`;
+        const content =
+          state === 'instagram'
+            ? instagram
+            : state === 'results'
+              ? whatsappResult
+              : state === 'failure'
+                ? whatsappFailure
+                : whatsapp;
+        return `<div class="popup variant-b">${header()}<main><nav><div class="eyebrow">Acquire from</div><button data-nav-state="instagram" data-platform="instagram" class="${platform === 'instagram' ? 'active' : ''}">Instagram</button><button data-nav-state="whatsapp-ready" data-platform="whatsapp" class="${platform === 'whatsapp' ? 'active' : ''}">WhatsApp Status</button></nav>${content}</main></div>`;
+      }
+      function C(d) {
+        const step = state === 'results' ? 'Export' : state === 'failure' ? 'Recover' : 'Acquire';
+        return `<div class="popup variant-c">${header()}<main><div class="command"><div class="command-head"><span class="eyebrow">Current operation</span><span class="fine">${labels[state]}</span></div><div class="command-body"><aside class="rail"><div class="step ${step === 'Acquire' ? 'active' : ''}">01 Acquire</div><div class="step ${step === 'Export' ? 'active' : ''}">02 Export</div><div class="step">03 Download</div></aside><section class="stage"><div><div class="eyebrow">${d.platform}</div><h1>${d.title}</h1></div><p class="sub">${d.copy}</p>${notice()}${preview()}${exportsPanel()}<div class="action-row">${state === 'instagram' ? '<input class="url" value="https://instagram.com/p/example">' : '<span></span>'}<button class="primary" ${state === 'unsupported' ? 'disabled' : ''}>${d.action}</button></div></section></div></div></main><footer><span class="fine">Operation begins only on click</span>${state === 'results' ? '<button class="secondary">Continue in workspace ↗</button>' : '<span class="fine">Instagram + WhatsApp Web</span>'}</footer></div>`;
+      }
+      function render() {
+        document.querySelector('#app').innerHTML = { A, B, C }[variant](details[state]);
+        document.querySelector('#variant').value = variant;
+        document.querySelector('#state').value = state;
+        document.querySelectorAll('[data-nav-state]').forEach(button => {
+          button.addEventListener('click', () => {
+            state = button.dataset.navState;
+            platform = button.dataset.platform;
+            update();
+          });
+        });
+        document.querySelector('#app .primary:not(:disabled)')?.addEventListener('click', event => {
+          if (state === 'results') {
+            event.currentTarget.textContent = 'Download started ✓';
+            event.currentTarget.disabled = true;
+            return;
+          }
+
+          state = state === 'whatsapp-disclosure' ? 'whatsapp-ready' : 'results';
+          update();
+        });
+      }
+      function update(delta = 0) {
+        if (delta) {
+          variant =
+            variants[(variants.indexOf(variant) + delta + variants.length) % variants.length];
+        }
+        const url = new URL(location);
+        url.searchParams.set('variant', variant);
+        url.searchParams.set('state', state);
+        url.searchParams.set('platform', platform);
+        history.replaceState({}, '', url);
+        render();
+      }
+      document.querySelector('#variant').addEventListener('change', e => {
+        variant = e.target.value;
+        update();
+      });
+      document.querySelector('#state').addEventListener('change', e => {
+        state = e.target.value;
+        platform = state.startsWith('whatsapp') || state === 'failure' ? 'whatsapp' : 'instagram';
+        update();
+      });
+      document.querySelector('#previous').addEventListener('click', () => update(-1));
+      document.querySelector('#next').addEventListener('click', () => update(1));
+      addEventListener('keydown', e => {
+        if (
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) ||
+          document.activeElement.isContentEditable
+        )
+          return;
+        if (e.key === 'ArrowLeft') update(-1);
+        if (e.key === 'ArrowRight') update(1);
+      });
+      render();
+    </script>
+  </body>
+</html>
