@@ -235,6 +235,56 @@ body::before {
   padding: 0;
 }
 
+.popup-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.popup-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.platform-navigation {
+  display: flex;
+  width: 138px;
+  flex: 0 0 138px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--rule-strong);
+  background: color-mix(in srgb, var(--panel) 46%, transparent);
+}
+
+.platform-navigation button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-mid);
+  cursor: pointer;
+  font: 500 10px/1.35 var(--font-mono);
+  letter-spacing: 0.06em;
+  padding: 9px 8px;
+  text-align: left;
+}
+
+.platform-navigation button:hover {
+  background: var(--brand-dim);
+  color: var(--text);
+}
+
+.platform-navigation button.active {
+  border-color: var(--rule-strong);
+  background: var(--panel);
+  color: var(--accent);
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .ext-section {
   padding: 12px 16px;
   border-bottom: 1px solid var(--rule);
@@ -632,6 +682,14 @@ body::before {
 
 .media-item:last-child {
   border-bottom: none;
+}
+
+.whatsapp-result-list .media-list {
+  max-height: none;
+}
+
+.whatsapp-result-list .media-item {
+  grid-template-columns: 30px 1fr 120px;
 }
 
 .media-item:hover {

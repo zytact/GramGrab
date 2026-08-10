@@ -61,6 +61,7 @@ import {
 } from './whatsapp/capture';
 import { isWhatsAppWebUrl } from './whatsapp/limits';
 import { WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY } from './whatsapp/disclosure';
+import { exportWhatsAppFrame } from './whatsapp/export';
 import type { HistoryEntry } from './history/contracts';
 
 interface MediaItem {
@@ -155,15 +156,19 @@ export default function Popup() {
     Record<number, { width: number; height: number }>
   >({});
   const [autoDetected, setAutoDetected] = useState(false);
+  const [platform, setPlatform] = useState<'instagram' | 'whatsapp'>('instagram');
   const [whatsappActive, setWhatsappActive] = useState(false);
   const [whatsappDisclosure, setWhatsappDisclosure] = useState<WhatsAppDisclosureState>('checking');
   const [whatsappCaptureStatus, setWhatsappCaptureStatus] = useState<
-    'idle' | 'capturing' | 'started' | 'failed'
+    'idle' | 'capturing' | 'ready' | 'downloading' | 'started' | 'failed'
   >('idle');
   const [whatsappCaptureMessage, setWhatsappCaptureMessage] = useState(
     'Capture the photo or video Visible Status currently open in WhatsApp Web.'
   );
   const [whatsappFailure, setWhatsappFailure] = useState<OperationFailure>();
+  const [whatsappMediaItem, setWhatsappMediaItem] = useState<MediaItem>();
+  const [whatsappFrameSetting, setWhatsappFrameSetting] = useState<FrameExportSetting>();
+  const [whatsappFrameRuntime, setWhatsappFrameRuntime] = useState<FrameRuntime>();
   const [whatsappOperation, setWhatsappOperation] = useState<{
     operationId: ReturnType<typeof createOperationId>;
     requestId: ReturnType<typeof createRequestId>;
@@ -194,7 +199,9 @@ export default function Popup() {
       .then(tabs => {
         if (cancelled) return;
         const tab = tabs.length === 1 ? tabs[0] : undefined;
-        setWhatsappActive(tab?.id !== undefined && isWhatsAppWebUrl(tab.url));
+        const isEligible = tab?.id !== undefined && isWhatsAppWebUrl(tab.url);
+        setWhatsappActive(isEligible);
+        if (isEligible && !initialWorkspaceMode) setPlatform('whatsapp');
       })
       .catch(() => {
         if (!cancelled) setWhatsappActive(false);
@@ -204,7 +211,7 @@ export default function Popup() {
       whatsappHandleRef.current?.release();
       whatsappHandleRef.current = undefined;
     };
-  }, []);
+  }, [initialWorkspaceMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -291,14 +298,29 @@ export default function Popup() {
         operationId: operation.operationId,
         requestId: operation.requestId,
       });
+      whatsappHandleRef.current?.release();
       whatsappHandleRef.current = handle;
-      const download = await handle.download();
-      setWhatsappCaptureStatus('started');
-      setWhatsappCaptureMessage(
-        download.warning
-          ? WARNING_PRESENTATION[download.warning.code]
-          : 'Download started. The in-memory capture will be released automatically.'
+      const descriptor = handle.descriptor;
+      setWhatsappMediaItem({
+        index: 0,
+        type: descriptor.kind === 'video' ? 'video' : 'image',
+        url: handle.snapshot.objectUrl(),
+        filenameHint: 'visible-status',
+        selected: true,
+        width: descriptor.width,
+        height: descriptor.height,
+      });
+      setWhatsappFrameSetting(undefined);
+      setWhatsappFrameRuntime(
+        descriptor.kind === 'video'
+          ? {
+              status: 'ready',
+              durationSeconds: descriptor.durationMs / 1_000,
+            }
+          : undefined
       );
+      setWhatsappCaptureStatus('ready');
+      setWhatsappCaptureMessage('Visible Status captured. Choose an export to start the download.');
     } catch (error) {
       const captureError =
         error instanceof WhatsAppCaptureError ? error : new WhatsAppCaptureError('transfer-failed');
@@ -312,6 +334,66 @@ export default function Popup() {
       setWhatsappCaptureMessage(`${presentation.title}. ${presentation.explanation}`);
     }
   }, [whatsappCaptureStatus, whatsappDisclosure, whatsappOperation]);
+
+  const handleWhatsAppDownload = useCallback(async () => {
+    const handle = whatsappHandleRef.current;
+    const item = whatsappMediaItem;
+    const operation = whatsappOperation;
+    if (!handle || !item || !item.selected || !operation || whatsappCaptureStatus === 'downloading')
+      return;
+    setWhatsappCaptureStatus('downloading');
+    setWhatsappFailure(undefined);
+    try {
+      const result = whatsappFrameSetting?.enabled
+        ? await exportWhatsAppFrame(handle, {
+            operationId: operation.operationId,
+            requestId: operation.requestId,
+            itemIndex: 0,
+            url: item.url,
+            originalUrl: item.url,
+            originalFilename: handle.filename,
+            filename: frameFilename(
+              handle.filename.replace(/\.[^.]+$/u, ''),
+              whatsappFrameSetting.timestampSeconds
+            ),
+            mediaType: 'video',
+            mode: 'frame',
+            displayIndex: 0,
+            frameTimestampSeconds: whatsappFrameSetting.timestampSeconds,
+          })
+        : await handle.download();
+      if ('status' in result && result.status === 'failed') {
+        setWhatsappFailure(result.failure);
+        setWhatsappCaptureStatus('failed');
+        setWhatsappCaptureMessage(
+          `${presentationForFailure(result.failure).title}. ${presentationForFailure(result.failure).explanation}`
+        );
+        setWhatsappMediaItem(undefined);
+        whatsappHandleRef.current = undefined;
+        return;
+      }
+      whatsappHandleRef.current = undefined;
+      setWhatsappMediaItem(undefined);
+      setWhatsappCaptureStatus('started');
+      setWhatsappCaptureMessage(
+        result.warning
+          ? WARNING_PRESENTATION[result.warning.code]
+          : 'Download started. The in-memory capture was released.'
+      );
+    } catch (error) {
+      const failure =
+        error instanceof WhatsAppCaptureError && error.browserCause !== undefined
+          ? normalizeBrowserDownloadFailure(error.browserCause, 'whatsapp')
+          : normalizeWhatsAppCaptureFailure('transfer-failed');
+      setWhatsappFailure(failure);
+      setWhatsappMediaItem(undefined);
+      whatsappHandleRef.current = undefined;
+      setWhatsappCaptureStatus('failed');
+      setWhatsappCaptureMessage(
+        `${presentationForFailure(failure).title}. ${presentationForFailure(failure).explanation}`
+      );
+    }
+  }, [whatsappCaptureStatus, whatsappFrameSetting, whatsappMediaItem, whatsappOperation]);
 
   const handleIntrinsicDimensions = useCallback(
     (item: MediaItem, width: number, height: number) => {
@@ -1104,7 +1186,7 @@ export default function Popup() {
         <PopupHeader
           workspaceMode={workspaceMode}
           workspaceExists={workspaceExists}
-          whatsappActive={whatsappActive}
+          showWorkspace={platform === 'instagram'}
           isBusy={isBusy}
           showHistory={showHistory}
           onToggleHistory={() => (showHistory ? setShowHistory(false) : openHistory())}
@@ -1113,228 +1195,269 @@ export default function Popup() {
       </header>
 
       <div className="ext-body">
-        {status === 'error' && (
-          <p className="status-message error" role="status" aria-live="polite">
-            {message}
-          </p>
-        )}
-        {showHistory ? (
-          <HistoryView
-            entries={historyEntries}
-            busyId={historyBusy}
-            onRedownload={redownloadHistory}
-            onRemove={removeHistoryEntry}
-            onClear={clearDownloadHistory}
-          />
-        ) : (
-          <>
-            {whatsappActive ? (
-              <WhatsAppCaptureSection
-                disclosure={whatsappDisclosure}
-                status={whatsappCaptureStatus}
-                message={whatsappCaptureMessage}
-                failure={whatsappFailure}
-                manualRetryCount={whatsappOperation?.manualRetryCount ?? 0}
-                onAcknowledge={() => void acknowledgeWhatsAppViewReceipts()}
-                onDismissDisclosure={() => setWhatsappDisclosure('dismissed')}
-                onReviewDisclosure={() => setWhatsappDisclosure('required')}
-                onCapture={() => void handleWhatsAppCapture()}
-                onCopyDiagnostics={previewWhatsAppDiagnostics}
-                disabled={isBusy}
+        <div className="popup-layout">
+          {!workspaceMode && <PlatformNavigation platform={platform} onChange={setPlatform} />}
+          <div className="popup-content">
+            {platform === 'instagram' && status === 'error' && (
+              <p className="status-message error" role="status" aria-live="polite">
+                {message}
+              </p>
+            )}
+            {showHistory ? (
+              <HistoryView
+                entries={historyEntries}
+                busyId={historyBusy}
+                onRedownload={redownloadHistory}
+                onRemove={removeHistoryEntry}
+                onClear={clearDownloadHistory}
               />
             ) : (
-              <div className="ext-section fetch-section">
-                <div className="fetch-row">
-                  <input
-                    id="source-url"
-                    className={`url-input${autoDetected ? ' detected' : ''}`}
-                    type="url"
-                    aria-label="Instagram source URL"
-                    placeholder="Paste an Instagram URL…"
-                    value={url}
-                    disabled={isBusy}
-                    onChange={e => handleUrlChange(e.currentTarget.value)}
-                    onBlur={() =>
-                      setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)
+              <>
+                {platform === 'whatsapp' && !workspaceMode ? (
+                  <WhatsAppStatusSurface
+                    eligible={whatsappActive}
+                    disclosure={whatsappDisclosure}
+                    status={whatsappCaptureStatus}
+                    message={whatsappCaptureMessage}
+                    failure={whatsappFailure}
+                    item={whatsappMediaItem}
+                    frameSetting={whatsappFrameSetting}
+                    frameRuntime={whatsappFrameRuntime}
+                    manualRetryCount={whatsappOperation?.manualRetryCount ?? 0}
+                    onAcknowledge={() => void acknowledgeWhatsAppViewReceipts()}
+                    onDismissDisclosure={() => setWhatsappDisclosure('dismissed')}
+                    onReviewDisclosure={() => setWhatsappDisclosure('required')}
+                    onCapture={() => void handleWhatsAppCapture()}
+                    onDownload={() => void handleWhatsAppDownload()}
+                    onToggleItem={() =>
+                      setWhatsappMediaItem(current =>
+                        current ? { ...current, selected: !current.selected } : current
+                      )
                     }
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && !isBusy && url.trim()) triggerFetch('source');
-                    }}
-                  />
-                  <button
-                    className="btn"
-                    onClick={() => triggerFetch('source')}
-                    disabled={isBusy || !url.trim()}
-                    aria-busy={status === 'fetching' && acquisition === 'source'}
-                  >
-                    {renderFetchButtonLabel(status, acquisition)}
-                  </button>
-                </div>
-                {autoDetected && status === 'idle' && (
-                  <p className="detected-hint">Instagram URL detected — ready to fetch.</p>
-                )}
-                <div className="instants-row">
-                  <button
-                    type="button"
-                    className="instants-btn"
-                    onClick={() => triggerFetch('instants')}
+                    onToggleFrame={() =>
+                      setWhatsappFrameSetting(current => ({
+                        enabled: !(current?.enabled ?? false),
+                        timestampSeconds: current?.timestampSeconds ?? 0,
+                      }))
+                    }
+                    onChangeFrameTimestamp={timestampSeconds =>
+                      setWhatsappFrameSetting({ enabled: true, timestampSeconds })
+                    }
+                    onCopyDiagnostics={previewWhatsAppDiagnostics}
                     disabled={isBusy}
-                    aria-busy={status === 'fetching' && acquisition === 'instants'}
-                  >
-                    {renderInstantsButtonLabel(status, acquisition)}
-                  </button>
-                </div>
-                {sourceFailure && (
-                  <section className="download-attempt-summary" aria-live="polite">
-                    <strong>{FAILURE_PRESENTATION[sourceFailure.code].title}</strong>
-                    <span>{FAILURE_PRESENTATION[sourceFailure.code].explanation}</span>
-                    <code>{sourceFailure.code}</code>
-                    {canRefetchSource && (
-                      <button
-                        type="button"
-                        className="workspace-secondary"
-                        onClick={() => void refetchAndRetry()}
+                  />
+                ) : (
+                  <div className="ext-section fetch-section">
+                    <div className="fetch-row">
+                      <input
+                        id="source-url"
+                        className={`url-input${autoDetected ? ' detected' : ''}`}
+                        type="url"
+                        aria-label="Instagram source URL"
+                        placeholder="Paste an Instagram URL…"
+                        value={url}
                         disabled={isBusy}
+                        onChange={e => handleUrlChange(e.currentTarget.value)}
+                        onBlur={() =>
+                          setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)
+                        }
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !isBusy && url.trim()) triggerFetch('source');
+                        }}
+                      />
+                      <button
+                        className="btn"
+                        onClick={() => triggerFetch('source')}
+                        disabled={isBusy || !url.trim()}
+                        aria-busy={status === 'fetching' && acquisition === 'source'}
                       >
-                        {acquisition === 'instants'
-                          ? 'Refresh feed and retry'
-                          : 'Fetch source again'}
+                        {renderFetchButtonLabel(status, acquisition)}
                       </button>
+                    </div>
+                    {autoDetected && status === 'idle' && (
+                      <p className="detected-hint">Instagram URL detected — ready to fetch.</p>
                     )}
-                    {canOpenInstagram && (
+                    <div className="instants-row">
                       <button
                         type="button"
-                        className="workspace-secondary"
-                        onClick={() => void browser.tabs.create({ url: fetchedUrl || url })}
+                        className="instants-btn"
+                        onClick={() => triggerFetch('instants')}
+                        disabled={isBusy}
+                        aria-busy={status === 'fetching' && acquisition === 'instants'}
                       >
-                        Open in Instagram
+                        {renderInstantsButtonLabel(status, acquisition)}
                       </button>
+                    </div>
+                    {sourceFailure && (
+                      <section className="download-attempt-summary" aria-live="polite">
+                        <strong>{FAILURE_PRESENTATION[sourceFailure.code].title}</strong>
+                        <span>{FAILURE_PRESENTATION[sourceFailure.code].explanation}</span>
+                        <code>{sourceFailure.code}</code>
+                        {canRefetchSource && (
+                          <button
+                            type="button"
+                            className="workspace-secondary"
+                            onClick={() => void refetchAndRetry()}
+                            disabled={isBusy}
+                          >
+                            {acquisition === 'instants'
+                              ? 'Refresh feed and retry'
+                              : 'Fetch source again'}
+                          </button>
+                        )}
+                        {canOpenInstagram && (
+                          <button
+                            type="button"
+                            className="workspace-secondary"
+                            onClick={() => void browser.tabs.create({ url: fetchedUrl || url })}
+                          >
+                            Open in Instagram
+                          </button>
+                        )}
+                        {canCopyDiagnostics && (
+                          <button
+                            type="button"
+                            className="workspace-secondary"
+                            onClick={event => previewDiagnostics(event.currentTarget)}
+                          >
+                            Copy diagnostics
+                          </button>
+                        )}
+                      </section>
                     )}
-                    {canCopyDiagnostics && (
-                      <button
-                        type="button"
-                        className="workspace-secondary"
-                        onClick={event => previewDiagnostics(event.currentTarget)}
-                      >
-                        Copy diagnostics
-                      </button>
-                    )}
-                  </section>
+                  </div>
                 )}
-              </div>
+
+                {(platform === 'instagram' || workspaceMode) && (
+                  <>
+                    <MediaListSection
+                      model={mediaListModel}
+                      actions={mediaListActions}
+                      workspaceMode={workspaceMode}
+                      disabled={isBusy}
+                    />
+
+                    <div className="ext-section">
+                      {downloadAttempt.attempt && (
+                        <section
+                          className="download-attempt-summary"
+                          ref={downloadAttempt.summaryRef}
+                          tabIndex={-1}
+                          aria-live="polite"
+                          aria-busy={downloadAttempt.busy}
+                        >
+                          <strong>
+                            {downloadAttempt.summary.started} started,{' '}
+                            {downloadAttempt.summary.failed} failed,{' '}
+                            {downloadAttempt.summary.skipped} skipped,{' '}
+                            {downloadAttempt.summary.notAttempted} not attempted
+                          </strong>
+                          {downloadAttempt.attempt.batchFailure && (
+                            <span className="download-item-status failed">
+                              {
+                                FAILURE_PRESENTATION[downloadAttempt.attempt.batchFailure.code]
+                                  .title
+                              }
+                              :{' '}
+                              {
+                                FAILURE_PRESENTATION[downloadAttempt.attempt.batchFailure.code]
+                                  .explanation
+                              }{' '}
+                              <code>{downloadAttempt.attempt.batchFailure.code}</code>
+                            </span>
+                          )}
+                          {downloadAttempt.summary.warnings > 0 && (
+                            <span>
+                              {' '}
+                              {downloadAttempt.summary.warnings} started with a history warning.
+                            </span>
+                          )}
+                          {downloadAttempt.retryable.length > 0 && (
+                            <button
+                              type="button"
+                              className="workspace-secondary"
+                              onClick={() => void downloadAttempt.retry()}
+                              disabled={isBusy}
+                            >
+                              Retry {downloadAttempt.retryable.length} failed
+                            </button>
+                          )}
+                          {canRefetchSource && (
+                            <button
+                              type="button"
+                              className="workspace-secondary"
+                              onClick={() => void refetchAndRetry()}
+                              disabled={isBusy}
+                            >
+                              {acquisition === 'instants'
+                                ? 'Refresh feed and retry'
+                                : 'Fetch source again'}
+                            </button>
+                          )}
+                          {canOpenInstagram && (
+                            <button
+                              type="button"
+                              className="workspace-secondary"
+                              onClick={() => void browser.tabs.create({ url: fetchedUrl || url })}
+                            >
+                              Open in Instagram
+                            </button>
+                          )}
+                          {canReloadWorkspace && (
+                            <button
+                              type="button"
+                              className="workspace-secondary"
+                              onClick={() => window.location.reload()}
+                            >
+                              Reload workspace
+                            </button>
+                          )}
+                          {canCopyDiagnostics && (
+                            <button
+                              type="button"
+                              className="workspace-secondary"
+                              onClick={event => previewDiagnostics(event.currentTarget)}
+                            >
+                              Copy diagnostics
+                            </button>
+                          )}
+                          {canDownloadOriginal && (
+                            <button
+                              type="button"
+                              className="workspace-secondary"
+                              onClick={() => void downloadAttempt.downloadOriginals()}
+                              disabled={isBusy}
+                            >
+                              Download original
+                            </button>
+                          )}
+                          {canTryReencode && (
+                            <button
+                              type="button"
+                              className="workspace-secondary"
+                              onClick={() => void downloadAttempt.tryReencode()}
+                              disabled={isBusy}
+                            >
+                              Try re-encoding
+                            </button>
+                          )}
+                        </section>
+                      )}
+                      <button
+                        className="btn"
+                        onClick={handleDownload}
+                        disabled={selectedCount === 0 || isBusy}
+                        aria-busy={status === 'downloading'}
+                      >
+                        {renderDownloadButtonLabel(status, selectedCount)}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
             )}
-
-            <MediaListSection
-              model={mediaListModel}
-              actions={mediaListActions}
-              workspaceMode={workspaceMode}
-              disabled={isBusy}
-            />
-
-            <div className="ext-section">
-              {downloadAttempt.attempt && (
-                <section
-                  className="download-attempt-summary"
-                  ref={downloadAttempt.summaryRef}
-                  tabIndex={-1}
-                  aria-live="polite"
-                  aria-busy={downloadAttempt.busy}
-                >
-                  <strong>
-                    {downloadAttempt.summary.started} started, {downloadAttempt.summary.failed}{' '}
-                    failed, {downloadAttempt.summary.skipped} skipped,{' '}
-                    {downloadAttempt.summary.notAttempted} not attempted
-                  </strong>
-                  {downloadAttempt.attempt.batchFailure && (
-                    <span className="download-item-status failed">
-                      {FAILURE_PRESENTATION[downloadAttempt.attempt.batchFailure.code].title}:{' '}
-                      {FAILURE_PRESENTATION[downloadAttempt.attempt.batchFailure.code].explanation}{' '}
-                      <code>{downloadAttempt.attempt.batchFailure.code}</code>
-                    </span>
-                  )}
-                  {downloadAttempt.summary.warnings > 0 && (
-                    <span> {downloadAttempt.summary.warnings} started with a history warning.</span>
-                  )}
-                  {downloadAttempt.retryable.length > 0 && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={() => void downloadAttempt.retry()}
-                      disabled={isBusy}
-                    >
-                      Retry {downloadAttempt.retryable.length} failed
-                    </button>
-                  )}
-                  {canRefetchSource && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={() => void refetchAndRetry()}
-                      disabled={isBusy}
-                    >
-                      {acquisition === 'instants' ? 'Refresh feed and retry' : 'Fetch source again'}
-                    </button>
-                  )}
-                  {canOpenInstagram && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={() => void browser.tabs.create({ url: fetchedUrl || url })}
-                    >
-                      Open in Instagram
-                    </button>
-                  )}
-                  {canReloadWorkspace && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={() => window.location.reload()}
-                    >
-                      Reload workspace
-                    </button>
-                  )}
-                  {canCopyDiagnostics && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={event => previewDiagnostics(event.currentTarget)}
-                    >
-                      Copy diagnostics
-                    </button>
-                  )}
-                  {canDownloadOriginal && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={() => void downloadAttempt.downloadOriginals()}
-                      disabled={isBusy}
-                    >
-                      Download original
-                    </button>
-                  )}
-                  {canTryReencode && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={() => void downloadAttempt.tryReencode()}
-                      disabled={isBusy}
-                    >
-                      Try re-encoding
-                    </button>
-                  )}
-                </section>
-              )}
-              <button
-                className="btn"
-                onClick={handleDownload}
-                disabled={selectedCount === 0 || isBusy}
-                aria-busy={status === 'downloading'}
-              >
-                {renderDownloadButtonLabel(status, selectedCount)}
-              </button>
-            </div>
-          </>
-        )}
+          </div>
+        </div>
       </div>
 
       {workspaceMode ? (
@@ -1347,7 +1470,7 @@ export default function Popup() {
           onToggleAll={toggleAll}
           onDownload={handleDownload}
         />
-      ) : !whatsappActive ? (
+      ) : platform === 'instagram' ? (
         <WorkspaceReplacementAction
           workspaceExists={workspaceExists}
           hasTransferableSession={hasTransferableSession}
@@ -1379,9 +1502,11 @@ export default function Popup() {
   );
 }
 
+type WhatsAppCaptureStatus = 'idle' | 'capturing' | 'ready' | 'downloading' | 'started' | 'failed';
+
 type WhatsAppCaptureSectionProps = {
   disclosure: WhatsAppDisclosureState;
-  status: 'idle' | 'capturing' | 'started' | 'failed';
+  status: WhatsAppCaptureStatus;
   message: string;
   failure: OperationFailure | undefined;
   manualRetryCount: number;
@@ -1398,6 +1523,131 @@ type WhatsAppCaptureReadyProps = Omit<
   'disclosure' | 'onAcknowledge' | 'onDismissDisclosure' | 'onReviewDisclosure'
 >;
 
+function PlatformNavigation({
+  platform,
+  onChange,
+}: {
+  platform: 'instagram' | 'whatsapp';
+  onChange: (platform: 'instagram' | 'whatsapp') => void;
+}) {
+  return (
+    <nav className="platform-navigation" aria-label="Download platform">
+      <button
+        type="button"
+        className={platform === 'instagram' ? 'active' : undefined}
+        aria-current={platform === 'instagram' ? 'page' : undefined}
+        onClick={() => onChange('instagram')}
+      >
+        Instagram
+      </button>
+      <button
+        type="button"
+        className={platform === 'whatsapp' ? 'active' : undefined}
+        aria-current={platform === 'whatsapp' ? 'page' : undefined}
+        onClick={() => onChange('whatsapp')}
+      >
+        WhatsApp Status
+      </button>
+    </nav>
+  );
+}
+
+type WhatsAppStatusSurfaceProps = WhatsAppCaptureSectionProps & {
+  eligible: boolean;
+  item: MediaItem | undefined;
+  frameSetting: FrameExportSetting | undefined;
+  frameRuntime: FrameRuntime | undefined;
+  onDownload: () => void;
+  onToggleItem: () => void;
+  onToggleFrame: () => void;
+  onChangeFrameTimestamp: (timestampSeconds: number) => void;
+};
+
+function WhatsAppStatusSurface({
+  eligible,
+  item,
+  frameSetting,
+  frameRuntime,
+  onDownload,
+  onToggleItem,
+  onToggleFrame,
+  onChangeFrameTimestamp,
+  ...captureProps
+}: WhatsAppStatusSurfaceProps) {
+  if (!eligible)
+    return (
+      <section className="ext-section whatsapp-capture-section" aria-labelledby="whatsapp-title">
+        <h1 id="whatsapp-title">Open WhatsApp Web</h1>
+        <p className="whatsapp-capture-copy">
+          Open web.whatsapp.com, then open the photo or video Status you want to capture.
+        </p>
+      </section>
+    );
+
+  if (!item) return <WhatsAppCaptureSection {...captureProps} />;
+
+  const model: MediaListModel = {
+    mediaItems: [item],
+    intrinsicDimensions: {},
+    allSelected: item.selected,
+    fallbackLoading: new Set(),
+    fallbackFailed: new Set(),
+    frameExportSettings: frameSetting ? { 0: frameSetting } : {},
+    removeAudioIndexes: new Set(),
+    frameRuntime: frameRuntime ? { 0: frameRuntime } : {},
+    attempt: undefined,
+    emptyMessage: '',
+  };
+  const actions: MediaListActions = {
+    onPreviewError: () => {},
+    onToggle: onToggleItem,
+    onToggleAll: onToggleItem,
+    onToggleExportFrame: onToggleFrame,
+    onToggleRemoveAudio: () => {},
+    onChangeFrameTimestamp,
+    onRetryFrameMetadata: () => {},
+    onRetryFrameExport: () => {},
+    onVideoRef: () => {},
+    onVideoMetadata: () => {},
+    onIntrinsicDimensions: () => {},
+  };
+  return (
+    <>
+      <section className="ext-section whatsapp-capture-section" aria-labelledby="whatsapp-title">
+        <h1 id="whatsapp-title">Visible Status captured</h1>
+        <p className="whatsapp-capture-copy">
+          This is the one photo or video that was visible when you captured it. It stays in memory
+          only until this download starts.
+        </p>
+      </section>
+      <MediaListSection
+        model={model}
+        actions={actions}
+        workspaceMode={false}
+        disabled={captureProps.disabled}
+        allowSilent={false}
+        showPreview={false}
+        compact
+      />
+      <div className="ext-section">
+        <button
+          type="button"
+          className="btn"
+          onClick={onDownload}
+          disabled={!item.selected || captureProps.disabled}
+          aria-busy={captureProps.status === 'downloading'}
+        >
+          {captureProps.status === 'downloading' ? (
+            <LoadingButtonLabel>Downloading…</LoadingButtonLabel>
+          ) : (
+            'Download Visible Status'
+          )}
+        </button>
+      </div>
+    </>
+  );
+}
+
 function WhatsAppCaptureSection({
   disclosure,
   onAcknowledge,
@@ -1407,7 +1657,7 @@ function WhatsAppCaptureSection({
 }: WhatsAppCaptureSectionProps) {
   if (disclosure === 'acknowledged') return <WhatsAppCaptureReady {...readyProps} />;
   return (
-    <WhatsAppCaptureShell>
+    <WhatsAppCaptureShell title="Before using WhatsApp Status">
       <WhatsAppViewReceiptDisclosure
         disclosure={disclosure}
         onAcknowledge={onAcknowledge}
@@ -1425,7 +1675,7 @@ function WhatsAppCaptureReady(props: WhatsAppCaptureReadyProps) {
     (presentation?.actions.includes('retry-operation') &&
       (presentation.retry !== 'once' || props.manualRetryCount === 0));
   return (
-    <WhatsAppCaptureShell>
+    <WhatsAppCaptureShell title={presentation?.title ?? 'Capture the Visible Status'}>
       <p className="whatsapp-capture-copy">{props.message}</p>
       <p className="whatsapp-capture-note">
         One click captures only the already-visible photo or video. The capture stays in memory for
@@ -1459,7 +1709,7 @@ function WhatsAppCaptureButton({
       type="button"
       className="btn"
       onClick={onCapture}
-      disabled={disabled || status === 'started'}
+      disabled={disabled || status === 'ready' || status === 'downloading' || status === 'started'}
       aria-busy={status === 'capturing'}
     >
       {whatsAppCaptureButtonLabel(status)}
@@ -1469,6 +1719,7 @@ function WhatsAppCaptureButton({
 
 function whatsAppCaptureButtonLabel(status: WhatsAppCaptureSectionProps['status']) {
   if (status === 'capturing') return <LoadingButtonLabel>Capturing…</LoadingButtonLabel>;
+  if (status === 'downloading') return <LoadingButtonLabel>Downloading…</LoadingButtonLabel>;
   if (status === 'started') return 'Download started';
   return status === 'failed' ? 'Capture Visible Status again' : 'Capture Visible Status';
 }
@@ -1498,14 +1749,13 @@ function WhatsAppCaptureFailure({
   );
 }
 
-function WhatsAppCaptureShell({ children }: { children: ReactNode }) {
+function WhatsAppCaptureShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section
       className="ext-section whatsapp-capture-section"
       aria-labelledby="whatsapp-capture-title"
     >
-      <span className="detected-hint">Active tab · WhatsApp Web</span>
-      <h1 id="whatsapp-capture-title">Capture the Visible Status</h1>
+      <h1 id="whatsapp-capture-title">{title}</h1>
       {children}
     </section>
   );
@@ -1776,7 +2026,7 @@ function relativeHistoryTime(downloadedAt: number): string {
 function PopupHeader({
   workspaceMode,
   workspaceExists,
-  whatsappActive,
+  showWorkspace,
   isBusy,
   showHistory,
   onToggleHistory,
@@ -1784,7 +2034,7 @@ function PopupHeader({
 }: {
   workspaceMode: boolean;
   workspaceExists: boolean;
-  whatsappActive: boolean;
+  showWorkspace: boolean;
   isBusy: boolean;
   showHistory: boolean;
   onToggleHistory: () => void;
@@ -1804,7 +2054,7 @@ function PopupHeader({
         >
           {showHistory ? 'Results' : 'History'}
         </button>
-        {!workspaceMode && !whatsappActive && (
+        {!workspaceMode && showWorkspace && (
           <button
             className="workspace-launch"
             type="button"
@@ -2021,11 +2271,17 @@ function MediaListSection({
   actions,
   workspaceMode,
   disabled,
+  allowSilent = true,
+  showPreview = true,
+  compact = false,
 }: {
   model: MediaListModel;
   actions: MediaListActions;
   workspaceMode: boolean;
   disabled: boolean;
+  allowSilent?: boolean;
+  showPreview?: boolean;
+  compact?: boolean;
 }) {
   const {
     mediaItems,
@@ -2063,13 +2319,15 @@ function MediaListSection({
       key={item.index}
       item={item}
       workspaceMode={workspaceMode}
+      showPreview={showPreview}
       intrinsicDimensions={intrinsicDimensions[item.index]}
       fallbackLoading={fallbackLoading.has(item.index)}
       fallbackFailed={fallbackFailed.has(item.index)}
       onError={() => onPreviewError(item)}
       onToggle={() => onToggle(item.index)}
       frameSetting={frameExportSettings[item.index]}
-      removeAudio={removeAudioIndexes.has(item.index)}
+      removeAudio={allowSilent && removeAudioIndexes.has(item.index)}
+      allowSilent={allowSilent}
       frameRuntime={frameRuntime[item.index]}
       attemptEntry={attempt?.entries.find(entry => entry.operation.displayIndex === item.index)}
       disabled={disabled}
@@ -2087,8 +2345,8 @@ function MediaListSection({
   );
 
   return (
-    <div className="ext-section" style={{ flex: 1 }}>
-      {mediaItems.length > 0 && (
+    <div className={`ext-section${compact ? ' whatsapp-result-list' : ''}`} style={{ flex: 1 }}>
+      {!compact && mediaItems.length > 0 && (
         <div className="media-header">
           <span className="media-count-label" role="status" aria-live="polite">
             <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
@@ -2173,6 +2431,7 @@ function getVideoDuration(dataUrl: string): Promise<number> {
 interface MediaItemRowProps {
   item: MediaItem;
   workspaceMode: boolean;
+  showPreview: boolean;
   intrinsicDimensions?: { width: number; height: number };
   fallbackLoading: boolean;
   fallbackFailed: boolean;
@@ -2180,6 +2439,7 @@ interface MediaItemRowProps {
   onToggle: () => void;
   frameSetting?: FrameExportSetting;
   removeAudio: boolean;
+  allowSilent: boolean;
   frameRuntime?: FrameRuntime;
   onToggleExportFrame: () => void;
   onToggleRemoveAudio: () => void;
@@ -2206,8 +2466,10 @@ function MediaPreview({
 }: Omit<
   MediaItemRowProps,
   | 'onToggle'
+  | 'showPreview'
   | 'frameSetting'
   | 'removeAudio'
+  | 'allowSilent'
   | 'frameRuntime'
   | 'onToggleExportFrame'
   | 'onToggleRemoveAudio'
@@ -2303,6 +2565,7 @@ function MediaControls({
   item,
   frameSetting,
   removeAudio,
+  allowSilent,
   frameRuntime,
   onToggle,
   onToggleExportFrame,
@@ -2317,6 +2580,7 @@ function MediaControls({
   | 'item'
   | 'frameSetting'
   | 'removeAudio'
+  | 'allowSilent'
   | 'frameRuntime'
   | 'onToggle'
   | 'onToggleExportFrame'
@@ -2343,16 +2607,18 @@ function MediaControls({
             />
             Frame
           </label>
-          <label className="frame-toggle" title="Download a silent MP4">
-            <input
-              type="checkbox"
-              checked={removeAudio}
-              onChange={onToggleRemoveAudio}
-              disabled={disabled}
-              className="frame-toggle-checkbox"
-            />
-            Remove audio
-          </label>
+          {allowSilent && (
+            <label className="frame-toggle" title="Download a silent MP4">
+              <input
+                type="checkbox"
+                checked={removeAudio}
+                onChange={onToggleRemoveAudio}
+                disabled={disabled}
+                className="frame-toggle-checkbox"
+              />
+              Remove audio
+            </label>
+          )}
           {frameSetting?.enabled && (
             <div className="frame-timestamp-row">
               <input
@@ -2402,6 +2668,7 @@ function MediaItemRow(props: MediaItemRowProps) {
   const {
     item,
     workspaceMode,
+    showPreview,
     intrinsicDimensions,
     fallbackLoading,
     fallbackFailed,
@@ -2409,6 +2676,7 @@ function MediaItemRow(props: MediaItemRowProps) {
     onToggle,
     frameSetting,
     removeAudio,
+    allowSilent,
     frameRuntime,
     onToggleExportFrame,
     onToggleRemoveAudio,
@@ -2430,17 +2698,19 @@ function MediaItemRow(props: MediaItemRowProps) {
     >
       <span className="item-number">{num}</span>
 
-      <MediaPreview
-        item={item}
-        workspaceMode={workspaceMode}
-        intrinsicDimensions={intrinsicDimensions}
-        fallbackLoading={fallbackLoading}
-        fallbackFailed={fallbackFailed}
-        onError={onError}
-        onVideoRef={onVideoRef}
-        onVideoMetadata={onVideoMetadata}
-        onIntrinsicDimensions={onIntrinsicDimensions}
-      />
+      {showPreview && (
+        <MediaPreview
+          item={item}
+          workspaceMode={workspaceMode}
+          intrinsicDimensions={intrinsicDimensions}
+          fallbackLoading={fallbackLoading}
+          fallbackFailed={fallbackFailed}
+          onError={onError}
+          onVideoRef={onVideoRef}
+          onVideoMetadata={onVideoMetadata}
+          onIntrinsicDimensions={onIntrinsicDimensions}
+        />
+      )}
 
       <div className="item-info">
         <span className={`item-type-badge ${item.type}`}>{item.type}</span>
@@ -2491,6 +2761,7 @@ function MediaItemRow(props: MediaItemRowProps) {
         item={item}
         frameSetting={frameSetting}
         removeAudio={removeAudio}
+        allowSilent={allowSilent}
         frameRuntime={frameRuntime}
         onToggle={onToggle}
         onToggleExportFrame={onToggleExportFrame}
