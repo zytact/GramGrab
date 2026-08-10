@@ -16,7 +16,7 @@ The table is the compatibility contract. "Cause" means the technical cause may b
 
 | Code                                   | Scope | Manual retry                            | Actions                                 | Diagnostic          | Classification           |
 | -------------------------------------- | ----- | --------------------------------------- | --------------------------------------- | ------------------- | ------------------------ |
-| `INPUT_INVALID_INSTAGRAM_URL`          | batch | never                                   | none                                    | cause               | input                    |
+| `INPUT_INVALID_SOURCE_URL`             | batch | never                                   | none                                    | cause               | input                    |
 | `SOURCE_USERNAME_UNRESOLVED`           | batch | never                                   | `open-in-instagram`                     | cause               | upstream                 |
 | `SOURCE_MEDIA_NOT_FOUND`               | batch | never                                   | `open-in-instagram`                     | cause               | upstream                 |
 | `IG_NOT_AUTHENTICATED`                 | batch | after user action                       | `open-in-instagram`, `refetch-source`   | cause               | upstream                 |

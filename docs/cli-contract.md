@@ -37,7 +37,8 @@ gramgrab debug export [--json]
 `SOURCE` may be a supported Instagram URL or a bare username. A bare username targets that
 account's active Stories and must omit the leading `@`. For example, `gramgrab inspect instagram`
 resolves `https://www.instagram.com/stories/instagram/`. To export a frame from the third Story,
-run `gramgrab export instagram --item 3 --mode frame --at 5`.
+run `gramgrab export instagram --item 3 --mode frame --at 5`. WhatsApp Status URLs are recognized
+as browser-extension-only and are rejected before CLI transport.
 
 `status` is the phase 3 transport probe. It uses a five-second bounded wait and reports the
 browser family, extension version, native-host version, protocol version, and compatibility. The

@@ -83,6 +83,7 @@ Usage:
 Sources:
   SOURCE may be an Instagram post, reel, story, highlight, or profile URL. A bare username (without
   @) targets that account's active Stories. Profile URLs resolve the account avatar.
+  WhatsApp Status downloads are only available in the browser extension.
 
 Examples:
   gramgrab inspect instagram
@@ -119,22 +120,30 @@ function required(value: string | undefined, message: string): string {
 }
 
 const INSTAGRAM_USERNAME = /^[a-zA-Z0-9._]{1,30}$/;
+const INVALID_SOURCE_MESSAGE =
+  'Invalid SOURCE: expected an Instagram URL or bare username containing only letters, numbers, periods, or underscores.';
+const WHATSAPP_STATUS_UNAVAILABLE_MESSAGE =
+  'WhatsApp Status downloads are only available in the browser extension.';
+const WHATSAPP_MARKETING_HOSTS = new Set(['wa.me', 'whatsapp.com', 'www.whatsapp.com']);
+const INSTAGRAM_HOSTS = new Set(['instagram.com', 'www.instagram.com']);
+
+function parseHttpUrl(value: string): URL | undefined {
+  if (!URL.canParse(value)) return undefined;
+  const url = new URL(value);
+  return /^https?:$/.test(url.protocol) ? url : undefined;
+}
 
 function resolveSourceUrl(value: string | undefined, message: string): string {
   const source = required(value, message);
   if (source.startsWith('-')) throw new Error(message);
+  const normalizedSource = source.toLowerCase();
+  const url = parseHttpUrl(source);
+  const sourceHost = url?.hostname ?? normalizedSource;
+  if (sourceHost === 'web.whatsapp.com') throw new Error(WHATSAPP_STATUS_UNAVAILABLE_MESSAGE);
+  if (WHATSAPP_MARKETING_HOSTS.has(normalizedSource)) throw new Error(INVALID_SOURCE_MESSAGE);
   if (INSTAGRAM_USERNAME.test(source)) return `https://www.instagram.com/stories/${source}/`;
-  if (URL.canParse(source)) {
-    const url = new URL(source);
-    if (
-      /^https?:$/.test(url.protocol) &&
-      ['instagram.com', 'www.instagram.com'].includes(url.hostname)
-    )
-      return source;
-  }
-  throw new Error(
-    'Invalid SOURCE: expected an Instagram URL or bare username containing only letters, numbers, periods, or underscores.'
-  );
+  if (url && INSTAGRAM_HOSTS.has(url.hostname)) return source;
+  throw new Error(INVALID_SOURCE_MESSAGE);
 }
 
 function requiredIds(values: readonly string[]): readonly string[] {
@@ -293,9 +302,9 @@ async function parse(arguments_: readonly string[]): Promise<ParsedCli> {
   const plan = option(arguments_, '--plan');
   if (!plan) return parseCliArguments(arguments_);
   if (arguments_[0] !== 'export') throw new Error('--plan is only valid with export.');
+  const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE.');
   const input = plan === '-' ? await readStandardInput() : await readFile(plan, 'utf8');
   const value: unknown = JSON.parse(input);
-  const sourceUrl = resolveSourceUrl(arguments_[1], 'Missing export SOURCE.');
   const command = await Effect.runPromise(
     Schema.decodeUnknown(Export)({ sourceUrl, operations: value })
   );
@@ -496,6 +505,11 @@ function printTerminal(event: EventPayload, json: boolean): void {
     process.exitCode = 1;
 }
 
+export function formatCliError(error: unknown, json: boolean): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return json ? `${JSON.stringify({ type: 'error', message })}\n` : `${message}\n`;
+}
+
 export async function runCli(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
   if (requestsHelp(arguments_)) {
     process.stdout.write(HELP);
@@ -541,12 +555,7 @@ if (import.meta.main) {
   process.once('SIGINT', () => controller.abort());
   process.once('SIGTERM', () => controller.abort());
   runCli(process.argv.slice(2), controller.signal).catch(error => {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(
-      process.argv.includes('--json')
-        ? `${JSON.stringify({ type: 'error', message })}\n`
-        : `${message}\n`
-    );
+    process.stderr.write(formatCliError(error, process.argv.includes('--json')));
     process.exitCode = 2;
   });
 }

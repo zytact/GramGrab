@@ -32,7 +32,7 @@ function failure(
 
 export function normalizeSourceFailure(cause: unknown): OperationFailure {
   if (cause instanceof InvalidInstagramUrl)
-    return failure('INPUT_INVALID_INSTAGRAM_URL', 'input', cause, 'batch');
+    return failure('INPUT_INVALID_SOURCE_URL', 'input', cause, 'batch');
   if (cause instanceof UsernameUnresolved)
     return failure('SOURCE_USERNAME_UNRESOLVED', 'source', cause, 'batch');
   if (cause instanceof MediaNotFound)

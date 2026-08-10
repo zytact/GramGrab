@@ -17,7 +17,7 @@ const policy = (
 ): FailurePresentation => ({ title, explanation, actions, retry, retainSilentInput });
 
 export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentation>> = {
-  INPUT_INVALID_INSTAGRAM_URL: policy('Use an Instagram link', 'Enter a valid Instagram link.', []),
+  INPUT_INVALID_SOURCE_URL: policy('Use an Instagram link', 'Enter a valid Instagram link.', []),
   SOURCE_USERNAME_UNRESOLVED: policy(
     'Source unavailable',
     'Open the source in Instagram to check it.',

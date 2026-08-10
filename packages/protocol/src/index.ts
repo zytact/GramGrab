@@ -119,7 +119,7 @@ export const ClientMessage = Schema.Union(Request, CancelRequest);
 export type ClientMessage = Schema.Schema.Type<typeof ClientMessage>;
 
 export const FAILURE_CODES = [
-  'INPUT_INVALID_INSTAGRAM_URL',
+  'INPUT_INVALID_SOURCE_URL',
   'SOURCE_USERNAME_UNRESOLVED',
   'SOURCE_MEDIA_NOT_FOUND',
   'IG_NOT_AUTHENTICATED',

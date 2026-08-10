@@ -16,6 +16,16 @@ describe('operation error contracts', () => {
     }
   });
 
+  it('preserves the invalid-source input policy', () => {
+    expect(FAILURE_PRESENTATION.INPUT_INVALID_SOURCE_URL).toEqual({
+      title: 'Use an Instagram link',
+      explanation: 'Enter a valid Instagram link.',
+      actions: [],
+      retry: 'never',
+      retainSilentInput: false,
+    });
+  });
+
   it('round-trips a schema-backed failure', async () => {
     const failure = OperationFailure.make({
       code: 'IG_RESPONSE_SHAPE_UNKNOWN',

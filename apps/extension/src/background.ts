@@ -1056,7 +1056,7 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
       media: undefined,
       error: undefined,
       failure: OperationFailure.make({
-        code: 'INPUT_INVALID_INSTAGRAM_URL',
+        code: 'INPUT_INVALID_SOURCE_URL',
         phase: 'input',
         scope: 'batch',
       }),
@@ -1258,7 +1258,7 @@ async function handleDownloadMedia(message: unknown): Promise<DownloadMediaRespo
     return DownloadMediaResponse.make({
       results: [],
       failure: OperationFailure.make({
-        code: 'INPUT_INVALID_INSTAGRAM_URL',
+        code: 'INPUT_INVALID_SOURCE_URL',
         phase: 'input',
         scope: 'batch',
       }),
