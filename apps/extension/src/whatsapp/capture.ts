@@ -14,6 +14,7 @@ import {
   type CaptureMetadata as CaptureMetadataValue,
   type WhatsAppCaptureDescriptor,
   type WhatsAppOutboundEnvelope,
+  type WhatsAppShapeEvidence,
 } from './contracts.ts';
 import {
   WHATSAPP_CONTROLLER_FILE,
@@ -46,11 +47,18 @@ export type WhatsAppCaptureFailureReason =
 
 export class WhatsAppCaptureError extends Error {
   readonly reason: WhatsAppCaptureFailureReason;
+  readonly shape: WhatsAppShapeEvidence | undefined;
+  readonly browserCause: unknown;
 
-  constructor(reason: WhatsAppCaptureFailureReason) {
+  constructor(
+    reason: WhatsAppCaptureFailureReason,
+    options: { readonly shape?: WhatsAppShapeEvidence; readonly browserCause?: unknown } = {}
+  ) {
     super(reason);
     this.name = 'WhatsAppCaptureError';
     this.reason = reason;
+    this.shape = options.shape;
+    this.browserCause = options.browserCause;
   }
 }
 
@@ -70,6 +78,8 @@ export interface WhatsAppCaptureHandle {
 export interface WhatsAppCaptureOptions {
   readonly browser?: BrowserShim;
   readonly now?: () => number;
+  readonly operationId?: OperationId;
+  readonly requestId?: ReturnType<typeof createRequestId>;
 }
 
 interface ActiveTab {
@@ -155,6 +165,7 @@ let activeSession: WhatsAppCaptureSession | undefined;
 
 export class WhatsAppCaptureSession {
   readonly operationId: OperationId;
+  #requestId: ReturnType<typeof createRequestId>;
   #browser: BrowserShim;
   #now: () => number;
   #tabId: number | undefined;
@@ -185,7 +196,8 @@ export class WhatsAppCaptureSession {
   constructor(options: WhatsAppCaptureOptions = {}) {
     this.#browser = options.browser ?? browser;
     this.#now = options.now ?? Date.now;
-    this.operationId = createOperationId();
+    this.operationId = options.operationId ?? createOperationId();
+    this.#requestId = options.requestId ?? createRequestId();
   }
 
   async start(): Promise<WhatsAppCaptureHandle> {
@@ -244,7 +256,7 @@ export class WhatsAppCaptureSession {
   #postStart(): void {
     const start = CaptureStart.make({
       protocolVersion: WHATSAPP_PROTOCOL_VERSION,
-      requestId: createRequestId(),
+      requestId: this.#requestId,
       operationId: this.operationId,
       tag: 'CaptureStart',
       maxMediaBytes: WHATSAPP_MAX_MEDIA_BYTES,
@@ -365,7 +377,12 @@ export class WhatsAppCaptureSession {
         this.#handleComplete(message);
         return;
       case 'CaptureFailure':
-        this.#fail(new WhatsAppCaptureError(responseFailureReason(message.reason)));
+        this.#fail(
+          new WhatsAppCaptureError(
+            responseFailureReason(message.reason),
+            message.shape ? { shape: message.shape } : {}
+          )
+        );
         return;
     }
   }
@@ -510,9 +527,9 @@ export class WhatsAppCaptureSession {
         filename: handle.filename,
         saveAs: false,
       });
-    } catch {
+    } catch (browserCause) {
       this.release();
-      throw new WhatsAppCaptureError('download-failed');
+      throw new WhatsAppCaptureError('download-failed', { browserCause });
     }
     if (this.#released || this.#snapshot !== snapshot) {
       await this.#browser.downloads.cancel(downloadId).catch(() => undefined);

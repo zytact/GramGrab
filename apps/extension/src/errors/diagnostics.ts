@@ -6,7 +6,11 @@ import {
   SkipCodeSchema,
   WarningCodeSchema,
 } from './contracts.ts';
-import type { OperationFailure, OperationWarning } from './contracts.ts';
+import {
+  WhatsAppStructuralEvidence,
+  type OperationFailure,
+  type OperationWarning,
+} from './contracts.ts';
 
 const BrowserFamilySchema = Schema.Literal('chromium', 'firefox', 'safari', 'unknown');
 const PlatformFamilySchema = Schema.Literal(
@@ -99,8 +103,11 @@ class DiagnosticsAttempt extends Schema.Class<DiagnosticsAttempt>('DiagnosticsAt
   entries: Schema.Array(DiagnosticsAttemptEntry),
 }) {}
 
-export class DiagnosticsReport extends Schema.Class<DiagnosticsReport>('DiagnosticsReport')({
+class InstagramDiagnosticsReport extends Schema.Class<InstagramDiagnosticsReport>(
+  'InstagramDiagnosticsReport'
+)({
   diagnosticsVersion: Schema.Literal(2),
+  platform: Schema.Literal('instagram'),
   capturedAt: Schema.String.pipe(Schema.nonEmptyString()),
   extensionVersion: Schema.String.pipe(Schema.nonEmptyString()),
   browser: DiagnosticsBrowser,
@@ -109,6 +116,31 @@ export class DiagnosticsReport extends Schema.Class<DiagnosticsReport>('Diagnost
   items: Schema.Array(DiagnosticsItem),
   warnings: Schema.Array(DiagnosticsWarning),
 }) {}
+
+class WhatsAppDiagnosticFailure extends Schema.Class<WhatsAppDiagnosticFailure>(
+  'WhatsAppDiagnosticFailure'
+)({
+  code: FailureCodeSchema,
+  phase: FailurePhaseSchema,
+  scope: Schema.Literal('item'),
+}) {}
+
+class WhatsAppDiagnosticsReport extends Schema.Class<WhatsAppDiagnosticsReport>(
+  'WhatsAppDiagnosticsReport'
+)({
+  diagnosticsVersion: Schema.Literal(2),
+  platform: Schema.Literal('whatsapp'),
+  capturedAt: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+  extensionVersion: Schema.String.pipe(Schema.pattern(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u)),
+  browser: DiagnosticsBrowser,
+  failure: WhatsAppDiagnosticFailure,
+  evidence: WhatsAppStructuralEvidence,
+}) {}
+
+export const DiagnosticsReport = Schema.Union(
+  InstagramDiagnosticsReport,
+  WhatsAppDiagnosticsReport
+);
 
 const EXPIRY_PARAMETERS = ['oe', 'se', 'expires', 'expires_at', 'exp'] as const;
 
@@ -288,11 +320,12 @@ export interface DiagnosticsInput {
 export function makeDiagnostics(
   input: DiagnosticsInput,
   capturedAt = new Date()
-): DiagnosticsReport {
+): InstagramDiagnosticsReport {
   const entries = input.attempt?.entries ?? [];
   const batchFailure = input.batchFailure ?? input.attempt?.batchFailure;
-  return DiagnosticsReport.make({
+  return InstagramDiagnosticsReport.make({
     diagnosticsVersion: 2,
+    platform: 'instagram',
     capturedAt: capturedAt.toISOString(),
     extensionVersion: input.extensionVersion,
     browser: describeUserAgent(input.userAgent),
@@ -320,10 +353,46 @@ export function makeDiagnostics(
   });
 }
 
-function encodeDiagnostics(report: DiagnosticsReport): string {
+export function makeWhatsAppDiagnostics(
+  input: Pick<DiagnosticsInput, 'extensionVersion' | 'userAgent'> & {
+    readonly failure: OperationFailure;
+  },
+  capturedAt = new Date()
+): WhatsAppDiagnosticsReport {
+  if (input.failure.platform !== 'whatsapp')
+    throw new Error('WhatsApp diagnostics require structural WhatsApp evidence');
+  const evidence = input.failure.structuralEvidence;
+  return WhatsAppDiagnosticsReport.make({
+    diagnosticsVersion: 2,
+    platform: 'whatsapp',
+    capturedAt: capturedAt.getTime(),
+    extensionVersion: input.extensionVersion,
+    browser: describeUserAgent(input.userAgent),
+    failure: WhatsAppDiagnosticFailure.make({
+      code: input.failure.code,
+      phase: input.failure.phase,
+      scope: 'item',
+    }),
+    evidence,
+  });
+}
+
+function encodeDiagnostics(report: Schema.Schema.Type<typeof DiagnosticsReport>): string {
   return JSON.stringify(Schema.encodeUnknownSync(DiagnosticsReport)(report), null, 2);
 }
 
 export function buildDiagnostics(input: DiagnosticsInput, capturedAt = new Date()): string {
   return encodeDiagnostics(makeDiagnostics(input, capturedAt));
 }
+
+export function buildWhatsAppDiagnostics(
+  input: Pick<DiagnosticsInput, 'extensionVersion' | 'userAgent'> & {
+    readonly failure: OperationFailure;
+  },
+  capturedAt = new Date()
+): string {
+  return encodeDiagnostics(makeWhatsAppDiagnostics(input, capturedAt));
+}
+
+export const decodeDiagnostics = (value: unknown) =>
+  Schema.decodeUnknownEither(DiagnosticsReport, { onExcessProperty: 'error' })(value);

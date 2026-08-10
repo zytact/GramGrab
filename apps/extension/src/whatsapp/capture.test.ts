@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { Either } from 'effect';
 import { getDownloadCalls, getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
-import { createRequestId } from '../download/contracts.ts';
+import { createOperationId, createRequestId } from '../download/contracts.ts';
 import { captureWhatsAppVisibleStatus } from './capture.ts';
 import { encodeCanonicalBase64 } from './base64.ts';
 import { decodeWhatsAppInbound } from './contracts.ts';
@@ -345,6 +345,44 @@ describe('WhatsApp popup-owned capture transfer', () => {
     const handle = await pending;
     window.dispatchEvent(new Event('pagehide'));
     expect(handle.snapshot.released).toBe(true);
+  });
+
+  it('requires an explicit retry click to retain operation identity with a fresh request identity', async () => {
+    const operationId = createOperationId();
+    const firstRequestId = createRequestId();
+    const firstPort = makePort();
+    getMockBrowser().tabs.connect.mockReturnValue(firstPort);
+    const first = captureWhatsAppVisibleStatus({ operationId, requestId: firstRequestId });
+    await vi.waitFor(() => expect(firstPort.postMessage).toHaveBeenCalled());
+    const firstStart = startMessage(firstPort);
+    expect(firstStart).toMatchObject({ operationId, requestId: firstRequestId });
+    firstPort.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId,
+      tag: 'CaptureFailure',
+      reason: 'not-visible',
+    });
+    await expect(first).rejects.toMatchObject({ reason: 'not-visible' });
+
+    expect(getMockBrowser().scripting.executeScript).toHaveBeenCalledTimes(1);
+    const retryRequestId = createRequestId();
+    const retryPort = makePort();
+    getMockBrowser().tabs.connect.mockReturnValue(retryPort);
+    const retry = captureWhatsAppVisibleStatus({ operationId, requestId: retryRequestId });
+    await vi.waitFor(() => expect(retryPort.postMessage).toHaveBeenCalled());
+    const retryStart = startMessage(retryPort);
+    expect(retryStart).toMatchObject({ operationId, requestId: retryRequestId });
+    expect(retryStart.requestId).not.toBe(firstStart.requestId);
+    retryPort.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId,
+      tag: 'CaptureFailure',
+      reason: 'not-visible',
+    });
+    await expect(retry).rejects.toMatchObject({ reason: 'not-visible' });
+    expect(getMockBrowser().scripting.executeScript).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the capture identity private to the descriptor and never sends the snapshot', async () => {

@@ -51,6 +51,7 @@ export interface WhatsAppShapeEvidence {
   readonly dataImageCount: number;
   readonly videoCount: number;
   readonly markedVideoCount: number;
+  readonly overflow: boolean;
 }
 
 export interface ForegroundCandidate {
@@ -111,6 +112,7 @@ function emptyShape(): WhatsAppShapeEvidence {
     dataImageCount: 0,
     videoCount: 0,
     markedVideoCount: 0,
+    overflow: false,
   };
 }
 
@@ -119,26 +121,32 @@ function boundedCount(value: number, maximum: number): number {
 }
 
 function shapeFor(player: Element | undefined, playerCount: number): WhatsAppShapeEvidence {
-  if (!player) return { ...emptyShape(), playerCount: boundedCount(playerCount, 2) };
+  if (!player)
+    return {
+      ...emptyShape(),
+      playerCount: boundedCount(playerCount, 2),
+      overflow: playerCount > 2,
+    };
   const images = Array.from(player.querySelectorAll('img'));
   const videos = Array.from(player.querySelectorAll('video'));
   const imageSources = images.map(image => sourceOf(image));
+  const blobImageCount = imageSources.filter(source => source.startsWith('blob:')).length;
+  const dataImageCount = imageSources.filter(source => source.startsWith('data:')).length;
+  const markedVideoCount = videos.filter(video => hasMarker(video, 'status-video')).length;
   return {
     playerCount: boundedCount(playerCount, 2),
     imageCount: boundedCount(images.length, 8),
-    blobImageCount: boundedCount(
-      imageSources.filter(source => source.startsWith('blob:')).length,
-      4
-    ),
-    dataImageCount: boundedCount(
-      imageSources.filter(source => source.startsWith('data:')).length,
-      8
-    ),
+    blobImageCount: boundedCount(blobImageCount, 4),
+    dataImageCount: boundedCount(dataImageCount, 8),
     videoCount: boundedCount(videos.length, 2),
-    markedVideoCount: boundedCount(
-      videos.filter(video => hasMarker(video, 'status-video')).length,
-      2
-    ),
+    markedVideoCount: boundedCount(markedVideoCount, 2),
+    overflow:
+      playerCount > 2 ||
+      images.length > 8 ||
+      blobImageCount > 4 ||
+      dataImageCount > 8 ||
+      videos.length > 2 ||
+      markedVideoCount > 2,
   };
 }
 
@@ -451,13 +459,15 @@ function isShapeEvidence(value: unknown): value is WhatsAppShapeEvidence {
       'dataImageCount',
       'videoCount',
       'markedVideoCount',
+      'overflow',
     ]) &&
     isIntegerBetween(value.playerCount, 0, 2) &&
     isIntegerBetween(value.imageCount, 0, 8) &&
     isIntegerBetween(value.blobImageCount, 0, 4) &&
     isIntegerBetween(value.dataImageCount, 0, 8) &&
     isIntegerBetween(value.videoCount, 0, 2) &&
-    isIntegerBetween(value.markedVideoCount, 0, 2)
+    isIntegerBetween(value.markedVideoCount, 0, 2) &&
+    typeof value.overflow === 'boolean'
   );
 }
 

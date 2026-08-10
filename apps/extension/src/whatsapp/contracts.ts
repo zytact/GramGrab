@@ -65,6 +65,7 @@ export class WhatsAppShapeEvidence extends Schema.Class<WhatsAppShapeEvidence>(
   dataImageCount: Schema.Number.pipe(Schema.int(), Schema.between(0, 8)),
   videoCount: Schema.Number.pipe(Schema.int(), Schema.between(0, 2)),
   markedVideoCount: Schema.Number.pipe(Schema.int(), Schema.between(0, 2)),
+  overflow: Schema.Boolean,
 }) {}
 
 export class CaptureStart extends Schema.Class<CaptureStart>('CaptureStart')({

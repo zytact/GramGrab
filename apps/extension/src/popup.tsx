@@ -9,9 +9,17 @@ import {
   type DownloadOperationResult,
 } from './download/contracts';
 import type { OperationFailure, RecoveryAction } from './errors/contracts';
-import { normalizeFrameFailure } from './errors/normalize';
-import { FAILURE_PRESENTATION, WARNING_PRESENTATION } from './errors/presentation';
-import { buildDiagnostics } from './errors/diagnostics';
+import {
+  normalizeBrowserDownloadFailure,
+  normalizeFrameFailure,
+  normalizeWhatsAppCaptureFailure,
+} from './errors/normalize';
+import {
+  FAILURE_PRESENTATION,
+  presentationForFailure,
+  WARNING_PRESENTATION,
+} from './errors/presentation';
+import { buildDiagnostics, buildWhatsAppDiagnostics } from './errors/diagnostics';
 import type { AttemptEntry, AttemptOperation, DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
 import { ExportCandidate, planExportOperations } from './download/coordinator';
@@ -41,7 +49,6 @@ import { silentProgressMessage } from './silent-video/progress';
 import {
   captureWhatsAppVisibleStatus,
   WhatsAppCaptureError,
-  type WhatsAppCaptureFailureReason,
   type WhatsAppCaptureHandle,
 } from './whatsapp/capture';
 import { isWhatsAppWebUrl } from './whatsapp/limits';
@@ -154,6 +161,12 @@ export default function Popup() {
   const [whatsappCaptureMessage, setWhatsappCaptureMessage] = useState(
     'Capture the photo or video Visible Status currently open in WhatsApp Web.'
   );
+  const [whatsappFailure, setWhatsappFailure] = useState<OperationFailure>();
+  const [whatsappOperation, setWhatsappOperation] = useState<{
+    operationId: ReturnType<typeof createOperationId>;
+    requestId: ReturnType<typeof createRequestId>;
+    manualRetryCount: number;
+  }>();
   const whatsappHandleRef = useRef<WhatsAppCaptureHandle | undefined>(undefined);
   const [showHistory, setShowHistory] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
@@ -221,10 +234,23 @@ export default function Popup() {
 
   const handleWhatsAppCapture = useCallback(async () => {
     if (whatsappCaptureStatus === 'capturing') return;
+    const retrying = whatsappCaptureStatus === 'failed' && whatsappOperation !== undefined;
+    const operation = retrying
+      ? {
+          operationId: whatsappOperation.operationId,
+          requestId: createRequestId(),
+          manualRetryCount: whatsappOperation.manualRetryCount + 1,
+        }
+      : { operationId: createOperationId(), requestId: createRequestId(), manualRetryCount: 0 };
+    setWhatsappOperation(operation);
+    setWhatsappFailure(undefined);
     setWhatsappCaptureStatus('capturing');
     setWhatsappCaptureMessage('Reading the Visible Status…');
     try {
-      const handle = await captureWhatsAppVisibleStatus();
+      const handle = await captureWhatsAppVisibleStatus({
+        operationId: operation.operationId,
+        requestId: operation.requestId,
+      });
       whatsappHandleRef.current = handle;
       await handle.download();
       setWhatsappCaptureStatus('started');
@@ -232,11 +258,18 @@ export default function Popup() {
         'Download started. The in-memory capture will be released automatically.'
       );
     } catch (error) {
-      const reason = error instanceof WhatsAppCaptureError ? error.reason : 'transfer-failed';
+      const captureError =
+        error instanceof WhatsAppCaptureError ? error : new WhatsAppCaptureError('transfer-failed');
+      const failure =
+        captureError.reason === 'download-failed' && captureError.browserCause !== undefined
+          ? normalizeBrowserDownloadFailure(captureError.browserCause, 'whatsapp')
+          : normalizeWhatsAppCaptureFailure(captureError.reason, captureError.shape);
+      setWhatsappFailure(failure);
       setWhatsappCaptureStatus('failed');
-      setWhatsappCaptureMessage(whatsappFailureMessage(reason));
+      const presentation = presentationForFailure(failure);
+      setWhatsappCaptureMessage(`${presentation.title}. ${presentation.explanation}`);
     }
-  }, [whatsappCaptureStatus]);
+  }, [whatsappCaptureStatus, whatsappOperation]);
 
   const handleIntrinsicDimensions = useCallback(
     (item: MediaItem, width: number, height: number) => {
@@ -767,6 +800,20 @@ export default function Popup() {
     },
     [downloadAttempt.attempt, fetchedUrl, sourceFailure, url]
   );
+  const previewWhatsAppDiagnostics = useCallback(
+    (trigger: HTMLButtonElement) => {
+      if (!whatsappFailure) return;
+      setDiagnosticsPreview({
+        trigger,
+        json: buildWhatsAppDiagnostics({
+          extensionVersion: browser.runtime.getManifest().version ?? '0.0.0',
+          userAgent: navigator.userAgent,
+          failure: whatsappFailure,
+        }),
+      });
+    },
+    [whatsappFailure]
+  );
   const handleUrlChange = useCallback((nextUrl: string) => {
     setUrl(nextUrl);
     setAutoDetected(false);
@@ -1042,7 +1089,10 @@ export default function Popup() {
               <WhatsAppCaptureSection
                 status={whatsappCaptureStatus}
                 message={whatsappCaptureMessage}
+                failure={whatsappFailure}
+                manualRetryCount={whatsappOperation?.manualRetryCount ?? 0}
                 onCapture={() => void handleWhatsAppCapture()}
+                onCopyDiagnostics={previewWhatsAppDiagnostics}
                 disabled={isBusy}
               />
             ) : (
@@ -1285,14 +1335,25 @@ export default function Popup() {
 function WhatsAppCaptureSection({
   status,
   message,
+  failure,
+  manualRetryCount,
   onCapture,
+  onCopyDiagnostics,
   disabled,
 }: {
   status: 'idle' | 'capturing' | 'started' | 'failed';
   message: string;
+  failure: OperationFailure | undefined;
+  manualRetryCount: number;
   onCapture: () => void;
+  onCopyDiagnostics: (trigger: HTMLButtonElement) => void;
   disabled: boolean;
 }) {
+  const presentation = failure ? presentationForFailure(failure) : undefined;
+  const canCapture =
+    status !== 'failed' ||
+    (presentation?.actions.includes('retry-operation') &&
+      (presentation.retry !== 'once' || manualRetryCount === 0));
   return (
     <section
       className="ext-section whatsapp-capture-section"
@@ -1305,51 +1366,41 @@ function WhatsAppCaptureSection({
         One click captures only the already-visible photo or video. The capture stays in memory for
         this download and is then released.
       </p>
-      <button
-        type="button"
-        className="btn"
-        onClick={onCapture}
-        disabled={disabled || status === 'started'}
-        aria-busy={status === 'capturing'}
-      >
-        {status === 'capturing' ? (
-          <LoadingButtonLabel>Capturing…</LoadingButtonLabel>
-        ) : status === 'started' ? (
-          'Download started'
-        ) : (
-          'Capture Visible Status'
-        )}
-      </button>
-      {status === 'failed' && (
-        <p className="status-message error">Try again after reopening the intended Status.</p>
+      {canCapture && (
+        <button
+          type="button"
+          className="btn"
+          onClick={onCapture}
+          disabled={disabled || status === 'started'}
+          aria-busy={status === 'capturing'}
+        >
+          {status === 'capturing' ? (
+            <LoadingButtonLabel>Capturing…</LoadingButtonLabel>
+          ) : status === 'started' ? (
+            'Download started'
+          ) : status === 'failed' ? (
+            'Capture Visible Status again'
+          ) : (
+            'Capture Visible Status'
+          )}
+        </button>
+      )}
+      {status === 'failed' && failure && (
+        <div className="status-message error" role="status">
+          <code>{failure.code}</code>
+          {presentation?.actions.includes('copy-diagnostics') && (
+            <button
+              type="button"
+              className="workspace-secondary"
+              onClick={event => onCopyDiagnostics(event.currentTarget)}
+            >
+              Copy diagnostics
+            </button>
+          )}
+        </div>
       )}
     </section>
   );
-}
-
-function whatsappFailureMessage(reason: WhatsAppCaptureFailureReason): string {
-  switch (reason) {
-    case 'page-access-failed':
-      return 'Keep the exact WhatsApp Web tab active and try again.';
-    case 'not-visible':
-      return 'No supported Visible Status is open. Open a photo or video Status and try again.';
-    case 'unsupported':
-      return 'The visible Status is not a supported photo or video.';
-    case 'not-ready':
-      return 'The visible Status did not finish loading. Wait for it to load and try again.';
-    case 'format-changed':
-      return 'WhatsApp Web changed the visible player shape. This capture was discarded.';
-    case 'status-changed':
-      return 'The Visible Status changed during capture. Reopen the intended Status and try again.';
-    case 'transfer-failed':
-      return 'The Visible Status could not be transferred. Keep the tab active and try again.';
-    case 'cancelled':
-      return 'The capture was cancelled.';
-    case 'download-failed':
-      return 'The browser did not accept the download. Try again.';
-    case 'retention-expired':
-      return 'The in-memory capture expired before the download finished. Try again.';
-  }
 }
 
 function DiagnosticsDialog({ json, onClose }: { json: string; onClose: () => void }) {
