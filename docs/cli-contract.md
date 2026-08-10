@@ -37,7 +37,8 @@ gramgrab debug export [--json]
 `SOURCE` may be a supported Instagram URL or a bare username. A bare username targets that
 account's active Stories and must omit the leading `@`. For example, `gramgrab inspect instagram`
 resolves `https://www.instagram.com/stories/instagram/`. To export a frame from the third Story,
-run `gramgrab export instagram --item 3 --mode frame --at 5`.
+run `gramgrab export instagram --item 3 --mode frame --at 5`. WhatsApp Status URLs are recognized
+as browser-extension-only and are rejected before CLI transport.
 
 `status` is the phase 3 transport probe. It uses a five-second bounded wait and reports the
 browser family, extension version, native-host version, protocol version, and compatibility. The
@@ -81,8 +82,8 @@ unsuccessful item outcome, and exit 2 means argument, validation, or transport f
 | Remove selected history entries                                          | `HistoryRemove`                                           | Explicit entry IDs; partial or unknown IDs are reported, not silently broadened                 |
 | Clear download history                                                   | `HistoryClear`                                            | Destructive action must be explicitly requested                                                 |
 | Download from history                                                    | `HistoryRedownload`                                       | Uses extension resolution and download behavior, never CLI-side media fetching                  |
-| Read supported diagnostics                                               | `DebugGet`                                                | `diagnostics`; diagnostic causes stay out of ordinary UI copy                                   |
-| Export a diagnostic report                                               | `DebugExport`                                             | Preserves the existing preview and redaction policy                                             |
+| Read supported diagnostics                                               | `DebugGet`                                                | `diagnostics`; structural-only version-2 report                                                 |
+| Export a diagnostic report                                               | `DebugExport`                                             | Exports the structural-only version-2 report                                                    |
 | Popup layout, workspace layout, navigation, selection controls           | UI-only                                                   | No protocol operation because these present operations rather than define new behavior          |
 
 ## Event and failure semantics

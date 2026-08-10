@@ -107,9 +107,12 @@ describe('protocol version 1', () => {
   it('exports canonical branded identities and the complete failure registry', () => {
     expect(Schema.decodeUnknownSync(RequestId)(requestId)).toBe(requestId);
     expect(Schema.decodeUnknownSync(OperationId)(operationId)).toBe(operationId);
+    expect(FAILURE_CODES).toContain('INPUT_INVALID_SOURCE_URL');
     expect(FAILURE_CODES).toContain('SILENT_REENCODE_FAILED');
     expect(FAILURE_CODES).toContain('MEDIA_DASH_ONLY_UNSUPPORTED');
     expect(FAILURE_CODES).toContain('INSTANT_NOT_ACTIVE');
-    expect(FAILURE_CODES).toHaveLength(42);
+    expect(FAILURE_CODES).toContain('WHATSAPP_PAGE_ACCESS_FAILED');
+    expect(FAILURE_CODES).toContain('WHATSAPP_ACQUISITION_FAILED');
+    expect(FAILURE_CODES).toHaveLength(49);
   });
 });

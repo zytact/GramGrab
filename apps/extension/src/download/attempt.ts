@@ -1,7 +1,7 @@
 import { createRequestId, DownloadOperation, type DownloadOperationResult } from './contracts.ts';
 import { Schema } from 'effect';
 import { OperationFailure, type OperationWarning, type SkipCode } from '../errors/contracts.ts';
-import { FAILURE_PRESENTATION, retryable } from '../errors/presentation.ts';
+import { FAILURE_PRESENTATION, presentationForFailure, retryable } from '../errors/presentation.ts';
 
 export const AttemptOperationSchema = Schema.Struct({
   ...DownloadOperation.fields,
@@ -165,8 +165,8 @@ export const failedOperations = (
 ): readonly AttemptOperation[] =>
   attempt?.entries.flatMap(entry =>
     entry.outcome.status === 'failed' &&
-    FAILURE_PRESENTATION[entry.outcome.failure.code].actions.includes('retry-operation') &&
-    retryable(entry.outcome.failure.code, entry.manualRetryCount)
+    presentationForFailure(entry.outcome.failure).actions.includes('retry-operation') &&
+    retryable(entry.outcome.failure, entry.manualRetryCount)
       ? [entry.operation]
       : []
   ) ?? [];

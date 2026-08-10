@@ -12,60 +12,80 @@ Outcomes are `pending`, `started`, `failed`, `skipped`, or `not-attempted`. `sta
 
 ## Failure registry
 
-The table is the compatibility contract. "Cause" means the technical cause may be included in an explicitly previewed diagnostic report, never ordinary UI copy.
+The table is the compatibility contract. "Cause" means the producer retains a technical cause for
+internal normalization. A copied report exposes only the structured failure code, phase, and scope;
+causes are never ordinary UI copy or serialized report data.
 
-| Code                                   | Scope | Manual retry                            | Actions                                 | Diagnostic          | Classification           |
-| -------------------------------------- | ----- | --------------------------------------- | --------------------------------------- | ------------------- | ------------------------ |
-| `INPUT_INVALID_INSTAGRAM_URL`          | batch | never                                   | none                                    | cause               | input                    |
-| `SOURCE_USERNAME_UNRESOLVED`           | batch | never                                   | `open-in-instagram`                     | cause               | upstream                 |
-| `SOURCE_MEDIA_NOT_FOUND`               | batch | never                                   | `open-in-instagram`                     | cause               | upstream                 |
-| `IG_NOT_AUTHENTICATED`                 | batch | after user action                       | `open-in-instagram`, `refetch-source`   | cause               | upstream                 |
-| `IG_ACCESS_FORBIDDEN`                  | batch | after user action                       | `open-in-instagram`, `refetch-source`   | cause               | upstream                 |
-| `IG_RATE_LIMITED`                      | batch | after user action                       | `refetch-source`                        | cause               | upstream                 |
-| `IG_RESPONSE_SHAPE_UNKNOWN`            | batch | never                                   | `copy-diagnostics`                      | cause, copy offered | upstream format          |
-| `IG_REQUEST_REJECTED`                  | batch | never                                   | `open-in-instagram`, `copy-diagnostics` | cause, copy offered | upstream protocol        |
-| `SOURCE_NETWORK_FAILED`                | batch | once automatically, then manual refetch | `refetch-source`                        | cause               | network                  |
-| `SOURCE_SERVER_FAILED`                 | batch | once automatically, then manual refetch | `refetch-source`                        | cause               | upstream server          |
-| `SOURCE_UNEXPECTED_FAILURE`            | batch | once automatically                      | `refetch-source`, `copy-diagnostics`    | cause, copy offered | extension boundary       |
-| `MEDIA_URL_EXPIRED`                    | item  | after refetch                           | `refetch-source`                        | cause               | upstream signed URL      |
-| `MEDIA_NOT_FOUND`                      | item  | after refetch                           | `refetch-source`, `open-in-instagram`   | cause               | upstream media           |
-| `MEDIA_DASH_ONLY_UNSUPPORTED`          | item  | never                                   | `copy-diagnostics`                      | cause, copy offered | media capability         |
-| `INSTANT_NOT_ACTIVE`                   | item  | after refetch                           | `refetch-source`                        | cause               | upstream media           |
-| `MEDIA_NETWORK_FAILED`                 | item  | once per operation                      | `retry-operation`, `refetch-source`     | cause               | network                  |
-| `MEDIA_RESPONSE_EMPTY`                 | item  | once per operation                      | `retry-operation`, `refetch-source`     | cause               | network protocol         |
-| `BROWSER_DOWNLOAD_BLOCKED`             | item  | after user action                       | `retry-operation`                       | cause               | browser                  |
-| `BROWSER_DOWNLOAD_NETWORK_FAILED`      | item  | once per operation                      | `retry-operation`, `refetch-source`     | cause               | browser network          |
-| `BROWSER_DOWNLOAD_FILE_FAILED`         | item  | after user action                       | `retry-operation`                       | cause               | browser storage          |
-| `DOWNLOAD_UNEXPECTED_FAILURE`          | item  | once per operation                      | `retry-operation`, `copy-diagnostics`   | cause, copy offered | extension boundary       |
-| `FRAME_METADATA_UNAVAILABLE`           | item  | once per operation                      | `retry-operation`, `download-original`  | cause               | media capability         |
-| `FRAME_TIMEOUT`                        | item  | once per operation after internal retry | `retry-operation`, `download-original`  | cause               | media runtime            |
-| `FRAME_NO_DECODABLE_FRAME`             | item  | never                                   | `download-original`                     | cause               | media capability         |
-| `FRAME_CANVAS_UNAVAILABLE`             | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | browser capability       |
-| `FRAME_IMAGE_ENCODING_FAILED`          | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | browser capability       |
-| `FRAME_UNEXPECTED_FAILURE`             | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | extension boundary       |
-| `SILENT_STORAGE_UNAVAILABLE`           | batch | never                                   | `reload-workspace`, `download-original` | cause               | browser capability       |
-| `SILENT_STORAGE_CAPACITY_EXCEEDED`     | item  | after user action                       | `retry-operation`, `download-original`  | cause               | browser storage          |
-| `SILENT_STORAGE_READ_FAILED`           | item  | never                                   | `refetch-source`, `download-original`   | cause               | browser storage          |
-| `SILENT_STORAGE_WRITE_FAILED`          | item  | once per operation                      | `retry-operation`, `download-original`  | cause               | browser storage          |
-| `SILENT_SOURCE_NO_VIDEO`               | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | upstream media           |
-| `SILENT_INPUT_INSPECTION_FAILED`       | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | media capability         |
-| `SILENT_COPY_FAILED`                   | item  | never with copy strategy                | `try-reencode`, `download-original`     | cause               | media processing         |
-| `SILENT_H264_ENCODER_UNAVAILABLE`      | item  | never                                   | `download-original`                     | cause               | browser capability       |
-| `SILENT_SOURCE_CONVERSION_UNSUPPORTED` | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | media capability         |
-| `SILENT_REENCODE_FAILED`               | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | media processing         |
-| `SILENT_UNEXPECTED_FAILURE`            | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | extension boundary       |
-| `SILENT_OUTPUT_NO_VIDEO`               | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | extension validation     |
-| `SILENT_OUTPUT_HAS_AUDIO`              | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | extension validation     |
-| `SILENT_WORKER_UNAVAILABLE`            | item  | once per operation with fresh worker    | `retry-operation`, `download-original`  | cause               | browser worker lifecycle |
-| `SILENT_WORKER_PROTOCOL_FAILURE`       | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered | extension protocol       |
+| Code                                   | Scope | Manual retry                            | Actions                                 | Diagnostic               | Classification           |
+| -------------------------------------- | ----- | --------------------------------------- | --------------------------------------- | ------------------------ | ------------------------ |
+| `INPUT_INVALID_SOURCE_URL`             | batch | never                                   | none                                    | cause                    | input                    |
+| `SOURCE_USERNAME_UNRESOLVED`           | batch | never                                   | `open-in-instagram`                     | cause                    | upstream                 |
+| `SOURCE_MEDIA_NOT_FOUND`               | batch | never                                   | `open-in-instagram`                     | cause                    | upstream                 |
+| `IG_NOT_AUTHENTICATED`                 | batch | after user action                       | `open-in-instagram`, `refetch-source`   | cause                    | upstream                 |
+| `IG_ACCESS_FORBIDDEN`                  | batch | after user action                       | `open-in-instagram`, `refetch-source`   | cause                    | upstream                 |
+| `IG_RATE_LIMITED`                      | batch | after user action                       | `refetch-source`                        | cause                    | upstream                 |
+| `IG_RESPONSE_SHAPE_UNKNOWN`            | batch | never                                   | `copy-diagnostics`                      | cause, copy offered      | upstream format          |
+| `IG_REQUEST_REJECTED`                  | batch | never                                   | `open-in-instagram`, `copy-diagnostics` | cause, copy offered      | upstream protocol        |
+| `SOURCE_NETWORK_FAILED`                | batch | once automatically, then manual refetch | `refetch-source`                        | cause                    | network                  |
+| `SOURCE_SERVER_FAILED`                 | batch | once automatically, then manual refetch | `refetch-source`                        | cause                    | upstream server          |
+| `SOURCE_UNEXPECTED_FAILURE`            | batch | once automatically                      | `refetch-source`, `copy-diagnostics`    | cause, copy offered      | extension boundary       |
+| `MEDIA_URL_EXPIRED`                    | item  | after refetch                           | `refetch-source`                        | cause                    | upstream signed URL      |
+| `MEDIA_NOT_FOUND`                      | item  | after refetch                           | `refetch-source`, `open-in-instagram`   | cause                    | upstream media           |
+| `MEDIA_DASH_ONLY_UNSUPPORTED`          | item  | never                                   | `copy-diagnostics`                      | cause, copy offered      | media capability         |
+| `INSTANT_NOT_ACTIVE`                   | item  | after refetch                           | `refetch-source`                        | cause                    | upstream media           |
+| `MEDIA_NETWORK_FAILED`                 | item  | once per operation                      | `retry-operation`, `refetch-source`     | cause                    | network                  |
+| `MEDIA_RESPONSE_EMPTY`                 | item  | once per operation                      | `retry-operation`, `refetch-source`     | cause                    | network protocol         |
+| `BROWSER_DOWNLOAD_BLOCKED`             | item  | after user action                       | `retry-operation`                       | cause                    | browser                  |
+| `BROWSER_DOWNLOAD_NETWORK_FAILED`      | item  | once per operation                      | `retry-operation`, `refetch-source`     | cause                    | browser network          |
+| `BROWSER_DOWNLOAD_FILE_FAILED`         | item  | after user action                       | `retry-operation`                       | cause                    | browser storage          |
+| `DOWNLOAD_UNEXPECTED_FAILURE`          | item  | once per operation                      | `retry-operation`, `copy-diagnostics`   | cause, copy offered      | extension boundary       |
+| `FRAME_METADATA_UNAVAILABLE`           | item  | once per operation                      | `retry-operation`, `download-original`  | cause                    | media capability         |
+| `FRAME_TIMEOUT`                        | item  | once per operation after internal retry | `retry-operation`, `download-original`  | cause                    | media runtime            |
+| `FRAME_NO_DECODABLE_FRAME`             | item  | never                                   | `download-original`                     | cause                    | media capability         |
+| `FRAME_CANVAS_UNAVAILABLE`             | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | browser capability       |
+| `FRAME_IMAGE_ENCODING_FAILED`          | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | browser capability       |
+| `FRAME_UNEXPECTED_FAILURE`             | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | extension boundary       |
+| `SILENT_STORAGE_UNAVAILABLE`           | batch | never                                   | `reload-workspace`, `download-original` | cause                    | browser capability       |
+| `SILENT_STORAGE_CAPACITY_EXCEEDED`     | item  | after user action                       | `retry-operation`, `download-original`  | cause                    | browser storage          |
+| `SILENT_STORAGE_READ_FAILED`           | item  | never                                   | `refetch-source`, `download-original`   | cause                    | browser storage          |
+| `SILENT_STORAGE_WRITE_FAILED`          | item  | once per operation                      | `retry-operation`, `download-original`  | cause                    | browser storage          |
+| `SILENT_SOURCE_NO_VIDEO`               | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | upstream media           |
+| `SILENT_INPUT_INSPECTION_FAILED`       | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | media capability         |
+| `SILENT_COPY_FAILED`                   | item  | never with copy strategy                | `try-reencode`, `download-original`     | cause                    | media processing         |
+| `SILENT_H264_ENCODER_UNAVAILABLE`      | item  | never                                   | `download-original`                     | cause                    | browser capability       |
+| `SILENT_SOURCE_CONVERSION_UNSUPPORTED` | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | media capability         |
+| `SILENT_REENCODE_FAILED`               | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | media processing         |
+| `SILENT_UNEXPECTED_FAILURE`            | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | extension boundary       |
+| `SILENT_OUTPUT_NO_VIDEO`               | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | extension validation     |
+| `SILENT_OUTPUT_HAS_AUDIO`              | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | extension validation     |
+| `SILENT_WORKER_UNAVAILABLE`            | item  | once per operation with fresh worker    | `retry-operation`, `download-original`  | cause                    | browser worker lifecycle |
+| `SILENT_WORKER_PROTOCOL_FAILURE`       | item  | never                                   | `download-original`, `copy-diagnostics` | cause, copy offered      | extension protocol       |
+| `WHATSAPP_PAGE_ACCESS_FAILED`          | item  | after user action                       | `retry-operation`, `copy-diagnostics`   | structural               | page access              |
+| `WHATSAPP_STATUS_NOT_VISIBLE`          | item  | after user action                       | `retry-operation`                       | none                     | acquisition              |
+| `WHATSAPP_STATUS_UNSUPPORTED`          | item  | after user action                       | `retry-operation`                       | none                     | acquisition              |
+| `WHATSAPP_STATUS_NOT_READY`            | item  | after user action                       | `retry-operation`                       | none                     | acquisition              |
+| `WHATSAPP_STATUS_CHANGED`              | item  | after user action                       | `retry-operation`                       | none                     | acquisition              |
+| `WHATSAPP_FORMAT_CHANGED`              | item  | never                                   | `copy-diagnostics`                      | structural, copy offered | acquisition format       |
+| `WHATSAPP_ACQUISITION_FAILED`          | item  | once manually                           | `retry-operation`, `copy-diagnostics`   | structural, copy offered | extension boundary       |
 
 Warnings are `HISTORY_SAVE_FAILED` and `SILENT_TEMPORARY_FILE_CLEANUP_UNCONFIRMED`. The skip code is `SILENT_REENCODE_DECLINED`.
 
 ## Diagnostics
 
-Diagnostics use `diagnosticsVersion: 1` and are built per attempt. A preview must be shown before copying. The preview warns that JSON can include the Instagram source, temporary media URL, filename, media metadata, operation and request IDs, technical messages, and stacks.
+Diagnostics use `diagnosticsVersion: 2` and are built per attempt from a closed allowlist. A preview
+must be shown before copying. Instagram reports retain the extension version, capture time, normalized
+browser and platform descriptors, attempt and retry counts, media kinds, outcomes, structural media
+URL descriptors, and structured failure or warning codes. WhatsApp reports are a separate discriminated
+`platform: "whatsapp"` branch with epoch capture time, a validated extension version, normalized
+browser descriptor, failure code and phase, and closed structural evidence only. They cannot represent
+URLs, contact identifiers, filenames, operation/request IDs, or free-form causes. URL descriptors
+contain only a normalized hostname, path shape, extension, sorted query-parameter names, recognized
+signature-parameter presence, and parsed expiry state. Reports never contain source URLs, signed media
+URLs, filenames, operation or request IDs, arbitrary causes, or full user-agent strings. Parsing failures
+produce a parse-status descriptor and never fall back to the input value.
 
-Diagnostics never include cookies, request headers, browser storage contents, or unrelated session state. They are not uploaded, archived, or collected as telemetry.
+Diagnostics never include cookies, request headers, browser storage contents, or unrelated session
+state. They are not uploaded, archived, or collected as telemetry.
 
 ## Adding a code
 

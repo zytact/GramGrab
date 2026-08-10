@@ -119,7 +119,7 @@ export const ClientMessage = Schema.Union(Request, CancelRequest);
 export type ClientMessage = Schema.Schema.Type<typeof ClientMessage>;
 
 export const FAILURE_CODES = [
-  'INPUT_INVALID_INSTAGRAM_URL',
+  'INPUT_INVALID_SOURCE_URL',
   'SOURCE_USERNAME_UNRESOLVED',
   'SOURCE_MEDIA_NOT_FOUND',
   'IG_NOT_AUTHENTICATED',
@@ -161,6 +161,13 @@ export const FAILURE_CODES = [
   'SILENT_OUTPUT_HAS_AUDIO',
   'SILENT_WORKER_UNAVAILABLE',
   'SILENT_WORKER_PROTOCOL_FAILURE',
+  'WHATSAPP_PAGE_ACCESS_FAILED',
+  'WHATSAPP_STATUS_NOT_VISIBLE',
+  'WHATSAPP_STATUS_UNSUPPORTED',
+  'WHATSAPP_STATUS_NOT_READY',
+  'WHATSAPP_STATUS_CHANGED',
+  'WHATSAPP_FORMAT_CHANGED',
+  'WHATSAPP_ACQUISITION_FAILED',
 ] as const;
 
 export const FailureCodeSchema = Schema.Literal(...FAILURE_CODES);
@@ -317,14 +324,14 @@ export class HistoryRedownloadResult extends Schema.TaggedClass<HistoryRedownloa
 ) {}
 
 export class DebugGetResult extends Schema.TaggedClass<DebugGetResult>()('DebugGetResult', {
-  diagnosticsVersion: Schema.Literal(1),
+  diagnosticsVersion: Schema.Literal(2),
   report: Schema.String.pipe(Schema.nonEmptyString()),
 }) {}
 
 export class DebugExportResult extends Schema.TaggedClass<DebugExportResult>()(
   'DebugExportResult',
   {
-    diagnosticsVersion: Schema.Literal(1),
+    diagnosticsVersion: Schema.Literal(2),
     filename: Schema.String.pipe(Schema.nonEmptyString()),
     status: Schema.Literal('started'),
   }

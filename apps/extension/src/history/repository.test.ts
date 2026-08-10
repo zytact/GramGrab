@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
-import { appendHistory, getHistory } from './repository.ts';
+import { appendHistory, appendWhatsAppHistoryReceipt, getHistory } from './repository.ts';
+import { WhatsAppHistoryReceipt } from './contracts.ts';
 
 describe('download history origin migration', () => {
   beforeEach(resetBrowserMocks);
@@ -61,11 +62,62 @@ describe('download history origin migration', () => {
     const stored = vi.mocked(getMockBrowser().storage.set).mock.calls[0]?.[0];
     expect(stored).toMatchObject({
       'download-history': {
-        version: 3,
+        version: 4,
         entries: [expect.objectContaining({ origin: { kind: 'instants' } })],
       },
     });
     expect(JSON.stringify(stored)).not.toContain('https://');
     expect(JSON.stringify(stored)).not.toContain('manifest');
+  });
+
+  it('persists a WhatsApp receipt with exactly its five safe fields', async () => {
+    vi.mocked(getMockBrowser().storage.get).mockResolvedValue({});
+    await appendWhatsAppHistoryReceipt(
+      WhatsAppHistoryReceipt.make({
+        source: 'whatsapp',
+        mediaKind: 'photo',
+        timestamp: 1,
+        savedFilename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+        outcome: 'accepted',
+      })
+    );
+
+    const stored = vi.mocked(getMockBrowser().storage.set).mock.calls[0]?.[0];
+    if (!stored) throw new Error('Expected a persisted History store.');
+    const receipt = (stored['download-history'] as { entries: unknown[] }).entries[0];
+    expect(receipt).toEqual({
+      source: 'whatsapp',
+      mediaKind: 'photo',
+      timestamp: 1,
+      savedFilename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+      outcome: 'accepted',
+    });
+    expect(Object.keys(receipt as object).sort()).toEqual([
+      'mediaKind',
+      'outcome',
+      'savedFilename',
+      'source',
+      'timestamp',
+    ]);
+  });
+
+  it('rejects WhatsApp receipts with any extra field while reading History', async () => {
+    vi.mocked(getMockBrowser().storage.get).mockResolvedValue({
+      'download-history': {
+        version: 4,
+        entries: [
+          {
+            source: 'whatsapp',
+            mediaKind: 'video',
+            timestamp: 1,
+            savedFilename: 'whatsapp-visible-status-20260101T000000Z.mp4',
+            outcome: 'accepted',
+            captureId: 'must-not-persist',
+          },
+        ],
+      },
+    });
+
+    await expect(getHistory()).resolves.toEqual({ kind: 'ok', entries: [], repaired: true });
   });
 });

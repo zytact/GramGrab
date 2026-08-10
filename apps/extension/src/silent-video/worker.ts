@@ -11,7 +11,7 @@ import {
 } from './contracts.ts';
 import { cleanFailedOutput, inspectSilentVideo, processSilentVideo } from './engine.ts';
 import { cacheInput, readInput, removeOutput, outputName } from './opfs.ts';
-import { OperationFailure, diagnosticCause } from '../errors/contracts.ts';
+import { isOperationFailure, OperationFailure, diagnosticCause } from '../errors/contracts.ts';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -95,15 +95,14 @@ self.addEventListener('message', event => {
     try {
       await handleRequest(request);
     } catch (cause) {
-      const failure =
-        cause instanceof OperationFailure
-          ? cause
-          : OperationFailure.make({
-              code: 'SILENT_UNEXPECTED_FAILURE',
-              phase: 'silent-worker',
-              scope: 'item',
-              cause: diagnosticCause(cause),
-            });
+      const failure = isOperationFailure(cause)
+        ? cause
+        : OperationFailure.make({
+            code: 'SILENT_UNEXPECTED_FAILURE',
+            phase: 'silent-worker',
+            scope: 'item',
+            cause: diagnosticCause(cause),
+          });
       await cleanFailedOutput(outputName(request.operationId), failure).catch(() => undefined);
       post(
         SilentWorkerError.make({

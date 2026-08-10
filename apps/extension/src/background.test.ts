@@ -485,6 +485,57 @@ describe('background dispatcher', () => {
     });
   });
 
+  describe('WhatsApp history receipts', () => {
+    const receipt = {
+      source: 'whatsapp',
+      mediaKind: 'photo',
+      timestamp: 1,
+      savedFilename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+      outcome: 'accepted',
+    } as const;
+
+    it('stores only the exact safe receipt shape', async () => {
+      const response = await invoke(await loadBackground(), {
+        type: 'RECORD_WHATSAPP_HISTORY',
+        receipt,
+      });
+
+      expect(response).toEqual({ saved: true });
+      const stored = fakeBrowserObj.fakeBrowser.storage.set.mock.calls[0]?.[0];
+      const recorded = (stored['download-history'] as { entries: unknown[] }).entries[0];
+      expect(recorded).toEqual(receipt);
+      expect(Object.keys(recorded as object).sort()).toEqual([
+        'mediaKind',
+        'outcome',
+        'savedFilename',
+        'source',
+        'timestamp',
+      ]);
+    });
+
+    it('returns HISTORY_SAVE_FAILED and persists nothing when writing a receipt fails', async () => {
+      fakeBrowserObj.fakeBrowser.storage.set.mockRejectedValueOnce(
+        new Error('storage unavailable')
+      );
+      const response = await invoke(await loadBackground(), {
+        type: 'RECORD_WHATSAPP_HISTORY',
+        receipt,
+      });
+
+      expect(response).toEqual({ warning: 'HISTORY_SAVE_FAILED' });
+    });
+
+    it('rejects a receipt carrying an extra field', async () => {
+      const response = await invoke(await loadBackground(), {
+        type: 'RECORD_WHATSAPP_HISTORY',
+        receipt: { ...receipt, captureId: 'must-not-persist' },
+      });
+
+      expect(response).toEqual({ warning: 'HISTORY_SAVE_FAILED' });
+      expect(fakeBrowserObj.fakeBrowser.storage.set).not.toHaveBeenCalled();
+    });
+  });
+
   describe('frame export history', () => {
     it('records history only after a non-empty frame download completes', async () => {
       const listener = await loadBackground();

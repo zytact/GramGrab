@@ -1,4 +1,11 @@
-import type { FailureCode, RecoveryAction, WarningCode } from './contracts.ts';
+import {
+  isWhatsAppCommonFailureCode,
+  type FailureCode,
+  type OperationFailure,
+  type RecoveryAction,
+  type WarningCode,
+  type WhatsAppCommonFailureCode,
+} from './contracts.ts';
 
 export interface FailurePresentation {
   readonly title: string;
@@ -17,7 +24,7 @@ const policy = (
 ): FailurePresentation => ({ title, explanation, actions, retry, retainSilentInput });
 
 export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentation>> = {
-  INPUT_INVALID_INSTAGRAM_URL: policy('Use an Instagram link', 'Enter a valid Instagram link.', []),
+  INPUT_INVALID_SOURCE_URL: policy('Use an Instagram link', 'Enter a valid Instagram link.', []),
   SOURCE_USERNAME_UNRESOLVED: policy(
     'Source unavailable',
     'Open the source in Instagram to check it.',
@@ -246,6 +253,47 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'Download the original video or copy diagnostics.',
     ['download-original', 'copy-diagnostics']
   ),
+  WHATSAPP_PAGE_ACCESS_FAILED: policy(
+    'WhatsApp page access was lost',
+    'Keep the intended WhatsApp Web tab active, then capture the Visible Status again.',
+    ['retry-operation', 'copy-diagnostics'],
+    'after-user-action'
+  ),
+  WHATSAPP_STATUS_NOT_VISIBLE: policy(
+    'No Visible Status is open',
+    'Open a supported photo or video Status, then capture it again.',
+    ['retry-operation'],
+    'after-user-action'
+  ),
+  WHATSAPP_STATUS_UNSUPPORTED: policy(
+    'Visible Status is not supported',
+    'Open a photo or video Status, then capture it again.',
+    ['retry-operation'],
+    'after-user-action'
+  ),
+  WHATSAPP_STATUS_NOT_READY: policy(
+    'Visible Status is still loading',
+    'Wait for the photo or video to load, then capture it again.',
+    ['retry-operation'],
+    'after-user-action'
+  ),
+  WHATSAPP_STATUS_CHANGED: policy(
+    'Visible Status changed',
+    'Reopen the intended Status, then capture it again.',
+    ['retry-operation'],
+    'after-user-action'
+  ),
+  WHATSAPP_FORMAT_CHANGED: policy(
+    'WhatsApp Web changed its player format',
+    'This capture was discarded. Copy diagnostics so GramGrab can be updated.',
+    ['copy-diagnostics']
+  ),
+  WHATSAPP_ACQUISITION_FAILED: policy(
+    'Could not capture the Visible Status',
+    'Keep the intended WhatsApp Web tab active, then try one more capture.',
+    ['retry-operation', 'copy-diagnostics'],
+    'once'
+  ),
 };
 
 export const WARNING_PRESENTATION: Readonly<Record<WarningCode, string>> = {
@@ -254,7 +302,42 @@ export const WARNING_PRESENTATION: Readonly<Record<WarningCode, string>> = {
     'Download started, but temporary-file cleanup could not be confirmed.',
 };
 
-export function retryable(code: FailureCode, retryCount: number): boolean {
-  const rule = FAILURE_PRESENTATION[code].retry;
-  return rule === 'once' ? retryCount === 0 : rule === 'after-user-action';
+const whatsappSharedPresentation: Readonly<Record<WhatsAppCommonFailureCode, FailurePresentation>> =
+  {
+    BROWSER_DOWNLOAD_BLOCKED: policy(
+      'Browser blocked the download',
+      'Allow downloads for GramGrab, then capture the Visible Status again.',
+      ['retry-operation'],
+      'after-user-action'
+    ),
+    BROWSER_DOWNLOAD_NETWORK_FAILED: policy(
+      'Download could not start',
+      'Keep the WhatsApp Web tab active, then capture the Visible Status again.',
+      ['retry-operation'],
+      'once'
+    ),
+    BROWSER_DOWNLOAD_FILE_FAILED: policy(
+      'Browser could not save the file',
+      'Check storage and download permissions, then capture the Visible Status again.',
+      ['retry-operation'],
+      'after-user-action'
+    ),
+    DOWNLOAD_UNEXPECTED_FAILURE: policy(
+      'Download could not start',
+      'Keep the WhatsApp Web tab active, then try one more capture.',
+      ['retry-operation', 'copy-diagnostics'],
+      'once'
+    ),
+  };
+
+export function presentationForFailure(failure: OperationFailure): FailurePresentation {
+  if (failure.platform === 'whatsapp' && isWhatsAppCommonFailureCode(failure.code))
+    return whatsappSharedPresentation[failure.code];
+  return FAILURE_PRESENTATION[failure.code];
+}
+
+export function retryable(failure: FailureCode | OperationFailure, retryCount: number): boolean {
+  const policy =
+    typeof failure === 'string' ? FAILURE_PRESENTATION[failure] : presentationForFailure(failure);
+  return policy.retry === 'once' ? retryCount === 0 : policy.retry === 'after-user-action';
 }

@@ -1,9 +1,15 @@
 import {
   OperationFailure,
   diagnosticCause,
-  type FailureCode,
+  type InstagramFailureCode,
   type FailurePhase,
+  type WhatsAppFailureCode,
+  type WhatsAppExclusiveFailureCode,
+  type WhatsAppFailurePhase,
+  WhatsAppStructuralEvidence,
 } from './contracts.ts';
+import type { WhatsAppShapeEvidence } from '../whatsapp/contracts.ts';
+import type { WhatsAppCaptureFailureReason } from '../whatsapp/capture.ts';
 import {
   GraphQLRequestFailed,
   HttpError,
@@ -17,7 +23,7 @@ import {
 } from '../effect/errors.ts';
 
 function failure(
-  code: FailureCode,
+  code: InstagramFailureCode,
   phase: FailurePhase,
   cause?: unknown,
   scope: OperationFailure['scope'] = 'item'
@@ -32,7 +38,7 @@ function failure(
 
 export function normalizeSourceFailure(cause: unknown): OperationFailure {
   if (cause instanceof InvalidInstagramUrl)
-    return failure('INPUT_INVALID_INSTAGRAM_URL', 'input', cause, 'batch');
+    return failure('INPUT_INVALID_SOURCE_URL', 'input', cause, 'batch');
   if (cause instanceof UsernameUnresolved)
     return failure('SOURCE_USERNAME_UNRESOLVED', 'source', cause, 'batch');
   if (cause instanceof MediaNotFound)
@@ -54,20 +60,156 @@ export function normalizeSourceFailure(cause: unknown): OperationFailure {
 }
 
 // downloads.download exposes only runtime.lastError.message in callback-based browsers.
-export function normalizeBrowserDownloadFailure(cause: unknown): OperationFailure {
+export function normalizeBrowserDownloadFailure(
+  cause: unknown,
+  platform: 'instagram' | 'whatsapp' = 'instagram'
+): OperationFailure {
   const message =
     cause instanceof Error ? cause.message.toLowerCase() : String(cause).toLowerCase();
-  if (/permission|denied|blocked|not allowed/.test(message))
-    return failure('BROWSER_DOWNLOAD_BLOCKED', 'browser-download', cause);
-  if (/network|connection|server/.test(message))
-    return failure('BROWSER_DOWNLOAD_NETWORK_FAILED', 'browser-download', cause);
-  if (/file|disk|path|storage/.test(message))
-    return failure('BROWSER_DOWNLOAD_FILE_FAILED', 'browser-download', cause);
-  return failure('DOWNLOAD_UNEXPECTED_FAILURE', 'browser-download', cause);
+  const code = /permission|denied|blocked|not allowed/.test(message)
+    ? 'BROWSER_DOWNLOAD_BLOCKED'
+    : /network|connection|server/.test(message)
+      ? 'BROWSER_DOWNLOAD_NETWORK_FAILED'
+      : /file|disk|path|storage/.test(message)
+        ? 'BROWSER_DOWNLOAD_FILE_FAILED'
+        : 'DOWNLOAD_UNEXPECTED_FAILURE';
+  return platform === 'whatsapp'
+    ? whatsappFailure(code, 'browser-download', 'unknown')
+    : failure(code, 'browser-download', cause);
+}
+
+function structuralNodeShape(shape: WhatsAppShapeEvidence | undefined) {
+  if (shape) {
+    return {
+      playerCount: shape.playerCount,
+      imageCount: shape.imageCount,
+      blobImageCount: shape.blobImageCount,
+      dataImageCount: shape.dataImageCount,
+      videoCount: shape.videoCount,
+      markedVideoCount: shape.markedVideoCount,
+      overflow: shape.overflow,
+    };
+  }
+  return {
+    playerCount: 0,
+    imageCount: 0,
+    blobImageCount: 0,
+    dataImageCount: 0,
+    videoCount: 0,
+    markedVideoCount: 0,
+    overflow: false,
+  };
+}
+
+function evidence(
+  invariant: WhatsAppStructuralEvidence['invariant'],
+  shape?: WhatsAppShapeEvidence
+): WhatsAppStructuralEvidence {
+  return WhatsAppStructuralEvidence.make({
+    extractionContractVersion: 1,
+    invariant,
+    nodeShape: structuralNodeShape(shape),
+    mediaKind: 'unknown',
+    readiness: 'unknown',
+    sourceProtocolClass: 'none',
+    dimensionState: 'unknown',
+    playerState: shape ? 'single' : 'absent',
+    guardState: 'unknown',
+    bytesOwned: false,
+    discardCompleted: true,
+    blobUrlCreated: false,
+    blobUrlRevoked: false,
+    retentionCeilingArmed: false,
+  });
+}
+
+function whatsappFailure(
+  code: WhatsAppFailureCode,
+  phase: WhatsAppFailurePhase,
+  invariant: WhatsAppStructuralEvidence['invariant'],
+  shape?: WhatsAppShapeEvidence
+): OperationFailure {
+  return OperationFailure.make({
+    code,
+    phase,
+    scope: 'item',
+    platform: 'whatsapp',
+    structuralEvidence: evidence(invariant, shape),
+  });
+}
+
+const whatsappCaptureFailureMappings: Readonly<
+  Record<
+    WhatsAppCaptureFailureReason,
+    Readonly<{
+      code: WhatsAppExclusiveFailureCode;
+      phase: WhatsAppFailurePhase;
+      invariant: WhatsAppStructuralEvidence['invariant'];
+    }>
+  >
+> = {
+  'page-access-failed': {
+    code: 'WHATSAPP_PAGE_ACCESS_FAILED',
+    phase: 'whatsapp-page-access',
+    invariant: 'page-access',
+  },
+  'not-visible': {
+    code: 'WHATSAPP_STATUS_NOT_VISIBLE',
+    phase: 'whatsapp-extraction',
+    invariant: 'no-active-player',
+  },
+  unsupported: {
+    code: 'WHATSAPP_STATUS_UNSUPPORTED',
+    phase: 'whatsapp-extraction',
+    invariant: 'unsupported-media',
+  },
+  'not-ready': {
+    code: 'WHATSAPP_STATUS_NOT_READY',
+    phase: 'whatsapp-extraction',
+    invariant: 'media-readiness',
+  },
+  'status-changed': {
+    code: 'WHATSAPP_STATUS_CHANGED',
+    phase: 'whatsapp-extraction',
+    invariant: 'guard-changed',
+  },
+  'format-changed': {
+    code: 'WHATSAPP_FORMAT_CHANGED',
+    phase: 'whatsapp-extraction',
+    invariant: 'player-marker',
+  },
+  'transfer-failed': {
+    code: 'WHATSAPP_ACQUISITION_FAILED',
+    phase: 'whatsapp-extraction',
+    invariant: 'protocol',
+  },
+  cancelled: {
+    code: 'WHATSAPP_ACQUISITION_FAILED',
+    phase: 'whatsapp-extraction',
+    invariant: 'protocol',
+  },
+  'download-failed': {
+    code: 'WHATSAPP_ACQUISITION_FAILED',
+    phase: 'whatsapp-extraction',
+    invariant: 'unknown',
+  },
+  'retention-expired': {
+    code: 'WHATSAPP_ACQUISITION_FAILED',
+    phase: 'whatsapp-extraction',
+    invariant: 'protocol',
+  },
+};
+
+export function normalizeWhatsAppCaptureFailure(
+  reason: WhatsAppCaptureFailureReason,
+  shape?: WhatsAppShapeEvidence
+): OperationFailure {
+  const mapping = whatsappCaptureFailureMappings[reason];
+  return whatsappFailure(mapping.code, mapping.phase, mapping.invariant, shape);
 }
 
 export function normalizeFrameFailure(reason: string, cause?: unknown): OperationFailure {
-  const codes: Readonly<Record<string, FailureCode>> = {
+  const codes: Readonly<Record<string, InstagramFailureCode>> = {
     'no-duration': 'FRAME_METADATA_UNAVAILABLE',
     timeout: 'FRAME_TIMEOUT',
     'no-frame': 'FRAME_NO_DECODABLE_FRAME',

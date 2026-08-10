@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Popup from './popup';
+import * as whatsappCapture from './whatsapp/capture';
+import * as whatsappFrameExport from './whatsapp/export';
+import { DownloadAcceptedResult } from './download/contracts';
 
 vi.mock('./styles.css', () => ({}));
 
@@ -38,6 +41,10 @@ globalThis.browser = mockBrowser as typeof globalThis.browser;
 describe('Popup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://www.instagram.com/p/abc123/', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({});
     window.history.replaceState({}, '', '/popup.html');
   });
 
@@ -47,6 +54,264 @@ describe('Popup', () => {
     });
     expect(screen.getByPlaceholderText(/Paste an Instagram URL/i)).toBeDefined();
     expect(screen.getByText('Fetch Media')).toBeDefined();
+  });
+
+  it('shows and persists the one-time WhatsApp view-receipt disclosure without capturing', async () => {
+    mockBrowser.tabs.query.mockResolvedValueOnce([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    expect(
+      await screen.findByText(
+        'WhatsApp controls view receipts. GramGrab does not provide anonymous viewing.'
+      )
+    ).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Capture Visible Status' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() =>
+      expect(mockBrowser.storage.set).toHaveBeenCalledWith({
+        'whatsapp-view-receipt-acknowledged': true,
+      })
+    );
+    expect(screen.getByRole('button', { name: 'Capture Visible Status' })).toBeDefined();
+    expect(mockBrowser.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('auto-selects WhatsApp only for the exact WhatsApp Web origin', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    await act(async () => render(<Popup />));
+
+    expect(
+      (await screen.findByRole('button', { name: 'WhatsApp Status' })).getAttribute('aria-current')
+    ).toBe('page');
+    expect(screen.queryByText(/Active tab.*WhatsApp Web/i)).toBeNull();
+  });
+
+  it('shows WhatsApp Web guidance when WhatsApp Status is selected on another origin', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      {
+        id: 1,
+        url: 'https://web.whatsapp.com.evil.example/status',
+        active: true,
+        currentWindow: true,
+      },
+    ]);
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    expect(screen.getByRole('button', { name: 'Instagram' }).getAttribute('aria-current')).toBe(
+      'page'
+    );
+    await user.click(screen.getByRole('button', { name: 'WhatsApp Status' }));
+
+    expect(screen.getByRole('heading', { name: 'Open WhatsApp Web' })).toBeDefined();
+    expect(screen.getByText(/Open web\.whatsapp\.com/i)).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Capture Visible Status' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /check again/i })).toBeNull();
+  });
+
+  it('does not show the acknowledged WhatsApp disclosure again', async () => {
+    mockBrowser.tabs.query.mockResolvedValueOnce([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValueOnce({ 'whatsapp-view-receipt-acknowledged': true });
+    await act(async () => render(<Popup />));
+
+    expect(await screen.findByRole('button', { name: 'Capture Visible Status' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  it('reuses the media-item UI after capture without silent export or workspace actions', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const download = vi.fn().mockResolvedValue({
+      downloadId: 1,
+      filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
+    });
+    const release = vi.fn();
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'video',
+        mimeType: 'video/mp4',
+        byteLength: 1,
+        width: 640,
+        height: 480,
+        durationMs: 1_000,
+        capturedAt: 1,
+        retentionDeadline: 60_001,
+      },
+      snapshot: { objectUrl: () => 'blob:visible-status' },
+      filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
+      download,
+      release,
+    } as never);
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+
+    expect(await screen.findByRole('heading', { name: 'Visible Status captured' })).toBeDefined();
+    expect(screen.getByText(/one photo or video that was visible/i)).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Capture Visible Status' })).toBeNull();
+    expect(screen.queryByLabelText('Remove audio')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open in tab' })).toBeNull();
+    expect(
+      document.querySelector('.whatsapp-result-list img, .whatsapp-result-list video')
+    ).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
+    await waitFor(() => expect(download).toHaveBeenCalledOnce());
+    expect(release).not.toHaveBeenCalled();
+    capture.mockRestore();
+  });
+
+  it('keeps the capture operation pending through frame export and starts it on acceptance', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'video',
+        mimeType: 'video/mp4',
+        byteLength: 1,
+        width: 640,
+        height: 480,
+        durationMs: 1_000,
+        capturedAt: 1,
+        retentionDeadline: 60_001,
+      },
+      snapshot: { objectUrl: () => 'blob:visible-status' },
+      filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
+      download: vi.fn(),
+      release: vi.fn(),
+    } as never);
+    let resolveExport: (() => void) | undefined;
+    const frameExport = vi
+      .spyOn(whatsappFrameExport, 'exportWhatsAppFrame')
+      .mockImplementation(async (_handle, operation) => {
+        await new Promise<void>(resolve => {
+          resolveExport = resolve;
+        });
+        return DownloadAcceptedResult.make({
+          operationId: operation.operationId,
+          requestId: operation.requestId,
+          status: 'started',
+        });
+      });
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+    await user.click(screen.getByLabelText('Frame'));
+    await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
+
+    await waitFor(() => expect(frameExport).toHaveBeenCalledOnce());
+    const captureOptions = capture.mock.calls[0]?.[0];
+    const exportOperation = frameExport.mock.calls[0]?.[1];
+    expect(exportOperation?.operationId).toBe(captureOptions?.operationId);
+    expect(exportOperation?.requestId).toBe(captureOptions?.requestId);
+    expect(screen.getByRole('button', { name: /Downloading/i }).getAttribute('aria-busy')).toBe(
+      'true'
+    );
+
+    if (!resolveExport) throw new Error('Expected frame export to be pending.');
+    resolveExport();
+    expect(
+      await screen.findByRole('button', { name: 'Capture another Visible Status' })
+    ).toBeDefined();
+    frameExport.mockRestore();
+    capture.mockRestore();
+  });
+
+  it.each([
+    ['not-visible', 'WHATSAPP_STATUS_NOT_VISIBLE'],
+    ['unsupported', 'WHATSAPP_STATUS_UNSUPPORTED'],
+  ] as const)(
+    'renders %s instructions without a passive check-again action',
+    async (reason, code) => {
+      mockBrowser.tabs.query.mockResolvedValue([
+        { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+      ]);
+      mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+      const capture = vi
+        .spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus')
+        .mockRejectedValue(new whatsappCapture.WhatsAppCaptureError(reason));
+      const user = userEvent.setup();
+      await act(async () => render(<Popup />));
+
+      await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+
+      expect(await screen.findByText(code)).toBeDefined();
+      expect(
+        screen.getByText(/Open a photo or video Status|Open a supported photo or video Status/)
+      ).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Capture Visible Status again' })).toBeDefined();
+      expect(screen.queryByRole('button', { name: /check again/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Open in Instagram' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Fetch source again' })).toBeNull();
+      capture.mockRestore();
+    }
+  );
+
+  it('dismisses the WhatsApp disclosure without starting an operation or writing History', async () => {
+    mockBrowser.tabs.query.mockResolvedValueOnce([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Not now' }));
+
+    expect(screen.getByRole('button', { name: 'Review notice' })).toBeDefined();
+    expect(mockBrowser.storage.set).not.toHaveBeenCalled();
+    expect(mockBrowser.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('renders a WhatsApp History receipt without a source link or re-download action', async () => {
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: { type: string }) =>
+        message.type === 'GET_DOWNLOAD_HISTORY'
+          ? {
+              entries: [
+                {
+                  source: 'whatsapp',
+                  mediaKind: 'photo',
+                  timestamp: 1,
+                  savedFilename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+                  outcome: 'accepted',
+                },
+              ],
+            }
+          : {}
+    );
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'History' }));
+
+    const receipt = await screen.findByText('whatsapp-visible-status-20260101T000000Z.jpg');
+    const entry = receipt.closest('.history-entry');
+    if (!(entry instanceof HTMLElement)) throw new Error('Expected WhatsApp History entry.');
+    expect(within(entry).getByText('WhatsApp')).toBeDefined();
+    expect(within(entry).getByText('photo')).toBeDefined();
+    expect(within(entry).getByText('accepted')).toBeDefined();
+    expect(entry.querySelector('time')).not.toBeNull();
+    expect(within(entry).queryByRole('link')).toBeNull();
+    expect(within(entry).queryByRole('button', { name: /re-download/i })).toBeNull();
+    expect(entry.querySelector('img')).toBeNull();
   });
 
   it('opens a workspace tab from the header action', async () => {
@@ -296,7 +561,8 @@ describe('Popup', () => {
     const diagnostics = await screen.findByRole('button', { name: 'Copy diagnostics' });
     await user.click(diagnostics);
     expect(screen.getByRole('dialog', { name: 'Diagnostics preview' })).toBeDefined();
-    expect(screen.getByText(/schema detail/)).toBeDefined();
+    expect(screen.getByText(/structural media URL metadata/)).toBeDefined();
+    expect(screen.queryByText(/schema detail/)).toBeNull();
   });
 
   it('shows an animated spinner while fetching media', async () => {
@@ -900,7 +1166,8 @@ describe('Popup', () => {
     const trigger = await screen.findByRole('button', { name: 'Copy diagnostics' });
     await user.click(trigger);
     expect(screen.getByRole('dialog', { name: 'Diagnostics preview' })).toBeDefined();
-    expect(screen.getByText(/technical detail/)).toBeDefined();
+    expect(screen.getByText(/structural media URL metadata/)).toBeDefined();
+    expect(screen.queryByText(/technical detail/)).toBeNull();
     expect(clipboard.writeText).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(document.activeElement).toBe(trigger));
@@ -910,6 +1177,9 @@ describe('Popup', () => {
     if (!copyButton) throw new Error('Expected the diagnostics copy button.');
     await user.click(copyButton);
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(expect.any(String)));
+    const copied = clipboard.writeText.mock.calls.at(-1)?.[0];
+    expect(copied).toContain('"diagnosticsVersion": 2');
+    expect(copied).not.toContain('technical detail');
   });
 
   it('toggles video selection when its preview is clicked without toggling Frame', async () => {

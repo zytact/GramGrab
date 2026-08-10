@@ -174,6 +174,7 @@ The popup sends messages to the background worker through the single dispatcher 
 | `storage`                   | Persist download history and workspace handoff state              |
 | `cookies`                   | Read the current Instagram CSRF token for Instants requests       |
 | `activeTab`                 | Temporarily access the current tab when GramGrab is invoked       |
+| `scripting`                 | Inject the one-shot isolated WhatsApp capture controller          |
 | `tabs`                      | Read and manage tabs for URL detection and the GramGrab workspace |
 | `contextMenus`              | Add GramGrab actions to page and link context menus               |
 | `nativeMessaging`           | Expose GramGrab operations to the local CLI bridge                |

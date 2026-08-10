@@ -12,7 +12,12 @@ import {
   StreamTarget,
 } from 'mediabunny';
 import type { OperationId, RequestId } from '../download/contracts.ts';
-import { OperationFailure, diagnosticCause, type FailureCode } from '../errors/contracts.ts';
+import {
+  isOperationFailure,
+  OperationFailure,
+  diagnosticCause,
+  type InstagramFailureCode,
+} from '../errors/contracts.ts';
 import { SilentPreflight } from './contracts.ts';
 import {
   createOutput,
@@ -25,7 +30,11 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 
 const mp4 = new Mp4OutputFormat({ fastStart: false });
 
-const silentFailure = (code: FailureCode, phase: OperationFailure['phase'], cause?: unknown) =>
+const silentFailure = (
+  code: InstagramFailureCode,
+  phase: OperationFailure['phase'],
+  cause?: unknown
+) =>
   OperationFailure.make({
     code,
     phase,
@@ -112,7 +121,7 @@ async function processOutput(
 }
 
 function normalizeProcessingFailure(error: unknown, transcode: boolean): OperationFailure {
-  if (error instanceof OperationFailure) return error;
+  if (isOperationFailure(error)) return error;
   return silentFailure(
     transcode ? 'SILENT_REENCODE_FAILED' : 'SILENT_COPY_FAILED',
     transcode ? 'silent-reencode' : 'silent-copy',

@@ -67,9 +67,7 @@ Real API response fixtures live in `apps/extension/src/effect/__fixtures__/` (se
 
 ## Domain language
 
-This repo has a domain glossary at `CONTEXT.md`.
-
-Read it when working on domain terminology, product concepts, naming, business rules, user-facing language, or when interpreting ambiguous terms (notably the overloaded **Reel** and **Unknown**). Prefer the canonical terms defined there, and avoid aliases listed as discouraged.
+This repo has ubiquitous language at `CONTEXT.md` and any ambigous decision you may find in `docs/adr/`.
 
 ## Operation errors
 

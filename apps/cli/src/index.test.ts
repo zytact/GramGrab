@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { Effect, Schema } from 'effect';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 import {
@@ -19,6 +20,32 @@ import {
   Status,
 } from '@gramgrab/protocol';
 import { createProgressPrinter, HELP, parseCliArguments, request } from './index.ts';
+
+interface CliProcessResult {
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+function runCliProcess(arguments_: readonly string[]): Promise<CliProcessResult> {
+  return new Promise((resolveResult, reject) => {
+    const child = spawn(process.execPath, [resolve('apps/cli/bin/gramgrab.mjs'), ...arguments_], {
+      cwd: process.cwd(),
+    });
+    const stdout = child.stdout;
+    const stderr = child.stderr;
+    if (!stdout || !stderr) {
+      reject(new Error('CLI process did not expose output streams.'));
+      return;
+    }
+    let stdoutText = '';
+    let stderrText = '';
+    stdout.on('data', chunk => (stdoutText += chunk.toString()));
+    stderr.on('data', chunk => (stderrText += chunk.toString()));
+    child.once('error', reject);
+    child.once('close', code => resolveResult({ code, stdout: stdoutText, stderr: stderrText }));
+  });
+}
 
 const temporaryDirectories: string[] = [];
 
@@ -91,6 +118,27 @@ describe('CLI capability grammar', () => {
   ])('rejects invalid source shorthand %s', source => {
     expect(() => parseCliArguments(['inspect', source])).toThrow(
       'expected an Instagram URL or bare username'
+    );
+  });
+
+  it.each(['https://web.whatsapp.com/status', 'http://web.whatsapp.com/anything/else'])(
+    'rejects WhatsApp Status URLs at the CLI boundary: %s',
+    source => {
+      expect(() => parseCliArguments(['inspect', source])).toThrow(
+        'WhatsApp Status downloads are only available in the browser extension.'
+      );
+    }
+  );
+
+  it.each([
+    'https://wa.me/12345',
+    'https://whatsapp.com/',
+    'wa.me',
+    'whatsapp.com',
+    'web.whatsapp.com',
+  ])('keeps WhatsApp marketing links on generic source validation: %s', source => {
+    expect(() => parseCliArguments(['inspect', source])).toThrow(
+      'Invalid SOURCE: expected an Instagram URL or bare username'
     );
   });
 
@@ -275,6 +323,9 @@ describe('CLI output', () => {
     expect(HELP).toContain('gramgrab inspect SOURCE');
     expect(HELP).toContain('gramgrab instants inspect');
     expect(HELP).toContain('A bare username (without\n  @) targets');
+    expect(HELP).toContain(
+      'WhatsApp Status downloads are only available in the browser extension.'
+    );
     expect(HELP).toContain('gramgrab export instagram --item 3 --mode frame --at 5');
     expect(HELP).toContain('defaults to every item found by a fresh inspection');
     expect(HELP).toContain('default when --mode is omitted');
@@ -282,6 +333,35 @@ describe('CLI output', () => {
     expect(HELP).toContain('forbid');
     expect(HELP).toContain('--plan');
     expect(HELP).toContain('Exit 0');
+  });
+
+  it.each([false, true])('rejects invalid source input with exit code 2 (%s JSON)', async json => {
+    const result = await runCliProcess([
+      'inspect',
+      'not-an-instagram-url',
+      ...(json ? ['--json'] : []),
+    ]);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    if (json) {
+      expect(JSON.parse(result.stderr)).toEqual({
+        type: 'error',
+        message: expect.stringContaining('Invalid SOURCE: expected an Instagram URL'),
+      });
+    } else {
+      expect(result.stderr).toContain('Invalid SOURCE: expected an Instagram URL');
+    }
+  });
+
+  it('rejects WhatsApp Status input with its browser-extension boundary message and exit code 2', async () => {
+    const result = await runCliProcess(['inspect', 'https://web.whatsapp.com/status/123']);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe(
+      'WhatsApp Status downloads are only available in the browser extension.\n'
+    );
   });
 
   it('bounds JSON progress while preserving phase transitions and completion', () => {
