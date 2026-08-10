@@ -16,10 +16,6 @@ export class WhatsAppCaptureSnapshot {
     this.#blob = new Blob(parts, { type: descriptor.mimeType });
   }
 
-  get released(): boolean {
-    return this.#released;
-  }
-
   get blob(): Blob {
     if (!this.#blob) throw new Error('The WhatsApp capture snapshot has been released.');
     return this.#blob;

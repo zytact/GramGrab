@@ -157,7 +157,6 @@ describe('WhatsApp popup-owned capture transfer', () => {
     );
     const downloading = handle.download();
     await vi.waitFor(() => expect(getDownloadCalls()).toHaveLength(1));
-    expect(handle.snapshot.released).toBe(true);
     expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:extension-owned');
     expect(getMockBrowser().runtime.sendMessage).toHaveBeenCalledWith({
       type: 'RECORD_WHATSAPP_HISTORY',
@@ -338,6 +337,21 @@ describe('WhatsApp popup-owned capture transfer', () => {
     ).toBe(false);
   });
 
+  it('cancels a pending capture with a closed cancellation envelope on popup close', async () => {
+    const port = makePort();
+    getMockBrowser().tabs.connect.mockReturnValue(port);
+    const pending = captureWhatsAppVisibleStatus();
+    await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalled());
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    await expect(pending).rejects.toMatchObject({ reason: 'cancelled' });
+    expect(port.postMessage.mock.calls.at(-1)?.[0]).toMatchObject({
+      tag: 'CaptureCancel',
+      reason: 'popup-closed',
+    });
+  });
+
   it('cancels an active browser download at the independent retention ceiling', async () => {
     vi.useFakeTimers();
     const port = makePort();
@@ -377,7 +391,50 @@ describe('WhatsApp popup-owned capture transfer', () => {
     await handle.download();
     vi.advanceTimersByTime(60_000);
     expect(getMockBrowser().downloads.cancel).toHaveBeenCalledWith(1);
-    expect(handle.snapshot.released).toBe(true);
+    expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:extension-owned');
+  });
+
+  it('releases an accepted-but-undownloaded snapshot at the independent retention ceiling', async () => {
+    vi.useFakeTimers();
+    const port = makePort();
+    getMockBrowser().tabs.connect.mockReturnValue(port);
+    const pending = captureWhatsAppVisibleStatus();
+    await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalled());
+    const start = startMessage(port);
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureMetadata',
+      kind: 'photo',
+      mimeType: 'image/jpeg',
+      byteLength: 1,
+      width: 1,
+      height: 1,
+    });
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureChunk',
+      sequence: 0,
+      decodedLength: 1,
+      payload: 'AQ==',
+    });
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureComplete',
+      chunkCount: 1,
+      byteLength: 1,
+    });
+    const handle = await pending;
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(() => handle.snapshot.blob).toThrow('released');
+    expect(getMockBrowser().downloads.cancel).not.toHaveBeenCalled();
   });
 
   it('releases the owned snapshot when the popup closes', async () => {
@@ -416,7 +473,7 @@ describe('WhatsApp popup-owned capture transfer', () => {
     });
     const handle = await pending;
     window.dispatchEvent(new Event('pagehide'));
-    expect(handle.snapshot.released).toBe(true);
+    expect(() => handle.snapshot.blob).toThrow('released');
   });
 
   it('requires an explicit retry click to retain operation identity with a fresh request identity', async () => {

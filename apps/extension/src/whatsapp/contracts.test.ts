@@ -54,6 +54,47 @@ describe('WhatsApp capture contracts', () => {
     ).toBe(false);
   });
 
+  it('rejects unknown tags and excess fields on every public decode boundary', () => {
+    const photoDescriptor = {
+      captureId: createWhatsAppCaptureId(),
+      kind: 'photo',
+      mimeType: 'image/jpeg',
+      byteLength: 1,
+      width: WHATSAPP_MIN_DIMENSION,
+      height: WHATSAPP_MIN_DIMENSION,
+      capturedAt: 1,
+      retentionDeadline: 2,
+    };
+    expect(
+      Either.isLeft(
+        decodeWhatsAppInbound({
+          protocolVersion: 1,
+          requestId,
+          operationId,
+          tag: 'Unknown',
+        })
+      )
+    ).toBe(true);
+    expect(
+      Either.isLeft(
+        decodeWhatsAppOutbound({
+          protocolVersion: 1,
+          requestId,
+          operationId,
+          tag: 'CaptureFailure',
+          reason: 'not-visible',
+          secret: 'must-not-cross-boundary',
+        })
+      )
+    ).toBe(true);
+    expect(Either.isLeft(decodeWhatsAppDescriptor({ ...photoDescriptor, durationMs: 1 }))).toBe(
+      true
+    );
+    expect(
+      Either.isLeft(decodeWhatsAppDescriptor({ ...photoDescriptor, secret: 'must-not-retain' }))
+    ).toBe(true);
+  });
+
   it('requires exact kind and MIME agreement in metadata and descriptors', () => {
     const metadata = {
       protocolVersion: 1,

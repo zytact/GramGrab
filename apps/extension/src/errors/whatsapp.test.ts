@@ -161,6 +161,13 @@ describe('WhatsApp structural diagnostics', () => {
       operationId: '00000000-0000-4000-8000-000000000001',
       requestId: '10000000-0000-4000-8000-000000000001',
       cause: 'FREE_FORM_CAUSE_SECRET',
+      mediaKey: 'MEDIA_KEY_SECRET',
+      signedToken: 'SIGNED_TOKEN_SECRET',
+      payload: 'PAYLOAD_BYTES_SECRET',
+      caption: 'CAPTION_SECRET',
+      displayName: 'DISPLAY_NAME_SECRET',
+      hash: 'HASH_SECRET',
+      screenshot: 'SCREENSHOT_SECRET',
     };
     for (const [field, secret] of Object.entries(secrets)) {
       expect(json).not.toContain(secret);

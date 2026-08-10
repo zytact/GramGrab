@@ -92,31 +92,35 @@ describe('isolated WhatsApp foreground extraction', () => {
     });
   });
 
-  it('aborts when the guarded foreground node changes during byte acquisition', async () => {
+  it('fails the advancement race rather than returning the next Status', async () => {
     const { foreground } = readyPhoto(document);
     const observation = inspectVisibleStatus(document);
     expect(observation.tag).toBe('ready');
     if (observation.tag !== 'ready') return;
-    let first = true;
-    const stream = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (first) {
-          first = false;
-          controller.enqueue(new Uint8Array([1, 2]));
-          foreground.src = 'blob:replacement-status';
-        } else {
-          controller.enqueue(new Uint8Array([3, 4]));
-          controller.close();
-        }
-      },
+    const fetchBlob = vi.fn().mockImplementation(() => {
+      let first = true;
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (first) {
+            first = false;
+            controller.enqueue(new Uint8Array([1, 2]));
+            foreground.src = 'blob:next-status';
+          } else {
+            controller.enqueue(new Uint8Array([3, 4]));
+            controller.close();
+          }
+        },
+      });
+      return Promise.resolve(new Response(stream, { headers: { 'Content-Type': 'image/jpeg' } }));
     });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response(stream, { headers: { 'Content-Type': 'image/jpeg' } }))
-    );
+    vi.stubGlobal('fetch', fetchBlob);
     await expect(acquireVisibleStatusBytes(observation.candidate, document)).rejects.toMatchObject({
       reason: 'status-changed',
     } satisfies Partial<ControllerFailure>);
+    expect(fetchBlob).toHaveBeenCalledExactlyOnceWith(
+      'blob:status-a',
+      expect.objectContaining({ credentials: 'same-origin' })
+    );
   });
 
   it('validates controller outbound envelopes as closed canonical JSON', () => {

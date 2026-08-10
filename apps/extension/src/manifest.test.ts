@@ -62,7 +62,11 @@ describe('manifest generation', () => {
         host_permissions: expectedHostPermissions,
       });
       expect(createManifest(browser)).not.toHaveProperty('content_scripts');
+      expect(createManifest(browser)).not.toHaveProperty('optional_host_permissions');
       expect(createManifest(browser).host_permissions).not.toContain('https://web.whatsapp.com/*');
+      expect(createManifest(browser).permissions).toEqual(
+        expect.arrayContaining(['activeTab', 'scripting'])
+      );
     }
   });
 

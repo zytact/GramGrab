@@ -14,14 +14,10 @@ export const WHATSAPP_MAX_DIMENSION = 16_384;
 export const WHATSAPP_MIN_VIDEO_DURATION_MS = 1;
 export const WHATSAPP_MAX_VIDEO_DURATION_MS = 600_000;
 
-export const WHATSAPP_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
-export const WHATSAPP_VIDEO_MIME_TYPES = ['video/mp4'] as const;
-export const WHATSAPP_MIME_TYPES = [
-  ...WHATSAPP_PHOTO_MIME_TYPES,
-  ...WHATSAPP_VIDEO_MIME_TYPES,
-] as const;
+const WHATSAPP_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+const WHATSAPP_VIDEO_MIME_TYPES = ['video/mp4'] as const;
+const WHATSAPP_MIME_TYPES = [...WHATSAPP_PHOTO_MIME_TYPES, ...WHATSAPP_VIDEO_MIME_TYPES] as const;
 
-export type WhatsAppMediaKind = 'photo' | 'video';
 export type WhatsAppMimeType = (typeof WHATSAPP_MIME_TYPES)[number];
 
 export function isWhatsAppWebUrl(value: string | undefined): boolean {
@@ -32,19 +28,6 @@ export function isWhatsAppWebUrl(value: string | undefined): boolean {
   } catch {
     return false;
   }
-}
-
-export function isWhatsAppMimeType(value: string): value is WhatsAppMimeType {
-  return (WHATSAPP_MIME_TYPES as readonly string[]).includes(value);
-}
-
-export function isWhatsAppMimeForKind(
-  kind: WhatsAppMediaKind,
-  mimeType: string
-): mimeType is WhatsAppMimeType {
-  return kind === 'video'
-    ? (WHATSAPP_VIDEO_MIME_TYPES as readonly string[]).includes(mimeType)
-    : (WHATSAPP_PHOTO_MIME_TYPES as readonly string[]).includes(mimeType);
 }
 
 export function extensionForWhatsAppMime(

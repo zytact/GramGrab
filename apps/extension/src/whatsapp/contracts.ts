@@ -13,8 +13,6 @@ import {
   WHATSAPP_RETENTION_MS,
   WHATSAPP_TRANSFER_TIMEOUT_MS,
   WHATSAPP_IDLE_TIMEOUT_MS,
-  type WhatsAppMediaKind,
-  type WhatsAppMimeType,
 } from './limits.ts';
 
 const ProtocolVersion = Schema.Literal(WHATSAPP_PROTOCOL_VERSION);
@@ -106,12 +104,7 @@ export class CaptureCancel extends Schema.Class<CaptureCancel>('CaptureCancel')(
   reason: CancelReason,
 }) {}
 
-export const WhatsAppInboundEnvelope = Schema.Union(
-  CaptureStart,
-  ChunkAck,
-  CaptureAccept,
-  CaptureCancel
-);
+const WhatsAppInboundEnvelope = Schema.Union(CaptureStart, ChunkAck, CaptureAccept, CaptureCancel);
 export type WhatsAppInboundEnvelope = Schema.Schema.Type<typeof WhatsAppInboundEnvelope>;
 
 class PhotoCaptureMetadata extends Schema.Class<PhotoCaptureMetadata>('PhotoCaptureMetadata')({
@@ -139,7 +132,7 @@ class VideoCaptureMetadata extends Schema.Class<VideoCaptureMetadata>('VideoCapt
   durationMs: DurationMs,
 }) {}
 
-export const CaptureMetadata = Schema.Union(PhotoCaptureMetadata, VideoCaptureMetadata);
+const CaptureMetadata = Schema.Union(PhotoCaptureMetadata, VideoCaptureMetadata);
 export type CaptureMetadata = Schema.Schema.Type<typeof CaptureMetadata>;
 
 export class CaptureChunk extends Schema.Class<CaptureChunk>('CaptureChunk')({
@@ -152,7 +145,7 @@ export class CaptureChunk extends Schema.Class<CaptureChunk>('CaptureChunk')({
   payload: CanonicalBase64Shape,
 }) {}
 
-export class CaptureComplete extends Schema.Class<CaptureComplete>('CaptureComplete')({
+class CaptureComplete extends Schema.Class<CaptureComplete>('CaptureComplete')({
   protocolVersion: ProtocolVersion,
   requestId: RequestIdSchema,
   operationId: OperationIdSchema,
@@ -170,13 +163,12 @@ export class CaptureFailure extends Schema.Class<CaptureFailure>('CaptureFailure
   shape: Schema.optional(WhatsAppShapeEvidence),
 }) {}
 
-export const WhatsAppOutboundEnvelope = Schema.Union(
+const WhatsAppOutboundEnvelope = Schema.Union(
   CaptureMetadata,
   CaptureChunk,
   CaptureComplete,
   CaptureFailure
 );
-export type WhatsAppOutboundEnvelope = Schema.Schema.Type<typeof WhatsAppOutboundEnvelope>;
 
 const CaptureTime = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
 
@@ -213,8 +205,6 @@ export const WhatsAppCaptureDescriptor = Schema.Union(
 );
 export type WhatsAppCaptureDescriptor = Schema.Schema.Type<typeof WhatsAppCaptureDescriptor>;
 
-export type WhatsAppCaptureKind = WhatsAppMediaKind;
-export type WhatsAppCaptureMimeType = WhatsAppMimeType;
 export type WhatsAppCaptureId = Schema.Schema.Type<typeof CaptureIdSchema>;
 
 export function createWhatsAppCaptureId(): WhatsAppCaptureId {
@@ -237,8 +227,4 @@ export function decodeWhatsAppDescriptor(value: unknown) {
 
 export function encodeWhatsAppInbound(value: WhatsAppInboundEnvelope): unknown {
   return Schema.encodeSync(WhatsAppInboundEnvelope, StrictParseOptions)(value);
-}
-
-export function encodeWhatsAppOutbound(value: WhatsAppOutboundEnvelope): unknown {
-  return Schema.encodeSync(WhatsAppOutboundEnvelope, StrictParseOptions)(value);
 }

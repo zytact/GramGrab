@@ -243,7 +243,7 @@ export function inspectVisibleStatus(
     : { tag: 'not-ready', reason: 'media-loading', candidate };
 }
 
-export function guardMatches(
+function guardMatches(
   guard: ForegroundCandidate,
   document: Document = globalThis.document
 ): boolean {
@@ -270,7 +270,7 @@ function sleep(milliseconds: number): Promise<void> {
   return new Promise(resolve => globalThis.setTimeout(resolve, milliseconds));
 }
 
-export async function waitForReady(
+async function waitForReady(
   initial: ForegroundCandidate,
   document: Document = globalThis.document,
   timeoutMs = WHATSAPP_IDLE_TIMEOUT_MS
@@ -527,7 +527,7 @@ interface OutboundFailure extends InboundBase {
 }
 type OutboundMessage = OutboundMetadata | OutboundChunk | OutboundComplete | OutboundFailure;
 
-export function decodeControllerInbound(value: unknown): InboundMessage | undefined {
+function decodeControllerInbound(value: unknown): InboundMessage | undefined {
   if (!isRecord(value)) return undefined;
   const baseKeys = ['protocolVersion', 'requestId', 'operationId', 'tag'];
   if (

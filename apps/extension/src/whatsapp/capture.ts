@@ -5,6 +5,7 @@ import { createOperationId, createRequestId, type OperationId } from '../downloa
 import {
   CaptureAccept,
   CaptureCancel,
+  CaptureChunk,
   CaptureFailure,
   CaptureStart,
   ChunkAck,
@@ -14,7 +15,6 @@ import {
   decodeWhatsAppDescriptor,
   type CaptureMetadata as CaptureMetadataValue,
   type WhatsAppCaptureDescriptor,
-  type WhatsAppOutboundEnvelope,
   type WhatsAppShapeEvidence,
 } from './contracts.ts';
 import {
@@ -165,7 +165,7 @@ function metadataDescriptor(
 
 let activeSession: WhatsAppCaptureSession | undefined;
 
-export class WhatsAppCaptureSession {
+class WhatsAppCaptureSession {
   readonly operationId: OperationId;
   #requestId: ReturnType<typeof createRequestId>;
   #browser: BrowserShim;
@@ -397,7 +397,7 @@ export class WhatsAppCaptureSession {
     this.#metadata = message;
   }
 
-  #handleChunk(message: Extract<WhatsAppOutboundEnvelope, { tag: 'CaptureChunk' }>): void {
+  #handleChunk(message: CaptureChunk): void {
     if (!this.#metadata || this.#settled || message.sequence !== this.#expectedSequence) {
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
       return;
@@ -442,7 +442,7 @@ export class WhatsAppCaptureSession {
     }
   }
 
-  #handleComplete(message: Extract<WhatsAppOutboundEnvelope, { tag: 'CaptureComplete' }>): void {
+  #handleComplete(message: { readonly chunkCount: number; readonly byteLength: number }): void {
     if (
       !this.#metadata ||
       this.#settled ||
@@ -642,6 +642,45 @@ export class WhatsAppCaptureSession {
     }
   }
 
+  #clearTimersAndListeners(): void {
+    for (const timer of [this.#absoluteTimer, this.#idleTimer, this.#retentionTimer]) {
+      if (timer !== undefined) globalThis.clearTimeout(timer);
+    }
+    this.#absoluteTimer = undefined;
+    this.#idleTimer = undefined;
+    this.#retentionTimer = undefined;
+    for (const remove of [
+      this.#removePortListeners,
+      this.#removeTabListeners,
+      this.#removeWindowListeners,
+      this.#removeDownloadListener,
+    ])
+      remove?.();
+    this.#removePortListeners = undefined;
+    this.#removeTabListeners = undefined;
+    this.#removeWindowListeners = undefined;
+    this.#removeDownloadListener = undefined;
+  }
+
+  #disconnectPort(): void {
+    const port = this.#port;
+    this.#port = undefined;
+    try {
+      port?.disconnect();
+    } catch {
+      // The tab or popup already disconnected the port.
+    }
+  }
+
+  #cancelActiveDownload(): void {
+    if (this.#downloadId === undefined || this.#downloadTerminal) return;
+    try {
+      void this.#browser.downloads.cancel(this.#downloadId).catch(() => undefined);
+    } catch {
+      this.#downloadTerminal = true;
+    }
+  }
+
   release(
     reason:
       | 'user-cancelled'
@@ -654,42 +693,13 @@ export class WhatsAppCaptureSession {
     if (this.#released) return;
     this.#sendCancel(reason);
     this.#released = true;
-    if (this.#absoluteTimer !== undefined) globalThis.clearTimeout(this.#absoluteTimer);
-    if (this.#idleTimer !== undefined) globalThis.clearTimeout(this.#idleTimer);
-    if (this.#retentionTimer !== undefined) globalThis.clearTimeout(this.#retentionTimer);
-    this.#absoluteTimer = undefined;
-    this.#idleTimer = undefined;
-    this.#retentionTimer = undefined;
+    this.#clearTimersAndListeners();
     this.#chunks = [];
     this.#metadata = undefined;
-    this.#removePortListeners?.();
-    this.#removePortListeners = undefined;
-    this.#removeTabListeners?.();
-    this.#removeTabListeners = undefined;
-    this.#removeWindowListeners?.();
-    this.#removeWindowListeners = undefined;
-    this.#removeDownloadListener?.();
-    this.#removeDownloadListener = undefined;
-    const port = this.#port;
-    this.#port = undefined;
-    if (port) {
-      try {
-        port.disconnect();
-      } catch {
-        // The tab or popup already disconnected the port.
-      }
-    }
-    if (this.#downloadId !== undefined && !this.#downloadTerminal) {
-      try {
-        void this.#browser.downloads.cancel(this.#downloadId).catch(() => undefined);
-      } catch {
-        this.#downloadTerminal = true;
-      }
-    }
+    this.#disconnectPort();
+    this.#cancelActiveDownload();
     this.#releaseSnapshot();
-    if (!this.#settled) {
-      this.#rejectCapture?.(new WhatsAppCaptureError('cancelled'));
-    }
+    if (!this.#settled) this.#rejectCapture?.(new WhatsAppCaptureError('cancelled'));
     this.#resolveCapture = undefined;
     this.#rejectCapture = undefined;
     if (activeSession === this) activeSession = undefined;
@@ -703,8 +713,4 @@ export async function captureWhatsAppVisibleStatus(
   const session = new WhatsAppCaptureSession(options);
   activeSession = session;
   return session.start();
-}
-
-export function nameFreeWhatsAppFilename(descriptor: WhatsAppCaptureDescriptor): string {
-  return nameFreeFilename(descriptor);
 }
