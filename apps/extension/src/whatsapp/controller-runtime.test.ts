@@ -39,6 +39,14 @@ function readyVideo(document: Document) {
   return { player, video };
 }
 
+function wrapWithMarker(document: Document, media: Element, marker: string) {
+  const wrapper = document.createElement('div');
+  wrapper.dataset.testid = marker;
+  media.replaceWith(wrapper);
+  wrapper.append(media);
+  return wrapper;
+}
+
 describe('isolated WhatsApp foreground extraction', () => {
   beforeEach(() => document.body.replaceChildren());
   afterEach(() => vi.unstubAllGlobals());
@@ -78,6 +86,44 @@ describe('isolated WhatsApp foreground extraction', () => {
     );
     const acquired = await acquireVisibleStatusBytes(observation.candidate, document);
     expect(acquired.mimeType).toBe('video/mp4');
+  });
+
+  it('recognizes a video whose stable marker moved to an ancestor wrapper', () => {
+    const { video } = readyVideo(document);
+    delete video.dataset.testid;
+    wrapWithMarker(document, video, 'status-video');
+
+    const observation = inspectVisibleStatus(document);
+    expect(observation.tag).toBe('ready');
+    if (observation.tag !== 'ready') return;
+    expect(observation.candidate.media).toBe(video);
+  });
+
+  it('accepts a marked video served by the page-owned streaming endpoint', () => {
+    const { video } = readyVideo(document);
+    delete video.dataset.testid;
+    video.src = '/stream/video?key=status';
+    wrapWithMarker(document, video, 'status-video');
+
+    const observation = inspectVisibleStatus(document);
+    expect(observation.tag).toBe('ready');
+    if (observation.tag !== 'ready') return;
+    expect(observation.candidate.media).toBe(video);
+    expect(new URL(observation.candidate.source).origin).toBe(document.location.origin);
+  });
+
+  it('scopes photo selection to the marked wrapper when the player retains other blobs', () => {
+    const { player, backing, foreground } = readyPhoto(document);
+    const marker = wrapWithMarker(document, backing, 'status-image');
+    marker.append(foreground);
+    const retained = document.createElement('img');
+    retained.src = 'blob:retained-status';
+    player.append(retained);
+
+    const observation = inspectVisibleStatus(document);
+    expect(observation.tag).toBe('ready');
+    if (observation.tag !== 'ready') return;
+    expect(observation.candidate.media).toBe(foreground);
   });
 
   it('waits for a stable loading photo before acquiring it', async () => {

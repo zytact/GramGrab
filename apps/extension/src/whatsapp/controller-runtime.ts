@@ -98,10 +98,29 @@ function hasMarker(element: Element, marker: string): boolean {
   );
 }
 
+function hasMarkerWithinPlayer(element: Element, player: Element, marker: string): boolean {
+  let current: Element | null = element;
+  while (current) {
+    if (hasMarker(current, marker)) return true;
+    if (current === player) return false;
+    current = current.parentElement;
+  }
+  return false;
+}
+
 function sourceOf(media: HTMLImageElement | HTMLVideoElement): string {
   return media instanceof HTMLVideoElement
     ? media.currentSrc || media.src
     : media.currentSrc || media.src;
+}
+
+function isPageOwnedSource(source: string, document: Document): boolean {
+  if (source.startsWith('blob:')) return true;
+  try {
+    return new URL(source, document.baseURI).origin === document.location.origin;
+  } catch {
+    return false;
+  }
 }
 
 function emptyShape(): WhatsAppShapeEvidence {
@@ -132,7 +151,9 @@ function shapeFor(player: Element | undefined, playerCount: number): WhatsAppSha
   const imageSources = images.map(image => sourceOf(image));
   const blobImageCount = imageSources.filter(source => source.startsWith('blob:')).length;
   const dataImageCount = imageSources.filter(source => source.startsWith('data:')).length;
-  const markedVideoCount = videos.filter(video => hasMarker(video, 'status-video')).length;
+  const markedVideoCount = videos.filter(video =>
+    hasMarkerWithinPlayer(video, player, 'status-video')
+  ).length;
   return {
     playerCount: boundedCount(playerCount, 2),
     imageCount: boundedCount(images.length, 8),
@@ -171,17 +192,15 @@ export function inspectVisibleStatus(
   if (!player) return { tag: 'format-changed', shape: shapeFor(undefined, players.length) };
   const images = Array.from(player.querySelectorAll('img'));
   const videos = Array.from(player.querySelectorAll('video'));
-  const markedVideos = videos.filter(video => hasMarker(video, 'status-video'));
+  const markedVideos = videos.filter(video => hasMarkerWithinPlayer(video, player, 'status-video'));
   const shape = shapeFor(player, players.length);
 
   if (videos.length > 0 || markedVideos.length > 0) {
-    if (videos.length !== 1 || markedVideos.length !== 1) {
-      return { tag: 'format-changed', shape };
-    }
-    const video = videos[0];
+    if (markedVideos.length !== 1) return { tag: 'format-changed', shape };
+    const video = markedVideos[0];
     if (!video) return { tag: 'format-changed', shape };
     const source = sourceOf(video);
-    if (!source.startsWith('blob:')) return { tag: 'format-changed', shape };
+    if (!isPageOwnedSource(source, document)) return { tag: 'format-changed', shape };
     const durationMs = Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : 0;
     const ready =
       video.readyState >= 2 &&
@@ -208,10 +227,23 @@ export function inspectVisibleStatus(
       : { tag: 'not-ready', reason: 'media-loading', candidate };
   }
 
-  const foreground = images.filter(image => sourceOf(image).startsWith('blob:'));
-  const invalidImageSources = images.filter(image => {
+  const markedImages = images.filter(image => hasMarkerWithinPlayer(image, player, 'status-image'));
+  const candidateImages = markedImages.length > 0 ? markedImages : images;
+  const foreground = candidateImages.filter(image => {
     const source = sourceOf(image);
-    return source.length > 0 && !source.startsWith('blob:') && !source.startsWith('data:');
+    return markedImages.length > 0
+      ? isPageOwnedSource(source, document) && !source.startsWith('data:')
+      : source.startsWith('blob:');
+  });
+  const invalidImageSources = candidateImages.filter(image => {
+    const source = sourceOf(image);
+    return (
+      source.length > 0 &&
+      !source.startsWith('data:') &&
+      (markedImages.length === 0
+        ? !source.startsWith('blob:')
+        : !isPageOwnedSource(source, document))
+    );
   });
   if (foreground.length > 1 || invalidImageSources.length > 0) {
     return { tag: 'format-changed', shape };
