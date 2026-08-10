@@ -124,7 +124,12 @@ const INVALID_SOURCE_MESSAGE =
   'Invalid SOURCE: expected an Instagram URL or bare username containing only letters, numbers, periods, or underscores.';
 const WHATSAPP_STATUS_UNAVAILABLE_MESSAGE =
   'WhatsApp Status downloads are only available in the browser extension.';
-const WHATSAPP_MARKETING_HOSTS = new Set(['wa.me', 'whatsapp.com', 'www.whatsapp.com']);
+const BARE_NON_SOURCE_HOSTS = new Set([
+  'wa.me',
+  'whatsapp.com',
+  'www.whatsapp.com',
+  'web.whatsapp.com',
+]);
 const INSTAGRAM_HOSTS = new Set(['instagram.com', 'www.instagram.com']);
 
 function parseHttpUrl(value: string): URL | undefined {
@@ -138,9 +143,8 @@ function resolveSourceUrl(value: string | undefined, message: string): string {
   if (source.startsWith('-')) throw new Error(message);
   const normalizedSource = source.toLowerCase();
   const url = parseHttpUrl(source);
-  const sourceHost = url?.hostname ?? normalizedSource;
-  if (sourceHost === 'web.whatsapp.com') throw new Error(WHATSAPP_STATUS_UNAVAILABLE_MESSAGE);
-  if (WHATSAPP_MARKETING_HOSTS.has(normalizedSource)) throw new Error(INVALID_SOURCE_MESSAGE);
+  if (url?.hostname === 'web.whatsapp.com') throw new Error(WHATSAPP_STATUS_UNAVAILABLE_MESSAGE);
+  if (BARE_NON_SOURCE_HOSTS.has(normalizedSource)) throw new Error(INVALID_SOURCE_MESSAGE);
   if (INSTAGRAM_USERNAME.test(source)) return `https://www.instagram.com/stories/${source}/`;
   if (url && INSTAGRAM_HOSTS.has(url.hostname)) return source;
   throw new Error(INVALID_SOURCE_MESSAGE);

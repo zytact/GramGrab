@@ -9,6 +9,7 @@ import {
   CaptureFailure,
   CaptureStart,
   ChunkAck,
+  createWhatsAppCaptureId,
   decodeWhatsAppInbound,
   decodeWhatsAppOutbound,
   encodeWhatsAppInbound,
@@ -108,10 +109,6 @@ function removePortListener<T>(
   event.removeListener?.(callback);
 }
 
-function captureId(): string {
-  return crypto.randomUUID();
-}
-
 function nameFreeFilename(descriptor: WhatsAppCaptureDescriptor): string {
   const stamp = new Date(descriptor.capturedAt)
     .toISOString()
@@ -154,7 +151,7 @@ function metadataDescriptor(
 ): WhatsAppCaptureDescriptor | undefined {
   const captureTime = now();
   const result = decodeWhatsAppDescriptor({
-    captureId: captureId(),
+    captureId: createWhatsAppCaptureId(),
     kind: metadata.kind,
     mimeType: metadata.mimeType,
     byteLength: metadata.byteLength,
@@ -619,15 +616,7 @@ class WhatsAppCaptureSession {
     this.release(cancelReason);
   }
 
-  #sendCancel(
-    reason:
-      | 'user-cancelled'
-      | 'popup-closed'
-      | 'timeout'
-      | 'protocol-error'
-      | 'tab-invalidated'
-      | 'port-disconnected'
-  ): void {
+  #sendCancel(reason: CaptureCancel['reason']): void {
     if (!this.#port || this.#accepted || this.#settled) return;
     try {
       this.#post(
@@ -685,15 +674,7 @@ class WhatsAppCaptureSession {
     }
   }
 
-  release(
-    reason:
-      | 'user-cancelled'
-      | 'popup-closed'
-      | 'timeout'
-      | 'protocol-error'
-      | 'tab-invalidated'
-      | 'port-disconnected' = 'popup-closed'
-  ): void {
+  release(reason: CaptureCancel['reason'] = 'popup-closed'): void {
     if (this.#released) return;
     this.#sendCancel(reason);
     this.#released = true;

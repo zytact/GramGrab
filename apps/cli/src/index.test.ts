@@ -130,14 +130,17 @@ describe('CLI capability grammar', () => {
     }
   );
 
-  it.each(['https://wa.me/12345', 'https://whatsapp.com/', 'wa.me', 'whatsapp.com'])(
-    'keeps WhatsApp marketing links on generic source validation: %s',
-    source => {
-      expect(() => parseCliArguments(['inspect', source])).toThrow(
-        'Invalid SOURCE: expected an Instagram URL or bare username'
-      );
-    }
-  );
+  it.each([
+    'https://wa.me/12345',
+    'https://whatsapp.com/',
+    'wa.me',
+    'whatsapp.com',
+    'web.whatsapp.com',
+  ])('keeps WhatsApp marketing links on generic source validation: %s', source => {
+    expect(() => parseCliArguments(['inspect', source])).toThrow(
+      'Invalid SOURCE: expected an Instagram URL or bare username'
+    );
+  });
 
   it('reports a missing source when an option occupies its position', () => {
     expect(() => parseCliArguments(['inspect', '--json'])).toThrow('Missing inspect SOURCE.');
