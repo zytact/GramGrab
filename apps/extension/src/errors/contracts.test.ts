@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { FAILURE_CODES, OperationFailure, decodeOperationFailure } from './contracts.ts';
+import {
+  FAILURE_CODES,
+  OperationFailure,
+  decodeOperationFailure,
+  isOperationFailure,
+} from './contracts.ts';
 import { FAILURE_PRESENTATION } from './presentation.ts';
 
 const structuralEvidence = {
@@ -79,7 +84,7 @@ describe('operation error contracts', () => {
     await expect(decodeOperationFailure(whatsAppFailure)).resolves.toMatchObject(whatsAppFailure);
   });
 
-  it('decodes legacy Instagram failures into the Instagram branch', async () => {
+  it('decodes legacy Instagram failures without classifying raw values as runtime failures', async () => {
     await expect(
       decodeOperationFailure({
         code: 'IG_RESPONSE_SHAPE_UNKNOWN',
@@ -87,6 +92,22 @@ describe('operation error contracts', () => {
         scope: 'batch',
       })
     ).resolves.toMatchObject(instagramFailure);
+    expect(
+      isOperationFailure({
+        code: 'IG_RESPONSE_SHAPE_UNKNOWN',
+        phase: 'source',
+        scope: 'batch',
+      })
+    ).toBe(false);
+    expect(
+      isOperationFailure(
+        OperationFailure.make({
+          code: 'IG_RESPONSE_SHAPE_UNKNOWN',
+          phase: 'source',
+          scope: 'batch',
+        })
+      )
+    ).toBe(true);
   });
 
   it('rejects invalid platform, code, and evidence combinations', async () => {

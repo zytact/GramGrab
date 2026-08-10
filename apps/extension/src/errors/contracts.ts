@@ -241,7 +241,9 @@ function makeOperationFailure(
 export const OperationFailure = Object.assign(OperationFailureSchema, {
   make: makeOperationFailure,
 });
-export const isOperationFailure = Schema.is(OperationFailureSchema);
+export const isOperationFailure = Schema.is(
+  Schema.Union(InstagramOperationFailure, WhatsAppOperationFailure)
+);
 
 export class OperationWarning extends Schema.Class<OperationWarning>('OperationWarning')({
   code: WarningCodeSchema,

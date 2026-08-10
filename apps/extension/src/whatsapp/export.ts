@@ -10,13 +10,18 @@ import type { AttemptOperation } from '../download/attempt.ts';
 import { browser } from '../lib/browser.ts';
 import { isAcceptedHistorySaved, type WhatsAppCaptureHandle } from './capture.ts';
 
-function monitorAcceptedDownload(downloadId: number, retentionDeadline: number): void {
+function monitorAcceptedDownload(
+  downloadId: number,
+  retentionDeadline: number,
+  onTerminal: () => void
+): void {
   let settled = false;
   const cleanup = () => {
     if (settled) return;
     settled = true;
     globalThis.clearTimeout(timer);
     browser.downloads.onChanged.removeListener(onChanged);
+    onTerminal();
   };
   const onChanged = (delta: { id: number; state?: { current?: string } }) => {
     if (
@@ -62,9 +67,11 @@ export async function exportWhatsAppFrame(
       filename: operation.filename,
       saveAs: false,
     });
-    monitorAcceptedDownload(downloadId, handle.descriptor.retentionDeadline);
+    const pendingFrameUrl = frameUrl;
+    monitorAcceptedDownload(downloadId, handle.descriptor.retentionDeadline, () =>
+      URL.revokeObjectURL(pendingFrameUrl)
+    );
     handle.release();
-    URL.revokeObjectURL(frameUrl);
     frameUrl = undefined;
     const response = await browser.runtime
       .sendMessage({

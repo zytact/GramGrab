@@ -172,6 +172,7 @@ describe('Popup', () => {
 
     await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
     await waitFor(() => expect(download).toHaveBeenCalledOnce());
+    expect(release).not.toHaveBeenCalled();
     capture.mockRestore();
   });
 
@@ -228,7 +229,9 @@ describe('Popup', () => {
 
     if (!resolveExport) throw new Error('Expected frame export to be pending.');
     resolveExport();
-    expect(await screen.findByRole('button', { name: 'Download started' })).toBeDefined();
+    expect(
+      await screen.findByRole('button', { name: 'Capture another Visible Status' })
+    ).toBeDefined();
     frameExport.mockRestore();
     capture.mockRestore();
   });

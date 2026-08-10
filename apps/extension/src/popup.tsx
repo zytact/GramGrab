@@ -1754,7 +1754,7 @@ function WhatsAppCaptureButton({
       type="button"
       className="btn"
       onClick={onCapture}
-      disabled={disabled || status === 'ready' || status === 'downloading' || status === 'started'}
+      disabled={disabled || status === 'ready' || status === 'downloading'}
       aria-busy={status === 'capturing'}
     >
       {whatsAppCaptureButtonLabel(status)}
@@ -1765,7 +1765,7 @@ function WhatsAppCaptureButton({
 function whatsAppCaptureButtonLabel(status: WhatsAppCaptureSectionProps['status']) {
   if (status === 'capturing') return <LoadingButtonLabel>Capturing…</LoadingButtonLabel>;
   if (status === 'downloading') return <LoadingButtonLabel>Downloading…</LoadingButtonLabel>;
-  if (status === 'started') return 'Download started';
+  if (status === 'started') return 'Capture another Visible Status';
   return status === 'failed' ? 'Capture Visible Status again' : 'Capture Visible Status';
 }
 

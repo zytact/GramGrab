@@ -131,7 +131,9 @@ class WhatsAppDiagnosticsReport extends Schema.Class<WhatsAppDiagnosticsReport>(
   diagnosticsVersion: Schema.Literal(2),
   platform: Schema.Literal('whatsapp'),
   capturedAt: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
-  extensionVersion: Schema.String.pipe(Schema.pattern(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u)),
+  extensionVersion: Schema.String.pipe(
+    Schema.pattern(/^\d+(?:\.\d+){0,3}(?:[-+][0-9A-Za-z.-]+)?$/u)
+  ),
   browser: DiagnosticsBrowser,
   failure: WhatsAppDiagnosticFailure,
   evidence: WhatsAppStructuralEvidence,

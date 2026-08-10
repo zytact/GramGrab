@@ -34,7 +34,7 @@ const descriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
   height: 480,
   durationMs: 1_000,
   capturedAt: 1,
-  retentionDeadline: 60_001,
+  retentionDeadline: 1_787_000_000_000,
 });
 
 describe('exportWhatsAppFrame', () => {
@@ -50,7 +50,7 @@ describe('exportWhatsAppFrame', () => {
 
   afterEach(() => vi.useRealTimers());
 
-  it('releases the capture and frame URL before a stalled History write', async () => {
+  it('releases the capture immediately and the frame URL when the download terminates', async () => {
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
     const release = vi.fn(() => snapshot.release());
     let resolveHistory: ((response: { saved: false }) => void) | undefined;
@@ -74,6 +74,11 @@ describe('exportWhatsAppFrame', () => {
     await vi.waitFor(() => expect(getDownloadCalls()).toHaveLength(1));
     expect(release).toHaveBeenCalledOnce();
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:captured-status');
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:exported-frame');
+
+    const onChanged = getMockBrowser().downloads.onChanged.addListener.mock.calls[0]?.[0];
+    if (!onChanged) throw new Error('Expected a download listener.');
+    onChanged({ id: 1, state: { current: 'complete' } });
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:exported-frame');
 
     if (!resolveHistory) throw new Error('Expected History persistence to be pending.');
@@ -87,7 +92,7 @@ describe('exportWhatsAppFrame', () => {
 
   it('cancels a frame download that is still active at the retention ceiling', async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(1_000);
+    vi.setSystemTime(1_786_999_940_000);
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
 
     await exportWhatsAppFrame(
@@ -101,7 +106,7 @@ describe('exportWhatsAppFrame', () => {
       operation
     );
 
-    await vi.advanceTimersByTimeAsync(60_001);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(getMockBrowser().downloads.cancel).toHaveBeenCalledExactlyOnceWith(1);
   });
 });

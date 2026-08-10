@@ -1,7 +1,19 @@
 import { access, readFile } from 'node:fs/promises';
 
 const targets = ['chromium', 'firefox'];
-const whatsappHostPattern = /(?:^|\.)web\.whatsapp\.com/u;
+const whatsAppMatchingHosts = new Set([
+  '<all_urls>',
+  '*',
+  '*.com',
+  '*.whatsapp.com',
+  '*.web.whatsapp.com',
+  'web.whatsapp.com',
+]);
+
+function matchesWhatsAppHost(permission) {
+  const host = /^[^:]+:\/\/([^/]+)\//u.exec(permission)?.[1] ?? permission;
+  return whatsAppMatchingHosts.has(host);
+}
 
 for (const target of targets) {
   const root = `extension/${target}`;
@@ -17,7 +29,7 @@ for (const target of targets) {
   ) {
     throw new Error(`${target}: activeTab and scripting are both required`);
   }
-  if (hosts.some(host => whatsappHostPattern.test(host))) {
+  if (hosts.some(matchesWhatsAppHost)) {
     throw new Error(`${target}: WhatsApp host permissions are forbidden`);
   }
   if ('content_scripts' in manifest) {

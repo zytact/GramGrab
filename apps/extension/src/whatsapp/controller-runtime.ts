@@ -5,6 +5,7 @@ const WHATSAPP_MAX_CHUNK_BYTES = 256 * 1024;
 const WHATSAPP_MAX_CHUNKS = 256;
 const WHATSAPP_IDLE_TIMEOUT_MS = 5_000;
 const WHATSAPP_TRANSFER_TIMEOUT_MS = 30_000;
+const WHATSAPP_RETENTION_MS = 60_000;
 const WHATSAPP_MIN_DIMENSION = 1;
 const WHATSAPP_MAX_DIMENSION = 16_384;
 const WHATSAPP_MIN_VIDEO_DURATION_MS = 1;
@@ -974,9 +975,9 @@ export function installWhatsAppController(): void {
     }
   };
 
-  const resetIdleTimer = () => {
+  const resetIdleTimer = (timeoutMs = WHATSAPP_IDLE_TIMEOUT_MS) => {
     if (idleTimer !== undefined) globalThis.clearTimeout(idleTimer);
-    idleTimer = globalThis.setTimeout(() => fail('transfer-failed'), WHATSAPP_IDLE_TIMEOUT_MS);
+    idleTimer = globalThis.setTimeout(() => fail('transfer-failed'), timeoutMs);
   };
 
   const cleanupPort = () => {
@@ -1032,6 +1033,10 @@ export function installWhatsAppController(): void {
   const sendFailure = (reason: ControllerFailure['reason'], shape?: WhatsAppShapeEvidence) => {
     if (terminal || !port) return;
     terminal = true;
+    if (!isUuid(currentOperationId)) {
+      cleanupPort();
+      return;
+    }
     post({
       protocolVersion: WHATSAPP_PROTOCOL_VERSION,
       requestId: randomUuid(),
@@ -1114,7 +1119,7 @@ export function installWhatsAppController(): void {
   const finishTransfer = () => {
     completeSent = true;
     clearTimers();
-    if (!transferStopped()) resetIdleTimer();
+    if (!transferStopped()) resetIdleTimer(WHATSAPP_RETENTION_MS);
   };
 
   const handleRunError = (error: unknown) => {
