@@ -1,5 +1,10 @@
 import type { StreamTargetChunk } from 'mediabunny';
-import { OperationFailure, diagnosticCause } from '../errors/contracts.ts';
+import {
+  isOperationFailure,
+  OperationFailure,
+  diagnosticCause,
+  type InstagramFailureCode,
+} from '../errors/contracts.ts';
 
 const DIRECTORY = 'gramgrab-silent-v1';
 const WORKER_STALE_MS = 24 * 60 * 60 * 1000;
@@ -26,7 +31,7 @@ async function directory(): Promise<FileSystemDirectoryHandle> {
 }
 
 function storageFailure(
-  code: OperationFailure['code'],
+  code: InstagramFailureCode,
   phase: OperationFailure['phase'],
   cause?: unknown
 ): OperationFailure {
@@ -110,7 +115,7 @@ export async function cacheInput(
     await removeOutput(outputName(operationId)).catch(() => undefined);
     if (error instanceof DOMException && error.name === 'QuotaExceededError')
       throw storageFailure('SILENT_STORAGE_CAPACITY_EXCEEDED', 'silent-storage', error);
-    if (error instanceof OperationFailure) throw error;
+    if (isOperationFailure(error)) throw error;
     throw storageFailure('SILENT_STORAGE_WRITE_FAILED', 'silent-storage', error);
   }
 }
@@ -119,7 +124,7 @@ export async function readInput(operationId: string): Promise<File> {
   try {
     return await (await (await directory()).getFileHandle(inputName(operationId))).getFile();
   } catch (cause) {
-    if (cause instanceof OperationFailure) throw cause;
+    if (isOperationFailure(cause)) throw cause;
     throw storageFailure('SILENT_STORAGE_READ_FAILED', 'silent-storage', cause);
   }
 }

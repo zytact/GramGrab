@@ -1,7 +1,12 @@
 import { Context, Effect, Schema } from 'effect';
 import { runFrameExportBatch } from '../frame-export/batch.ts';
 import { clampFrameSecond, frameFilename } from '../frame-export/timestamp.ts';
-import { OperationFailure, diagnosticCause } from '../errors/contracts.ts';
+import {
+  isOperationFailure,
+  OperationFailure,
+  diagnosticCause,
+  type InstagramFailureCode,
+} from '../errors/contracts.ts';
 import {
   decodeDownloadMediaResponse,
   DownloadFailedResult,
@@ -112,11 +117,7 @@ export class ExportEvents extends Context.Tag('gramgrab/ExportEvents')<
   }
 >() {}
 
-const failure = (
-  code: OperationFailure['code'],
-  phase: OperationFailure['phase'],
-  cause?: unknown
-) =>
+const failure = (code: InstagramFailureCode, phase: OperationFailure['phase'], cause?: unknown) =>
   OperationFailure.make({
     code,
     phase,
@@ -191,7 +192,7 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
               return operationResult(
                 operation,
                 outcomes.get(operation.requestId),
-                batchResult?.failure instanceof OperationFailure
+                isOperationFailure(batchResult?.failure)
                   ? batchResult.failure
                   : failure('FRAME_UNEXPECTED_FAILURE', 'frame-export', batchResult?.failure)
               );

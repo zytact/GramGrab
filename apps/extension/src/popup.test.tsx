@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Popup from './popup';
 
@@ -47,6 +47,91 @@ describe('Popup', () => {
     });
     expect(screen.getByPlaceholderText(/Paste an Instagram URL/i)).toBeDefined();
     expect(screen.getByText('Fetch Media')).toBeDefined();
+  });
+
+  it('shows and persists the one-time WhatsApp view-receipt disclosure without capturing', async () => {
+    mockBrowser.tabs.query.mockResolvedValueOnce([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    expect(
+      await screen.findByText(
+        'WhatsApp controls view receipts. GramGrab does not provide anonymous viewing.'
+      )
+    ).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Capture Visible Status' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() =>
+      expect(mockBrowser.storage.set).toHaveBeenCalledWith({
+        'whatsapp-view-receipt-acknowledged': true,
+      })
+    );
+    expect(screen.getByRole('button', { name: 'Capture Visible Status' })).toBeDefined();
+    expect(mockBrowser.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not show the acknowledged WhatsApp disclosure again', async () => {
+    mockBrowser.tabs.query.mockResolvedValueOnce([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValueOnce({ 'whatsapp-view-receipt-acknowledged': true });
+    await act(async () => render(<Popup />));
+
+    expect(await screen.findByRole('button', { name: 'Capture Visible Status' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  it('dismisses the WhatsApp disclosure without starting an operation or writing History', async () => {
+    mockBrowser.tabs.query.mockResolvedValueOnce([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Not now' }));
+
+    expect(screen.getByRole('button', { name: 'Review notice' })).toBeDefined();
+    expect(mockBrowser.storage.set).not.toHaveBeenCalled();
+    expect(mockBrowser.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('renders a WhatsApp History receipt without a source link or re-download action', async () => {
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: { type: string }) =>
+        message.type === 'GET_DOWNLOAD_HISTORY'
+          ? {
+              entries: [
+                {
+                  source: 'whatsapp',
+                  mediaKind: 'photo',
+                  timestamp: 1,
+                  savedFilename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+                  outcome: 'accepted',
+                },
+              ],
+            }
+          : {}
+    );
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+    await user.click(screen.getByRole('button', { name: 'History' }));
+
+    const receipt = await screen.findByText('whatsapp-visible-status-20260101T000000Z.jpg');
+    const entry = receipt.closest('.history-entry');
+    if (!(entry instanceof HTMLElement)) throw new Error('Expected WhatsApp History entry.');
+    expect(within(entry).getByText('WhatsApp')).toBeDefined();
+    expect(within(entry).getByText('photo')).toBeDefined();
+    expect(within(entry).getByText('accepted')).toBeDefined();
+    expect(entry.querySelector('time')).not.toBeNull();
+    expect(within(entry).queryByRole('link')).toBeNull();
+    expect(within(entry).queryByRole('button', { name: /re-download/i })).toBeNull();
+    expect(entry.querySelector('img')).toBeNull();
   });
 
   it('opens a workspace tab from the header action', async () => {

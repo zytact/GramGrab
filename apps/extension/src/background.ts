@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect';
+import { Either, Effect, Schema } from 'effect';
 import { browser } from './lib/browser.ts';
 import { startNativeBridge } from './native-bridge.ts';
 import {
@@ -45,8 +45,19 @@ import {
 import { replaceWorkspace } from './workspace/coordinator.ts';
 import { historySource } from './history/source.ts';
 import { reconcileHistoryEntry } from './history/reconciliation.ts';
-import { appendHistory, clearHistory, getHistory, removeHistory } from './history/repository.ts';
-import type { DownloadHistoryEntry, HistoryMarker } from './history/contracts.ts';
+import {
+  appendHistory,
+  appendWhatsAppHistoryReceipt,
+  clearHistory,
+  getHistory,
+  removeHistory,
+  removeWhatsAppHistoryReceipt,
+} from './history/repository.ts';
+import {
+  decodeWhatsAppHistoryReceipt,
+  type DownloadHistoryEntry,
+  type HistoryMarker,
+} from './history/contracts.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
 import { runHandler, runOperationHandler } from './effect/runtime.ts';
 import {
@@ -1072,6 +1083,9 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
   const stored = await getHistory();
   if (stored.kind === 'unknown-version')
     return { media: undefined, error: 'Download history uses a newer version.' };
+  const instagramHistory = stored.entries.filter(
+    (entry): entry is DownloadHistoryEntry => 'origin' in entry
+  );
   return {
     sourceUrl: source.url,
     media: result.items.map(item => ({
@@ -1081,7 +1095,7 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
       type: item.type,
       filenameHint: item.filenameHint,
       previewUrl: item.previewUrl,
-      history: historyMarker(stored.entries, source.url, item),
+      history: historyMarker(instagramHistory, source.url, item),
       ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
       ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
     })),
@@ -1100,6 +1114,9 @@ async function handleFetchInstants(_msg: FetchInstantsMsg) {
   const stored = await getHistory();
   if (stored.kind === 'unknown-version')
     return { media: undefined, error: 'Download history uses a newer version.' };
+  const instagramHistory = stored.entries.filter(
+    (entry): entry is DownloadHistoryEntry => 'origin' in entry
+  );
   return {
     acquisition: 'instants' as const,
     media: result.items.map(item => ({
@@ -1110,7 +1127,7 @@ async function handleFetchInstants(_msg: FetchInstantsMsg) {
       filenameHint: item.filenameHint,
       ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
       ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
-      history: historyMarker(stored.entries, { kind: 'instants' }, item),
+      history: historyMarker(instagramHistory, { kind: 'instants' }, item),
       ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
     })),
     error: undefined,
@@ -1289,12 +1306,43 @@ async function handleGetDownloadHistory() {
     : { entries: [...history.entries].reverse(), error: undefined };
 }
 
+async function handleRecordWhatsAppHistory(message: unknown): Promise<{
+  saved?: true;
+  warning?: 'HISTORY_SAVE_FAILED';
+}> {
+  const receipt = decodeWhatsAppHistoryReceipt((message as { receipt?: unknown } | null)?.receipt);
+  if (Either.isLeft(receipt)) return { warning: 'HISTORY_SAVE_FAILED' };
+  try {
+    await appendWhatsAppHistoryReceipt(receipt.right);
+    return { saved: true };
+  } catch {
+    return { warning: 'HISTORY_SAVE_FAILED' };
+  }
+}
+
+async function handleDeleteWhatsAppHistoryReceipt(message: unknown): Promise<{
+  entries: unknown[];
+  error: string | undefined;
+}> {
+  const receipt = decodeWhatsAppHistoryReceipt((message as { receipt?: unknown } | null)?.receipt);
+  if (Either.isLeft(receipt)) return { entries: [], error: 'This history entry is invalid.' };
+  try {
+    const entries = await removeWhatsAppHistoryReceipt(receipt.right);
+    return { entries: [...entries].reverse(), error: undefined };
+  } catch (error) {
+    return { entries: [], error: String(error) };
+  }
+}
+
 // fallow-ignore-next-line complexity
 async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
   const history = await getHistory();
   if (history.kind === 'unknown-version')
     return { error: 'Download history uses a newer version.' };
-  const entry = history.entries.find(candidate => candidate.id === msg.entryId);
+  const entry = history.entries.find(
+    (candidate): candidate is DownloadHistoryEntry =>
+      'id' in candidate && candidate.id === msg.entryId
+  );
   if (!entry) return { error: 'This history entry no longer exists.' };
   const resolved =
     entry.origin.kind === 'instants'
@@ -1904,7 +1952,10 @@ async function executeCommand(
         const history = await abortable(getHistory(), signal);
         if (history.kind === 'unknown-version') throw new Error('Unsupported history version.');
         result = HistoryListResult.make({
-          entries: [...history.entries].reverse().map(historyEntry),
+          entries: history.entries
+            .filter((entry): entry is DownloadHistoryEntry => 'id' in entry)
+            .reverse()
+            .map(historyEntry),
           repaired: history.repaired,
         });
         break;
@@ -1912,7 +1963,10 @@ async function executeCommand(
       case 'HistoryRemove': {
         const before = await abortable(getHistory(), signal);
         if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
-        const known = new Set(before.entries.map(entry => entry.id));
+        const instagramEntries = before.entries.filter(
+          (entry): entry is DownloadHistoryEntry => 'id' in entry
+        );
+        const known = new Set(instagramEntries.map(entry => entry.id));
         const removedEntryIds = command.entryIds.filter(id => known.has(id));
         for (const id of removedEntryIds) await abortable(removeHistory(id), signal);
         result = HistoryRemoveResult.make({
@@ -1931,11 +1985,14 @@ async function executeCommand(
       case 'HistoryRedownload': {
         const before = await abortable(getHistory(), signal);
         if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
-        const known = new Set(before.entries.map(entry => entry.id));
+        const instagramEntries = before.entries.filter(
+          (entry): entry is DownloadHistoryEntry => 'id' in entry
+        );
+        const known = new Set(instagramEntries.map(entry => entry.id));
         const outcomes = [];
         for (const entryId of command.entryIds.filter(id => known.has(id))) {
           signal.throwIfAborted();
-          const entry = before.entries.find(candidate => candidate.id === entryId);
+          const entry = instagramEntries.find(candidate => candidate.id === entryId);
           const response = await abortable(handleRedownloadHistoryEntry({ entryId }), signal);
           const frame = 'frame' in response ? response.frame : undefined;
           const silent = 'silent' in response ? response.silent : undefined;
@@ -2099,6 +2156,8 @@ const messageHandlers: Record<string, MessageHandler> = {
   GET_PREVIEW_URL: message => handleGetPreviewUrl(message as GetPreviewUrlMsg),
   DOWNLOAD_MEDIA: message => handleDownloadMedia(message),
   GET_DOWNLOAD_HISTORY: () => handleGetDownloadHistory(),
+  RECORD_WHATSAPP_HISTORY: message => handleRecordWhatsAppHistory(message),
+  DELETE_WHATSAPP_HISTORY_RECEIPT: message => handleDeleteWhatsAppHistoryReceipt(message),
   DELETE_HISTORY_ENTRY: async message => {
     try {
       const entries = await removeHistory((message as { entryId: string }).entryId);

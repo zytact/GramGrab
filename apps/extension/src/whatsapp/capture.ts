@@ -1,4 +1,5 @@
 import { Either } from 'effect';
+import { OperationWarning } from '../errors/contracts.ts';
 import { browser, type BrowserShim, type NativePort } from '../lib/browser.ts';
 import { createOperationId, createRequestId, type OperationId } from '../download/contracts.ts';
 import {
@@ -65,6 +66,7 @@ export class WhatsAppCaptureError extends Error {
 export interface WhatsAppDownloadResult {
   readonly downloadId: number;
   readonly filename: string;
+  readonly warning?: OperationWarning;
 }
 
 export interface WhatsAppCaptureHandle {
@@ -538,6 +540,7 @@ export class WhatsAppCaptureSession {
     this.#downloadId = downloadId;
     this.#downloadTerminal = false;
     this.#releaseSnapshot();
+    const warning = await this.#recordAcceptedHistory(handle);
     const onChanged = (delta: { id: number; state?: { current?: string } }) => {
       if (delta.id !== downloadId) return;
       const state = delta.state?.current;
@@ -564,7 +567,29 @@ export class WhatsAppCaptureSession {
     } catch {
       // The retention ceiling remains the fallback when the browser cannot report state.
     }
-    return { downloadId, filename: handle.filename };
+    return { downloadId, filename: handle.filename, ...(warning ? { warning } : {}) };
+  }
+
+  async #recordAcceptedHistory(
+    handle: WhatsAppCaptureHandle
+  ): Promise<OperationWarning | undefined> {
+    try {
+      const response = (await this.#browser.runtime.sendMessage({
+        type: 'RECORD_WHATSAPP_HISTORY',
+        receipt: {
+          source: 'whatsapp',
+          mediaKind: handle.descriptor.kind,
+          timestamp: this.#now(),
+          savedFilename: handle.filename,
+          outcome: 'accepted',
+        },
+      })) as { saved?: unknown } | undefined;
+      return response?.saved === true
+        ? undefined
+        : OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
+    } catch {
+      return OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
+    }
   }
 
   #releaseSnapshot(): void {

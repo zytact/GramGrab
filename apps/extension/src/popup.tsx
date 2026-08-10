@@ -1,4 +1,12 @@
-import { useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import './styles.css';
 import { browser } from './lib/browser';
 import {
@@ -52,6 +60,8 @@ import {
   type WhatsAppCaptureHandle,
 } from './whatsapp/capture';
 import { isWhatsAppWebUrl } from './whatsapp/limits';
+import { WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY } from './whatsapp/disclosure';
+import type { HistoryEntry } from './history/contracts';
 
 interface MediaItem {
   index: number;
@@ -83,16 +93,7 @@ type FrameRuntime = {
   error?: string;
   warning?: string;
 };
-type HistoryEntry = {
-  id: string;
-  origin: { kind: 'source'; sourceUrl: string; sourceKind: string } | { kind: 'instants' };
-  itemIndex: number;
-  mediaType: string;
-  filenameHint: string;
-  exportMode?: 'direct' | 'frame' | 'silent';
-  frameTimestampSeconds?: number;
-  downloadedAt: number;
-};
+type WhatsAppDisclosureState = 'checking' | 'required' | 'dismissed' | 'acknowledged';
 
 function exportCandidate(
   item: MediaItem,
@@ -155,6 +156,7 @@ export default function Popup() {
   >({});
   const [autoDetected, setAutoDetected] = useState(false);
   const [whatsappActive, setWhatsappActive] = useState(false);
+  const [whatsappDisclosure, setWhatsappDisclosure] = useState<WhatsAppDisclosureState>('checking');
   const [whatsappCaptureStatus, setWhatsappCaptureStatus] = useState<
     'idle' | 'capturing' | 'started' | 'failed'
   >('idle');
@@ -204,6 +206,31 @@ export default function Popup() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!whatsappActive) {
+      setWhatsappDisclosure('checking');
+      return () => {
+        cancelled = true;
+      };
+    }
+    setWhatsappDisclosure('checking');
+    void browser.storage
+      .get(WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY)
+      .then(stored => {
+        if (!cancelled)
+          setWhatsappDisclosure(
+            stored[WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY] === true ? 'acknowledged' : 'required'
+          );
+      })
+      .catch(() => {
+        if (!cancelled) setWhatsappDisclosure('required');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [whatsappActive]);
+
   const replaceMediaItems = useCallback<typeof setMediaItems>(action => {
     resultsGeneration.current++;
     pendingFrameDefaults.current.clear();
@@ -232,7 +259,20 @@ export default function Popup() {
     handleFetchRef.current = handleFetch;
   }, [handleFetch]);
 
+  const acknowledgeWhatsAppViewReceipts = useCallback(async () => {
+    try {
+      await browser.storage.set({ [WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY]: true });
+      setWhatsappDisclosure('acknowledged');
+    } catch {
+      setWhatsappCaptureMessage('GramGrab could not remember this acknowledgement. Try again.');
+    }
+  }, []);
+
   const handleWhatsAppCapture = useCallback(async () => {
+    if (whatsappDisclosure !== 'acknowledged') {
+      setWhatsappDisclosure('required');
+      return;
+    }
     if (whatsappCaptureStatus === 'capturing') return;
     const retrying = whatsappCaptureStatus === 'failed' && whatsappOperation !== undefined;
     const operation = retrying
@@ -252,10 +292,12 @@ export default function Popup() {
         requestId: operation.requestId,
       });
       whatsappHandleRef.current = handle;
-      await handle.download();
+      const download = await handle.download();
       setWhatsappCaptureStatus('started');
       setWhatsappCaptureMessage(
-        'Download started. The in-memory capture will be released automatically.'
+        download.warning
+          ? WARNING_PRESENTATION[download.warning.code]
+          : 'Download started. The in-memory capture will be released automatically.'
       );
     } catch (error) {
       const captureError =
@@ -269,7 +311,7 @@ export default function Popup() {
       const presentation = presentationForFailure(failure);
       setWhatsappCaptureMessage(`${presentation.title}. ${presentation.explanation}`);
     }
-  }, [whatsappCaptureStatus, whatsappOperation]);
+  }, [whatsappCaptureStatus, whatsappDisclosure, whatsappOperation]);
 
   const handleIntrinsicDimensions = useCallback(
     (item: MediaItem, width: number, height: number) => {
@@ -960,11 +1002,12 @@ export default function Popup() {
     },
     [loadHistory]
   );
-  const removeHistoryEntry = useCallback(async (entryId: string) => {
-    const response = (await browser.runtime.sendMessage({
-      type: 'DELETE_HISTORY_ENTRY',
-      entryId,
-    })) as { entries?: HistoryEntry[]; error?: string };
+  const removeHistoryEntry = useCallback(async (entry: HistoryEntry) => {
+    const response = (await browser.runtime.sendMessage(
+      'source' in entry
+        ? { type: 'DELETE_WHATSAPP_HISTORY_RECEIPT', receipt: entry }
+        : { type: 'DELETE_HISTORY_ENTRY', entryId: entry.id }
+    )) as { entries?: HistoryEntry[]; error?: string };
     if (response.error) {
       setStatus('error');
       setMessage(response.error);
@@ -1087,10 +1130,14 @@ export default function Popup() {
           <>
             {whatsappActive ? (
               <WhatsAppCaptureSection
+                disclosure={whatsappDisclosure}
                 status={whatsappCaptureStatus}
                 message={whatsappCaptureMessage}
                 failure={whatsappFailure}
                 manualRetryCount={whatsappOperation?.manualRetryCount ?? 0}
+                onAcknowledge={() => void acknowledgeWhatsAppViewReceipts()}
+                onDismissDisclosure={() => setWhatsappDisclosure('dismissed')}
+                onReviewDisclosure={() => setWhatsappDisclosure('required')}
                 onCapture={() => void handleWhatsAppCapture()}
                 onCopyDiagnostics={previewWhatsAppDiagnostics}
                 disabled={isBusy}
@@ -1332,28 +1379,126 @@ export default function Popup() {
   );
 }
 
-function WhatsAppCaptureSection({
-  status,
-  message,
-  failure,
-  manualRetryCount,
-  onCapture,
-  onCopyDiagnostics,
-  disabled,
-}: {
+type WhatsAppCaptureSectionProps = {
+  disclosure: WhatsAppDisclosureState;
   status: 'idle' | 'capturing' | 'started' | 'failed';
   message: string;
   failure: OperationFailure | undefined;
   manualRetryCount: number;
+  onAcknowledge: () => void;
+  onDismissDisclosure: () => void;
+  onReviewDisclosure: () => void;
   onCapture: () => void;
   onCopyDiagnostics: (trigger: HTMLButtonElement) => void;
   disabled: boolean;
-}) {
-  const presentation = failure ? presentationForFailure(failure) : undefined;
+};
+
+type WhatsAppCaptureReadyProps = Omit<
+  WhatsAppCaptureSectionProps,
+  'disclosure' | 'onAcknowledge' | 'onDismissDisclosure' | 'onReviewDisclosure'
+>;
+
+function WhatsAppCaptureSection({
+  disclosure,
+  onAcknowledge,
+  onDismissDisclosure,
+  onReviewDisclosure,
+  ...readyProps
+}: WhatsAppCaptureSectionProps) {
+  if (disclosure === 'acknowledged') return <WhatsAppCaptureReady {...readyProps} />;
+  return (
+    <WhatsAppCaptureShell>
+      <WhatsAppViewReceiptDisclosure
+        disclosure={disclosure}
+        onAcknowledge={onAcknowledge}
+        onDismiss={onDismissDisclosure}
+        onReview={onReviewDisclosure}
+      />
+    </WhatsAppCaptureShell>
+  );
+}
+
+function WhatsAppCaptureReady(props: WhatsAppCaptureReadyProps) {
+  const presentation = props.failure ? presentationForFailure(props.failure) : undefined;
   const canCapture =
-    status !== 'failed' ||
+    props.status !== 'failed' ||
     (presentation?.actions.includes('retry-operation') &&
-      (presentation.retry !== 'once' || manualRetryCount === 0));
+      (presentation.retry !== 'once' || props.manualRetryCount === 0));
+  return (
+    <WhatsAppCaptureShell>
+      <p className="whatsapp-capture-copy">{props.message}</p>
+      <p className="whatsapp-capture-note">
+        One click captures only the already-visible photo or video. The capture stays in memory for
+        this download and is then released.
+      </p>
+      {canCapture && (
+        <WhatsAppCaptureButton
+          status={props.status}
+          disabled={props.disabled}
+          onCapture={props.onCapture}
+        />
+      )}
+      {props.status === 'failed' && props.failure && (
+        <WhatsAppCaptureFailure
+          failure={props.failure}
+          canCopyDiagnostics={presentation?.actions.includes('copy-diagnostics') ?? false}
+          onCopyDiagnostics={props.onCopyDiagnostics}
+        />
+      )}
+    </WhatsAppCaptureShell>
+  );
+}
+
+function WhatsAppCaptureButton({
+  status,
+  disabled,
+  onCapture,
+}: Pick<WhatsAppCaptureSectionProps, 'status' | 'disabled' | 'onCapture'>) {
+  return (
+    <button
+      type="button"
+      className="btn"
+      onClick={onCapture}
+      disabled={disabled || status === 'started'}
+      aria-busy={status === 'capturing'}
+    >
+      {whatsAppCaptureButtonLabel(status)}
+    </button>
+  );
+}
+
+function whatsAppCaptureButtonLabel(status: WhatsAppCaptureSectionProps['status']) {
+  if (status === 'capturing') return <LoadingButtonLabel>Capturing…</LoadingButtonLabel>;
+  if (status === 'started') return 'Download started';
+  return status === 'failed' ? 'Capture Visible Status again' : 'Capture Visible Status';
+}
+
+function WhatsAppCaptureFailure({
+  failure,
+  canCopyDiagnostics,
+  onCopyDiagnostics,
+}: {
+  failure: OperationFailure;
+  canCopyDiagnostics: boolean;
+  onCopyDiagnostics: (trigger: HTMLButtonElement) => void;
+}) {
+  return (
+    <div className="status-message error" role="status">
+      <code>{failure.code}</code>
+      {canCopyDiagnostics && (
+        <button
+          type="button"
+          className="workspace-secondary"
+          onClick={event => onCopyDiagnostics(event.currentTarget)}
+        >
+          Copy diagnostics
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WhatsAppCaptureShell({ children }: { children: ReactNode }) {
   return (
     <section
       className="ext-section whatsapp-capture-section"
@@ -1361,45 +1506,49 @@ function WhatsAppCaptureSection({
     >
       <span className="detected-hint">Active tab · WhatsApp Web</span>
       <h1 id="whatsapp-capture-title">Capture the Visible Status</h1>
-      <p className="whatsapp-capture-copy">{message}</p>
-      <p className="whatsapp-capture-note">
-        One click captures only the already-visible photo or video. The capture stays in memory for
-        this download and is then released.
-      </p>
-      {canCapture && (
-        <button
-          type="button"
-          className="btn"
-          onClick={onCapture}
-          disabled={disabled || status === 'started'}
-          aria-busy={status === 'capturing'}
-        >
-          {status === 'capturing' ? (
-            <LoadingButtonLabel>Capturing…</LoadingButtonLabel>
-          ) : status === 'started' ? (
-            'Download started'
-          ) : status === 'failed' ? (
-            'Capture Visible Status again'
-          ) : (
-            'Capture Visible Status'
-          )}
-        </button>
-      )}
-      {status === 'failed' && failure && (
-        <div className="status-message error" role="status">
-          <code>{failure.code}</code>
-          {presentation?.actions.includes('copy-diagnostics') && (
-            <button
-              type="button"
-              className="workspace-secondary"
-              onClick={event => onCopyDiagnostics(event.currentTarget)}
-            >
-              Copy diagnostics
-            </button>
-          )}
-        </div>
-      )}
+      {children}
     </section>
+  );
+}
+
+function WhatsAppViewReceiptDisclosure({
+  disclosure,
+  onAcknowledge,
+  onDismiss,
+  onReview,
+}: {
+  disclosure: WhatsAppDisclosureState;
+  onAcknowledge: () => void;
+  onDismiss: () => void;
+  onReview: () => void;
+}) {
+  if (disclosure === 'checking')
+    return <p className="whatsapp-capture-copy">Preparing the capture notice…</p>;
+  if (disclosure === 'dismissed')
+    return (
+      <div className="whatsapp-view-receipt-disclosure">
+        <p className="whatsapp-capture-copy">
+          Review the view-receipt notice before capturing a Visible Status.
+        </p>
+        <button type="button" className="btn" onClick={onReview}>
+          Review notice
+        </button>
+      </div>
+    );
+  return (
+    <div className="whatsapp-view-receipt-disclosure" role="status">
+      <p className="whatsapp-capture-copy">
+        WhatsApp controls view receipts. GramGrab does not provide anonymous viewing.
+      </p>
+      <div className="quality-dialog-actions">
+        <button type="button" className="workspace-secondary" onClick={onDismiss}>
+          Not now
+        </button>
+        <button type="button" className="btn" onClick={onAcknowledge}>
+          Continue
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1503,7 +1652,7 @@ function HistoryView({
   entries: HistoryEntry[];
   busyId: string | null;
   onRedownload: (id: string) => void;
-  onRemove: (id: string) => void;
+  onRemove: (entry: HistoryEntry) => void;
   onClear: () => void;
 }) {
   if (!entries.length)
@@ -1526,56 +1675,89 @@ function HistoryView({
         </button>
       </div>
       <div className="history-list">
-        {entries.map(entry => (
-          <article className="history-entry" key={entry.id}>
-            <div className="history-entry-topline">
-              <span className={`item-type-badge ${entry.mediaType}`}>{entry.mediaType}</span>
-              <span className="history-item-number">Item {entry.itemIndex + 1}</span>
-              <time
-                title={new Date(entry.downloadedAt).toLocaleString()}
-                dateTime={new Date(entry.downloadedAt).toISOString()}
-              >
-                {relativeHistoryTime(entry.downloadedAt)}
-              </time>
-            </div>
-            <span className="history-filename" title={entry.filenameHint}>
-              {entry.filenameHint}
-            </span>
-            <div className="history-entry-footer">
-              {entry.origin.kind === 'source' ? (
-                <a
-                  className="history-source-link"
-                  href={entry.origin.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={`Open source for item ${entry.itemIndex + 1}`}
-                  title={entry.origin.sourceUrl}
+        {entries.map(entry =>
+          'source' in entry ? (
+            <article
+              className="history-entry"
+              key={`whatsapp-${entry.timestamp}-${entry.savedFilename}`}
+            >
+              <div className="history-entry-topline">
+                <span className={`item-type-badge ${entry.mediaKind}`}>{entry.mediaKind}</span>
+                <span className="history-source-link">WhatsApp</span>
+                <time
+                  title={new Date(entry.timestamp).toLocaleString()}
+                  dateTime={new Date(entry.timestamp).toISOString()}
                 >
-                  Open source ↗
-                </a>
-              ) : (
-                <span className="history-source-link">Active Instants feed</span>
-              )}
-              <button
-                className="history-redownload"
-                type="button"
-                disabled={busyId === entry.id}
-                onClick={() => onRedownload(entry.id)}
-              >
-                {busyId === entry.id ? 'Starting…' : 'Re-download'}
-              </button>
-              <button
-                className="history-remove"
-                type="button"
-                onClick={() => onRemove(entry.id)}
-                aria-label={`Remove item ${entry.itemIndex + 1} from history`}
-                title="Remove from history"
-              >
-                ×
-              </button>
-            </div>
-          </article>
-        ))}
+                  {relativeHistoryTime(entry.timestamp)}
+                </time>
+              </div>
+              <span className="history-filename" title={entry.savedFilename}>
+                {entry.savedFilename}
+              </span>
+              <div className="history-entry-footer">
+                <span className="history-source-link">{entry.outcome}</span>
+                <button
+                  className="history-remove"
+                  type="button"
+                  onClick={() => onRemove(entry)}
+                  aria-label="Remove WhatsApp receipt from history"
+                  title="Remove from history"
+                >
+                  ×
+                </button>
+              </div>
+            </article>
+          ) : (
+            <article className="history-entry" key={entry.id}>
+              <div className="history-entry-topline">
+                <span className={`item-type-badge ${entry.mediaType}`}>{entry.mediaType}</span>
+                <span className="history-item-number">Item {entry.itemIndex + 1}</span>
+                <time
+                  title={new Date(entry.downloadedAt).toLocaleString()}
+                  dateTime={new Date(entry.downloadedAt).toISOString()}
+                >
+                  {relativeHistoryTime(entry.downloadedAt)}
+                </time>
+              </div>
+              <span className="history-filename" title={entry.filenameHint}>
+                {entry.filenameHint}
+              </span>
+              <div className="history-entry-footer">
+                {entry.origin.kind === 'source' ? (
+                  <a
+                    className="history-source-link"
+                    href={entry.origin.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Open source for item ${entry.itemIndex + 1}`}
+                    title={entry.origin.sourceUrl}
+                  >
+                    Open source ↗
+                  </a>
+                ) : (
+                  <span className="history-source-link">Active Instants feed</span>
+                )}
+                <button
+                  className="history-redownload"
+                  type="button"
+                  disabled={busyId === entry.id}
+                  onClick={() => onRedownload(entry.id)}
+                >
+                  {busyId === entry.id ? 'Starting…' : 'Re-download'}
+                </button>
+                <button
+                  className="history-remove"
+                  type="button"
+                  onClick={() => onRemove(entry)}
+                  aria-label={`Remove item ${entry.itemIndex + 1} from history`}
+                  title="Remove from history"
+                >
+                  ×
+                </button>
+              </div>
+            </article>
+          )
+        )}
       </div>
     </section>
   );

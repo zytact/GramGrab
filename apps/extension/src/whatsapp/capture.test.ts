@@ -149,15 +149,43 @@ describe('WhatsApp popup-owned capture transfer', () => {
     expect(handle.snapshot.blob.size).toBe(payload.length);
     expect(JSON.stringify(port.postMessage.mock.calls)).not.toContain('Blob');
 
-    const download = await handle.download();
-    expect(download.downloadId).toBe(1);
-    expect(getDownloadCalls()).toEqual([
-      { url: 'blob:extension-owned', filename: handle.filename, saveAs: false },
-    ]);
-    expect(getMockBrowser().runtime.sendMessage).not.toHaveBeenCalled();
-    expect(getMockBrowser().storage.set).not.toHaveBeenCalled();
+    let resolveHistory: ((result: { saved: true }) => void) | undefined;
+    getMockBrowser().runtime.sendMessage.mockReturnValueOnce(
+      new Promise(resolve => {
+        resolveHistory = resolve;
+      })
+    );
+    const downloading = handle.download();
+    await vi.waitFor(() => expect(getDownloadCalls()).toHaveLength(1));
     expect(handle.snapshot.released).toBe(true);
     expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:extension-owned');
+    expect(getMockBrowser().runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'RECORD_WHATSAPP_HISTORY',
+      receipt: {
+        source: 'whatsapp',
+        mediaKind: 'photo',
+        timestamp: expect.any(Number),
+        savedFilename: handle.filename,
+        outcome: 'accepted',
+      },
+    });
+    const receipt = getMockBrowser().runtime.sendMessage.mock.calls[0]?.[0] as {
+      receipt: Record<string, unknown>;
+    };
+    expect(Object.keys(receipt.receipt).sort()).toEqual([
+      'mediaKind',
+      'outcome',
+      'savedFilename',
+      'source',
+      'timestamp',
+    ]);
+    expect(JSON.stringify(receipt.receipt)).not.toContain(handle.descriptor.captureId);
+    expect(getMockBrowser().storage.set).not.toHaveBeenCalled();
+    if (!resolveHistory) throw new Error('Expected History persistence to be pending.');
+    resolveHistory({ saved: true });
+    const download = await downloading;
+    expect(download.downloadId).toBe(1);
+    expect(download.warning).toBeUndefined();
     const onChanged = getMockBrowser().downloads.onChanged.addListener.mock.calls.at(-1)?.[0] as
       | ((delta: { id: number; state?: { current?: string } }) => void)
       | undefined;
@@ -165,6 +193,50 @@ describe('WhatsApp popup-owned capture transfer', () => {
     onChanged({ id: download.downloadId, state: { current: 'complete' } });
     handle.release();
     expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:extension-owned');
+  });
+
+  it('returns HISTORY_SAVE_FAILED without blocking an accepted download', async () => {
+    const port = makePort();
+    getMockBrowser().tabs.connect.mockReturnValue(port);
+    getMockBrowser().runtime.sendMessage.mockRejectedValueOnce(new Error('history unavailable'));
+    const pending = captureWhatsAppVisibleStatus();
+    await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalled());
+    const start = startMessage(port);
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureMetadata',
+      kind: 'photo',
+      mimeType: 'image/jpeg',
+      byteLength: 1,
+      width: 1,
+      height: 1,
+    });
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureChunk',
+      sequence: 0,
+      decodedLength: 1,
+      payload: 'AQ==',
+    });
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureComplete',
+      chunkCount: 1,
+      byteLength: 1,
+    });
+
+    const download = await (await pending).download();
+    expect(download).toMatchObject({
+      downloadId: 1,
+      warning: { code: 'HISTORY_SAVE_FAILED' },
+    });
+    expect(getDownloadCalls()).toHaveLength(1);
   });
 
   it('discards every byte when sequence, chunk-length, or aggregate-length validation fails', async () => {

@@ -7,7 +7,13 @@ import {
   OperationBatchOutcome,
   type DownloadOperationResult,
 } from '../download/contracts.ts';
-import { OperationFailure, OperationWarning, diagnosticCause } from '../errors/contracts.ts';
+import {
+  isOperationFailure,
+  OperationFailure,
+  OperationWarning,
+  diagnosticCause,
+  type InstagramFailureCode,
+} from '../errors/contracts.ts';
 import type { AttemptOperation } from '../download/attempt.ts';
 import { SilentVideoClient } from './client.ts';
 import { readOutput, sweepOutputs, transferOutputToDownload } from './opfs.ts';
@@ -25,10 +31,10 @@ interface OwnershipState {
 
 function silentFailure(
   cause: unknown,
-  code: OperationFailure['code'],
+  code: InstagramFailureCode,
   phase: OperationFailure['phase']
 ) {
-  return cause instanceof OperationFailure
+  return isOperationFailure(cause)
     ? cause
     : OperationFailure.make({ code, phase, scope: 'item', cause: diagnosticCause(cause) });
 }
@@ -252,12 +258,19 @@ export async function runSilentVideoBatch(
     return OperationBatchOutcome.make({ outcomes: results });
   } catch (cause) {
     const itemFailure = silentFailure(cause, 'SILENT_STORAGE_UNAVAILABLE', 'silent-storage');
-    const failure = OperationFailure.make({
-      code: itemFailure.code,
-      phase: itemFailure.phase,
-      scope: 'batch',
-      ...(itemFailure.cause ? { cause: itemFailure.cause } : {}),
-    });
+    const failure =
+      itemFailure.platform === 'instagram'
+        ? OperationFailure.make({
+            code: itemFailure.code,
+            phase: itemFailure.phase,
+            scope: 'batch',
+            ...(itemFailure.cause ? { cause: itemFailure.cause } : {}),
+          })
+        : OperationFailure.make({
+            code: 'SILENT_STORAGE_UNAVAILABLE',
+            phase: 'silent-storage',
+            scope: 'batch',
+          });
     return OperationBatchOutcome.make({
       failure,
       outcomes: operations.map(operation =>
