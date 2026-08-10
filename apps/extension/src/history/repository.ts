@@ -7,7 +7,6 @@ import {
   type DownloadHistoryEntry,
   type DownloadHistoryStoreV4,
   type HistoryEntry,
-  type LegacyDownloadHistoryEntry,
   type HistoryReadResult,
   type WhatsAppHistoryReceipt,
 } from './contracts.ts';
@@ -17,6 +16,11 @@ let mutationQueue: Promise<void> = Promise.resolve();
 
 const validKinds = new Set(['post', 'reel', 'story', 'highlight', 'profile']);
 const validTypes = new Set(['image', 'video']);
+const supportedHistoryVersions = new Set([1, 2, 3, 4]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 function validInstagramEntry(value: unknown): value is DownloadHistoryEntry {
   const item = value as Partial<DownloadHistoryEntry> | null;
@@ -57,6 +61,27 @@ function hasValidOutcome(item: Partial<DownloadHistoryEntry>): boolean {
   return Number.isFinite(item.downloadedAt) && item.outcome === 'accepted';
 }
 
+function migrateLegacyEntry(entry: unknown): DownloadHistoryEntry | undefined {
+  if (!isRecord(entry)) return undefined;
+  const { sourceUrl, sourceKind, ...legacy } = entry;
+  if (typeof sourceUrl !== 'string' || !sourceKind) return undefined;
+  const migrated = {
+    ...legacy,
+    origin: {
+      kind: 'source',
+      sourceUrl,
+      sourceKind,
+    },
+  };
+  return validInstagramEntry(migrated) ? migrated : undefined;
+}
+
+function decodeEntry(entry: unknown, version: number): HistoryEntry | undefined {
+  if (version === DOWNLOAD_HISTORY_VERSION) return validHistoryEntry(entry) ? entry : undefined;
+  if (version === 3) return validInstagramEntry(entry) ? entry : undefined;
+  return migrateLegacyEntry(entry);
+}
+
 function decode(value: unknown): HistoryReadResult {
   if (value === undefined) return { kind: 'ok', entries: [], repaired: false };
   const store = value as
@@ -64,29 +89,16 @@ function decode(value: unknown): HistoryReadResult {
     | null;
   if (!store || typeof store.version !== 'number' || !Array.isArray(store.entries))
     return { kind: 'ok', entries: [], repaired: true };
-  if (store.version !== 1 && store.version !== 2 && store.version !== 3 && store.version !== 4)
-    return { kind: 'unknown-version', entries: [] };
+  if (!supportedHistoryVersions.has(store.version)) return { kind: 'unknown-version', entries: [] };
+  const version = store.version;
   const entries = store.entries.flatMap(entry => {
-    if (store.version === DOWNLOAD_HISTORY_VERSION) return validHistoryEntry(entry) ? [entry] : [];
-    if (store.version === 3) return validInstagramEntry(entry) ? [entry] : [];
-    const legacy = entry as unknown as Partial<LegacyDownloadHistoryEntry>;
-    if (typeof legacy.sourceUrl !== 'string' || !legacy.sourceKind) return [];
-    const migrated = {
-      ...legacy,
-      origin: {
-        kind: 'source' as const,
-        sourceUrl: legacy.sourceUrl,
-        sourceKind: legacy.sourceKind,
-      },
-    };
-    delete (migrated as { sourceUrl?: string }).sourceUrl;
-    delete (migrated as { sourceKind?: string }).sourceKind;
-    return validInstagramEntry(migrated) ? [migrated] : [];
+    const decoded = decodeEntry(entry, version);
+    return decoded ? [decoded] : [];
   });
   return {
     kind: 'ok',
     entries,
-    repaired: store.version !== DOWNLOAD_HISTORY_VERSION || entries.length !== store.entries.length,
+    repaired: version !== DOWNLOAD_HISTORY_VERSION || entries.length !== store.entries.length,
   };
 }
 

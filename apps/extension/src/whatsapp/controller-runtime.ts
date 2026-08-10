@@ -71,6 +71,51 @@ interface AcquiredBytes {
   readonly bytes: Uint8Array;
 }
 
+function candidateFromObservation(observation: VisibleStatusObservation): ForegroundCandidate {
+  if (observation.tag === 'not-visible') throw new ControllerFailure('not-visible');
+  if (observation.tag === 'unsupported') throw new ControllerFailure('unsupported');
+  if (observation.tag === 'format-changed')
+    throw new ControllerFailure('format-changed', observation.shape);
+  return observation.candidate;
+}
+
+function ensureGuardMatches(candidate: ForegroundCandidate): void {
+  if (!guardMatches(candidate, globalThis.document)) throw new ControllerFailure('status-changed');
+}
+
+function ensureCurrentCandidate(candidate: ForegroundCandidate): void {
+  if (!isWhatsAppDocument()) throw new ControllerFailure('transfer-failed');
+  ensureGuardMatches(candidate);
+}
+
+async function acquireControllerStatus(
+  signal: AbortSignal
+): Promise<{ readonly acquired: AcquiredBytes; readonly chunks: Uint8Array[] }> {
+  if (!isWhatsAppDocument()) throw new ControllerFailure('transfer-failed');
+  const initial = candidateFromObservation(inspectVisibleStatus(globalThis.document));
+  const acquired = await acquireVisibleStatusBytes(initial, globalThis.document, signal);
+  ensureCurrentCandidate(acquired.candidate);
+  const chunks = splitBytes(acquired.bytes);
+  if (chunks.length === 0 || chunks.length > WHATSAPP_MAX_CHUNKS)
+    throw new ControllerFailure('transfer-failed');
+  return { acquired, chunks };
+}
+
+function controllerMetadata(operationId: string, acquired: AcquiredBytes): OutboundMetadata {
+  return {
+    protocolVersion: WHATSAPP_PROTOCOL_VERSION,
+    requestId: randomUuid(),
+    operationId,
+    tag: 'CaptureMetadata',
+    kind: acquired.candidate.kind,
+    mimeType: acquired.mimeType,
+    byteLength: acquired.bytes.length,
+    width: acquired.candidate.width,
+    height: acquired.candidate.height,
+    ...(acquired.candidate.kind === 'video' ? { durationMs: acquired.candidate.durationMs } : {}),
+  };
+}
+
 export class ControllerFailure extends Error {
   readonly reason:
     | 'not-visible'
@@ -190,43 +235,65 @@ export function inspectVisibleStatus(
 
   const player = players[0];
   if (!player) return { tag: 'format-changed', shape: shapeFor(undefined, players.length) };
-  const images = Array.from(player.querySelectorAll('img'));
-  const videos = Array.from(player.querySelectorAll('video'));
-  const markedVideos = videos.filter(video => hasMarkerWithinPlayer(video, player, 'status-video'));
   const shape = shapeFor(player, players.length);
+  const videos = Array.from(player.querySelectorAll('video'));
+  if (videos.length > 0) return inspectVideo(player, videos, shape, document);
+  return inspectPhoto(player, shape, document);
+}
 
-  if (videos.length > 0 || markedVideos.length > 0) {
-    if (markedVideos.length !== 1) return { tag: 'format-changed', shape };
-    const video = markedVideos[0];
-    if (!video) return { tag: 'format-changed', shape };
-    const source = sourceOf(video);
-    if (!isPageOwnedSource(source, document)) return { tag: 'format-changed', shape };
-    const durationMs = Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : 0;
-    const ready =
-      video.readyState >= 2 &&
-      Number.isFinite(video.videoWidth) &&
-      Number.isFinite(video.videoHeight) &&
-      video.videoWidth >= WHATSAPP_MIN_DIMENSION &&
-      video.videoWidth <= WHATSAPP_MAX_DIMENSION &&
-      video.videoHeight >= WHATSAPP_MIN_DIMENSION &&
-      video.videoHeight <= WHATSAPP_MAX_DIMENSION &&
-      durationMs >= WHATSAPP_MIN_VIDEO_DURATION_MS &&
-      durationMs <= WHATSAPP_MAX_VIDEO_DURATION_MS;
-    const candidate: ForegroundCandidate = {
-      kind: 'video',
-      player,
-      media: video,
-      source,
-      ready,
-      width: video.videoWidth,
-      height: video.videoHeight,
-      durationMs,
-    };
-    return ready
-      ? { tag: 'ready', candidate }
-      : { tag: 'not-ready', reason: 'media-loading', candidate };
-  }
+function candidateObservation(candidate: ForegroundCandidate): VisibleStatusObservation {
+  return candidate.ready
+    ? { tag: 'ready', candidate }
+    : { tag: 'not-ready', reason: 'media-loading', candidate };
+}
 
+function dimensionsAreValid(width: number, height: number): boolean {
+  return (
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    width >= WHATSAPP_MIN_DIMENSION &&
+    width <= WHATSAPP_MAX_DIMENSION &&
+    height >= WHATSAPP_MIN_DIMENSION &&
+    height <= WHATSAPP_MAX_DIMENSION
+  );
+}
+
+function inspectVideo(
+  player: Element,
+  videos: HTMLVideoElement[],
+  shape: WhatsAppShapeEvidence,
+  document: Document
+): VisibleStatusObservation {
+  const markedVideos = videos.filter(video => hasMarkerWithinPlayer(video, player, 'status-video'));
+  if (markedVideos.length !== 1) return { tag: 'format-changed', shape };
+  const video = markedVideos[0];
+  if (!video) return { tag: 'format-changed', shape };
+  const source = sourceOf(video);
+  if (!isPageOwnedSource(source, document)) return { tag: 'format-changed', shape };
+  const durationMs = Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : 0;
+  const ready =
+    video.readyState >= 2 &&
+    dimensionsAreValid(video.videoWidth, video.videoHeight) &&
+    durationMs >= WHATSAPP_MIN_VIDEO_DURATION_MS &&
+    durationMs <= WHATSAPP_MAX_VIDEO_DURATION_MS;
+  return candidateObservation({
+    kind: 'video',
+    player,
+    media: video,
+    source,
+    ready,
+    width: video.videoWidth,
+    height: video.videoHeight,
+    durationMs,
+  });
+}
+
+function inspectPhoto(
+  player: Element,
+  shape: WhatsAppShapeEvidence,
+  document: Document
+): VisibleStatusObservation {
+  const images = Array.from(player.querySelectorAll('img'));
   const markedImages = images.filter(image => hasMarkerWithinPlayer(image, player, 'status-image'));
   const candidateImages = markedImages.length > 0 ? markedImages : images;
   const foreground = candidateImages.filter(image => {
@@ -253,14 +320,7 @@ export function inspectVisibleStatus(
   const image = foreground[0];
   if (!image) return { tag: 'format-changed', shape };
   const source = sourceOf(image);
-  const ready =
-    image.complete &&
-    Number.isFinite(image.naturalWidth) &&
-    Number.isFinite(image.naturalHeight) &&
-    image.naturalWidth >= WHATSAPP_MIN_DIMENSION &&
-    image.naturalWidth <= WHATSAPP_MAX_DIMENSION &&
-    image.naturalHeight >= WHATSAPP_MIN_DIMENSION &&
-    image.naturalHeight <= WHATSAPP_MAX_DIMENSION;
+  const ready = image.complete && dimensionsAreValid(image.naturalWidth, image.naturalHeight);
   const candidate: ForegroundCandidate = {
     kind: 'photo',
     player,
@@ -270,9 +330,7 @@ export function inspectVisibleStatus(
     width: image.naturalWidth,
     height: image.naturalHeight,
   };
-  return ready
-    ? { tag: 'ready', candidate }
-    : { tag: 'not-ready', reason: 'media-loading', candidate };
+  return candidateObservation(candidate);
 }
 
 function guardMatches(
@@ -345,6 +403,17 @@ async function readResponseBytes(
 ): Promise<Uint8Array> {
   if (!response.body) throw new ControllerFailure('transfer-failed');
   const reader = response.body.getReader();
+  const { parts, total } = await readResponseParts(reader, guard, document);
+  if (signal.aborted) throw new ControllerFailure('cancelled');
+  ensureTransferStillValid(guard, document, total);
+  return joinByteParts(parts, total);
+}
+
+async function readResponseParts(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  guard: ForegroundCandidate,
+  document: Document
+): Promise<{ readonly parts: Uint8Array[]; readonly total: number }> {
   const parts: Uint8Array[] = [];
   let total = 0;
   let completed = false;
@@ -365,11 +434,19 @@ async function readResponseBytes(
     if (!completed) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
-  if (signal.aborted) throw new ControllerFailure('cancelled');
-  if (!guardMatches(guard, document) || total === 0) {
-    if (!guardMatches(guard, document)) throw new ControllerFailure('status-changed');
-    throw new ControllerFailure('transfer-failed');
-  }
+  return { parts, total };
+}
+
+function ensureTransferStillValid(
+  guard: ForegroundCandidate,
+  document: Document,
+  total: number
+): void {
+  if (!guardMatches(guard, document)) throw new ControllerFailure('status-changed');
+  if (total === 0) throw new ControllerFailure('transfer-failed');
+}
+
+function joinByteParts(parts: Uint8Array[], total: number): Uint8Array {
   const bytes = new Uint8Array(total);
   let offset = 0;
   for (const part of parts) {
@@ -563,9 +640,9 @@ interface OutboundFailure extends InboundBase {
 }
 type OutboundMessage = OutboundMetadata | OutboundChunk | OutboundComplete | OutboundFailure;
 
-function decodeControllerInbound(value: unknown): InboundMessage | undefined {
-  if (!isRecord(value)) return undefined;
-  const baseKeys = ['protocolVersion', 'requestId', 'operationId', 'tag'];
+const CONTROLLER_BASE_KEYS = ['protocolVersion', 'requestId', 'operationId', 'tag'];
+
+function decodeControllerBase(value: Record<string, unknown>): InboundBase | undefined {
   if (
     value.protocolVersion !== WHATSAPP_PROTOCOL_VERSION ||
     !isUuid(value.requestId) ||
@@ -573,181 +650,218 @@ function decodeControllerInbound(value: unknown): InboundMessage | undefined {
     typeof value.tag !== 'string'
   )
     return undefined;
-  const base: InboundBase = {
+  return {
     protocolVersion: WHATSAPP_PROTOCOL_VERSION,
     requestId: value.requestId,
     operationId: value.operationId,
     tag: value.tag,
   };
+}
+
+function decodeStart(value: Record<string, unknown>, base: InboundBase): StartMessage | undefined {
+  const keys = [
+    ...CONTROLLER_BASE_KEYS,
+    'maxMediaBytes',
+    'maxChunkBytes',
+    'maxChunks',
+    'maxUnacknowledgedChunks',
+    'idleTimeoutMs',
+    'transferTimeoutMs',
+    'retentionMs',
+  ];
+  const limitsMatch =
+    value.maxMediaBytes === WHATSAPP_MAX_MEDIA_BYTES &&
+    value.maxChunkBytes === WHATSAPP_MAX_CHUNK_BYTES &&
+    value.maxChunks === WHATSAPP_MAX_CHUNKS &&
+    value.maxUnacknowledgedChunks === 1 &&
+    value.idleTimeoutMs === WHATSAPP_IDLE_TIMEOUT_MS &&
+    value.transferTimeoutMs === WHATSAPP_TRANSFER_TIMEOUT_MS &&
+    value.retentionMs === 60_000;
+  return exactKeys(value, keys) && limitsMatch ? { ...base, tag: 'CaptureStart' } : undefined;
+}
+
+function decodeAck(value: Record<string, unknown>, base: InboundBase): AckMessage | undefined {
+  return exactKeys(value, [...CONTROLLER_BASE_KEYS, 'sequence']) &&
+    isIntegerBetween(value.sequence, 0, WHATSAPP_MAX_CHUNKS - 1)
+    ? { ...base, tag: 'ChunkAck', sequence: value.sequence }
+    : undefined;
+}
+
+function decodeAccept(
+  value: Record<string, unknown>,
+  base: InboundBase
+): AcceptMessage | undefined {
+  return exactKeys(value, [...CONTROLLER_BASE_KEYS, 'captureId']) && isUuid(value.captureId)
+    ? { ...base, tag: 'CaptureAccept', captureId: value.captureId }
+    : undefined;
+}
+
+function decodeCancel(
+  value: Record<string, unknown>,
+  base: InboundBase
+): CancelMessage | undefined {
+  return exactKeys(value, [...CONTROLLER_BASE_KEYS, 'reason']) && isCancelReason(value.reason)
+    ? { ...base, tag: 'CaptureCancel', reason: value.reason }
+    : undefined;
+}
+
+function decodeControllerInbound(value: unknown): InboundMessage | undefined {
+  if (!isRecord(value)) return undefined;
+  const base = decodeControllerBase(value);
+  if (!base) return undefined;
   switch (value.tag) {
     case 'CaptureStart':
-      if (
-        !exactKeys(value, [
-          ...baseKeys,
-          'maxMediaBytes',
-          'maxChunkBytes',
-          'maxChunks',
-          'maxUnacknowledgedChunks',
-          'idleTimeoutMs',
-          'transferTimeoutMs',
-          'retentionMs',
-        ])
-      )
-        return undefined;
-      if (
-        value.maxMediaBytes !== WHATSAPP_MAX_MEDIA_BYTES ||
-        value.maxChunkBytes !== WHATSAPP_MAX_CHUNK_BYTES ||
-        value.maxChunks !== WHATSAPP_MAX_CHUNKS ||
-        value.maxUnacknowledgedChunks !== 1 ||
-        value.idleTimeoutMs !== WHATSAPP_IDLE_TIMEOUT_MS ||
-        value.transferTimeoutMs !== WHATSAPP_TRANSFER_TIMEOUT_MS ||
-        value.retentionMs !== 60_000
-      )
-        return undefined;
-      return { ...base, tag: 'CaptureStart' };
+      return decodeStart(value, base);
     case 'ChunkAck':
-      if (
-        !exactKeys(value, [...baseKeys, 'sequence']) ||
-        !isIntegerBetween(value.sequence, 0, WHATSAPP_MAX_CHUNKS - 1)
-      )
-        return undefined;
-      return { ...base, tag: 'ChunkAck', sequence: value.sequence };
+      return decodeAck(value, base);
     case 'CaptureAccept':
-      if (!exactKeys(value, [...baseKeys, 'captureId']) || !isUuid(value.captureId))
-        return undefined;
-      return { ...base, tag: 'CaptureAccept', captureId: value.captureId };
+      return decodeAccept(value, base);
     case 'CaptureCancel':
-      if (!exactKeys(value, [...baseKeys, 'reason']) || !isCancelReason(value.reason))
-        return undefined;
-      return { ...base, tag: 'CaptureCancel', reason: value.reason };
+      return decodeCancel(value, base);
     default:
       return undefined;
   }
 }
 
-export function decodeControllerOutbound(value: unknown): OutboundMessage | undefined {
-  if (!isRecord(value)) return undefined;
-  const baseKeys = ['protocolVersion', 'requestId', 'operationId', 'tag'];
+function decodePhotoMetadata(
+  value: Record<string, unknown>,
+  base: InboundBase,
+  commonKeys: string[]
+): OutboundMetadata | undefined {
   if (
-    value.protocolVersion !== WHATSAPP_PROTOCOL_VERSION ||
-    !isUuid(value.requestId) ||
-    !isUuid(value.operationId) ||
-    typeof value.tag !== 'string'
+    !exactKeys(value, commonKeys) ||
+    typeof value.mimeType !== 'string' ||
+    !isWhatsAppMimeForKind('photo', value.mimeType) ||
+    !isIntegerBetween(value.byteLength, 1, WHATSAPP_MAX_MEDIA_BYTES) ||
+    !isIntegerBetween(value.width, WHATSAPP_MIN_DIMENSION, WHATSAPP_MAX_DIMENSION) ||
+    !isIntegerBetween(value.height, WHATSAPP_MIN_DIMENSION, WHATSAPP_MAX_DIMENSION)
   )
     return undefined;
-  const base: InboundBase = {
-    protocolVersion: WHATSAPP_PROTOCOL_VERSION,
-    requestId: value.requestId,
-    operationId: value.operationId,
-    tag: value.tag,
+  return {
+    ...base,
+    tag: 'CaptureMetadata',
+    kind: 'photo',
+    mimeType: value.mimeType,
+    byteLength: value.byteLength,
+    width: value.width,
+    height: value.height,
   };
+}
+
+function decodeVideoMetadata(
+  value: Record<string, unknown>,
+  base: InboundBase,
+  commonKeys: string[]
+): OutboundMetadata | undefined {
+  if (
+    !exactKeys(value, [...commonKeys, 'durationMs']) ||
+    typeof value.mimeType !== 'string' ||
+    !isWhatsAppMimeForKind('video', value.mimeType) ||
+    !isIntegerBetween(value.byteLength, 1, WHATSAPP_MAX_MEDIA_BYTES) ||
+    !isIntegerBetween(value.width, WHATSAPP_MIN_DIMENSION, WHATSAPP_MAX_DIMENSION) ||
+    !isIntegerBetween(value.height, WHATSAPP_MIN_DIMENSION, WHATSAPP_MAX_DIMENSION) ||
+    !isIntegerBetween(
+      value.durationMs,
+      WHATSAPP_MIN_VIDEO_DURATION_MS,
+      WHATSAPP_MAX_VIDEO_DURATION_MS
+    )
+  )
+    return undefined;
+  return {
+    ...base,
+    tag: 'CaptureMetadata',
+    kind: 'video',
+    mimeType: 'video/mp4',
+    byteLength: value.byteLength,
+    width: value.width,
+    height: value.height,
+    durationMs: value.durationMs,
+  };
+}
+
+function decodeMetadata(
+  value: Record<string, unknown>,
+  base: InboundBase
+): OutboundMetadata | undefined {
+  const commonKeys = [...CONTROLLER_BASE_KEYS, 'kind', 'mimeType', 'byteLength', 'width', 'height'];
+  if (value.kind === 'photo') return decodePhotoMetadata(value, base, commonKeys);
+  if (value.kind === 'video') return decodeVideoMetadata(value, base, commonKeys);
+  return undefined;
+}
+
+function decodeChunk(value: Record<string, unknown>, base: InboundBase): OutboundChunk | undefined {
+  if (
+    !exactKeys(value, [...CONTROLLER_BASE_KEYS, 'sequence', 'decodedLength', 'payload']) ||
+    !isIntegerBetween(value.sequence, 0, WHATSAPP_MAX_CHUNKS - 1) ||
+    !isIntegerBetween(value.decodedLength, 1, WHATSAPP_MAX_CHUNK_BYTES) ||
+    !isCanonicalBase64Shape(value.payload) ||
+    value.payload.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4
+  )
+    return undefined;
+  let binary: string;
+  try {
+    binary = atob(value.payload);
+  } catch {
+    return undefined;
+  }
+  const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+  if (encodeControllerBase64(bytes) !== value.payload || bytes.length !== value.decodedLength)
+    return undefined;
+  return {
+    ...base,
+    tag: 'CaptureChunk',
+    sequence: value.sequence,
+    decodedLength: value.decodedLength,
+    payload: value.payload,
+  };
+}
+
+function decodeComplete(
+  value: Record<string, unknown>,
+  base: InboundBase
+): OutboundComplete | undefined {
+  if (
+    !exactKeys(value, [...CONTROLLER_BASE_KEYS, 'chunkCount', 'byteLength']) ||
+    !isIntegerBetween(value.chunkCount, 1, WHATSAPP_MAX_CHUNKS) ||
+    !isIntegerBetween(value.byteLength, 1, WHATSAPP_MAX_MEDIA_BYTES)
+  )
+    return undefined;
+  return {
+    ...base,
+    tag: 'CaptureComplete',
+    chunkCount: value.chunkCount,
+    byteLength: value.byteLength,
+  };
+}
+
+function decodeFailure(
+  value: Record<string, unknown>,
+  base: InboundBase
+): OutboundFailure | undefined {
+  const hasShape = Object.prototype.hasOwnProperty.call(value, 'shape');
+  if (
+    !exactKeys(value, [...CONTROLLER_BASE_KEYS, 'reason', ...(hasShape ? ['shape'] : [])]) ||
+    !isControllerFailureReason(value.reason) ||
+    (hasShape && !isShapeEvidence(value.shape))
+  )
+    return undefined;
+  const shape = isShapeEvidence(value.shape) ? value.shape : undefined;
+  return { ...base, tag: 'CaptureFailure', reason: value.reason, ...(shape ? { shape } : {}) };
+}
+
+export function decodeControllerOutbound(value: unknown): OutboundMessage | undefined {
+  if (!isRecord(value)) return undefined;
+  const base = decodeControllerBase(value);
+  if (!base) return undefined;
   switch (value.tag) {
-    case 'CaptureMetadata': {
-      const common = [...baseKeys, 'kind', 'mimeType', 'byteLength', 'width', 'height'];
-      if (value.kind === 'photo') {
-        if (
-          !exactKeys(value, common) ||
-          typeof value.mimeType !== 'string' ||
-          !isWhatsAppMimeForKind('photo', value.mimeType) ||
-          !isIntegerBetween(value.byteLength, 1, WHATSAPP_MAX_MEDIA_BYTES) ||
-          !isIntegerBetween(value.width, WHATSAPP_MIN_DIMENSION, WHATSAPP_MAX_DIMENSION) ||
-          !isIntegerBetween(value.height, WHATSAPP_MIN_DIMENSION, WHATSAPP_MAX_DIMENSION)
-        )
-          return undefined;
-        return {
-          ...base,
-          tag: 'CaptureMetadata',
-          kind: 'photo',
-          mimeType: value.mimeType,
-          byteLength: value.byteLength,
-          width: value.width,
-          height: value.height,
-        };
-      }
-      if (value.kind === 'video') {
-        if (
-          !exactKeys(value, [...common, 'durationMs']) ||
-          typeof value.mimeType !== 'string' ||
-          !isWhatsAppMimeForKind('video', value.mimeType) ||
-          !isIntegerBetween(value.byteLength, 1, WHATSAPP_MAX_MEDIA_BYTES) ||
-          !isIntegerBetween(value.width, WHATSAPP_MIN_DIMENSION, WHATSAPP_MAX_DIMENSION) ||
-          !isIntegerBetween(value.height, WHATSAPP_MIN_DIMENSION, WHATSAPP_MAX_DIMENSION) ||
-          !isIntegerBetween(
-            value.durationMs,
-            WHATSAPP_MIN_VIDEO_DURATION_MS,
-            WHATSAPP_MAX_VIDEO_DURATION_MS
-          )
-        )
-          return undefined;
-        return {
-          ...base,
-          tag: 'CaptureMetadata',
-          kind: 'video',
-          mimeType: 'video/mp4',
-          byteLength: value.byteLength,
-          width: value.width,
-          height: value.height,
-          durationMs: value.durationMs,
-        };
-      }
-      return undefined;
-    }
-    case 'CaptureChunk': {
-      if (
-        !exactKeys(value, [...baseKeys, 'sequence', 'decodedLength', 'payload']) ||
-        !isIntegerBetween(value.sequence, 0, WHATSAPP_MAX_CHUNKS - 1) ||
-        !isIntegerBetween(value.decodedLength, 1, WHATSAPP_MAX_CHUNK_BYTES) ||
-        !isCanonicalBase64Shape(value.payload) ||
-        value.payload.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4
-      )
-        return undefined;
-      let binary: string;
-      try {
-        binary = atob(value.payload);
-      } catch {
-        return undefined;
-      }
-      const decodedLength = binary.length;
-      const bytes = new Uint8Array(decodedLength);
-      for (let index = 0; index < decodedLength; index++) bytes[index] = binary.charCodeAt(index);
-      if (encodeControllerBase64(bytes) !== value.payload || decodedLength !== value.decodedLength)
-        return undefined;
-      return {
-        ...base,
-        tag: 'CaptureChunk',
-        sequence: value.sequence,
-        decodedLength: value.decodedLength,
-        payload: value.payload,
-      };
-    }
+    case 'CaptureMetadata':
+      return decodeMetadata(value, base);
+    case 'CaptureChunk':
+      return decodeChunk(value, base);
     case 'CaptureComplete':
-      if (
-        !exactKeys(value, [...baseKeys, 'chunkCount', 'byteLength']) ||
-        !isIntegerBetween(value.chunkCount, 1, WHATSAPP_MAX_CHUNKS) ||
-        !isIntegerBetween(value.byteLength, 1, WHATSAPP_MAX_MEDIA_BYTES)
-      )
-        return undefined;
-      return {
-        ...base,
-        tag: 'CaptureComplete',
-        chunkCount: value.chunkCount,
-        byteLength: value.byteLength,
-      };
-    case 'CaptureFailure': {
-      if (
-        !exactKeys(value, [
-          ...baseKeys,
-          'reason',
-          ...(Object.prototype.hasOwnProperty.call(value, 'shape') ? ['shape'] : []),
-        ]) ||
-        !isControllerFailureReason(value.reason)
-      )
-        return undefined;
-      if (Object.prototype.hasOwnProperty.call(value, 'shape') && !isShapeEvidence(value.shape))
-        return undefined;
-      const shape = isShapeEvidence(value.shape) ? value.shape : undefined;
-      return { ...base, tag: 'CaptureFailure', reason: value.reason, ...(shape ? { shape } : {}) };
-    }
+      return decodeComplete(value, base);
+    case 'CaptureFailure':
+      return decodeFailure(value, base);
     default:
       return undefined;
   }
@@ -952,6 +1066,63 @@ export function installWhatsAppController(): void {
     });
   };
 
+  const postChunks = async (
+    start: StartMessage,
+    acquired: AcquiredBytes,
+    chunks: Uint8Array[]
+  ): Promise<boolean> => {
+    for (const [sequence, chunk] of chunks.entries()) {
+      ensureGuardMatches(acquired.candidate);
+      const acknowledged = awaitAck(sequence);
+      const posted = post({
+        protocolVersion: WHATSAPP_PROTOCOL_VERSION,
+        requestId: randomUuid(),
+        operationId: start.operationId,
+        tag: 'CaptureChunk',
+        sequence,
+        decodedLength: chunk.length,
+        payload: encodeControllerBase64(chunk),
+      });
+      if (!posted) {
+        await acknowledged.catch(() => undefined);
+        return false;
+      }
+      await acknowledged;
+      if (disposed || terminal) return false;
+    }
+    return true;
+  };
+
+  const postComplete = (
+    start: StartMessage,
+    acquired: AcquiredBytes,
+    chunkCount: number
+  ): boolean => {
+    ensureCurrentCandidate(acquired.candidate);
+    return post({
+      protocolVersion: WHATSAPP_PROTOCOL_VERSION,
+      requestId: randomUuid(),
+      operationId: start.operationId,
+      tag: 'CaptureComplete',
+      chunkCount,
+      byteLength: acquired.bytes.length,
+    });
+  };
+
+  const transferStopped = () => disposed || terminal;
+
+  const finishTransfer = () => {
+    completeSent = true;
+    clearTimers();
+    if (!transferStopped()) resetIdleTimer();
+  };
+
+  const handleRunError = (error: unknown) => {
+    const failure =
+      error instanceof ControllerFailure ? error : new ControllerFailure('transfer-failed');
+    fail(failure.reason, failure.shape);
+  };
+
   const run = async (start: StartMessage) => {
     currentOperationId = start.operationId;
     abortController = new AbortController();
@@ -961,83 +1132,35 @@ export function installWhatsAppController(): void {
     );
     resetIdleTimer();
     try {
-      if (!isWhatsAppDocument()) throw new ControllerFailure('transfer-failed');
-      const initial = inspectVisibleStatus(globalThis.document);
-      if (initial.tag === 'not-visible') throw new ControllerFailure('not-visible');
-      if (initial.tag === 'unsupported') throw new ControllerFailure('unsupported');
-      if (initial.tag === 'format-changed')
-        throw new ControllerFailure('format-changed', initial.shape);
-      const acquired = await acquireVisibleStatusBytes(
-        initial.candidate,
-        globalThis.document,
-        abortController.signal
-      );
-      if (!isWhatsAppDocument()) throw new ControllerFailure('transfer-failed');
-      if (!guardMatches(acquired.candidate, globalThis.document))
-        throw new ControllerFailure('status-changed');
-      const chunks = splitBytes(acquired.bytes);
-      if (chunks.length === 0 || chunks.length > WHATSAPP_MAX_CHUNKS)
-        throw new ControllerFailure('transfer-failed');
-      const metadata = {
-        protocolVersion: WHATSAPP_PROTOCOL_VERSION,
-        requestId: randomUuid(),
-        operationId: start.operationId,
-        tag: 'CaptureMetadata' as const,
-        kind: acquired.candidate.kind,
-        mimeType: acquired.mimeType,
-        byteLength: acquired.bytes.length,
-        width: acquired.candidate.width,
-        height: acquired.candidate.height,
-        ...(acquired.candidate.kind === 'video'
-          ? { durationMs: acquired.candidate.durationMs }
-          : {}),
-      };
-      if (!post(metadata) || disposed || terminal) return;
+      const { acquired, chunks } = await acquireControllerStatus(abortController.signal);
+      if (!post(controllerMetadata(start.operationId, acquired)) || transferStopped()) return;
       bytes = acquired.bytes;
-      for (const [sequence, chunk] of chunks.entries()) {
-        if (!guardMatches(acquired.candidate, globalThis.document))
-          throw new ControllerFailure('status-changed');
-        const payload = encodeControllerBase64(chunk);
-        const acknowledged = awaitAck(sequence);
-        const posted = post({
-          protocolVersion: WHATSAPP_PROTOCOL_VERSION,
-          requestId: randomUuid(),
-          operationId: start.operationId,
-          tag: 'CaptureChunk',
-          sequence,
-          decodedLength: chunk.length,
-          payload,
-        });
-        if (!posted) {
-          await acknowledged.catch(() => undefined);
-          return;
-        }
-        await acknowledged;
-        if (disposed || terminal) return;
-      }
-      if (!isWhatsAppDocument()) throw new ControllerFailure('transfer-failed');
-      if (!guardMatches(acquired.candidate, globalThis.document))
-        throw new ControllerFailure('status-changed');
-      if (
-        !post({
-          protocolVersion: WHATSAPP_PROTOCOL_VERSION,
-          requestId: randomUuid(),
-          operationId: start.operationId,
-          tag: 'CaptureComplete',
-          chunkCount: chunks.length,
-          byteLength: acquired.bytes.length,
-        }) ||
-        disposed ||
-        terminal
-      )
-        return;
-      completeSent = true;
-      clearTimers();
-      if (!disposed && !terminal) resetIdleTimer();
+      if (!(await postChunks(start, acquired, chunks))) return;
+      if (!postComplete(start, acquired, chunks.length) || transferStopped()) return;
+      finishTransfer();
     } catch (error) {
-      if (error instanceof ControllerFailure) fail(error.reason, error.shape);
-      else fail('transfer-failed');
+      handleRunError(error);
     }
+  };
+
+  const handleStart = (message: StartMessage) => {
+    if (runStarted) return fail('transfer-failed');
+    runStarted = true;
+    void run(message);
+  };
+
+  const handleAck = (message: AckMessage) => {
+    if (!pendingAck || pendingAck.sequence !== message.sequence) return fail('transfer-failed');
+    globalThis.clearTimeout(pendingAck.timer);
+    const pending = pendingAck;
+    pendingAck = undefined;
+    pending.resolve();
+  };
+
+  const handleAccept = () => {
+    if (!runStarted || !completeSent || terminal || !bytes) return fail('transfer-failed');
+    terminal = true;
+    cleanupPort();
   };
 
   const onMessage = (raw: unknown) => {
@@ -1057,31 +1180,13 @@ export function installWhatsAppController(): void {
     resetIdleTimer();
     switch (message.tag) {
       case 'CaptureStart':
-        if (runStarted) {
-          fail('transfer-failed');
-          return;
-        }
-        runStarted = true;
-        void run(message);
+        handleStart(message);
         return;
-      case 'ChunkAck': {
-        if (!pendingAck || pendingAck.sequence !== message.sequence) {
-          fail('transfer-failed');
-          return;
-        }
-        globalThis.clearTimeout(pendingAck.timer);
-        const pending = pendingAck;
-        pendingAck = undefined;
-        pending.resolve();
+      case 'ChunkAck':
+        handleAck(message);
         return;
-      }
       case 'CaptureAccept':
-        if (!runStarted || !completeSent || terminal || !bytes) {
-          fail('transfer-failed');
-          return;
-        }
-        terminal = true;
-        cleanupPort();
+        handleAccept();
         return;
       case 'CaptureCancel':
         fail('cancelled');

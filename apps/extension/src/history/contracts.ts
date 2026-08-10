@@ -50,11 +50,6 @@ export interface DownloadHistoryStoreV4 {
   entries: HistoryEntry[];
 }
 
-export interface LegacyDownloadHistoryEntry extends Omit<DownloadHistoryEntry, 'origin'> {
-  sourceUrl: string;
-  sourceKind: HistorySourceKind;
-}
-
 export type HistoryReadResult =
   | { kind: 'ok'; entries: HistoryEntry[]; repaired: boolean }
   | { kind: 'unknown-version'; entries: [] };

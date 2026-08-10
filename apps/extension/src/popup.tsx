@@ -95,6 +95,67 @@ type FrameRuntime = {
   warning?: string;
 };
 type WhatsAppDisclosureState = 'checking' | 'required' | 'dismissed' | 'acknowledged';
+type WhatsAppCaptureStatus = 'idle' | 'capturing' | 'ready' | 'downloading' | 'started' | 'failed';
+type WhatsAppOperation = {
+  operationId: ReturnType<typeof createOperationId>;
+  requestId: ReturnType<typeof createRequestId>;
+  manualRetryCount: number;
+};
+
+function nextWhatsAppOperation(
+  status: WhatsAppCaptureStatus,
+  previous: WhatsAppOperation | undefined
+): WhatsAppOperation {
+  return status === 'failed' && previous
+    ? {
+        operationId: previous.operationId,
+        requestId: createRequestId(),
+        manualRetryCount: previous.manualRetryCount + 1,
+      }
+    : { operationId: createOperationId(), requestId: createRequestId(), manualRetryCount: 0 };
+}
+
+function whatsAppDownloadContext(
+  handle: WhatsAppCaptureHandle | undefined,
+  item: MediaItem | undefined,
+  operation: WhatsAppOperation | undefined,
+  status: WhatsAppCaptureStatus
+):
+  | {
+      readonly handle: WhatsAppCaptureHandle;
+      readonly item: MediaItem;
+      readonly operation: WhatsAppOperation;
+    }
+  | undefined {
+  return handle && item?.selected && operation && status !== 'downloading'
+    ? { handle, item, operation }
+    : undefined;
+}
+
+function downloadWhatsAppSelection(
+  handle: WhatsAppCaptureHandle,
+  item: MediaItem,
+  operation: WhatsAppOperation,
+  frameSetting: FrameExportSetting | undefined
+) {
+  if (!frameSetting?.enabled) return handle.download();
+  return exportWhatsAppFrame(handle, {
+    operationId: operation.operationId,
+    requestId: operation.requestId,
+    itemIndex: 0,
+    url: item.url,
+    originalUrl: item.url,
+    originalFilename: handle.filename,
+    filename: frameFilename(
+      handle.filename.replace(/\.[^.]+$/u, ''),
+      frameSetting.timestampSeconds
+    ),
+    mediaType: 'video',
+    mode: 'frame',
+    displayIndex: 0,
+    frameTimestampSeconds: frameSetting.timestampSeconds,
+  });
+}
 
 function exportCandidate(
   item: MediaItem,
@@ -169,11 +230,7 @@ export default function Popup() {
   const [whatsappMediaItem, setWhatsappMediaItem] = useState<MediaItem>();
   const [whatsappFrameSetting, setWhatsappFrameSetting] = useState<FrameExportSetting>();
   const [whatsappFrameRuntime, setWhatsappFrameRuntime] = useState<FrameRuntime>();
-  const [whatsappOperation, setWhatsappOperation] = useState<{
-    operationId: ReturnType<typeof createOperationId>;
-    requestId: ReturnType<typeof createRequestId>;
-    manualRetryCount: number;
-  }>();
+  const [whatsappOperation, setWhatsappOperation] = useState<WhatsAppOperation>();
   const whatsappHandleRef = useRef<WhatsAppCaptureHandle | undefined>(undefined);
   const [showHistory, setShowHistory] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
@@ -281,14 +338,7 @@ export default function Popup() {
       return;
     }
     if (whatsappCaptureStatus === 'capturing') return;
-    const retrying = whatsappCaptureStatus === 'failed' && whatsappOperation !== undefined;
-    const operation = retrying
-      ? {
-          operationId: whatsappOperation.operationId,
-          requestId: createRequestId(),
-          manualRetryCount: whatsappOperation.manualRetryCount + 1,
-        }
-      : { operationId: createOperationId(), requestId: createRequestId(), manualRetryCount: 0 };
+    const operation = nextWhatsAppOperation(whatsappCaptureStatus, whatsappOperation);
     setWhatsappOperation(operation);
     setWhatsappFailure(undefined);
     setWhatsappCaptureStatus('capturing');
@@ -336,32 +386,18 @@ export default function Popup() {
   }, [whatsappCaptureStatus, whatsappDisclosure, whatsappOperation]);
 
   const handleWhatsAppDownload = useCallback(async () => {
-    const handle = whatsappHandleRef.current;
-    const item = whatsappMediaItem;
-    const operation = whatsappOperation;
-    if (!handle || !item || !item.selected || !operation || whatsappCaptureStatus === 'downloading')
-      return;
+    const context = whatsAppDownloadContext(
+      whatsappHandleRef.current,
+      whatsappMediaItem,
+      whatsappOperation,
+      whatsappCaptureStatus
+    );
+    if (!context) return;
+    const { handle, item, operation } = context;
     setWhatsappCaptureStatus('downloading');
     setWhatsappFailure(undefined);
     try {
-      const result = whatsappFrameSetting?.enabled
-        ? await exportWhatsAppFrame(handle, {
-            operationId: operation.operationId,
-            requestId: operation.requestId,
-            itemIndex: 0,
-            url: item.url,
-            originalUrl: item.url,
-            originalFilename: handle.filename,
-            filename: frameFilename(
-              handle.filename.replace(/\.[^.]+$/u, ''),
-              whatsappFrameSetting.timestampSeconds
-            ),
-            mediaType: 'video',
-            mode: 'frame',
-            displayIndex: 0,
-            frameTimestampSeconds: whatsappFrameSetting.timestampSeconds,
-          })
-        : await handle.download();
+      const result = await downloadWhatsAppSelection(handle, item, operation, whatsappFrameSetting);
       if ('status' in result && result.status === 'failed') {
         setWhatsappFailure(result.failure);
         setWhatsappCaptureStatus('failed');
@@ -1506,8 +1542,6 @@ export default function Popup() {
   );
 }
 
-type WhatsAppCaptureStatus = 'idle' | 'capturing' | 'ready' | 'downloading' | 'started' | 'failed';
-
 type WhatsAppCaptureSectionProps = {
   disclosure: WhatsAppDisclosureState;
   status: WhatsAppCaptureStatus;
@@ -1674,10 +1708,7 @@ function WhatsAppCaptureSection({
 
 function WhatsAppCaptureReady(props: WhatsAppCaptureReadyProps) {
   const presentation = props.failure ? presentationForFailure(props.failure) : undefined;
-  const canCapture =
-    props.status !== 'failed' ||
-    (presentation?.actions.includes('retry-operation') &&
-      (presentation.retry !== 'once' || props.manualRetryCount === 0));
+  const canCapture = canCaptureWhatsAppStatus(props.status, props.manualRetryCount, presentation);
   return (
     <WhatsAppCaptureShell title={presentation?.title ?? 'Capture the Visible Status'}>
       <p className="whatsapp-capture-copy">{props.message}</p>
@@ -1701,6 +1732,16 @@ function WhatsAppCaptureReady(props: WhatsAppCaptureReadyProps) {
       )}
     </WhatsAppCaptureShell>
   );
+}
+
+function canCaptureWhatsAppStatus(
+  status: WhatsAppCaptureReadyProps['status'],
+  manualRetryCount: number,
+  presentation: ReturnType<typeof presentationForFailure> | undefined
+): boolean {
+  if (status !== 'failed') return true;
+  if (!presentation?.actions.includes('retry-operation')) return false;
+  return presentation.retry !== 'once' || manualRetryCount === 0;
 }
 
 function WhatsAppCaptureButton({

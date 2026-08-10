@@ -169,6 +169,7 @@ const WhatsAppOutboundEnvelope = Schema.Union(
   CaptureComplete,
   CaptureFailure
 );
+export type WhatsAppOutboundEnvelope = Schema.Schema.Type<typeof WhatsAppOutboundEnvelope>;
 
 const CaptureTime = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
 

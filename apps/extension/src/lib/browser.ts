@@ -495,32 +495,53 @@ function hasNativeStorageLocal(value: unknown): value is NativeBrowserGlobal {
   return typeof storage?.local === 'object' && storage.local !== null;
 }
 
+function nativeRuntime(native: NativeBrowserGlobal): BrowserShim['runtime'] {
+  return {
+    ...native.runtime,
+    connectNative: application => native.runtime.connectNative?.(application) ?? noopNativePort,
+    onStartup: native.runtime.onStartup ?? noopRuntimeStartup,
+  };
+}
+
+function nativeTabs(native: NativeBrowserGlobal): BrowserShim['tabs'] {
+  return {
+    query: queryInfo => native.tabs.query(queryInfo),
+    connect: (tabId, connectInfo) => native.tabs.connect?.(tabId, connectInfo) ?? noopNativePort,
+    create: createProperties => native.tabs.create(createProperties),
+    update: async (tabId, updateProperties) => {
+      await native.tabs.update(tabId, updateProperties);
+    },
+    sendMessage: (tabId, message) => native.tabs.sendMessage(tabId, message),
+    remove: tabId => native.tabs.remove(tabId),
+    onRemoved: native.tabs.onRemoved ?? noopTabRemoved,
+    onUpdated: native.tabs.onUpdated ?? noopTabUpdated,
+  };
+}
+
+function nativeDownloads(native: NativeBrowserGlobal): BrowserShim['downloads'] {
+  return {
+    ...native.downloads,
+    cancel:
+      native.downloads.cancel ??
+      (() => Promise.reject(new Error('The downloads cancel API is unavailable.'))),
+  };
+}
+
+function nativeContextMenus(native: NativeBrowserGlobal): BrowserShim['contextMenus'] {
+  return {
+    ...noopContextMenus,
+    ...native.contextMenus,
+    onClicked: native.contextMenus?.onClicked ?? noopContextMenus.onClicked,
+    onShown: native.contextMenus?.onShown ?? noopContextMenus.onShown,
+  };
+}
+
 function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
   return {
-    runtime: {
-      ...native.runtime,
-      connectNative: application => native.runtime.connectNative?.(application) ?? noopNativePort,
-      onStartup: native.runtime.onStartup ?? noopRuntimeStartup,
-    },
-    tabs: {
-      query: queryInfo => native.tabs.query(queryInfo),
-      connect: (tabId, connectInfo) => native.tabs.connect?.(tabId, connectInfo) ?? noopNativePort,
-      create: createProperties => native.tabs.create(createProperties),
-      update: async (tabId, updateProperties) => {
-        await native.tabs.update(tabId, updateProperties);
-      },
-      sendMessage: (tabId, message) => native.tabs.sendMessage(tabId, message),
-      remove: tabId => native.tabs.remove(tabId),
-      onRemoved: native.tabs.onRemoved ?? noopTabRemoved,
-      onUpdated: native.tabs.onUpdated ?? noopTabUpdated,
-    },
+    runtime: nativeRuntime(native),
+    tabs: nativeTabs(native),
     scripting: native.scripting ?? noopScripting,
-    downloads: {
-      ...native.downloads,
-      cancel:
-        native.downloads.cancel ??
-        (() => Promise.reject(new Error('The downloads cancel API is unavailable.'))),
-    },
+    downloads: nativeDownloads(native),
     storage: native.storage.local,
     sessionStorage: native.storage.session ?? unavailableSessionStorage,
     cookies: native.cookies ?? noopCookies,
@@ -531,12 +552,7 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
       },
       remove: windowId => native.windows.remove(windowId),
     },
-    contextMenus: {
-      ...noopContextMenus,
-      ...native.contextMenus,
-      onClicked: native.contextMenus?.onClicked ?? noopContextMenus.onClicked,
-      onShown: native.contextMenus?.onShown ?? noopContextMenus.onShown,
-    },
+    contextMenus: nativeContextMenus(native),
   };
 }
 

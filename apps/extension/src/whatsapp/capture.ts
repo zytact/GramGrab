@@ -16,6 +16,7 @@ import {
   decodeWhatsAppDescriptor,
   type CaptureMetadata as CaptureMetadataValue,
   type WhatsAppCaptureDescriptor,
+  type WhatsAppOutboundEnvelope,
   type WhatsAppShapeEvidence,
 } from './contracts.ts';
 import {
@@ -164,6 +165,41 @@ function metadataDescriptor(
   return Either.isRight(result) ? result.right : undefined;
 }
 
+function chunkFitsCapture(
+  decoded: Uint8Array,
+  metadata: CaptureMetadataValue,
+  chunkCount: number,
+  aggregateLength: number
+): boolean {
+  const nextLength = aggregateLength + decoded.length;
+  return (
+    decoded.length <= WHATSAPP_MAX_CHUNK_BYTES &&
+    chunkCount < WHATSAPP_MAX_CHUNKS &&
+    nextLength <= WHATSAPP_MAX_MEDIA_BYTES &&
+    nextLength <= metadata.byteLength
+  );
+}
+
+function completedCapture(
+  metadata: CaptureMetadataValue,
+  firstAcceptedByteAt: number,
+  now: () => number,
+  chunks: Uint8Array[]
+):
+  | {
+      readonly descriptor: WhatsAppCaptureDescriptor;
+      readonly snapshot: WhatsAppCaptureSnapshot;
+    }
+  | undefined {
+  const descriptor = metadataDescriptor(metadata, firstAcceptedByteAt, now);
+  if (!descriptor) return undefined;
+  try {
+    return { descriptor, snapshot: makeWhatsAppCaptureSnapshot(descriptor, chunks) };
+  } catch {
+    return undefined;
+  }
+}
+
 let activeSession: WhatsAppCaptureSession | undefined;
 
 class WhatsAppCaptureSession {
@@ -212,7 +248,7 @@ class WhatsAppCaptureSession {
     try {
       this.#armAbsoluteTimer();
       const firstTab = await this.#findActiveWhatsAppTab();
-      if (this.#released) throw new WhatsAppCaptureError('cancelled');
+      this.#assertActive();
       if (!firstTab) throw new WhatsAppCaptureError('page-access-failed');
       this.#tabId = firstTab.id;
       await this.#browser.scripting.executeScript({
@@ -220,12 +256,9 @@ class WhatsAppCaptureSession {
         files: [WHATSAPP_CONTROLLER_FILE],
         world: 'ISOLATED',
       });
-      if (this.#released) throw new WhatsAppCaptureError('cancelled');
+      this.#assertActive();
       const secondTab = await this.#findActiveWhatsAppTab();
-      if (this.#released) throw new WhatsAppCaptureError('cancelled');
-      if (!secondTab || secondTab.id !== firstTab.id) {
-        throw new WhatsAppCaptureError('page-access-failed');
-      }
+      this.#assertSameTab(secondTab, firstTab.id);
       const connected = this.#browser.tabs.connect(firstTab.id, {
         frameId: 0,
         name: WHATSAPP_PORT_NAME,
@@ -234,10 +267,7 @@ class WhatsAppCaptureSession {
       this.#port = connected;
       this.#installListeners();
       const finalTab = await this.#findActiveWhatsAppTab();
-      if (this.#released) throw new WhatsAppCaptureError('cancelled');
-      if (!finalTab || finalTab.id !== firstTab.id) {
-        throw new WhatsAppCaptureError('page-access-failed');
-      }
+      this.#assertSameTab(finalTab, firstTab.id);
       this.#postStart();
     } catch (error) {
       const failure =
@@ -247,6 +277,15 @@ class WhatsAppCaptureSession {
       this.#fail(failure);
     }
     return this.#capturePromise;
+  }
+
+  #assertActive(): void {
+    if (this.#released) throw new WhatsAppCaptureError('cancelled');
+  }
+
+  #assertSameTab(tab: ActiveTab | undefined, expectedTabId: number): void {
+    this.#assertActive();
+    if (!tab || tab.id !== expectedTabId) throw new WhatsAppCaptureError('page-access-failed');
   }
 
   #findActiveWhatsAppTab(): Promise<ActiveTab | undefined> {
@@ -369,6 +408,10 @@ class WhatsAppCaptureSession {
     }
     this.#seenRequestIds.add(message.requestId);
     this.#resetIdleTimer();
+    this.#dispatchMessage(message);
+  }
+
+  #dispatchMessage(message: WhatsAppOutboundEnvelope): void {
     switch (message.tag) {
       case 'CaptureMetadata':
         this.#handleMetadata(message);
@@ -398,25 +441,32 @@ class WhatsAppCaptureSession {
     this.#metadata = message;
   }
 
-  #handleChunk(message: CaptureChunk): void {
-    if (!this.#metadata || this.#settled || message.sequence !== this.#expectedSequence) {
-      this.#fail(new WhatsAppCaptureError('transfer-failed'));
-      return;
-    }
+  #acceptedChunkBytes(message: CaptureChunk): Uint8Array | undefined {
+    const metadata = this.#metadata;
+    if (!metadata || this.#settled || message.sequence !== this.#expectedSequence) return undefined;
     const decoded = decodeCanonicalBase64(message.payload);
-    if (
-      !decoded ||
-      decoded.length !== message.decodedLength ||
-      decoded.length > WHATSAPP_MAX_CHUNK_BYTES
-    ) {
-      this.#fail(new WhatsAppCaptureError('transfer-failed'));
-      return;
-    }
-    if (
-      this.#chunks.length >= WHATSAPP_MAX_CHUNKS ||
-      this.#aggregateLength + decoded.length > WHATSAPP_MAX_MEDIA_BYTES ||
-      this.#aggregateLength + decoded.length > this.#metadata.byteLength
-    ) {
+    if (!decoded || decoded.length !== message.decodedLength) return undefined;
+    return chunkFitsCapture(decoded, metadata, this.#chunks.length, this.#aggregateLength)
+      ? decoded
+      : undefined;
+  }
+
+  #transferIsComplete(
+    message: { readonly chunkCount: number; readonly byteLength: number },
+    metadata: CaptureMetadataValue
+  ): boolean {
+    return (
+      !this.#settled &&
+      message.chunkCount === this.#chunks.length &&
+      message.chunkCount === this.#expectedSequence &&
+      message.byteLength === this.#aggregateLength &&
+      message.byteLength === metadata.byteLength
+    );
+  }
+
+  #handleChunk(message: CaptureChunk): void {
+    const decoded = this.#acceptedChunkBytes(message);
+    if (!decoded) {
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
       return;
     }
@@ -444,14 +494,8 @@ class WhatsAppCaptureSession {
   }
 
   #handleComplete(message: { readonly chunkCount: number; readonly byteLength: number }): void {
-    if (
-      !this.#metadata ||
-      this.#settled ||
-      message.chunkCount !== this.#chunks.length ||
-      message.chunkCount !== this.#expectedSequence ||
-      message.byteLength !== this.#aggregateLength ||
-      message.byteLength !== this.#metadata.byteLength
-    ) {
+    const metadata = this.#metadata;
+    if (!metadata || !this.#transferIsComplete(message, metadata)) {
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
       return;
     }
@@ -460,17 +504,13 @@ class WhatsAppCaptureSession {
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
       return;
     }
-    const descriptor = metadataDescriptor(this.#metadata, firstAcceptedByteAt, this.#now);
-    if (!descriptor) {
+    const completed = completedCapture(metadata, firstAcceptedByteAt, this.#now, this.#chunks);
+    if (!completed) {
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
       return;
     }
-    try {
-      this.#snapshot = makeWhatsAppCaptureSnapshot(descriptor, this.#chunks);
-    } catch {
-      this.#fail(new WhatsAppCaptureError('transfer-failed'));
-      return;
-    }
+    const { descriptor, snapshot } = completed;
+    this.#snapshot = snapshot;
     this.#chunks = [];
     if (this.#absoluteTimer !== undefined) globalThis.clearTimeout(this.#absoluteTimer);
     this.#absoluteTimer = undefined;
@@ -491,13 +531,6 @@ class WhatsAppCaptureSession {
       if (this.#idleTimer !== undefined) globalThis.clearTimeout(this.#idleTimer);
       this.#idleTimer = undefined;
     } catch {
-      this.#settled = false;
-      this.#accepted = false;
-      this.#fail(new WhatsAppCaptureError('transfer-failed'));
-      return;
-    }
-    const snapshot = this.#snapshot;
-    if (!snapshot) {
       this.#settled = false;
       this.#accepted = false;
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
@@ -542,6 +575,11 @@ class WhatsAppCaptureSession {
     this.#downloadTerminal = false;
     this.#releaseSnapshot();
     const warning = await this.#recordAcceptedHistory(handle);
+    await this.#observeDownload(downloadId);
+    return { downloadId, filename: handle.filename, ...(warning ? { warning } : {}) };
+  }
+
+  async #observeDownload(downloadId: number): Promise<void> {
     const onChanged = (delta: { id: number; state?: { current?: string } }) => {
       if (delta.id !== downloadId) return;
       const state = delta.state?.current;
@@ -568,7 +606,6 @@ class WhatsAppCaptureSession {
     } catch {
       // The retention ceiling remains the fallback when the browser cannot report state.
     }
-    return { downloadId, filename: handle.filename, ...(warning ? { warning } : {}) };
   }
 
   async #recordAcceptedHistory(
