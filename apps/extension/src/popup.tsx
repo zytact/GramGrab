@@ -1205,7 +1205,11 @@ export default function Popup() {
             )}
             {showHistory ? (
               <HistoryView
-                entries={historyEntries}
+                entries={
+                  workspaceMode
+                    ? historyEntries.filter(entry => !('source' in entry))
+                    : historyEntries
+                }
                 busyId={historyBusy}
                 onRedownload={redownloadHistory}
                 onRemove={removeHistoryEntry}

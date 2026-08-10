@@ -1,5 +1,5 @@
 import { Either, Schema } from 'effect';
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { AttemptOperationSchema } from '../download/attempt.ts';
 import { getDownloadCalls, getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
@@ -48,6 +48,8 @@ describe('exportWhatsAppFrame', () => {
     vi.mocked(captureFrameFromSource).mockResolvedValue(Either.right(new Blob(['frame'])));
   });
 
+  afterEach(() => vi.useRealTimers());
+
   it('releases the capture and frame URL before a stalled History write', async () => {
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
     const release = vi.fn(() => snapshot.release());
@@ -81,5 +83,25 @@ describe('exportWhatsAppFrame', () => {
       status: 'started',
       warning: { code: 'HISTORY_SAVE_FAILED' },
     });
+  });
+
+  it('cancels a frame download that is still active at the retention ceiling', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
+
+    await exportWhatsAppFrame(
+      {
+        descriptor,
+        snapshot,
+        filename: 'whatsapp-visible-status.mp4',
+        download: async () => ({ downloadId: 1, filename: 'whatsapp-visible-status.mp4' }),
+        release: () => snapshot.release(),
+      },
+      operation
+    );
+
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect(getMockBrowser().downloads.cancel).toHaveBeenCalledExactlyOnceWith(1);
   });
 });

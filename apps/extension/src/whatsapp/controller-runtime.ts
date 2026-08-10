@@ -247,13 +247,17 @@ function guardMatches(
   guard: ForegroundCandidate,
   document: Document = globalThis.document
 ): boolean {
-  const current = inspectVisibleStatus(document);
+  const observation = inspectVisibleStatus(document);
+  const current =
+    observation.tag === 'ready' || observation.tag === 'not-ready'
+      ? observation.candidate
+      : undefined;
   return (
-    current.tag === 'ready' &&
-    current.candidate.kind === guard.kind &&
-    current.candidate.player === guard.player &&
-    current.candidate.media === guard.media &&
-    sourceOf(current.candidate.media) === guard.source
+    current !== undefined &&
+    current.kind === guard.kind &&
+    current.player === guard.player &&
+    current.media === guard.media &&
+    sourceOf(current.media) === guard.source
   );
 }
 

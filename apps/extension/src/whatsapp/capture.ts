@@ -77,6 +77,10 @@ export interface WhatsAppCaptureHandle {
   readonly release: () => void;
 }
 
+export function isAcceptedHistorySaved(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && 'saved' in value && value.saved === true;
+}
+
 export interface WhatsAppCaptureOptions {
   readonly browser?: BrowserShim;
   readonly now?: () => number;
@@ -574,7 +578,7 @@ class WhatsAppCaptureSession {
     handle: WhatsAppCaptureHandle
   ): Promise<OperationWarning | undefined> {
     try {
-      const response = (await this.#browser.runtime.sendMessage({
+      const response = await this.#browser.runtime.sendMessage({
         type: 'RECORD_WHATSAPP_HISTORY',
         receipt: {
           source: 'whatsapp',
@@ -583,8 +587,8 @@ class WhatsAppCaptureSession {
           savedFilename: handle.filename,
           outcome: 'accepted',
         },
-      })) as { saved?: unknown } | undefined;
-      return response?.saved === true
+      });
+      return isAcceptedHistorySaved(response)
         ? undefined
         : OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
     } catch {

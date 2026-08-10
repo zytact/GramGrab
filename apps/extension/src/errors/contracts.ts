@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect';
+import { Schema } from 'effect';
 import { FAILURE_CODES, FailureCodeSchema, type FailureCode } from '@gramgrab/protocol';
 
 export { FAILURE_CODES, FailureCodeSchema, type FailureCode };
@@ -172,7 +172,7 @@ class InstagramOperationFailure extends Schema.Class<InstagramOperationFailure>(
   code: InstagramFailureCodeSchema,
   phase: FailurePhaseSchema,
   scope: Schema.Literal('batch', 'item'),
-  cause: Schema.optional(DiagnosticCause),
+  cause: Schema.optionalWith(DiagnosticCause, { exact: true }),
 }) {}
 
 class WhatsAppOperationFailure extends Schema.Class<WhatsAppOperationFailure>(
@@ -189,7 +189,7 @@ const LegacyInstagramOperationFailure = Schema.Struct({
   code: InstagramFailureCodeSchema,
   phase: FailurePhaseSchema,
   scope: Schema.Literal('batch', 'item'),
-  cause: Schema.optional(DiagnosticCause),
+  cause: Schema.optionalWith(DiagnosticCause, { exact: true }),
 });
 
 const DecodedLegacyInstagramOperationFailure = Schema.transform(
@@ -245,7 +245,7 @@ export const isOperationFailure = Schema.is(OperationFailureSchema);
 
 export class OperationWarning extends Schema.Class<OperationWarning>('OperationWarning')({
   code: WarningCodeSchema,
-  cause: Schema.optional(DiagnosticCause),
+  cause: Schema.optionalWith(DiagnosticCause, { exact: true }),
 }) {}
 
 export function diagnosticCause(cause: unknown): DiagnosticCause {
@@ -265,6 +265,4 @@ export function isWhatsAppCommonFailureCode(
 }
 
 export const decodeOperationFailure = (value: unknown) =>
-  Effect.runPromise(
-    Schema.decodeUnknown(OperationFailureSchema, { onExcessProperty: 'error' })(value)
-  );
+  Schema.decodeUnknownPromise(OperationFailureSchema, { onExcessProperty: 'error' })(value);

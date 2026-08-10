@@ -160,7 +160,7 @@ export class CaptureFailure extends Schema.Class<CaptureFailure>('CaptureFailure
   operationId: OperationIdSchema,
   tag: Schema.Literal('CaptureFailure'),
   reason: CaptureFailureReason,
-  shape: Schema.optional(WhatsAppShapeEvidence),
+  shape: Schema.optionalWith(WhatsAppShapeEvidence, { exact: true }),
 }) {}
 
 const WhatsAppOutboundEnvelope = Schema.Union(

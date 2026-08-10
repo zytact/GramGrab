@@ -53,7 +53,7 @@ WhatsApp capture, disclosure, and history are popup-only and absent from the wor
 
 ## CLI boundary
 
-WhatsApp acquisition is browser-extension-only. The CLI advertises this in help text rather than only failing when someone tries. A WhatsApp URL passed to the CLI produces a distinct "recognized, but not available on this surface" failure code. It must not reuse the invalid-URL code, which would tell a person their valid URL is malformed.
+WhatsApp acquisition is browser-extension-only. The CLI advertises this in help text rather than only failing when someone tries. A WhatsApp URL passed to the CLI produces a distinct "recognized, but not available on this surface" input-rejection message with exit code 2. It is not a registry failure code and must not reuse the generic invalid-source message, which would tell a person their valid URL is malformed.
 
 ## Enforcement
 

@@ -80,6 +80,36 @@ describe('isolated WhatsApp foreground extraction', () => {
     expect(acquired.mimeType).toBe('video/mp4');
   });
 
+  it('waits for a stable loading photo before acquiring it', async () => {
+    const { foreground } = readyPhoto(document);
+    Object.defineProperty(foreground, 'complete', { configurable: true, value: false });
+    Object.defineProperty(foreground, 'naturalWidth', { configurable: true, value: 0 });
+    Object.defineProperty(foreground, 'naturalHeight', { configurable: true, value: 0 });
+    const observation = inspectVisibleStatus(document);
+    expect(observation.tag).toBe('not-ready');
+    if (observation.tag !== 'not-ready') return;
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(new Uint8Array([1, 2]), { headers: { 'Content-Type': 'image/jpeg' } })
+        )
+    );
+    globalThis.setTimeout(() => {
+      Object.defineProperty(foreground, 'complete', { configurable: true, value: true });
+      Object.defineProperty(foreground, 'naturalWidth', { configurable: true, value: 640 });
+      Object.defineProperty(foreground, 'naturalHeight', { configurable: true, value: 480 });
+    }, 10);
+
+    await expect(acquireVisibleStatusBytes(observation.candidate, document)).resolves.toMatchObject(
+      {
+        mimeType: 'image/jpeg',
+      }
+    );
+  });
+
   it('reports absent and unsupported players without scanning unrelated document media', () => {
     expect(inspectVisibleStatus(document)).toEqual({ tag: 'not-visible', reason: 'viewer-absent' });
     const player = document.createElement('div');

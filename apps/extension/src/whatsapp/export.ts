@@ -8,7 +8,33 @@ import {
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
 import type { AttemptOperation } from '../download/attempt.ts';
 import { browser } from '../lib/browser.ts';
-import type { WhatsAppCaptureHandle } from './capture.ts';
+import { isAcceptedHistorySaved, type WhatsAppCaptureHandle } from './capture.ts';
+
+function monitorAcceptedDownload(downloadId: number, retentionDeadline: number): void {
+  let settled = false;
+  const cleanup = () => {
+    if (settled) return;
+    settled = true;
+    globalThis.clearTimeout(timer);
+    browser.downloads.onChanged.removeListener(onChanged);
+  };
+  const onChanged = (delta: { id: number; state?: { current?: string } }) => {
+    if (
+      delta.id === downloadId &&
+      (delta.state?.current === 'complete' || delta.state?.current === 'interrupted')
+    )
+      cleanup();
+  };
+  const timer = globalThis.setTimeout(
+    () => {
+      if (settled) return;
+      cleanup();
+      void browser.downloads.cancel(downloadId).catch(() => undefined);
+    },
+    Math.max(0, retentionDeadline - Date.now())
+  );
+  browser.downloads.onChanged.addListener(onChanged);
+}
 
 export async function exportWhatsAppFrame(
   handle: WhatsAppCaptureHandle,
@@ -31,15 +57,16 @@ export async function exportWhatsAppFrame(
     }
 
     frameUrl = URL.createObjectURL(captured.right);
-    await browser.downloads.download({
+    const downloadId = await browser.downloads.download({
       url: frameUrl,
       filename: operation.filename,
       saveAs: false,
     });
+    monitorAcceptedDownload(downloadId, handle.descriptor.retentionDeadline);
     handle.release();
     URL.revokeObjectURL(frameUrl);
     frameUrl = undefined;
-    const response = (await browser.runtime
+    const response = await browser.runtime
       .sendMessage({
         type: 'RECORD_WHATSAPP_HISTORY',
         receipt: {
@@ -50,13 +77,12 @@ export async function exportWhatsAppFrame(
           outcome: 'accepted',
         },
       })
-      .catch(() => undefined)) as { saved?: unknown } | undefined;
-    handle.release();
+      .catch(() => undefined);
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,
       requestId: operation.requestId,
       status: 'started',
-      ...(response?.saved === true
+      ...(isAcceptedHistorySaved(response)
         ? {}
         : { warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }) }),
     });

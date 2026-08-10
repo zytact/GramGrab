@@ -1306,11 +1306,17 @@ async function handleGetDownloadHistory() {
     : { entries: [...history.entries].reverse(), error: undefined };
 }
 
+function messageReceipt(message: unknown): unknown {
+  return typeof message === 'object' && message !== null && 'receipt' in message
+    ? message.receipt
+    : undefined;
+}
+
 async function handleRecordWhatsAppHistory(message: unknown): Promise<{
   saved?: true;
   warning?: 'HISTORY_SAVE_FAILED';
 }> {
-  const receipt = decodeWhatsAppHistoryReceipt((message as { receipt?: unknown } | null)?.receipt);
+  const receipt = decodeWhatsAppHistoryReceipt(messageReceipt(message));
   if (Either.isLeft(receipt)) return { warning: 'HISTORY_SAVE_FAILED' };
   try {
     await appendWhatsAppHistoryReceipt(receipt.right);
@@ -1324,7 +1330,7 @@ async function handleDeleteWhatsAppHistoryReceipt(message: unknown): Promise<{
   entries: unknown[];
   error: string | undefined;
 }> {
-  const receipt = decodeWhatsAppHistoryReceipt((message as { receipt?: unknown } | null)?.receipt);
+  const receipt = decodeWhatsAppHistoryReceipt(messageReceipt(message));
   if (Either.isLeft(receipt)) return { entries: [], error: 'This history entry is invalid.' };
   try {
     const entries = await removeWhatsAppHistoryReceipt(receipt.right);
