@@ -32,13 +32,13 @@ only whether current WhatsApp Web, Chromium, and Firefox meet the adopted contra
 Run every row for Chromium and then Firefox. Mark only `pass` or `fail`; use a symbolic failure code
 only when GramGrab actually presented one. Do not record prose observations.
 
-| Scenario                              | Required result                                                                                                                                                              |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generic photo Status                  | The isolated controller reads the current foreground photo's page-owned `blob:`, transfers it over the frame-0 port, and the browser accepts one direct download.            |
-| Generic video Status                  | The isolated controller reads the active video player's page-owned `blob:`, not its poster, transfers it over the frame-0 port, and the browser accepts one direct download. |
-| Advancement race                      | Advance or close the viewer while capture is acquiring. The result is either the originally guarded item or `WHATSAPP_STATUS_CHANGED`; it is never the next Status.          |
-| Cleanup after accepted download       | The captured bytes and extension-created blob URL are released, and no persistent media, workspace handoff, or service-worker ownership is used.                             |
-| Cleanup after cancellation or failure | Close the popup, tab, or viewer during capture. Bytes are discarded and any extension-created blob URL is revoked.                                                           |
+| Scenario                              | Required result                                                                                                                                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generic photo Status                  | The isolated controller reads the current foreground photo's page-owned `blob:` or same-origin source, transfers it over the frame-0 port, and the browser accepts one direct download.            |
+| Generic video Status                  | The isolated controller reads the active video player's page-owned `blob:` or same-origin source, not its poster, transfers it over the frame-0 port, and the browser accepts one direct download. |
+| Advancement race                      | Advance or close the viewer while capture is acquiring. The result is either the originally guarded item or `WHATSAPP_STATUS_CHANGED`; it is never the next Status.                                |
+| Cleanup after accepted download       | The captured bytes and extension-created blob URL are released, and no persistent media, workspace handoff, or service-worker ownership is used.                                                   |
+| Cleanup after cancellation or failure | Close the popup, tab, or viewer during capture. Bytes are discarded and any extension-created blob URL is revoked.                                                                                 |
 
 For every pass, verify the four structural cleanup booleans listed in the evidence schema. For every
 fail, stop that browser's run. Do not diagnose by collecting any prohibited artifact.
