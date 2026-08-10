@@ -73,14 +73,6 @@ This repo has ubiquitous language at `CONTEXT.md` and any ambigous decision you 
 
 The canonical failure registry and compatibility contract live in `docs/error-model.md`. When adding a failure code, update its producer, schema, normalizer, exhaustive presentation/recovery policy, diagnostics policy, documentation row, and focused tests together. Do not render diagnostic causes as ordinary UI copy.
 
-## Instagram privacy
-
-Binding privacy and security constraints for Instagram acquisition, diagnostics, protocol refreshes, and committed fixtures live in `docs/instagram-privacy.md`. Read it before changing anything on the Instagram path.
-
-## WhatsApp acquisition
-
-Binding privacy and security constraints for WhatsApp Visible Status acquisition live in `docs/whatsapp-privacy.md`. Read it before changing anything on the WhatsApp path.
-
 ## Pre-commit
 
 Vite plus controls the pre-commit hook.
