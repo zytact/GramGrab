@@ -249,6 +249,28 @@ body::before {
   font-size: 12px;
 }
 
+.whatsapp-capture-section {
+  display: grid;
+  gap: 12px;
+}
+
+.whatsapp-capture-section h1 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+}
+
+.whatsapp-capture-copy,
+.whatsapp-capture-note {
+  color: var(--text-mid);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.whatsapp-capture-note {
+  color: var(--muted);
+}
+
 /* ── Fetch section ── */
 .fetch-row {
   display: flex;

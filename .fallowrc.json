@@ -5,6 +5,7 @@
     "apps/extension/templates/runner.ts",
     "apps/extension/src/runner.ts",
     "apps/extension/src/background.ts",
+    "apps/extension/src/whatsapp/controller-entry.ts",
     "apps/native-host/scripts/package-tools.mjs",
     "apps/native-host/scripts/verify-tools.mjs",
     "apps/*/src/index.ts",

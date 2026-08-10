@@ -280,7 +280,10 @@ export default defineConfig({
       input: {
         popup: resolve(extensionRoot, 'templates/popup.html'),
         runner: resolve(extensionRoot, 'templates/runner.html'),
-        // background.ts is bundled directly as a JS module entry — no HTML
+        // The controller entry has no exports or external imports so it can be
+        // injected as a classic packaged isolated-world script.
+        'whatsapp-controller': resolve(extensionRoot, 'src/whatsapp/controller-entry.ts'),
+        // background.ts is bundled directly as a JS module entry - no HTML
         // wrapper needed. Both Chromium (service_worker) and Firefox (scripts)
         // reference js/background.js in their respective manifests.
         background: resolve(extensionRoot, 'src/background.ts'),

@@ -7,6 +7,10 @@ const permissionDocumentation = [
     reason: 'Temporarily access the current tab when GramGrab is invoked',
   },
   {
+    permission: 'scripting',
+    reason: 'Inject the one-shot isolated WhatsApp capture controller',
+  },
+  {
     permission: 'tabs',
     reason: 'Read and manage tabs for URL detection and the GramGrab workspace',
   },

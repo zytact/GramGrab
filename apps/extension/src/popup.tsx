@@ -38,6 +38,13 @@ import { isPositiveFinitePair, resolveMediaRatio } from './workspace/media-ratio
 import { distributeMasonryItems } from './workspace/masonry';
 import { runSilentVideoBatch, type ReencodeCandidate } from './silent-video/batch';
 import { silentProgressMessage } from './silent-video/progress';
+import {
+  captureWhatsAppVisibleStatus,
+  WhatsAppCaptureError,
+  type WhatsAppCaptureFailureReason,
+  type WhatsAppCaptureHandle,
+} from './whatsapp/capture';
+import { isWhatsAppWebUrl } from './whatsapp/limits';
 
 interface MediaItem {
   index: number;
@@ -140,6 +147,14 @@ export default function Popup() {
     Record<number, { width: number; height: number }>
   >({});
   const [autoDetected, setAutoDetected] = useState(false);
+  const [whatsappActive, setWhatsappActive] = useState(false);
+  const [whatsappCaptureStatus, setWhatsappCaptureStatus] = useState<
+    'idle' | 'capturing' | 'started' | 'failed'
+  >('idle');
+  const [whatsappCaptureMessage, setWhatsappCaptureMessage] = useState(
+    'Capture the photo or video Visible Status currently open in WhatsApp Web.'
+  );
+  const whatsappHandleRef = useRef<WhatsAppCaptureHandle | undefined>(undefined);
   const [showHistory, setShowHistory] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState<string | null>(null);
@@ -156,6 +171,25 @@ export default function Popup() {
   const resultsGeneration = useRef(0);
   const pendingFrameDefaults = useRef(new Set<number>());
   const clearAttemptRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    let cancelled = false;
+    void browser.tabs
+      .query({ active: true, currentWindow: true })
+      .then(tabs => {
+        if (cancelled) return;
+        const tab = tabs.length === 1 ? tabs[0] : undefined;
+        setWhatsappActive(tab?.id !== undefined && isWhatsAppWebUrl(tab.url));
+      })
+      .catch(() => {
+        if (!cancelled) setWhatsappActive(false);
+      });
+    return () => {
+      cancelled = true;
+      whatsappHandleRef.current?.release();
+      whatsappHandleRef.current = undefined;
+    };
+  }, []);
 
   const replaceMediaItems = useCallback<typeof setMediaItems>(action => {
     resultsGeneration.current++;
@@ -184,6 +218,25 @@ export default function Popup() {
   useEffect(() => {
     handleFetchRef.current = handleFetch;
   }, [handleFetch]);
+
+  const handleWhatsAppCapture = useCallback(async () => {
+    if (whatsappCaptureStatus === 'capturing') return;
+    setWhatsappCaptureStatus('capturing');
+    setWhatsappCaptureMessage('Reading the Visible Status…');
+    try {
+      const handle = await captureWhatsAppVisibleStatus();
+      whatsappHandleRef.current = handle;
+      await handle.download();
+      setWhatsappCaptureStatus('started');
+      setWhatsappCaptureMessage(
+        'Download started. The in-memory capture will be released automatically.'
+      );
+    } catch (error) {
+      const reason = error instanceof WhatsAppCaptureError ? error.reason : 'transfer-failed';
+      setWhatsappCaptureStatus('failed');
+      setWhatsappCaptureMessage(whatsappFailureMessage(reason));
+    }
+  }, [whatsappCaptureStatus]);
 
   const handleIntrinsicDimensions = useCallback(
     (item: MediaItem, width: number, height: number) => {
@@ -679,7 +732,8 @@ export default function Popup() {
     setMediaItems(prev => prev.map(item => ({ ...item, selected: newSelected })));
   }, [allSelected]);
 
-  const isBusy = isWorkspaceBusy(status) || downloadAttempt.busy;
+  const isBusy =
+    isWorkspaceBusy(status) || downloadAttempt.busy || whatsappCaptureStatus === 'capturing';
   const activeFailures = useMemo(
     () => [
       ...(sourceFailure ? [sourceFailure] : []),
@@ -960,6 +1014,7 @@ export default function Popup() {
         <PopupHeader
           workspaceMode={workspaceMode}
           workspaceExists={workspaceExists}
+          whatsappActive={whatsappActive}
           isBusy={isBusy}
           showHistory={showHistory}
           onToggleHistory={() => (showHistory ? setShowHistory(false) : openHistory())}
@@ -983,83 +1038,94 @@ export default function Popup() {
           />
         ) : (
           <>
-            <div className="ext-section fetch-section">
-              <div className="fetch-row">
-                <input
-                  id="source-url"
-                  className={`url-input${autoDetected ? ' detected' : ''}`}
-                  type="url"
-                  aria-label="Instagram source URL"
-                  placeholder="Paste an Instagram URL…"
-                  value={url}
-                  disabled={isBusy}
-                  onChange={e => handleUrlChange(e.currentTarget.value)}
-                  onBlur={() =>
-                    setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)
-                  }
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !isBusy && url.trim()) triggerFetch('source');
-                  }}
-                />
-                <button
-                  className="btn"
-                  onClick={() => triggerFetch('source')}
-                  disabled={isBusy || !url.trim()}
-                  aria-busy={status === 'fetching' && acquisition === 'source'}
-                >
-                  {renderFetchButtonLabel(status, acquisition)}
-                </button>
+            {whatsappActive ? (
+              <WhatsAppCaptureSection
+                status={whatsappCaptureStatus}
+                message={whatsappCaptureMessage}
+                onCapture={() => void handleWhatsAppCapture()}
+                disabled={isBusy}
+              />
+            ) : (
+              <div className="ext-section fetch-section">
+                <div className="fetch-row">
+                  <input
+                    id="source-url"
+                    className={`url-input${autoDetected ? ' detected' : ''}`}
+                    type="url"
+                    aria-label="Instagram source URL"
+                    placeholder="Paste an Instagram URL…"
+                    value={url}
+                    disabled={isBusy}
+                    onChange={e => handleUrlChange(e.currentTarget.value)}
+                    onBlur={() =>
+                      setUrl(current => canonicalizeInstagramUrl(current)?.url ?? current)
+                    }
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !isBusy && url.trim()) triggerFetch('source');
+                    }}
+                  />
+                  <button
+                    className="btn"
+                    onClick={() => triggerFetch('source')}
+                    disabled={isBusy || !url.trim()}
+                    aria-busy={status === 'fetching' && acquisition === 'source'}
+                  >
+                    {renderFetchButtonLabel(status, acquisition)}
+                  </button>
+                </div>
+                {autoDetected && status === 'idle' && (
+                  <p className="detected-hint">Instagram URL detected — ready to fetch.</p>
+                )}
+                <div className="instants-row">
+                  <button
+                    type="button"
+                    className="instants-btn"
+                    onClick={() => triggerFetch('instants')}
+                    disabled={isBusy}
+                    aria-busy={status === 'fetching' && acquisition === 'instants'}
+                  >
+                    {renderInstantsButtonLabel(status, acquisition)}
+                  </button>
+                </div>
+                {sourceFailure && (
+                  <section className="download-attempt-summary" aria-live="polite">
+                    <strong>{FAILURE_PRESENTATION[sourceFailure.code].title}</strong>
+                    <span>{FAILURE_PRESENTATION[sourceFailure.code].explanation}</span>
+                    <code>{sourceFailure.code}</code>
+                    {canRefetchSource && (
+                      <button
+                        type="button"
+                        className="workspace-secondary"
+                        onClick={() => void refetchAndRetry()}
+                        disabled={isBusy}
+                      >
+                        {acquisition === 'instants'
+                          ? 'Refresh feed and retry'
+                          : 'Fetch source again'}
+                      </button>
+                    )}
+                    {canOpenInstagram && (
+                      <button
+                        type="button"
+                        className="workspace-secondary"
+                        onClick={() => void browser.tabs.create({ url: fetchedUrl || url })}
+                      >
+                        Open in Instagram
+                      </button>
+                    )}
+                    {canCopyDiagnostics && (
+                      <button
+                        type="button"
+                        className="workspace-secondary"
+                        onClick={event => previewDiagnostics(event.currentTarget)}
+                      >
+                        Copy diagnostics
+                      </button>
+                    )}
+                  </section>
+                )}
               </div>
-              {autoDetected && status === 'idle' && (
-                <p className="detected-hint">Instagram URL detected — ready to fetch.</p>
-              )}
-              <div className="instants-row">
-                <button
-                  type="button"
-                  className="instants-btn"
-                  onClick={() => triggerFetch('instants')}
-                  disabled={isBusy}
-                  aria-busy={status === 'fetching' && acquisition === 'instants'}
-                >
-                  {renderInstantsButtonLabel(status, acquisition)}
-                </button>
-              </div>
-              {sourceFailure && (
-                <section className="download-attempt-summary" aria-live="polite">
-                  <strong>{FAILURE_PRESENTATION[sourceFailure.code].title}</strong>
-                  <span>{FAILURE_PRESENTATION[sourceFailure.code].explanation}</span>
-                  <code>{sourceFailure.code}</code>
-                  {canRefetchSource && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={() => void refetchAndRetry()}
-                      disabled={isBusy}
-                    >
-                      {acquisition === 'instants' ? 'Refresh feed and retry' : 'Fetch source again'}
-                    </button>
-                  )}
-                  {canOpenInstagram && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={() => void browser.tabs.create({ url: fetchedUrl || url })}
-                    >
-                      Open in Instagram
-                    </button>
-                  )}
-                  {canCopyDiagnostics && (
-                    <button
-                      type="button"
-                      className="workspace-secondary"
-                      onClick={event => previewDiagnostics(event.currentTarget)}
-                    >
-                      Copy diagnostics
-                    </button>
-                  )}
-                </section>
-              )}
-            </div>
+            )}
 
             <MediaListSection
               model={mediaListModel}
@@ -1184,7 +1250,7 @@ export default function Popup() {
           onToggleAll={toggleAll}
           onDownload={handleDownload}
         />
-      ) : (
+      ) : !whatsappActive ? (
         <WorkspaceReplacementAction
           workspaceExists={workspaceExists}
           hasTransferableSession={hasTransferableSession}
@@ -1193,7 +1259,7 @@ export default function Popup() {
           setConfirmReplace={setConfirmReplace}
           onReplace={handleReplaceWorkspace}
         />
-      )}
+      ) : null}
 
       <footer className="ext-footer">
         <span className="footer-brand">GramGrab</span>
@@ -1214,6 +1280,76 @@ export default function Popup() {
       )}
     </div>
   );
+}
+
+function WhatsAppCaptureSection({
+  status,
+  message,
+  onCapture,
+  disabled,
+}: {
+  status: 'idle' | 'capturing' | 'started' | 'failed';
+  message: string;
+  onCapture: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <section
+      className="ext-section whatsapp-capture-section"
+      aria-labelledby="whatsapp-capture-title"
+    >
+      <span className="detected-hint">Active tab · WhatsApp Web</span>
+      <h1 id="whatsapp-capture-title">Capture the Visible Status</h1>
+      <p className="whatsapp-capture-copy">{message}</p>
+      <p className="whatsapp-capture-note">
+        One click captures only the already-visible photo or video. The capture stays in memory for
+        this download and is then released.
+      </p>
+      <button
+        type="button"
+        className="btn"
+        onClick={onCapture}
+        disabled={disabled || status === 'started'}
+        aria-busy={status === 'capturing'}
+      >
+        {status === 'capturing' ? (
+          <LoadingButtonLabel>Capturing…</LoadingButtonLabel>
+        ) : status === 'started' ? (
+          'Download started'
+        ) : (
+          'Capture Visible Status'
+        )}
+      </button>
+      {status === 'failed' && (
+        <p className="status-message error">Try again after reopening the intended Status.</p>
+      )}
+    </section>
+  );
+}
+
+function whatsappFailureMessage(reason: WhatsAppCaptureFailureReason): string {
+  switch (reason) {
+    case 'page-access-failed':
+      return 'Keep the exact WhatsApp Web tab active and try again.';
+    case 'not-visible':
+      return 'No supported Visible Status is open. Open a photo or video Status and try again.';
+    case 'unsupported':
+      return 'The visible Status is not a supported photo or video.';
+    case 'not-ready':
+      return 'The visible Status did not finish loading. Wait for it to load and try again.';
+    case 'format-changed':
+      return 'WhatsApp Web changed the visible player shape. This capture was discarded.';
+    case 'status-changed':
+      return 'The Visible Status changed during capture. Reopen the intended Status and try again.';
+    case 'transfer-failed':
+      return 'The Visible Status could not be transferred. Keep the tab active and try again.';
+    case 'cancelled':
+      return 'The capture was cancelled.';
+    case 'download-failed':
+      return 'The browser did not accept the download. Try again.';
+    case 'retention-expired':
+      return 'The in-memory capture expired before the download finished. Try again.';
+  }
 }
 
 function DiagnosticsDialog({ json, onClose }: { json: string; onClose: () => void }) {
@@ -1407,6 +1543,7 @@ function relativeHistoryTime(downloadedAt: number): string {
 function PopupHeader({
   workspaceMode,
   workspaceExists,
+  whatsappActive,
   isBusy,
   showHistory,
   onToggleHistory,
@@ -1414,6 +1551,7 @@ function PopupHeader({
 }: {
   workspaceMode: boolean;
   workspaceExists: boolean;
+  whatsappActive: boolean;
   isBusy: boolean;
   showHistory: boolean;
   onToggleHistory: () => void;
@@ -1433,7 +1571,7 @@ function PopupHeader({
         >
           {showHistory ? 'Results' : 'History'}
         </button>
-        {!workspaceMode && (
+        {!workspaceMode && !whatsappActive && (
           <button
             className="workspace-launch"
             type="button"

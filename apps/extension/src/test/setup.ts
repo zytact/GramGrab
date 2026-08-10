@@ -40,6 +40,34 @@ if (
 const mockTabs = [
   { id: 1, url: 'https://www.instagram.com/p/abc123/', active: true, currentWindow: true },
 ];
+const mockTabRemovedListeners = new Set<(tabId: number) => void>();
+const mockTabUpdatedListeners = new Set<
+  (tabId: number, changeInfo: { url?: string; status?: string }) => void
+>();
+const mockDownloadChangedListeners = new Set<
+  (delta: { id: number; state?: { current?: string } }) => void
+>();
+
+function makeMockPort() {
+  const messageListeners = new Set<(message: unknown) => void>();
+  const disconnectListeners = new Set<() => void>();
+  return {
+    name: 'gramgrab-whatsapp-capture-v1',
+    postMessage: vi.fn(),
+    disconnect: vi.fn(() => disconnectListeners.forEach(listener => listener())),
+    onMessage: {
+      addListener: vi.fn((listener: (message: unknown) => void) => messageListeners.add(listener)),
+      removeListener: vi.fn((listener: (message: unknown) => void) =>
+        messageListeners.delete(listener)
+      ),
+    },
+    onDisconnect: {
+      addListener: vi.fn((listener: () => void) => disconnectListeners.add(listener)),
+      removeListener: vi.fn((listener: () => void) => disconnectListeners.delete(listener)),
+    },
+    emitMessage: (message: unknown) => messageListeners.forEach(listener => listener(message)),
+  };
+}
 
 const mockDownloads = {
   downloads: [] as { url: string; filename?: string; saveAs?: boolean }[],
@@ -49,8 +77,16 @@ const mockDownloads = {
       mockDownloads.downloads.push(options);
       return Promise.resolve(1);
     }),
-  onDownloadStarted: {
-    addListener: vi.fn(),
+  cancel: vi.fn().mockResolvedValue(undefined),
+  search: vi.fn().mockResolvedValue([]),
+  onChanged: {
+    addListener: vi.fn((listener: (delta: { id: number; state?: { current?: string } }) => void) =>
+      mockDownloadChangedListeners.add(listener)
+    ),
+    removeListener: vi.fn(
+      (listener: (delta: { id: number; state?: { current?: string } }) => void) =>
+        mockDownloadChangedListeners.delete(listener)
+    ),
   },
 };
 
@@ -64,9 +100,19 @@ type MockBrowser = {
   };
   tabs: {
     query: ReturnType<typeof vi.fn>;
+    connect: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
+    onRemoved: {
+      addListener: ReturnType<typeof vi.fn>;
+      removeListener: ReturnType<typeof vi.fn>;
+    };
+    onUpdated: {
+      addListener: ReturnType<typeof vi.fn>;
+      removeListener: ReturnType<typeof vi.fn>;
+    };
   };
+  scripting: { executeScript: ReturnType<typeof vi.fn> };
   downloads: typeof mockDownloads;
   storage: {
     get: ReturnType<typeof vi.fn>;
@@ -119,9 +165,29 @@ const mockBrowserInstance: MockBrowser = {
   },
   tabs: {
     query: vi.fn().mockImplementation(() => Promise.resolve(mockTabs)),
+    connect: vi.fn().mockImplementation(() => makeMockPort()),
     create: vi.fn().mockResolvedValue({ id: 2 }),
     update: vi.fn().mockResolvedValue(undefined),
+    onRemoved: {
+      addListener: vi.fn((listener: (tabId: number) => void) =>
+        mockTabRemovedListeners.add(listener)
+      ),
+      removeListener: vi.fn((listener: (tabId: number) => void) =>
+        mockTabRemovedListeners.delete(listener)
+      ),
+    },
+    onUpdated: {
+      addListener: vi.fn(
+        (listener: (tabId: number, changeInfo: { url?: string; status?: string }) => void) =>
+          mockTabUpdatedListeners.add(listener)
+      ),
+      removeListener: vi.fn(
+        (listener: (tabId: number, changeInfo: { url?: string; status?: string }) => void) =>
+          mockTabUpdatedListeners.delete(listener)
+      ),
+    },
   },
+  scripting: { executeScript: vi.fn().mockResolvedValue([]) },
   downloads: mockDownloads,
   storage: {
     get: vi.fn().mockResolvedValue({}),
@@ -141,6 +207,9 @@ globalThis.browser = mockBrowserInstance;
 export const resetBrowserMocks = () => {
   mockDownloads.downloads = [];
   mockMessageCallbacks.clear();
+  mockTabRemovedListeners.clear();
+  mockTabUpdatedListeners.clear();
+  mockDownloadChangedListeners.clear();
   vi.clearAllMocks();
 };
 

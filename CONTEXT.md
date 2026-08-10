@@ -56,6 +56,10 @@ _Avoid_: Snap, Story Reel
 An ephemeral media item in a WhatsApp contact's current 24-hour collection.
 _Avoid_: Story, WhatsApp Story
 
+**Visible Status**:
+The single Status currently presented in WhatsApp Web's Status viewer.
+_Avoid_: Current Status, selected Status
+
 **Instant**:
 A photo or video available through Instagram's active Instants feed.
 _Avoid_: QuickSnap, Snap, Story

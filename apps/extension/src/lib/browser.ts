@@ -22,11 +22,23 @@ export type OnMessageCallback = (
   sendResponse: (response: unknown) => void
 ) => boolean | void;
 
+export interface PortEvent<T> {
+  addListener: (callback: T) => void;
+  removeListener: (callback: T) => void;
+}
+
 export interface NativePort {
+  name?: string;
   postMessage: (message: unknown) => void;
   disconnect: () => void;
-  onMessage: { addListener: (callback: (message: unknown) => void) => void };
-  onDisconnect: { addListener: (callback: () => void) => void };
+  onMessage: PortEvent<(message: unknown) => void>;
+  onDisconnect: PortEvent<() => void>;
+}
+
+export interface ExecuteScriptDetails {
+  target: { tabId: number; frameIds: number[] };
+  files: string[];
+  world: 'ISOLATED';
 }
 
 export interface BrowserShim {
@@ -48,20 +60,24 @@ export interface BrowserShim {
       currentWindow?: boolean;
       url?: string;
     }) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
+    connect: (tabId: number, connectInfo: { frameId?: number; name?: string }) => NativePort;
     create: (createProperties: { url: string; active?: boolean }) => Promise<{ id?: number }>;
     update: (tabId: number, updateProperties: { active?: boolean; url?: string }) => Promise<void>;
     sendMessage: (tabId: number, message: unknown) => Promise<unknown>;
     remove: (tabId: number) => Promise<void>;
+    onRemoved: PortEvent<(tabId: number) => void>;
+    onUpdated: PortEvent<(tabId: number, changeInfo: { url?: string; status?: string }) => void>;
+  };
+  scripting: {
+    executeScript: (details: ExecuteScriptDetails) => Promise<unknown[]>;
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
+    cancel: (downloadId: number) => Promise<void>;
     search: (query: {
       id?: number;
     }) => Promise<{ id: number; state?: string; fileSize?: number }[]>;
-    onChanged: {
-      addListener: (callback: (delta: DownloadDelta) => void) => void;
-      removeListener: (callback: (delta: DownloadDelta) => void) => void;
-    };
+    onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {
     get: (keys?: unknown) => Promise<Record<string, unknown>>;
@@ -133,10 +149,16 @@ interface ChromeGlobal {
   runtime: ChromeRuntime;
   tabs: {
     query: (q: unknown, cb: (tabs: unknown[]) => void) => void;
+    connect?: (id: number, connectInfo?: { frameId?: number; name?: string }) => NativePort;
     create: (q: unknown, cb: (tab: unknown) => void) => void;
     update: (id: number, q: unknown, cb: () => void) => void;
     sendMessage: (id: number, message: unknown, cb: (response: unknown) => void) => void;
     remove: (id: number, cb: () => void) => void;
+    onRemoved?: PortEvent<(tabId: number) => void>;
+    onUpdated?: PortEvent<(tabId: number, changeInfo: { url?: string; status?: string }) => void>;
+  };
+  scripting?: {
+    executeScript: (details: ExecuteScriptDetails, callback?: (results: unknown[]) => void) => void;
   };
   windows: {
     create: (q: unknown, cb: (window: unknown) => void) => void;
@@ -148,14 +170,12 @@ interface ChromeGlobal {
       opts: { url: string; filename?: string; saveAs?: boolean },
       cb?: (id: number) => void
     ) => void;
+    cancel?: (downloadId: number, callback?: () => void) => void;
     search: (
       query: { id?: number },
-      callback: (items: { id: number; state?: string }[]) => void
+      callback: (items: { id: number; state?: string; fileSize?: number }[]) => void
     ) => void;
-    onChanged: {
-      addListener: (callback: (delta: DownloadDelta) => void) => void;
-      removeListener: (callback: (delta: DownloadDelta) => void) => void;
-    };
+    onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {
     local: {
@@ -196,6 +216,7 @@ interface NativeBrowserGlobal {
   };
   tabs: {
     query: (queryInfo: unknown) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
+    connect?: (tabId: number, connectInfo: { frameId?: number; name?: string }) => NativePort;
     create: (createProperties: { url: string; active?: boolean }) => Promise<{ id?: number }>;
     update: (
       tabId: number,
@@ -203,14 +224,19 @@ interface NativeBrowserGlobal {
     ) => Promise<unknown>;
     sendMessage: (tabId: number, message: unknown) => Promise<unknown>;
     remove: (tabId: number) => Promise<void>;
+    onRemoved?: PortEvent<(tabId: number) => void>;
+    onUpdated?: PortEvent<(tabId: number, changeInfo: { url?: string; status?: string }) => void>;
+  };
+  scripting?: {
+    executeScript: (details: ExecuteScriptDetails) => Promise<unknown[]>;
   };
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
-    search: (query: { id?: number }) => Promise<{ id: number; state?: string }[]>;
-    onChanged: {
-      addListener: (callback: (delta: DownloadDelta) => void) => void;
-      removeListener: (callback: (delta: DownloadDelta) => void) => void;
-    };
+    cancel?: (downloadId: number) => Promise<void>;
+    search: (query: {
+      id?: number;
+    }) => Promise<{ id: number; state?: string; fileSize?: number }[]>;
+    onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {
     local: {
@@ -282,6 +308,7 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             else resolve(tabs as { id?: number; url?: string; windowId?: number }[]);
           });
         }),
+      connect: (tabId, connectInfo) => chrome.tabs.connect?.(tabId, connectInfo) ?? noopNativePort,
       create: createProperties =>
         new Promise((resolve, reject) => {
           chrome.tabs.create(createProperties, tab => {
@@ -314,6 +341,22 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             else resolve();
           });
         }),
+      onRemoved: chrome.tabs.onRemoved ?? noopTabRemoved,
+      onUpdated: chrome.tabs.onUpdated ?? noopTabUpdated,
+    },
+    scripting: {
+      executeScript: details =>
+        new Promise((resolve, reject) => {
+          if (!chrome.scripting) {
+            reject(new Error('The scripting permission is unavailable.'));
+            return;
+          }
+          chrome.scripting.executeScript(details, results => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve(results);
+          });
+        }),
     },
     downloads: {
       download: options =>
@@ -322,6 +365,18 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             const err = lastError(chrome.runtime);
             if (err) reject(err);
             else resolve(id);
+          });
+        }),
+      cancel: downloadId =>
+        new Promise((resolve, reject) => {
+          if (!chrome.downloads.cancel) {
+            reject(new Error('The downloads cancel API is unavailable.'));
+            return;
+          }
+          chrome.downloads.cancel(downloadId, () => {
+            const err = lastError(chrome.runtime);
+            if (err) reject(err);
+            else resolve();
           });
         }),
       onChanged: chrome.downloads.onChanged,
@@ -449,14 +504,23 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
     },
     tabs: {
       query: queryInfo => native.tabs.query(queryInfo),
+      connect: (tabId, connectInfo) => native.tabs.connect?.(tabId, connectInfo) ?? noopNativePort,
       create: createProperties => native.tabs.create(createProperties),
       update: async (tabId, updateProperties) => {
         await native.tabs.update(tabId, updateProperties);
       },
       sendMessage: (tabId, message) => native.tabs.sendMessage(tabId, message),
       remove: tabId => native.tabs.remove(tabId),
+      onRemoved: native.tabs.onRemoved ?? noopTabRemoved,
+      onUpdated: native.tabs.onUpdated ?? noopTabUpdated,
     },
-    downloads: native.downloads,
+    scripting: native.scripting ?? noopScripting,
+    downloads: {
+      ...native.downloads,
+      cancel:
+        native.downloads.cancel ??
+        (() => Promise.reject(new Error('The downloads cancel API is unavailable.'))),
+    },
     storage: native.storage.local,
     sessionStorage: native.storage.session ?? unavailableSessionStorage,
     cookies: native.cookies ?? noopCookies,
@@ -480,6 +544,20 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
 // Fallback stub (tests / environments without either global)
 // ---------------------------------------------------------------------------
 
+const noopTabRemoved: BrowserShim['tabs']['onRemoved'] = {
+  addListener: () => {},
+  removeListener: () => {},
+};
+
+const noopTabUpdated: BrowserShim['tabs']['onUpdated'] = {
+  addListener: () => {},
+  removeListener: () => {},
+};
+
+const noopScripting: BrowserShim['scripting'] = {
+  executeScript: () => Promise.reject(new Error('The scripting API is unavailable.')),
+};
+
 const noopContextMenus: BrowserShim['contextMenus'] = {
   create: () => {},
   removeAll: () => Promise.resolve(),
@@ -492,8 +570,8 @@ const noopContextMenus: BrowserShim['contextMenus'] = {
 const noopNativePort: NativePort = {
   postMessage: () => {},
   disconnect: () => {},
-  onMessage: { addListener: () => {} },
-  onDisconnect: { addListener: () => {} },
+  onMessage: { addListener: () => {}, removeListener: () => {} },
+  onDisconnect: { addListener: () => {}, removeListener: () => {} },
 };
 
 const noopRuntimeStartup: BrowserShim['runtime']['onStartup'] = {
@@ -527,13 +605,20 @@ const noopShim: BrowserShim = {
   },
   tabs: {
     query: () => Promise.resolve([]),
+    connect: () => noopNativePort,
     create: () => Promise.resolve({}),
     update: () => Promise.resolve(),
     sendMessage: () => Promise.resolve(undefined),
     remove: () => Promise.resolve(),
+    onRemoved: noopTabRemoved,
+    onUpdated: noopTabUpdated,
+  },
+  scripting: {
+    executeScript: () => Promise.reject(new Error('The scripting API is unavailable.')),
   },
   downloads: {
     download: () => Promise.resolve(0),
+    cancel: () => Promise.resolve(),
     search: () => Promise.resolve([]),
     onChanged: { addListener: () => {}, removeListener: () => {} },
   },
