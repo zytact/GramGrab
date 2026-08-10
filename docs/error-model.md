@@ -12,7 +12,9 @@ Outcomes are `pending`, `started`, `failed`, `skipped`, or `not-attempted`. `sta
 
 ## Failure registry
 
-The table is the compatibility contract. "Cause" means the technical cause may be included in an explicitly previewed diagnostic report, never ordinary UI copy.
+The table is the compatibility contract. "Cause" means the producer retains a technical cause for
+internal normalization. A copied report exposes only the structured failure code, phase, and scope;
+causes are never ordinary UI copy or serialized report data.
 
 | Code                                   | Scope | Manual retry                            | Actions                                 | Diagnostic          | Classification           |
 | -------------------------------------- | ----- | --------------------------------------- | --------------------------------------- | ------------------- | ------------------------ |
@@ -63,9 +65,17 @@ Warnings are `HISTORY_SAVE_FAILED` and `SILENT_TEMPORARY_FILE_CLEANUP_UNCONFIRME
 
 ## Diagnostics
 
-Diagnostics use `diagnosticsVersion: 1` and are built per attempt. A preview must be shown before copying. The preview warns that JSON can include the Instagram source, temporary media URL, filename, media metadata, operation and request IDs, technical messages, and stacks.
+Diagnostics use `diagnosticsVersion: 2` and are built per attempt from a closed allowlist. A preview
+must be shown before copying. Reports retain the extension version, capture time, normalized
+browser and platform descriptors, attempt and retry counts, media kinds, outcomes, structural media
+URL descriptors, and structured failure or warning codes. URL descriptors contain only a normalized
+hostname, path shape, extension, sorted query-parameter names, recognized signature-parameter
+presence, and parsed expiry state. Reports never contain source URLs, signed media URLs, filenames,
+operation or request IDs, arbitrary causes, or full user-agent strings. Parsing failures produce a
+parse-status descriptor and never fall back to the input value.
 
-Diagnostics never include cookies, request headers, browser storage contents, or unrelated session state. They are not uploaded, archived, or collected as telemetry.
+Diagnostics never include cookies, request headers, browser storage contents, or unrelated session
+state. They are not uploaded, archived, or collected as telemetry.
 
 ## Adding a code
 

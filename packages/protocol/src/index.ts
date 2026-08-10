@@ -317,14 +317,14 @@ export class HistoryRedownloadResult extends Schema.TaggedClass<HistoryRedownloa
 ) {}
 
 export class DebugGetResult extends Schema.TaggedClass<DebugGetResult>()('DebugGetResult', {
-  diagnosticsVersion: Schema.Literal(1),
+  diagnosticsVersion: Schema.Literal(2),
   report: Schema.String.pipe(Schema.nonEmptyString()),
 }) {}
 
 export class DebugExportResult extends Schema.TaggedClass<DebugExportResult>()(
   'DebugExportResult',
   {
-    diagnosticsVersion: Schema.Literal(1),
+    diagnosticsVersion: Schema.Literal(2),
     filename: Schema.String.pipe(Schema.nonEmptyString()),
     status: Schema.Literal('started'),
   }

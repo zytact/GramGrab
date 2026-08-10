@@ -1,9 +1,9 @@
 import { Effect, Schema } from 'effect';
 import { FAILURE_CODES, FailureCodeSchema, type FailureCode } from '@gramgrab/protocol';
 
-export { FAILURE_CODES, type FailureCode };
+export { FAILURE_CODES, FailureCodeSchema, type FailureCode };
 
-const FailurePhaseSchema = Schema.Literal(
+export const FailurePhaseSchema = Schema.Literal(
   'input',
   'source',
   'media-transfer',
@@ -30,7 +30,7 @@ const RecoveryActionSchema = Schema.Literal(
 );
 export type RecoveryAction = Schema.Schema.Type<typeof RecoveryActionSchema>;
 
-const WarningCodeSchema = Schema.Literal(
+export const WarningCodeSchema = Schema.Literal(
   'HISTORY_SAVE_FAILED',
   'SILENT_TEMPORARY_FILE_CLEANUP_UNCONFIRMED'
 );

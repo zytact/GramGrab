@@ -296,7 +296,8 @@ describe('Popup', () => {
     const diagnostics = await screen.findByRole('button', { name: 'Copy diagnostics' });
     await user.click(diagnostics);
     expect(screen.getByRole('dialog', { name: 'Diagnostics preview' })).toBeDefined();
-    expect(screen.getByText(/schema detail/)).toBeDefined();
+    expect(screen.getByText(/structural media URL metadata/)).toBeDefined();
+    expect(screen.queryByText(/schema detail/)).toBeNull();
   });
 
   it('shows an animated spinner while fetching media', async () => {
@@ -900,7 +901,8 @@ describe('Popup', () => {
     const trigger = await screen.findByRole('button', { name: 'Copy diagnostics' });
     await user.click(trigger);
     expect(screen.getByRole('dialog', { name: 'Diagnostics preview' })).toBeDefined();
-    expect(screen.getByText(/technical detail/)).toBeDefined();
+    expect(screen.getByText(/structural media URL metadata/)).toBeDefined();
+    expect(screen.queryByText(/technical detail/)).toBeNull();
     expect(clipboard.writeText).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(document.activeElement).toBe(trigger));
@@ -910,6 +912,9 @@ describe('Popup', () => {
     if (!copyButton) throw new Error('Expected the diagnostics copy button.');
     await user.click(copyButton);
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(expect.any(String)));
+    const copied = clipboard.writeText.mock.calls.at(-1)?.[0];
+    expect(copied).toContain('"diagnosticsVersion": 2');
+    expect(copied).not.toContain('technical detail');
   });
 
   it('toggles video selection when its preview is clicked without toggling Frame', async () => {

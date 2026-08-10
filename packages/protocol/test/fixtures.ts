@@ -139,10 +139,10 @@ const resultFixtures: readonly unknown[] = [
     ],
     unknownEntryIds: ['missing-history'],
   },
-  { _tag: 'DebugGetResult', diagnosticsVersion: 1, report: '{"diagnosticsVersion":1}' },
+  { _tag: 'DebugGetResult', diagnosticsVersion: 2, report: '{"diagnosticsVersion":2}' },
   {
     _tag: 'DebugExportResult',
-    diagnosticsVersion: 1,
+    diagnosticsVersion: 2,
     filename: 'gramgrab-diagnostics.json',
     status: 'started',
   },

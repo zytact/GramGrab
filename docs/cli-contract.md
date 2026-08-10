@@ -82,8 +82,8 @@ unsuccessful item outcome, and exit 2 means argument, validation, or transport f
 | Remove selected history entries                                          | `HistoryRemove`                                           | Explicit entry IDs; partial or unknown IDs are reported, not silently broadened                 |
 | Clear download history                                                   | `HistoryClear`                                            | Destructive action must be explicitly requested                                                 |
 | Download from history                                                    | `HistoryRedownload`                                       | Uses extension resolution and download behavior, never CLI-side media fetching                  |
-| Read supported diagnostics                                               | `DebugGet`                                                | `diagnostics`; diagnostic causes stay out of ordinary UI copy                                   |
-| Export a diagnostic report                                               | `DebugExport`                                             | Preserves the existing preview and redaction policy                                             |
+| Read supported diagnostics                                               | `DebugGet`                                                | `diagnostics`; structural-only version-2 report                                                 |
+| Export a diagnostic report                                               | `DebugExport`                                             | Exports the structural-only version-2 report                                                    |
 | Popup layout, workspace layout, navigation, selection controls           | UI-only                                                   | No protocol operation because these present operations rather than define new behavior          |
 
 ## Event and failure semantics

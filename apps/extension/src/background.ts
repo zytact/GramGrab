@@ -104,6 +104,7 @@ import {
   formatError,
 } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
+import { buildDiagnostics } from './errors/diagnostics.ts';
 import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from './errors/normalize.ts';
 import { FAILURE_PRESENTATION } from './errors/presentation.ts';
 
@@ -2031,36 +2032,28 @@ async function executeCommand(
         signal.throwIfAborted();
         emit(Progress.make({ phase: 'diagnostics' }));
         result = DebugGetResult.make({
-          diagnosticsVersion: 1,
-          report: JSON.stringify(
-            {
-              diagnosticsVersion: 1,
-              capturedAt: new Date().toISOString(),
-              extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
-              browser: browserName(),
-            },
-            null,
-            2
-          ),
+          diagnosticsVersion: 2,
+          report: buildDiagnostics({
+            extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
+            userAgent: globalThis.navigator?.userAgent ?? '',
+          }),
         });
         break;
       }
       case 'DebugExport': {
         signal.throwIfAborted();
         const filename = `gramgrab-debug-${Date.now()}.json`;
-        const report = {
-          diagnosticsVersion: 1,
-          capturedAt: new Date().toISOString(),
+        const report = buildDiagnostics({
           extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
-          browser: browserName(),
-        };
+          userAgent: globalThis.navigator?.userAgent ?? '',
+        });
         await browser.downloads.download({
-          url: jsonToDataUrl(report),
+          url: jsonToDataUrl(JSON.parse(report)),
           filename,
           saveAs: true,
         });
         result = DebugExportResult.make({
-          diagnosticsVersion: 1,
+          diagnosticsVersion: 2,
           filename,
           status: 'started',
         });
@@ -2082,12 +2075,6 @@ async function executeCommand(
       })
     );
   }
-}
-
-function browserName(): 'chromium' | 'firefox' | 'unknown' {
-  const userAgent = globalThis.navigator?.userAgent ?? '';
-  if (/Firefox/i.test(userAgent)) return 'firefox';
-  return /Chrom(?:e|ium)/i.test(userAgent) ? 'chromium' : 'unknown';
 }
 
 startNativeBridge(executeCommand);

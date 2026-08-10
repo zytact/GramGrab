@@ -108,31 +108,12 @@ function diagnosticsForAttempt(
   diagnosticFailure: OperationFailure | undefined,
   sourceUrl: string
 ): string {
-  const entries = current?.entries ?? [];
   return buildDiagnostics({
     extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
-    browser: { userAgent: navigator.userAgent },
-    source: { url: sourceUrl },
-    attempt: {
-      entries: entries.map(entry => ({
-        operationId: entry.operation.operationId,
-        requestId: entry.operation.requestId,
-        executionCount: entry.executionCount,
-        manualRetryCount: entry.manualRetryCount,
-      })),
-    },
-    items: entries.map(entry => ({
-      operationId: entry.operation.operationId,
-      requestId: entry.operation.requestId,
-      temporaryMediaUrl: entry.operation.url,
-      filename: entry.operation.filename,
-      mediaType: entry.operation.mediaType,
-      outcome: entry.outcome,
-    })),
+    userAgent: navigator.userAgent,
+    sourceUrl,
+    attempt: current,
     ...(diagnosticFailure ? { batchFailure: diagnosticFailure } : {}),
-    warnings: entries.flatMap(entry =>
-      entry.outcome.status === 'started' && entry.outcome.warning ? [entry.outcome.warning] : []
-    ),
   });
 }
 
@@ -1251,8 +1232,11 @@ function DiagnosticsDialog({ json, onClose }: { json: string; onClose: () => voi
           Diagnostics preview
         </h2>
         <p>
-          This can include the Instagram source, temporary media URLs, filenames, operation IDs,
-          technical messages, and stacks. Share it only with someone you trust.
+          This contains only the extension version, capture time, normalized browser and platform
+          details, structural media URL metadata, attempt counts, media kinds, outcomes, and
+          structured failure or warning codes. It excludes source and media URLs, filenames,
+          operation IDs, technical causes, and full user-agent strings. Share it only with someone
+          you trust.
         </p>
         <pre className="diagnostics-preview">{json}</pre>
         <div className="quality-dialog-actions">

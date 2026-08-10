@@ -106,7 +106,7 @@ Output and exit status:
   --json emits compact newline-delimited progress on stderr and one terminal JSON result on stdout.
   Exit 0 means full success, 1 means rejection or a partial item failure, and 2 means invalid input
   or transport failure. History commands affect only extension-owned history. Debug export uses the
-  extension's diagnostic preview and redaction policy.
+  extension's structural-only diagnostics report.
 `;
 
 function option(arguments_: readonly string[], name: string): string | undefined {
