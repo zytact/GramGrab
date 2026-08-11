@@ -38,6 +38,21 @@ const mockBrowser = {
 
 globalThis.browser = mockBrowser as typeof globalThis.browser;
 
+function fakeVideoMedia(video: HTMLVideoElement, duration: number) {
+  let currentTime = 0;
+  Object.defineProperty(video, 'duration', { configurable: true, value: duration });
+  Object.defineProperty(video, 'currentTime', {
+    configurable: true,
+    get: () => currentTime,
+    set: (value: number) => {
+      currentTime = value;
+    },
+  });
+  return {
+    currentTime: () => currentTime,
+  };
+}
+
 describe('Popup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -129,7 +144,7 @@ describe('Popup', () => {
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
 
-  it('reuses the media-item UI after capture without silent export or workspace actions', async () => {
+  it('renders a captured video Status as a muted hero still with a play overlay', async () => {
     mockBrowser.tabs.query.mockResolvedValue([
       { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
     ]);
@@ -164,15 +179,255 @@ describe('Popup', () => {
     expect(await screen.findByRole('heading', { name: 'Visible Status captured' })).toBeDefined();
     expect(screen.getByText(/one photo or video that was visible/i)).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Capture Visible Status' })).toBeNull();
-    expect(screen.queryByLabelText('Remove audio')).toBeNull();
+    expect(screen.queryByLabelText('Remove audio')).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Open in tab' })).toBeNull();
-    expect(
-      document.querySelector('.whatsapp-result-list img, .whatsapp-result-list video')
-    ).toBeNull();
+    expect(document.querySelector('.whatsapp-result-hero')).not.toBeNull();
+    const preview = document.querySelector('.whatsapp-result-hero video');
+    expect(preview).not.toBeNull();
+    if (!(preview instanceof HTMLVideoElement)) throw new Error('Expected a video preview.');
+    expect(preview?.getAttribute('controls')).toBeNull();
+    expect(preview.muted).toBe(true);
+    expect(preview.autoplay).toBe(false);
+    expect(preview.paused).toBe(true);
+    expect(document.querySelector('.whatsapp-result-hero .play-overlay')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
     await waitFor(() => expect(download).toHaveBeenCalledOnce());
     expect(release).not.toHaveBeenCalled();
+    capture.mockRestore();
+  });
+
+  it('seeks the single WhatsApp hero video and exports that selected timestamp', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'video',
+        mimeType: 'video/mp4',
+        byteLength: 1,
+        width: 640,
+        height: 480,
+        durationMs: 12_000,
+        capturedAt: 1,
+        retentionDeadline: 60_001,
+      },
+      snapshot: { objectUrl: () => 'blob:visible-status' },
+      filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
+      download: vi.fn(),
+      release: vi.fn(),
+    } as never);
+    const frameExport = vi
+      .spyOn(whatsappFrameExport, 'exportWhatsAppFrame')
+      .mockImplementation(async (_handle, operation) =>
+        DownloadAcceptedResult.make({
+          operationId: operation.operationId,
+          requestId: operation.requestId,
+          status: 'started',
+        })
+      );
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+    const heroVideo = document.querySelector('.whatsapp-result-hero video');
+    if (!(heroVideo instanceof HTMLVideoElement)) throw new Error('Expected the hero video.');
+    const media = fakeVideoMedia(heroVideo, 12);
+    fireEvent.loadedMetadata(heroVideo);
+    await user.click(screen.getByLabelText('Frame'));
+
+    const slider = await screen.findByRole('slider', { name: 'Frame timestamp for item 01' });
+    expect(slider.getAttribute('max')).toBe('11');
+    expect(slider.getAttribute('aria-valuetext')).toBe('5 seconds');
+    expect(media.currentTime()).toBe(5);
+    expect(document.querySelectorAll('.whatsapp-result-hero video')).toHaveLength(1);
+
+    fireEvent.change(slider, { target: { value: '9' } });
+    await waitFor(() => expect(media.currentTime()).toBe(9));
+    expect(document.querySelector('.whatsapp-result-hero video')).toBe(heroVideo);
+
+    await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
+    await waitFor(() => expect(frameExport).toHaveBeenCalledOnce());
+    expect(frameExport.mock.calls[0]?.[1]).toMatchObject({
+      url: 'blob:visible-status',
+      frameTimestampSeconds: 9,
+    });
+    expect(
+      mockBrowser.runtime.sendMessage.mock.calls.some(
+        ([message]) => (message as { type?: string }).type === 'FETCH_VIDEO_BLOB'
+      )
+    ).toBe(false);
+
+    frameExport.mockRestore();
+    capture.mockRestore();
+  });
+
+  it('marks hero metadata failure and retries by re-reading the snapshot object URL', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const objectUrl = vi.fn().mockReturnValue('blob:visible-status');
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'video',
+        mimeType: 'video/mp4',
+        byteLength: 1,
+        width: 640,
+        height: 480,
+        durationMs: 12_000,
+        capturedAt: 1,
+        retentionDeadline: 60_001,
+      },
+      snapshot: { objectUrl },
+      filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
+      download: vi.fn(),
+      release: vi.fn(),
+    } as never);
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+    const heroVideo = document.querySelector('.whatsapp-result-hero video');
+    if (!(heroVideo instanceof HTMLVideoElement)) throw new Error('Expected the hero video.');
+    const load = vi.fn();
+    Object.defineProperty(heroVideo, 'load', { configurable: true, value: load });
+    await user.click(screen.getByLabelText('Frame'));
+    fireEvent.error(heroVideo);
+
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeDefined();
+    expect(screen.getByText('Could not load video metadata. Retry.')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(objectUrl).toHaveBeenCalledTimes(2);
+    expect(load).toHaveBeenCalledOnce();
+    expect(await screen.findByText('Loading…')).toBeDefined();
+
+    const retriedHeroVideo = document.querySelector('.whatsapp-result-hero video');
+    if (!(retriedHeroVideo instanceof HTMLVideoElement))
+      throw new Error('Expected the retried hero video.');
+    fakeVideoMedia(retriedHeroVideo, 12);
+    fireEvent.loadedMetadata(retriedHeroVideo);
+    expect(
+      await screen.findByRole('slider', { name: 'Frame timestamp for item 01' })
+    ).toBeDefined();
+    expect(screen.queryByText('Could not load video metadata. Retry.')).toBeNull();
+
+    capture.mockRestore();
+  });
+
+  it('renders a captured photo Status as a plain hero image', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'photo',
+        mimeType: 'image/jpeg',
+        byteLength: 1,
+        width: 640,
+        height: 480,
+        capturedAt: 1,
+        retentionDeadline: 60_001,
+      },
+      snapshot: { objectUrl: () => 'blob:visible-status' },
+      filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+      download: vi.fn(),
+      release: vi.fn(),
+    } as never);
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+
+    const preview = await screen.findByAltText('Preview');
+    expect(preview.tagName).toBe('IMG');
+    expect(preview.getAttribute('src')).toBe('blob:visible-status');
+    expect(document.querySelector('.whatsapp-result-hero .play-overlay')).toBeNull();
+    capture.mockRestore();
+  });
+
+  it('shows edit-aware expiry copy and a re-capture action when the lease expires mid-edit', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    let expireLease: (() => void) | undefined;
+    const capture = vi
+      .spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus')
+      .mockImplementation(async options => {
+        expireLease = options?.onLeaseExpired;
+        return {
+          descriptor: {
+            captureId: '123e4567-e89b-42d3-a456-426614174000',
+            kind: 'photo',
+            mimeType: 'image/jpeg',
+            byteLength: 1,
+            width: 640,
+            height: 480,
+            capturedAt: 1,
+            retentionDeadline: 600_001,
+          },
+          snapshot: { objectUrl: () => 'blob:visible-status' },
+          filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+          download: vi.fn(),
+          release: vi.fn(),
+        } as never;
+      });
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+
+    if (!expireLease) throw new Error('Expected the edit lease expiry callback.');
+    act(() => expireLease?.());
+
+    expect(await screen.findByRole('heading', { name: 'Editing session expired' })).toBeDefined();
+    expect(
+      screen.getByText(/editing session expired after 10 minutes.*capture.*again/i)
+    ).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Capture Visible Status again' })).toBeDefined();
+    expect(document.querySelector('.whatsapp-result-hero')).toBeNull();
+    capture.mockRestore();
+  });
+
+  it('renders the existing placeholder when a captured Status cannot decode', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'photo',
+        mimeType: 'image/jpeg',
+        byteLength: 1,
+        width: 640,
+        height: 480,
+        capturedAt: 1,
+        retentionDeadline: 60_001,
+      },
+      snapshot: { objectUrl: () => 'blob:visible-status' },
+      filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+      download: vi.fn(),
+      release: vi.fn(),
+    } as never);
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+    const preview = await screen.findByAltText('Preview');
+    fireEvent.error(preview);
+
+    await waitFor(() => {
+      expect(document.querySelector('.thumb-placeholder')).not.toBeNull();
+      expect(screen.queryByAltText('Preview')).toBeNull();
+    });
+    expect(mockBrowser.runtime.sendMessage).not.toHaveBeenCalled();
     capture.mockRestore();
   });
 

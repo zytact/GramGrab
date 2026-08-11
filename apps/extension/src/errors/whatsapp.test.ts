@@ -5,7 +5,11 @@ import {
   decodeDiagnostics,
   makeWhatsAppDiagnostics,
 } from './diagnostics.ts';
-import { normalizeBrowserDownloadFailure, normalizeWhatsAppCaptureFailure } from './normalize.ts';
+import {
+  normalizeBrowserDownloadFailure,
+  normalizeWhatsAppCaptureFailure,
+  normalizeWhatsAppSilentFailure,
+} from './normalize.ts';
 import { presentationForFailure, retryable, type FailurePresentation } from './presentation.ts';
 import type {
   RecoveryAction,
@@ -108,6 +112,45 @@ describe('WhatsApp failure registry', () => {
     expect(retryable(acquisition, 0)).toBe(true);
     expect(retryable(acquisition, 1)).toBe(false);
     expect(retryable(format, 0)).toBe(false);
+  });
+
+  it('uses edit-aware copy and re-capture recovery for retention expiry', () => {
+    const failure = normalizeWhatsAppCaptureFailure('retention-expired');
+    expect(failure).toMatchObject({
+      code: 'WHATSAPP_ACQUISITION_FAILED',
+      phase: 'whatsapp-extraction',
+      platform: 'whatsapp',
+      structuralEvidence: { invariant: 'retention-expired' },
+    });
+    expect(presentationForFailure(failure)).toMatchObject({
+      title: 'Editing session expired',
+      explanation:
+        'Your editing session expired after 10 minutes - capture the Visible Status again to continue.',
+      actions: ['retry-operation'],
+      retry: 'after-user-action',
+    });
+  });
+
+  it('keeps in-memory silent processing failures typed on the WhatsApp branch', () => {
+    const memory = normalizeWhatsAppSilentFailure(
+      'SILENT_MEMORY_CAPACITY_EXCEEDED',
+      'silent-reencode'
+    );
+    const conversion = normalizeWhatsAppSilentFailure(
+      'SILENT_SOURCE_CONVERSION_UNSUPPORTED',
+      'silent-reencode'
+    );
+
+    expect(memory).toMatchObject({
+      platform: 'whatsapp',
+      code: 'SILENT_MEMORY_CAPACITY_EXCEEDED',
+      phase: 'silent-reencode',
+    });
+    expect(presentationForFailure(memory).title).toBe('Not enough memory to remove audio');
+    expect(presentationForFailure(conversion).actions).toEqual([
+      'retry-operation',
+      'copy-diagnostics',
+    ]);
   });
 });
 

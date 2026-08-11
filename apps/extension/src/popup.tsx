@@ -61,7 +61,12 @@ import {
 } from './whatsapp/capture';
 import { isWhatsAppWebUrl } from './whatsapp/limits';
 import { WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY } from './whatsapp/disclosure';
-import { exportWhatsAppFrame } from './whatsapp/export';
+import {
+  exportWhatsAppFrame,
+  exportWhatsAppSilent,
+  whatsappSilentProgressMessage,
+} from './whatsapp/export';
+import { whatsappExportSelection, type WhatsAppExportMode } from './whatsapp/mode';
 import type { HistoryEntry } from './history/contracts';
 
 interface MediaItem {
@@ -132,29 +137,64 @@ function whatsAppDownloadContext(
     : undefined;
 }
 
-function downloadWhatsAppSelection(
+function whatsAppAttemptOperation(
   handle: WhatsAppCaptureHandle,
   item: MediaItem,
   operation: WhatsAppOperation,
+  selection: { readonly mode: WhatsAppExportMode; readonly filename: string },
   frameSetting: FrameExportSetting | undefined
-) {
-  if (!frameSetting?.enabled) return handle.download();
-  return exportWhatsAppFrame(handle, {
+): AttemptOperation {
+  const originalFilename = handle.filename;
+  return {
     operationId: operation.operationId,
     requestId: operation.requestId,
     itemIndex: 0,
     url: item.url,
     originalUrl: item.url,
-    originalFilename: handle.filename,
-    filename: frameFilename(
-      handle.filename.replace(/\.[^.]+$/u, ''),
-      frameSetting.timestampSeconds
-    ),
-    mediaType: 'video',
-    mode: 'frame',
+    originalFilename,
+    filename: selection.filename,
+    mediaType: handle.descriptor.kind === 'video' ? 'video' : 'image',
+    mode: selection.mode,
     displayIndex: 0,
-    frameTimestampSeconds: frameSetting.timestampSeconds,
-  });
+    ...(selection.mode === 'frame'
+      ? { frameTimestampSeconds: frameSetting?.timestampSeconds ?? 0 }
+      : {}),
+  };
+}
+
+function downloadWhatsAppSelection(
+  handle: WhatsAppCaptureHandle,
+  item: MediaItem,
+  operation: WhatsAppOperation,
+  frameSetting: FrameExportSetting | undefined,
+  removeAudio: boolean,
+  onProgress: (message: string) => void
+) {
+  const selection = whatsappExportSelection(
+    { kind: handle.descriptor.kind },
+    frameSetting?.enabled ?? false,
+    removeAudio,
+    handle.filename,
+    frameFilename(handle.filename.replace(/\.[^.]+$/u, ''), frameSetting?.timestampSeconds ?? 0)
+  );
+  const attemptOperation = whatsAppAttemptOperation(
+    handle,
+    item,
+    operation,
+    selection,
+    frameSetting
+  );
+  switch (selection.mode) {
+    case 'direct':
+      return handle.download();
+    case 'frame':
+      return exportWhatsAppFrame(handle, attemptOperation);
+    case 'silent':
+      return exportWhatsAppSilent(handle, attemptOperation, (phase, progress) => {
+        const message = whatsappSilentProgressMessage(attemptOperation, phase, progress);
+        if (message) onProgress(message);
+      });
+  }
 }
 
 function exportCandidate(
@@ -194,6 +234,29 @@ function diagnosticsForAttempt(
   });
 }
 
+function failureMessage(failure: OperationFailure): string {
+  const presentation = presentationForFailure(failure);
+  return `${presentation.title}. ${presentation.explanation}`;
+}
+
+function useFrameSeekEffect(
+  frameSettings: Record<number, FrameExportSetting>,
+  frameRuntime: Record<number, FrameRuntime>,
+  videoRefs: { current: Record<number, HTMLVideoElement | null> }
+): void {
+  useEffect(() => {
+    for (const [index, setting] of Object.entries(frameSettings)) {
+      const runtime = frameRuntime[Number(index)];
+      const video = videoRefs.current[Number(index)];
+      const duration = runtime?.durationSeconds;
+      if (!setting.enabled || runtime?.status !== 'ready' || duration === undefined || !video)
+        continue;
+      const target = clampFrameSecond(setting.timestampSeconds, duration);
+      if (Math.abs(video.currentTime - target) > 0.01) video.currentTime = target;
+    }
+  }, [frameRuntime, frameSettings, videoRefs]);
+}
+
 // fallow-ignore-next-line complexity
 export default function Popup() {
   const initialWorkspaceMode =
@@ -228,10 +291,14 @@ export default function Popup() {
   );
   const [whatsappFailure, setWhatsappFailure] = useState<OperationFailure>();
   const [whatsappMediaItem, setWhatsappMediaItem] = useState<MediaItem>();
+  const [whatsappPreviewFailed, setWhatsappPreviewFailed] = useState(false);
   const [whatsappFrameSetting, setWhatsappFrameSetting] = useState<FrameExportSetting>();
   const [whatsappFrameRuntime, setWhatsappFrameRuntime] = useState<FrameRuntime>();
+  const [whatsappRemoveAudio, setWhatsappRemoveAudio] = useState(false);
   const [whatsappOperation, setWhatsappOperation] = useState<WhatsAppOperation>();
   const whatsappHandleRef = useRef<WhatsAppCaptureHandle | undefined>(undefined);
+  const whatsappPendingFrameDefault = useRef(false);
+  const whatsappFrameMetadataGeneration = useRef(0);
   const [showHistory, setShowHistory] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState<string | null>(null);
@@ -347,10 +414,20 @@ export default function Popup() {
       const handle = await captureWhatsAppVisibleStatus({
         operationId: operation.operationId,
         requestId: operation.requestId,
+        onLeaseExpired: () => {
+          const failure = normalizeWhatsAppCaptureFailure('retention-expired');
+          setWhatsappFailure(failure);
+          setWhatsappMediaItem(undefined);
+          setWhatsappCaptureStatus('failed');
+          setWhatsappCaptureMessage(failureMessage(failure));
+        },
       });
       whatsappHandleRef.current?.release();
       whatsappHandleRef.current = handle;
       const descriptor = handle.descriptor;
+      whatsappPendingFrameDefault.current = false;
+      whatsappFrameMetadataGeneration.current += 1;
+      setWhatsappPreviewFailed(false);
       setWhatsappMediaItem({
         index: 0,
         type: descriptor.kind === 'video' ? 'video' : 'image',
@@ -361,14 +438,8 @@ export default function Popup() {
         height: descriptor.height,
       });
       setWhatsappFrameSetting(undefined);
-      setWhatsappFrameRuntime(
-        descriptor.kind === 'video'
-          ? {
-              status: 'ready',
-              durationSeconds: descriptor.durationMs / 1_000,
-            }
-          : undefined
-      );
+      setWhatsappFrameRuntime(descriptor.kind === 'video' ? { status: 'idle' } : undefined);
+      setWhatsappRemoveAudio(false);
       setWhatsappCaptureStatus('ready');
       setWhatsappCaptureMessage('Visible Status captured. Choose an export to start the download.');
     } catch (error) {
@@ -380,8 +451,7 @@ export default function Popup() {
           : normalizeWhatsAppCaptureFailure(captureError.reason, captureError.shape);
       setWhatsappFailure(failure);
       setWhatsappCaptureStatus('failed');
-      const presentation = presentationForFailure(failure);
-      setWhatsappCaptureMessage(`${presentation.title}. ${presentation.explanation}`);
+      setWhatsappCaptureMessage(failureMessage(failure));
     }
   }, [whatsappCaptureStatus, whatsappDisclosure, whatsappOperation]);
 
@@ -397,13 +467,18 @@ export default function Popup() {
     setWhatsappCaptureStatus('downloading');
     setWhatsappFailure(undefined);
     try {
-      const result = await downloadWhatsAppSelection(handle, item, operation, whatsappFrameSetting);
+      const result = await downloadWhatsAppSelection(
+        handle,
+        item,
+        operation,
+        whatsappFrameSetting,
+        whatsappRemoveAudio,
+        setWhatsappCaptureMessage
+      );
       if ('status' in result && result.status === 'failed') {
         setWhatsappFailure(result.failure);
         setWhatsappCaptureStatus('failed');
-        setWhatsappCaptureMessage(
-          `${presentationForFailure(result.failure).title}. ${presentationForFailure(result.failure).explanation}`
-        );
+        setWhatsappCaptureMessage(failureMessage(result.failure));
         setWhatsappMediaItem(undefined);
         whatsappHandleRef.current = undefined;
         return;
@@ -420,16 +495,22 @@ export default function Popup() {
       const failure =
         error instanceof WhatsAppCaptureError && error.browserCause !== undefined
           ? normalizeBrowserDownloadFailure(error.browserCause, 'whatsapp')
-          : normalizeWhatsAppCaptureFailure('transfer-failed');
+          : normalizeWhatsAppCaptureFailure(
+              error instanceof WhatsAppCaptureError ? error.reason : 'transfer-failed'
+            );
       setWhatsappFailure(failure);
       setWhatsappMediaItem(undefined);
       whatsappHandleRef.current = undefined;
       setWhatsappCaptureStatus('failed');
-      setWhatsappCaptureMessage(
-        `${presentationForFailure(failure).title}. ${presentationForFailure(failure).explanation}`
-      );
+      setWhatsappCaptureMessage(failureMessage(failure));
     }
-  }, [whatsappCaptureStatus, whatsappFrameSetting, whatsappMediaItem, whatsappOperation]);
+  }, [
+    whatsappCaptureStatus,
+    whatsappFrameSetting,
+    whatsappMediaItem,
+    whatsappOperation,
+    whatsappRemoveAudio,
+  ]);
 
   const handleIntrinsicDimensions = useCallback(
     (item: MediaItem, width: number, height: number) => {
@@ -473,6 +554,91 @@ export default function Popup() {
         },
       };
     });
+  }, []);
+
+  const setWhatsAppFrameDuration = useCallback((durationSeconds: number) => {
+    if (maximumFrameSecond(durationSeconds) === undefined) {
+      setWhatsappFrameRuntime({
+        status: 'failed',
+        error: 'Could not load video metadata. Retry.',
+      });
+      return;
+    }
+    const useDefault = whatsappPendingFrameDefault.current;
+    whatsappPendingFrameDefault.current = false;
+    setWhatsappFrameRuntime(previous => ({
+      ...previous,
+      status: 'ready',
+      durationSeconds,
+      error: undefined,
+    }));
+    setWhatsappFrameSetting(previous =>
+      previous
+        ? {
+            ...previous,
+            timestampSeconds: clampFrameSecond(
+              useDefault ? defaultFrameSecond(durationSeconds) : previous.timestampSeconds,
+              durationSeconds
+            ),
+          }
+        : previous
+    );
+  }, []);
+
+  const toggleWhatsAppFrame = useCallback(() => {
+    const enabled = !(whatsappFrameSetting?.enabled ?? false);
+    setWhatsappFrameSetting(previous => ({
+      enabled,
+      timestampSeconds: previous?.timestampSeconds ?? 0,
+    }));
+    if (!enabled) return;
+
+    whatsappPendingFrameDefault.current = whatsappFrameSetting === undefined;
+    const video = videoRefs.current[0];
+    if (video && maximumFrameSecond(video.duration) !== undefined) {
+      setWhatsAppFrameDuration(video.duration);
+      return;
+    }
+
+    setWhatsappFrameRuntime(previous => ({
+      ...previous,
+      status: 'loading',
+      error: undefined,
+      warning: undefined,
+    }));
+    video?.load();
+  }, [setWhatsAppFrameDuration, whatsappFrameSetting]);
+
+  const toggleWhatsAppRemoveAudio = useCallback(() => {
+    setWhatsappRemoveAudio(previous => !previous);
+  }, []);
+
+  const retryWhatsAppFrameMetadata = useCallback(() => {
+    const handle = whatsappHandleRef.current;
+    if (!handle) return;
+    const generation = whatsappFrameMetadataGeneration.current + 1;
+    whatsappFrameMetadataGeneration.current = generation;
+    setWhatsappPreviewFailed(false);
+    setWhatsappFrameRuntime(previous => ({
+      ...previous,
+      status: 'loading',
+      error: undefined,
+      warning: undefined,
+    }));
+    try {
+      const objectUrl = handle.snapshot.objectUrl();
+      setWhatsappMediaItem(previous => (previous ? { ...previous, url: objectUrl } : previous));
+      const video = videoRefs.current[0];
+      if (video && generation === whatsappFrameMetadataGeneration.current) {
+        video.src = objectUrl;
+        video.load();
+      }
+    } catch {
+      setWhatsappFrameRuntime({
+        status: 'failed',
+        error: 'Could not load video metadata. Retry.',
+      });
+    }
   }, []);
 
   const loadFrameMetadata = useCallback(
@@ -573,18 +739,35 @@ export default function Popup() {
     }));
   }, []);
 
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      for (const [index, setting] of Object.entries(frameExportSettings)) {
-        const duration = frameRuntime[Number(index)]?.durationSeconds;
-        const video = videoRefs.current[Number(index)];
-        if (!setting.enabled || duration === undefined || !video) continue;
-        const target = clampFrameSecond(setting.timestampSeconds, duration);
-        if (Math.abs(video.currentTime - target) > 0.01) video.currentTime = target;
-      }
-    }, 120);
-    return () => window.clearTimeout(timeout);
-  }, [frameExportSettings, frameRuntime]);
+  const changeWhatsAppFrameTimestamp = useCallback(
+    (timestampSeconds: number) => {
+      const duration = whatsappFrameRuntime?.durationSeconds;
+      setWhatsappFrameSetting(() => ({
+        enabled: true,
+        timestampSeconds:
+          duration === undefined
+            ? Math.max(0, Math.round(timestampSeconds))
+            : clampFrameSecond(timestampSeconds, duration),
+      }));
+      setWhatsappFrameRuntime(previous =>
+        previous ? { ...previous, status: 'ready', error: undefined, warning: undefined } : previous
+      );
+    },
+    [whatsappFrameRuntime?.durationSeconds]
+  );
+
+  const whatsappFrameSettings = useMemo<Record<number, FrameExportSetting>>(() => {
+    const settings: Record<number, FrameExportSetting> = {};
+    if (whatsappFrameSetting) settings[0] = whatsappFrameSetting;
+    return settings;
+  }, [whatsappFrameSetting]);
+  const whatsappFrameRuntimes = useMemo<Record<number, FrameRuntime>>(() => {
+    const runtimes: Record<number, FrameRuntime> = {};
+    if (whatsappFrameRuntime) runtimes[0] = whatsappFrameRuntime;
+    return runtimes;
+  }, [whatsappFrameRuntime]);
+  useFrameSeekEffect(frameExportSettings, frameRuntime, videoRefs);
+  useFrameSeekEffect(whatsappFrameSettings, whatsappFrameRuntimes, videoRefs);
 
   const requestFallbackPreview = useCallback(async (index: number, itemUrl: string) => {
     setFallbackLoading(prev => new Set(prev).add(index));
@@ -992,6 +1175,18 @@ export default function Popup() {
     (index: number, durationSeconds: number) => setFrameDuration(index, durationSeconds),
     [setFrameDuration]
   );
+  const handleWhatsAppVideoMetadata = useCallback(
+    (_index: number, durationSeconds: number) => setWhatsAppFrameDuration(durationSeconds),
+    [setWhatsAppFrameDuration]
+  );
+  const handleWhatsAppPreviewError = useCallback(() => {
+    setWhatsappPreviewFailed(true);
+    setWhatsappFrameRuntime(previous => ({
+      ...(previous ?? { status: 'idle' }),
+      status: 'failed',
+      error: 'Could not load video metadata. Retry.',
+    }));
+  }, []);
 
   const loadHistory = useCallback(async () => {
     const response = (await browser.runtime.sendMessage({ type: 'GET_DOWNLOAD_HISTORY' })) as {
@@ -1263,6 +1458,8 @@ export default function Popup() {
                     item={whatsappMediaItem}
                     frameSetting={whatsappFrameSetting}
                     frameRuntime={whatsappFrameRuntime}
+                    removeAudio={whatsappRemoveAudio}
+                    previewFailed={whatsappPreviewFailed}
                     manualRetryCount={whatsappOperation?.manualRetryCount ?? 0}
                     onAcknowledge={() => void acknowledgeWhatsAppViewReceipts()}
                     onDismissDisclosure={() => setWhatsappDisclosure('dismissed')}
@@ -1274,15 +1471,13 @@ export default function Popup() {
                         current ? { ...current, selected: !current.selected } : current
                       )
                     }
-                    onToggleFrame={() =>
-                      setWhatsappFrameSetting(current => ({
-                        enabled: !(current?.enabled ?? false),
-                        timestampSeconds: current?.timestampSeconds ?? 0,
-                      }))
-                    }
-                    onChangeFrameTimestamp={timestampSeconds =>
-                      setWhatsappFrameSetting({ enabled: true, timestampSeconds })
-                    }
+                    onToggleFrame={toggleWhatsAppFrame}
+                    onToggleRemoveAudio={toggleWhatsAppRemoveAudio}
+                    onChangeFrameTimestamp={changeWhatsAppFrameTimestamp}
+                    onVideoRef={handleVideoRef}
+                    onVideoMetadata={handleWhatsAppVideoMetadata}
+                    onPreviewError={handleWhatsAppPreviewError}
+                    onRetryFrameMetadata={retryWhatsAppFrameMetadata}
                     onCopyDiagnostics={previewWhatsAppDiagnostics}
                     disabled={isBusy}
                   />
@@ -1595,21 +1790,36 @@ type WhatsAppStatusSurfaceProps = WhatsAppCaptureSectionProps & {
   item: MediaItem | undefined;
   frameSetting: FrameExportSetting | undefined;
   frameRuntime: FrameRuntime | undefined;
+  removeAudio: boolean;
+  previewFailed: boolean;
   onDownload: () => void;
   onToggleItem: () => void;
   onToggleFrame: () => void;
+  onToggleRemoveAudio: () => void;
   onChangeFrameTimestamp: (timestampSeconds: number) => void;
+  onPreviewError: () => void;
+  onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
+  onVideoMetadata: (index: number, durationSeconds: number) => void;
+  onRetryFrameMetadata: () => void;
 };
 
+// fallow-ignore-next-line complexity
 function WhatsAppStatusSurface({
   eligible,
   item,
   frameSetting,
   frameRuntime,
+  removeAudio,
+  previewFailed,
   onDownload,
   onToggleItem,
   onToggleFrame,
+  onToggleRemoveAudio,
   onChangeFrameTimestamp,
+  onPreviewError,
+  onVideoRef,
+  onVideoMetadata,
+  onRetryFrameMetadata,
   ...captureProps
 }: WhatsAppStatusSurfaceProps) {
   if (!eligible)
@@ -1629,24 +1839,24 @@ function WhatsAppStatusSurface({
     intrinsicDimensions: {},
     allSelected: item.selected,
     fallbackLoading: new Set(),
-    fallbackFailed: new Set(),
+    fallbackFailed: previewFailed ? new Set([0]) : new Set(),
     frameExportSettings: frameSetting ? { 0: frameSetting } : {},
-    removeAudioIndexes: new Set(),
+    removeAudioIndexes: removeAudio ? new Set([0]) : new Set(),
     frameRuntime: frameRuntime ? { 0: frameRuntime } : {},
     attempt: undefined,
     emptyMessage: '',
   };
   const actions: MediaListActions = {
-    onPreviewError: () => {},
+    onPreviewError,
     onToggle: onToggleItem,
     onToggleAll: onToggleItem,
     onToggleExportFrame: onToggleFrame,
-    onToggleRemoveAudio: () => {},
-    onChangeFrameTimestamp,
-    onRetryFrameMetadata: () => {},
+    onToggleRemoveAudio,
+    onChangeFrameTimestamp: (_index, timestampSeconds) => onChangeFrameTimestamp(timestampSeconds),
+    onRetryFrameMetadata,
     onRetryFrameExport: () => {},
-    onVideoRef: () => {},
-    onVideoMetadata: () => {},
+    onVideoRef,
+    onVideoMetadata,
     onIntrinsicDimensions: () => {},
   };
   return (
@@ -1655,7 +1865,7 @@ function WhatsAppStatusSurface({
         <h1 id="whatsapp-title">Visible Status captured</h1>
         <p className="whatsapp-capture-copy">
           This is the one photo or video that was visible when you captured it. It stays in memory
-          only until this download starts.
+          until the download starts, the edit lease expires, or you close GramGrab.
         </p>
       </section>
       <MediaListSection
@@ -1663,9 +1873,9 @@ function WhatsAppStatusSurface({
         actions={actions}
         workspaceMode={false}
         disabled={captureProps.disabled}
-        allowSilent={false}
-        showPreview={false}
-        compact
+        allowSilent
+        showPreview
+        layout="hero"
       />
       <div className="ext-section">
         <button
@@ -2318,7 +2528,7 @@ function MediaListSection({
   disabled,
   allowSilent = true,
   showPreview = true,
-  compact = false,
+  layout = 'list',
 }: {
   model: MediaListModel;
   actions: MediaListActions;
@@ -2326,7 +2536,7 @@ function MediaListSection({
   disabled: boolean;
   allowSilent?: boolean;
   showPreview?: boolean;
-  compact?: boolean;
+  layout?: 'list' | 'hero';
 }) {
   const {
     mediaItems,
@@ -2364,6 +2574,7 @@ function MediaListSection({
       key={item.index}
       item={item}
       workspaceMode={workspaceMode}
+      layout={layout}
       showPreview={showPreview}
       intrinsicDimensions={intrinsicDimensions[item.index]}
       fallbackLoading={fallbackLoading.has(item.index)}
@@ -2390,8 +2601,11 @@ function MediaListSection({
   );
 
   return (
-    <div className={`ext-section${compact ? ' whatsapp-result-list' : ''}`} style={{ flex: 1 }}>
-      {!compact && mediaItems.length > 0 && (
+    <div
+      className={`ext-section${layout === 'hero' ? ' whatsapp-result-hero' : ''}`}
+      style={{ flex: 1 }}
+    >
+      {layout === 'list' && mediaItems.length > 0 && (
         <div className="media-header">
           <span className="media-count-label" role="status" aria-live="polite">
             <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
@@ -2476,6 +2690,7 @@ function getVideoDuration(dataUrl: string): Promise<number> {
 interface MediaItemRowProps {
   item: MediaItem;
   workspaceMode: boolean;
+  layout: 'list' | 'hero';
   showPreview: boolean;
   intrinsicDimensions?: { width: number; height: number };
   fallbackLoading: boolean;
@@ -2501,6 +2716,7 @@ interface MediaItemRowProps {
 function MediaPreview({
   item,
   workspaceMode,
+  layout,
   intrinsicDimensions,
   fallbackLoading,
   fallbackFailed,
@@ -2530,13 +2746,16 @@ function MediaPreview({
     intrinsicDimensions?.width,
     intrinsicDimensions?.height
   );
-  const previewStyle = workspaceMode ? ({ '--media-ratio': ratio } as CSSProperties) : undefined;
+  const previewStyle =
+    workspaceMode || layout === 'hero' ? ({ '--media-ratio': ratio } as CSSProperties) : undefined;
 
   return (
     <div className="media-thumb" style={previewStyle}>
       {item.type === 'video' ? (
         <VideoPreview
           item={item}
+          fallbackFailed={fallbackFailed}
+          onError={onError}
           onVideoRef={onVideoRef}
           onVideoMetadata={onVideoMetadata}
           onIntrinsicDimensions={onIntrinsicDimensions}
@@ -2556,16 +2775,30 @@ function MediaPreview({
 
 function VideoPreview({
   item,
+  fallbackFailed,
+  onError,
   onVideoRef,
   onVideoMetadata,
   onIntrinsicDimensions,
-}: Pick<MediaItemRowProps, 'item' | 'onVideoRef' | 'onVideoMetadata' | 'onIntrinsicDimensions'>) {
+}: Pick<
+  MediaItemRowProps,
+  'item' | 'fallbackFailed' | 'onError' | 'onVideoRef' | 'onVideoMetadata' | 'onIntrinsicDimensions'
+>) {
+  if (fallbackFailed) {
+    return (
+      <div className="thumb-placeholder">
+        <span className="thumb-icon">◻</span>
+      </div>
+    );
+  }
+
   return (
     <>
       <video
         src={item.url}
         muted
         playsInline
+        onError={onError}
         ref={onVideoRef}
         onLoadedMetadata={event => {
           onIntrinsicDimensions(event.currentTarget.videoWidth, event.currentTarget.videoHeight);
@@ -2713,6 +2946,7 @@ function MediaItemRow(props: MediaItemRowProps) {
   const {
     item,
     workspaceMode,
+    layout,
     showPreview,
     intrinsicDimensions,
     fallbackLoading,
@@ -2747,6 +2981,7 @@ function MediaItemRow(props: MediaItemRowProps) {
         <MediaPreview
           item={item}
           workspaceMode={workspaceMode}
+          layout={layout}
           intrinsicDimensions={intrinsicDimensions}
           fallbackLoading={fallbackLoading}
           fallbackFailed={fallbackFailed}

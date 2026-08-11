@@ -196,7 +196,7 @@ const whatsappCaptureFailureMappings: Readonly<
   'retention-expired': {
     code: 'WHATSAPP_ACQUISITION_FAILED',
     phase: 'whatsapp-extraction',
-    invariant: 'protocol',
+    invariant: 'retention-expired',
   },
 };
 
@@ -206,6 +206,17 @@ export function normalizeWhatsAppCaptureFailure(
 ): OperationFailure {
   const mapping = whatsappCaptureFailureMappings[reason];
   return whatsappFailure(mapping.code, mapping.phase, mapping.invariant, shape);
+}
+
+export function normalizeWhatsAppSilentFailure(
+  code:
+    | 'SILENT_MEMORY_CAPACITY_EXCEEDED'
+    | 'SILENT_SOURCE_NO_VIDEO'
+    | 'SILENT_SOURCE_CONVERSION_UNSUPPORTED'
+    | 'SILENT_REENCODE_FAILED',
+  phase: 'silent-inspection' | 'silent-reencode'
+): OperationFailure {
+  return whatsappFailure(code, phase, 'unknown');
 }
 
 export function normalizeFrameFailure(reason: string, cause?: unknown): OperationFailure {
