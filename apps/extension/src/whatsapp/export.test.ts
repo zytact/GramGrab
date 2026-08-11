@@ -13,6 +13,7 @@ vi.mock('../frame-export/capture-source.ts', () => ({ captureFrameFromSource: vi
 vi.mock('./mute.ts', () => ({ createWhatsAppSilentVideo: vi.fn() }));
 
 let revokeObjectUrl: ReturnType<typeof vi.fn<(url: string) => void>>;
+let createObjectUrl: ReturnType<typeof vi.spyOn>;
 
 const operation = Schema.decodeUnknownSync(AttemptOperationSchema)({
   operationId: '00000000-0000-4000-8000-000000000001',
@@ -43,7 +44,8 @@ const descriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
 describe('exportWhatsAppFrame', () => {
   beforeEach(() => {
     resetBrowserMocks();
-    vi.spyOn(URL, 'createObjectURL')
+    createObjectUrl = vi
+      .spyOn(URL, 'createObjectURL')
       .mockReturnValueOnce('blob:captured-status')
       .mockReturnValueOnce('blob:exported-frame');
     revokeObjectUrl = vi.fn<(url: string) => void>();
@@ -118,6 +120,7 @@ describe('exportWhatsAppFrame', () => {
   });
 
   it('mutes from the capture blob and uses a name-free muted filename', async () => {
+    createObjectUrl.mockReset().mockReturnValue('blob:silent-output');
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
     const inputBlob = snapshot.blob;
     const release = vi.fn(() => snapshot.release());
@@ -139,15 +142,52 @@ describe('exportWhatsAppFrame', () => {
     );
 
     expect(result.status).toBe('started');
-    expect(createWhatsAppSilentVideo).toHaveBeenCalledWith(inputBlob, undefined);
+    expect(createWhatsAppSilentVideo).toHaveBeenCalledWith(inputBlob, {
+      retentionDeadline: descriptor.retentionDeadline,
+    });
     expect(getDownloadCalls()).toEqual([
       {
-        url: 'blob:captured-status',
+        url: 'blob:silent-output',
         filename: mutedOperation.filename,
         saveAs: false,
       },
     ]);
-    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:captured-status');
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:silent-output');
+    expect(release).toHaveBeenCalledOnce();
+
+    const onChanged = getMockBrowser().downloads.onChanged.addListener.mock.calls[0]?.[0];
+    if (!onChanged) throw new Error('Expected a silent download listener.');
+    onChanged({ id: 1, state: { current: 'complete' } });
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:silent-output');
+  });
+
+  it('does not create or download silent output when the lease expires during conversion', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(descriptor.retentionDeadline - 60_000);
+    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
+    const release = vi.fn(() => snapshot.release());
+    vi.mocked(createWhatsAppSilentVideo).mockImplementationOnce(async () => {
+      vi.setSystemTime(descriptor.retentionDeadline);
+      return new Blob(['silent'], { type: 'video/mp4' });
+    });
+
+    const result = await exportWhatsAppSilent(
+      {
+        descriptor,
+        snapshot,
+        filename: 'whatsapp-visible-status.mp4',
+        download: async () => ({ downloadId: 1, filename: 'unused.mp4' }),
+        release,
+      },
+      { ...operation, mode: 'silent', filename: 'whatsapp-visible-status-muted.mp4' }
+    );
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      failure: { code: 'WHATSAPP_ACQUISITION_FAILED' },
+    });
+    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(getDownloadCalls()).toHaveLength(0);
     expect(release).toHaveBeenCalledOnce();
   });
 
@@ -182,6 +222,7 @@ describe('exportWhatsAppFrame', () => {
       failure: { platform: 'whatsapp', code: 'SILENT_MEMORY_CAPACITY_EXCEEDED' },
     });
     expect(createWhatsAppSilentVideo).not.toHaveBeenCalled();
+    expect(getDownloadCalls()).toHaveLength(0);
     expect(release).toHaveBeenCalledOnce();
   });
 

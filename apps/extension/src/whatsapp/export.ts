@@ -169,14 +169,40 @@ export async function exportWhatsAppSilent(
       });
     }
 
-    const silent = await createWhatsAppSilentVideo(handle.snapshot.blob, onProgress);
+    const silent = await createWhatsAppSilentVideo(handle.snapshot.blob, {
+      retentionDeadline: handle.descriptor.retentionDeadline,
+      ...(onProgress ? { onProgress } : {}),
+    });
+    if (Date.now() >= handle.descriptor.retentionDeadline) {
+      handle.release();
+      return DownloadFailedResult.make({
+        operationId: operation.operationId,
+        requestId: operation.requestId,
+        status: 'failed',
+        failure: normalizeWhatsAppCaptureFailure('retention-expired'),
+      });
+    }
     silentUrl = URL.createObjectURL(silent);
-    await browser.downloads.download({
+    if (Date.now() >= handle.descriptor.retentionDeadline) {
+      URL.revokeObjectURL(silentUrl);
+      silentUrl = undefined;
+      handle.release();
+      return DownloadFailedResult.make({
+        operationId: operation.operationId,
+        requestId: operation.requestId,
+        status: 'failed',
+        failure: normalizeWhatsAppCaptureFailure('retention-expired'),
+      });
+    }
+    const downloadId = await browser.downloads.download({
       url: silentUrl,
       filename: operation.filename,
       saveAs: false,
     });
-    URL.revokeObjectURL(silentUrl);
+    const pendingSilentUrl = silentUrl;
+    monitorAcceptedDownload(downloadId, handle.descriptor.retentionDeadline, () =>
+      URL.revokeObjectURL(pendingSilentUrl)
+    );
     silentUrl = undefined;
     handle.release();
     onProgress?.('downloading', 1);

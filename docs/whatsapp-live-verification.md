@@ -63,6 +63,10 @@ type LiveVerificationEvidence = {
   scenario:
     | 'photo-status'
     | 'video-status'
+    | 'edit-hero'
+    | 'frame-export'
+    | 'silent-export'
+    | 'lease-expiry-recapture'
     | 'advancement-race'
     | 'accepted-download-cleanup'
     | 'cancel-or-failure-cleanup';
@@ -74,7 +78,15 @@ type LiveVerificationEvidence = {
     | 'WHATSAPP_STATUS_NOT_READY'
     | 'WHATSAPP_STATUS_CHANGED'
     | 'WHATSAPP_FORMAT_CHANGED'
-    | 'WHATSAPP_ACQUISITION_FAILED';
+    | 'WHATSAPP_ACQUISITION_FAILED'
+    | 'BROWSER_DOWNLOAD_BLOCKED'
+    | 'BROWSER_DOWNLOAD_NETWORK_FAILED'
+    | 'BROWSER_DOWNLOAD_FILE_FAILED'
+    | 'DOWNLOAD_UNEXPECTED_FAILURE'
+    | 'SILENT_MEMORY_CAPACITY_EXCEEDED'
+    | 'SILENT_SOURCE_NO_VIDEO'
+    | 'SILENT_SOURCE_CONVERSION_UNSUPPORTED'
+    | 'SILENT_REENCODE_FAILED';
   cleanup: {
     bytesDiscarded: boolean;
     blobUrlCreated: boolean;
