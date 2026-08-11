@@ -684,12 +684,43 @@ input:focus-visible {
   border-bottom: none;
 }
 
-.whatsapp-result-list .media-list {
+.whatsapp-result-hero .media-list {
   max-height: none;
 }
 
-.whatsapp-result-list .media-item {
-  grid-template-columns: 30px 1fr 120px;
+.whatsapp-result-hero .media-item {
+  grid-template-columns: 30px minmax(0, 1fr) 120px;
+  grid-template-rows: auto auto;
+  align-items: start;
+  padding: 16px 12px;
+}
+
+.whatsapp-result-hero .media-thumb {
+  grid-column: 2 / -1;
+  grid-row: 1;
+  width: 100%;
+  height: auto;
+  min-height: 180px;
+  max-height: min(55vh, 420px);
+  aspect-ratio: var(--media-ratio, 4 / 3);
+}
+
+.whatsapp-result-hero .media-thumb img,
+.whatsapp-result-hero .media-thumb video {
+  object-fit: contain;
+}
+
+.whatsapp-result-hero .item-info {
+  grid-column: 2;
+  grid-row: 2;
+  padding-top: 12px;
+}
+
+.whatsapp-result-hero .media-controls {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: center;
+  justify-self: end;
 }
 
 .media-item:hover {

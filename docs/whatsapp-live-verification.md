@@ -3,7 +3,8 @@
 This is a **human-run** procedure for the facts synthetic tests cannot establish. It is not a
 collection procedure. Follow [WhatsApp privacy constraints](./whatsapp-privacy.md),
 [ADR 0001](./adr/0001-activetab-for-whatsapp-page-access.md), and
-[ADR 0002](./adr/0002-structural-only-whatsapp-diagnostics.md).
+[ADR 0002](./adr/0002-structural-only-whatsapp-diagnostics.md), and
+[ADR 0004](./adr/0004-whatsapp-edit-session-retention.md).
 
 Synthetic tests remain authoritative for every extension-owned boundary. This procedure establishes
 only whether current WhatsApp Web, Chromium, and Firefox meet the adopted contract.
@@ -32,13 +33,17 @@ only whether current WhatsApp Web, Chromium, and Firefox meet the adopted contra
 Run every row for Chromium and then Firefox. Mark only `pass` or `fail`; use a symbolic failure code
 only when GramGrab actually presented one. Do not record prose observations.
 
-| Scenario                              | Required result                                                                                                                                                                                    |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generic photo Status                  | The isolated controller reads the current foreground photo's page-owned `blob:` or same-origin source, transfers it over the frame-0 port, and the browser accepts one direct download.            |
-| Generic video Status                  | The isolated controller reads the active video player's page-owned `blob:` or same-origin source, not its poster, transfers it over the frame-0 port, and the browser accepts one direct download. |
-| Advancement race                      | Advance or close the viewer while capture is acquiring. The result is either the originally guarded item or `WHATSAPP_STATUS_CHANGED`; it is never the next Status.                                |
-| Cleanup after accepted download       | The captured bytes and extension-created blob URL are released, and no persistent media, workspace handoff, or service-worker ownership is used.                                                   |
-| Cleanup after cancellation or failure | Close the popup, tab, or viewer during capture. Bytes are discarded and any extension-created blob URL is revoked.                                                                                 |
+| Scenario                              | Required result                                                                                                                                                                                                                                                                                           |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generic photo Status                  | The isolated controller reads the current foreground photo's page-owned `blob:` or same-origin source, transfers it over the frame-0 port, and the browser accepts one direct download.                                                                                                                   |
+| Generic video Status                  | The isolated controller reads the active video player's page-owned `blob:` or same-origin source, not its poster, transfers it over the frame-0 port, and the browser accepts one direct download.                                                                                                        |
+| Edit hero: photo and video            | Capture each generic card. The edit surface shows `Visible Status captured` and renders the photo as an image and the MP4 as a video in the single hero item; neither may fall back to a missing or poster-only preview.                                                                                  |
+| Shown scrub frame equals saved frame  | Capture the generic MP4, enable `Frame`, and scrub to a non-zero timestamp. The shown preview seeks to that timestamp, and the accepted JPEG shows the same frame. Discard it immediately and retain no artifact.                                                                                         |
+| Muted export has no audible track     | Capture the generic MP4, enable `Remove audio`, and accept the download. Inspect the muted MP4's tracks: it has a video track and no audio track. Discard it immediately and record only pass/fail.                                                                                                       |
+| Mid-edit expiry and re-capture        | Leave a captured generic card in the edit surface until the flat 10-minute lease expires. Verify `Editing session expired` and `Your editing session expired after 10 minutes - capture the Visible Status again to continue.`, then use `Capture Visible Status again` and confirm the new hero renders. |
+| Advancement race                      | Advance or close the viewer while capture is acquiring. The result is either the originally guarded item or `WHATSAPP_STATUS_CHANGED`; it is never the next Status.                                                                                                                                       |
+| Cleanup after accepted download       | The captured bytes and extension-created blob URL are released, and no persistent media, workspace handoff, or service-worker ownership is used.                                                                                                                                                          |
+| Cleanup after cancellation or failure | Close the popup, tab, or viewer during capture. Bytes are discarded and any extension-created blob URL is revoked.                                                                                                                                                                                        |
 
 For every pass, verify the four structural cleanup booleans listed in the evidence schema. For every
 fail, stop that browser's run. Do not diagnose by collecting any prohibited artifact.

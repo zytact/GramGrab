@@ -21,6 +21,7 @@ import {
 } from './contracts.ts';
 import {
   WHATSAPP_CONTROLLER_FILE,
+  WHATSAPP_EDIT_LEASE_MS,
   WHATSAPP_IDLE_TIMEOUT_MS,
   WHATSAPP_MAX_CHUNK_BYTES,
   WHATSAPP_MAX_CHUNKS,
@@ -86,6 +87,7 @@ export function isAcceptedHistorySaved(value: unknown): boolean {
 export interface WhatsAppCaptureOptions {
   readonly browser?: BrowserShim;
   readonly now?: () => number;
+  readonly onLeaseExpired?: () => void;
   readonly operationId?: OperationId;
   readonly requestId?: ReturnType<typeof createRequestId>;
 }
@@ -147,10 +149,8 @@ function responseFailureReason(value: CaptureFailure['reason']): WhatsAppCapture
 
 function metadataDescriptor(
   metadata: CaptureMetadataValue,
-  firstAcceptedByteAt: number,
-  now: () => number
+  captureCompletedAt: number
 ): WhatsAppCaptureDescriptor | undefined {
-  const captureTime = now();
   const result = decodeWhatsAppDescriptor({
     captureId: createWhatsAppCaptureId(),
     kind: metadata.kind,
@@ -159,8 +159,8 @@ function metadataDescriptor(
     width: metadata.width,
     height: metadata.height,
     ...(metadata.kind === 'video' ? { durationMs: metadata.durationMs } : {}),
-    capturedAt: captureTime,
-    retentionDeadline: firstAcceptedByteAt + WHATSAPP_RETENTION_MS,
+    capturedAt: captureCompletedAt,
+    retentionDeadline: captureCompletedAt + WHATSAPP_EDIT_LEASE_MS,
   });
   return Either.isRight(result) ? result.right : undefined;
 }
@@ -182,8 +182,7 @@ function chunkFitsCapture(
 
 function completedCapture(
   metadata: CaptureMetadataValue,
-  firstAcceptedByteAt: number,
-  now: () => number,
+  captureCompletedAt: number,
   chunks: Uint8Array[]
 ):
   | {
@@ -191,7 +190,7 @@ function completedCapture(
       readonly snapshot: WhatsAppCaptureSnapshot;
     }
   | undefined {
-  const descriptor = metadataDescriptor(metadata, firstAcceptedByteAt, now);
+  const descriptor = metadataDescriptor(metadata, captureCompletedAt);
   if (!descriptor) return undefined;
   try {
     return { descriptor, snapshot: makeWhatsAppCaptureSnapshot(descriptor, chunks) };
@@ -207,6 +206,7 @@ class WhatsAppCaptureSession {
   #requestId: ReturnType<typeof createRequestId>;
   #browser: BrowserShim;
   #now: () => number;
+  #onLeaseExpired: (() => void) | undefined;
   #tabId: number | undefined;
   #port: CapturePort | undefined;
   #removePortListeners: (() => void) | undefined;
@@ -215,8 +215,8 @@ class WhatsAppCaptureSession {
   #removeDownloadListener: (() => void) | undefined;
   #absoluteTimer: ReturnType<typeof setTimeout> | undefined;
   #idleTimer: ReturnType<typeof setTimeout> | undefined;
-  #retentionTimer: ReturnType<typeof setTimeout> | undefined;
-  #firstAcceptedByteAt: number | undefined;
+  #editLeaseTimer: ReturnType<typeof setTimeout> | undefined;
+  #editLeaseDeadline: number | undefined;
   #metadata: CaptureMetadataValue | undefined;
   #chunks: Uint8Array[] = [];
   #aggregateLength = 0;
@@ -228,6 +228,7 @@ class WhatsAppCaptureSession {
   #settled = false;
   #accepted = false;
   #released = false;
+  #leaseExpired = false;
   #resolveCapture: ((handle: WhatsAppCaptureHandle) => void) | undefined;
   #rejectCapture: ((error: WhatsAppCaptureError) => void) | undefined;
   #capturePromise: Promise<WhatsAppCaptureHandle> | undefined;
@@ -235,6 +236,7 @@ class WhatsAppCaptureSession {
   constructor(options: WhatsAppCaptureOptions = {}) {
     this.#browser = options.browser ?? browser;
     this.#now = options.now ?? Date.now;
+    this.#onLeaseExpired = options.onLeaseExpired;
     this.operationId = options.operationId ?? createOperationId();
     this.#requestId = options.requestId ?? createRequestId();
   }
@@ -385,13 +387,29 @@ class WhatsAppCaptureSession {
     );
   }
 
-  #armRetentionTimer(): void {
-    if (this.#firstAcceptedByteAt !== undefined) return;
-    this.#firstAcceptedByteAt = this.#now();
-    this.#retentionTimer = globalThis.setTimeout(
-      () => this.#fail(new WhatsAppCaptureError('retention-expired')),
-      WHATSAPP_RETENTION_MS
+  #armEditLeaseTimer(deadline: number): void {
+    this.#editLeaseDeadline = deadline;
+    this.#editLeaseTimer = globalThis.setTimeout(
+      () => this.#expireEditLease(),
+      Math.max(0, deadline - this.#now())
     );
+  }
+
+  #expireEditLease(): void {
+    if (this.#leaseExpired || this.#released) return;
+    this.#leaseExpired = true;
+    try {
+      this.#onLeaseExpired?.();
+    } finally {
+      this.#fail(new WhatsAppCaptureError('retention-expired'));
+    }
+  }
+
+  #assertEditLeaseAvailable(): void {
+    const deadline = this.#editLeaseDeadline;
+    if (!this.#leaseExpired && (deadline === undefined || this.#now() < deadline)) return;
+    this.#expireEditLease();
+    throw new WhatsAppCaptureError('retention-expired');
   }
 
   #handleMessage(value: unknown): void {
@@ -470,7 +488,6 @@ class WhatsAppCaptureSession {
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
       return;
     }
-    this.#armRetentionTimer();
     this.#chunks.push(decoded);
     this.#aggregateLength += decoded.length;
     this.#expectedSequence++;
@@ -499,12 +516,8 @@ class WhatsAppCaptureSession {
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
       return;
     }
-    const firstAcceptedByteAt = this.#firstAcceptedByteAt;
-    if (firstAcceptedByteAt === undefined) {
-      this.#fail(new WhatsAppCaptureError('transfer-failed'));
-      return;
-    }
-    const completed = completedCapture(metadata, firstAcceptedByteAt, this.#now, this.#chunks);
+    const captureCompletedAt = this.#now();
+    const completed = completedCapture(metadata, captureCompletedAt, this.#chunks);
     if (!completed) {
       this.#fail(new WhatsAppCaptureError('transfer-failed'));
       return;
@@ -512,6 +525,7 @@ class WhatsAppCaptureSession {
     const { descriptor, snapshot } = completed;
     this.#snapshot = snapshot;
     this.#chunks = [];
+    this.#armEditLeaseTimer(descriptor.retentionDeadline);
     if (this.#absoluteTimer !== undefined) globalThis.clearTimeout(this.#absoluteTimer);
     this.#absoluteTimer = undefined;
     this.#settled = true;
@@ -552,6 +566,7 @@ class WhatsAppCaptureSession {
     if (this.#downloadId !== undefined && !this.#downloadTerminal) {
       return { downloadId: this.#downloadId, filename: handle.filename };
     }
+    this.#assertEditLeaseAvailable();
     const snapshot = this.#snapshot;
     if (this.#released || snapshot !== handle.snapshot) {
       throw new WhatsAppCaptureError('download-failed');
@@ -673,12 +688,12 @@ class WhatsAppCaptureSession {
   }
 
   #clearTimersAndListeners(): void {
-    for (const timer of [this.#absoluteTimer, this.#idleTimer, this.#retentionTimer]) {
+    for (const timer of [this.#absoluteTimer, this.#idleTimer, this.#editLeaseTimer]) {
       if (timer !== undefined) globalThis.clearTimeout(timer);
     }
     this.#absoluteTimer = undefined;
     this.#idleTimer = undefined;
-    this.#retentionTimer = undefined;
+    this.#editLeaseTimer = undefined;
     for (const remove of [
       this.#removePortListeners,
       this.#removeTabListeners,

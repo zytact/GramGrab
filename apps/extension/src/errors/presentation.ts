@@ -182,6 +182,11 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'after-user-action',
     true
   ),
+  SILENT_MEMORY_CAPACITY_EXCEEDED: policy(
+    'Not enough memory to remove audio',
+    'Use a smaller video or download the original.',
+    ['download-original']
+  ),
   SILENT_STORAGE_READ_FAILED: policy(
     'Could not reopen the cached video',
     'Fetch the source again or download the original.',
@@ -328,9 +333,45 @@ const whatsappSharedPresentation: Readonly<Record<WhatsAppCommonFailureCode, Fai
       ['retry-operation', 'copy-diagnostics'],
       'once'
     ),
+    SILENT_MEMORY_CAPACITY_EXCEEDED: policy(
+      'Not enough memory to remove audio',
+      'Capture a smaller Visible Status or download it without removing audio.',
+      ['retry-operation'],
+      'after-user-action'
+    ),
+    SILENT_SOURCE_NO_VIDEO: policy(
+      'This video cannot be processed',
+      'Capture the Visible Status again and download it without removing audio.',
+      ['retry-operation'],
+      'after-user-action'
+    ),
+    SILENT_SOURCE_CONVERSION_UNSUPPORTED: policy(
+      'This video cannot be converted',
+      'Capture the Visible Status again or copy diagnostics.',
+      ['retry-operation', 'copy-diagnostics'],
+      'after-user-action'
+    ),
+    SILENT_REENCODE_FAILED: policy(
+      'Could not create the silent video',
+      'Capture the Visible Status again or copy diagnostics.',
+      ['retry-operation', 'copy-diagnostics'],
+      'after-user-action'
+    ),
   };
 
+const whatsappRetentionExpiredPresentation = policy(
+  'Editing session expired',
+  'Your editing session expired after 10 minutes - capture the Visible Status again to continue.',
+  ['retry-operation'],
+  'after-user-action'
+);
+
 export function presentationForFailure(failure: OperationFailure): FailurePresentation {
+  if (
+    failure.platform === 'whatsapp' &&
+    failure.structuralEvidence.invariant === 'retention-expired'
+  )
+    return whatsappRetentionExpiredPresentation;
   if (failure.platform === 'whatsapp' && isWhatsAppCommonFailureCode(failure.code))
     return whatsappSharedPresentation[failure.code];
   return FAILURE_PRESENTATION[failure.code];

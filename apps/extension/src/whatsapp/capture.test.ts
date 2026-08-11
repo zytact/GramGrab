@@ -5,6 +5,7 @@ import { createOperationId, createRequestId } from '../download/contracts.ts';
 import { captureWhatsAppVisibleStatus } from './capture.ts';
 import { encodeCanonicalBase64 } from './base64.ts';
 import { decodeWhatsAppInbound } from './contracts.ts';
+import { WHATSAPP_EDIT_LEASE_MS } from './limits.ts';
 
 let revokeObjectUrl: ReturnType<typeof vi.fn>;
 
@@ -352,7 +353,7 @@ describe('WhatsApp popup-owned capture transfer', () => {
     });
   });
 
-  it('cancels an active browser download at the independent retention ceiling', async () => {
+  it('releases capture bytes and cancels an active browser download at the lease ceiling', async () => {
     vi.useFakeTimers();
     const port = makePort();
     getMockBrowser().tabs.connect.mockReturnValue(port);
@@ -389,7 +390,7 @@ describe('WhatsApp popup-owned capture transfer', () => {
     });
     const handle = await pending;
     await handle.download();
-    vi.advanceTimersByTime(60_000);
+    vi.advanceTimersByTime(WHATSAPP_EDIT_LEASE_MS);
     expect(getMockBrowser().downloads.cancel).toHaveBeenCalledWith(1);
     expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:extension-owned');
   });
@@ -431,10 +432,60 @@ describe('WhatsApp popup-owned capture transfer', () => {
     });
     const handle = await pending;
 
-    vi.advanceTimersByTime(60_000);
+    vi.advanceTimersByTime(WHATSAPP_EDIT_LEASE_MS);
 
     expect(() => handle.snapshot.blob).toThrow('released');
     expect(getMockBrowser().downloads.cancel).not.toHaveBeenCalled();
+  });
+
+  it('starts one non-resetting edit lease at capture-complete and reports its expiry', async () => {
+    vi.useFakeTimers();
+    const port = makePort();
+    getMockBrowser().tabs.connect.mockReturnValue(port);
+    const onLeaseExpired = vi.fn();
+    const pending = captureWhatsAppVisibleStatus({ onLeaseExpired });
+    await vi.waitFor(() => expect(port.postMessage).toHaveBeenCalled());
+    const start = startMessage(port);
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureMetadata',
+      kind: 'photo',
+      mimeType: 'image/jpeg',
+      byteLength: 1,
+      width: 1,
+      height: 1,
+    });
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureChunk',
+      sequence: 0,
+      decodedLength: 1,
+      payload: 'AQ==',
+    });
+    port.emit({
+      protocolVersion: 1,
+      requestId: createRequestId(),
+      operationId: start.operationId,
+      tag: 'CaptureComplete',
+      chunkCount: 1,
+      byteLength: 1,
+    });
+
+    const handle = await pending;
+    expect(handle.descriptor.retentionDeadline - handle.descriptor.capturedAt).toBe(
+      WHATSAPP_EDIT_LEASE_MS
+    );
+    vi.advanceTimersByTime(WHATSAPP_EDIT_LEASE_MS - 1);
+    expect(handle.snapshot.blob.size).toBe(1);
+    expect(onLeaseExpired).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(onLeaseExpired).toHaveBeenCalledOnce();
+    await expect(handle.download()).rejects.toMatchObject({ reason: 'retention-expired' });
   });
 
   it('releases the owned snapshot when the popup closes', async () => {
