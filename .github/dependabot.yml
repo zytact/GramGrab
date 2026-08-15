@@ -11,3 +11,6 @@ updates:
           - vite
           - vite-plus
           - vitest
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
