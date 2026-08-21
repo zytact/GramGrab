@@ -2,38 +2,57 @@
 
 ## Project
 
-GramGrab is a Chrome/Firefox MV3 extension for downloading Instagram media. No content scripts.
+GramGrab resolves Instagram and WhatsApp media into items a person can inspect and download. It ships as a Chrome/Firefox MV3 extension plus a local CLI bridge.
+
+- `apps/extension` - popup, background worker, runner document, WhatsApp page controller
+- `apps/cli` and `apps/native-host` - terminal access to the same operations, bundled by `vp pack` into `artifacts/`
+- `packages/protocol` - wire contracts shared by extension, CLI, and native host
+
+## Page access
+
+The manifest declares no content scripts and no WhatsApp host permission. `apps/extension/scripts/verify-whatsapp-package.mjs` enforces both against built output, so treat them as fixed. Page execution still happens two ways:
+
+- **WhatsApp controller.** The popup drives a capture session (`whatsapp/capture.ts`), which calls `scripting.executeScript` to inject `js/whatsapp-controller.js` into the top frame of the active tab in the `ISOLATED` world, then speaks a bounded chunk protocol to it over a `tabs.connect` port. One invocation, one capture, under `activeTab`. See `docs/adr/0001-activetab-for-whatsapp-page-access.md`.
+- **Runner document.** Frame extraction and silent-video re-encode need DOM and media APIs a service worker lacks, so the background worker opens `runner.html` in a minimized popup window (`getRunner` in `background.ts`) and sends it a `RUN_EXPORT` message. `src/runner.ts` executes the plan and reports back with `RUNNER_READY` and `RUNNER_PROGRESS`.
 
 ## Commands
 
+Scripts live in the root `package.json` and run through `vp run <script>`. The ones worth knowing:
+
 ```bash
-vp run build              # cached chromium + firefox build workflow
-vp run build:chromium     # → extension/chromium/
-vp run build:firefox      # → extension/firefox/
-vp run dev                # chromium watch
-vp run dev:firefox        # firefox watch
-vp lint .                 # lint the repo
-vp lint . --fix
-vp fmt .                  # format the repo
-vp fmt --check .
-tsc --noEmit              # typecheck
-vp test run               # run tests once
-vp test                   # watch mode
-vp run fallow             # run fallow
-vp run package:firefox    # cached build + XPI
-vp run package:chromium   # cached build + CRX (generates/uses chromium.pem key)
+vp run build              # both targets → extension/{chromium,firefox}/
+vp run dev                # chromium watch (dev:firefox for the other target)
+vp run verify:whatsapp-packages   # manifest policy checks against built output
+vp run package:chromium   # CRX (generates/uses chromium.pem key)
+vp run package:firefox    # XPI
+vp run package:tools      # vp pack → artifacts/ for the CLI and native host
 ```
 
-Use Vite+ as the primary workflow surface. Prefer `vp` commands and `vp run <script>` / `vp run <task>` over package-manager wrappers.
+Use Vite+ as the primary workflow surface: prefer `vp` commands over package-manager wrappers.
 
-Verify in order: `vp lint .` + `tsc --noEmit` together, then `vp test run` and finally `vp run fallow`.
+Verify in this order after any change: `vp check` (typecheck, lint, format in one), then `vp test run`, then `vp run fallow`.
 
 ## Architecture
 
-- **Vite root**: `apps/extension/templates/`. Entry: `apps/extension/templates/popup.html` (React app at `apps/extension/src/popup.tsx`). Background worker (`apps/extension/src/background.ts`) bundled directly as `js/background.js` — no HTML wrapper.
-- **Output**: `extension/{chromium,firefox}/`. Post-build (`apps/extension/scripts/postbuild.mjs`) generates per-browser `manifest.json`, copies icons, writes stub polyfill files. Chromium gets `service_worker`, Firefox gets `scripts`.
-- **Message dispatcher** (`background.ts:639`): all listeners registered synchronously at module top. Uses `sendResponse` + `return true` (cross-browser-safe pattern), NOT Promise-return. The popup (`popup.tsx`) sends `FETCH_MEDIA`, `DOWNLOAD_MEDIA`, `GET_PREVIEW_URL`, `FETCH_VIDEO_BLOB` messages.
-- **`browser` global**: Proxy-based shim (`apps/extension/src/lib/browser.ts`) resolving `globalThis.browser` → `globalThis.chrome` → no-op stub. Promisifies callback APIs.
+- **Build.** Vite root is `apps/extension/templates/`. `vite.config.ts` declares four rollup inputs: `popup.html`, `runner.html`, the WhatsApp controller (`src/whatsapp/controller-entry.ts`), and `src/background.ts` bundled directly as `js/background.js` with no HTML wrapper. Keep the controller entry free of exports and external imports so it stays injectable as a classic packaged script.
+- **Output.** `extension/{chromium,firefox}/`. `scripts/postbuild.mjs` writes the per-browser `manifest.json` from `scripts/manifest.mjs` and copies icons, `LICENSE`, and `THIRD_PARTY_NOTICES`. Chromium gets `service_worker`, Firefox gets `scripts`.
+- **Message registry.** `messageHandlers` in `background.ts` maps every popup message type to its handler. The single `browser.runtime.onMessage.addListener` right below it dispatches through that record and handles the runner's `RUNNER_READY` and `RUNNER_PROGRESS` inline. Add a message type by adding a key. The listener answers with `sendResponse` plus `return true` (cross-browser-safe), not a returned Promise.
+- **Subsystems** under `apps/extension/src/`: `effect/` (Instagram requests and schemas), `download/`, `frame-export/`, `silent-video/`, `history/`, `workspace/`, `errors/`, `whatsapp/`, `instagram-protocol/`.
+- **`browser` global.** Proxy-based shim (`src/lib/browser.ts`) resolving `globalThis.browser` → `globalThis.chrome` → no-op stub, promisifying callback APIs.
+
+## WhatsApp acquisition
+
+`apps/extension/src/whatsapp/` acquires one **Visible Status** at a time and hands the bytes to an edit session. Its privacy constraints are binding on every change: `docs/whatsapp-privacy.md` is the contract, `docs/adr/0001`-`0004` record why. Load those before touching this path. The invariants that most often get broken by accident:
+
+- Page reach is `activeTab` plus `scripting`. A WhatsApp host permission, persistent or optional, is out.
+- Captured bytes live in memory only. No `storage`, IndexedDB, OPFS, or filesystem.
+- One flat 10-minute edit lease from capture-complete. Interaction never resets or extends it, and terminal operations are pre-flight checked against the remaining lease.
+- WhatsApp diagnostics are a distinct structural-only type that cannot hold a URL, name, or identifier.
+- A WhatsApp history entry is a receipt, not a handle: no re-download affordance, no display name.
+
+Files: `contracts.ts` (Effect schemas for the port protocol), `controller-runtime.ts` (page side), `capture.ts` (extension side), `limits.ts` (bounds), plus `export.ts`, `mode.ts`, `mute.ts`, `lease.ts`.
+
+Synthetic tests are authoritative for every extension-owned boundary; `docs/whatsapp-boundary-coverage.md` maps boundary to test. `docs/whatsapp-live-verification.md` is a human-run procedure for browser facts tests cannot establish.
 
 ## Vendored Repositories
 
@@ -47,39 +66,35 @@ This project vendors external repositories under `.repos/`.
 
 ## Testing
 
-- Vitest + jsdom. Files: `apps/extension/src/**/*.test.{ts,tsx}`. Setup: `apps/extension/src/test/setup.ts` (polyfills Blob.arrayBuffer, installs mock `globalThis.browser`).
-- Test helpers in `setup.ts`: `resetBrowserMocks()`, `setMockMessageHandler(type, handler)`, `getDownloadCalls()`.
+- Vitest config is `vitest.config.ts` at the repo root: jsdom, globals, v8 coverage, tests matched under `apps/**` and `packages/**`.
+- Setup is `apps/extension/src/test/setup.ts` (polyfills `Blob.arrayBuffer`, installs a mock `globalThis.browser`). Helpers: `resetBrowserMocks()`, `setMockMessageHandler(type, handler)`, `getDownloadCalls()`.
 - Background tests dynamically import `background.ts` to capture the registered listener.
-- Coverage: `vp test run` generates text/json/html reports (v8 provider).
 
 ## IG Schema Fixtures & Strict-Schema Posture
 
-All Instagram API responses are decoded through Effect `Schema` tagged unions — not via ad-hoc casts. The posture is **strict + loud**: schema decode failures surface as `ResponseShapeUnknown` with a user-actionable message ("Instagram changed their format — please update the extension"). Unknown `__typename` values are passed through silently (B2) so partial changes don't brick the whole response.
+All Instagram API responses are decoded through Effect `Schema` tagged unions, not ad-hoc casts. The posture is **strict + loud**: decode failures surface as `ResponseShapeUnknown` with a user-actionable message. Unknown `__typename` values pass through silently so partial changes do not brick the whole response.
 
-Real API response fixtures live in `apps/extension/src/effect/__fixtures__/` (see the README there). They are decoded by `apps/extension/src/effect/schemas.fixtures.test.ts`. **Handwritten tests in `schemas.test.ts` cover edge cases only** (missing required fields, null variants, Unknown passthrough, union dispatch) — not realistic happy paths.
+Sanitized fixtures live in `apps/extension/src/effect/__fixtures__/` (see the README there) and are decoded by `schemas.fixtures.test.ts`. Handwritten tests in `schemas.test.ts` cover edge cases only: missing required fields, null variants, Unknown passthrough, union dispatch.
 
-**When `ResponseShapeUnknown` fires in the wild:**
+When `ResponseShapeUnknown` fires in the wild:
 
-1. Run `apps/extension/scripts/capture-ig-fixtures.mjs` in the DevTools console on `instagram.com`.
-2. Replace the relevant file(s) in `apps/extension/src/effect/__fixtures__/`.
-3. `vp test run` — failing fixture tests show what changed.
-4. Update `apps/extension/src/effect/schemas.ts` to match, re-run tests, ship.
+1. If the request itself stopped working (App ID, ASBD ID, GraphQL doc ID, endpoint, transport), follow `docs/instagram-protocol.md` first.
+2. `vp run generate:ig-fixtures`, then paste `.local/capture-ig-fixtures.mjs` into DevTools on a logged-in `instagram.com`.
+3. Download raw JSON into `.local/raw-fixtures/`, review `vp run sanitize:ig-fixtures`, then install with `vp run sanitize:ig-fixtures -- --write`. The sanitizer is the privacy boundary for committed captures.
+4. `vp test run`. Failing fixture tests show exactly what changed.
+5. Update `apps/extension/src/effect/schemas.ts`, re-run tests, ship sanitized fixtures only.
 
 ## Domain language
 
-This repo has ubiquitous language at `CONTEXT.md` and any ambigous decision you may find in `docs/adr/`.
+Ubiquitous language lives in `CONTEXT.md`. Use its terms (Status, Visible Status, Instant, Highlight, Avatar) and honor its _Avoid_ list. Ambiguous decisions are recorded in `docs/adr/`.
 
 ## Operation errors
 
-The canonical failure registry and compatibility contract live in `docs/error-model.md`. When adding a failure code, update its producer, schema, normalizer, exhaustive presentation/recovery policy, diagnostics policy, documentation row, and focused tests together. Do not render diagnostic causes as ordinary UI copy.
+The canonical failure registry and compatibility contract live in `docs/error-model.md`. When adding a failure code, update its producer, schema, normalizer, exhaustive presentation/recovery policy, diagnostics policy, documentation row, and focused tests together. Render diagnostic causes only through the diagnostics surface, never as ordinary UI copy.
 
 ## Pre-commit
 
-Vite plus controls the pre-commit hook.
-
-## Validation
-
-`vp check`, `vp test run` and `vp run fallow` must be run after making any changes to check for issues. `vp check` covers typechecking, linting, formatting issues, all in one.
+Vite+ controls the pre-commit hook.
 
 <!--VITE PLUS START-->
 
