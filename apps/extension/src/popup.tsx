@@ -1,12 +1,4 @@
-import {
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import './styles.css';
 import { browser } from './lib/browser';
 import {
@@ -17,26 +9,16 @@ import {
   type DownloadOperationResult,
 } from './download/contracts';
 import type { OperationFailure, RecoveryAction } from './errors/contracts';
-import {
-  normalizeBrowserDownloadFailure,
-  normalizeFrameFailure,
-  normalizeWhatsAppCaptureFailure,
-} from './errors/normalize';
-import {
-  FAILURE_PRESENTATION,
-  presentationForFailure,
-  WARNING_PRESENTATION,
-} from './errors/presentation';
+import { normalizeFrameFailure } from './errors/normalize';
+import { FAILURE_PRESENTATION } from './errors/presentation';
 import { buildDiagnostics, buildWhatsAppDiagnostics } from './errors/diagnostics';
-import type { AttemptEntry, AttemptOperation, DownloadAttempt } from './download/attempt';
+import type { AttemptOperation, DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
 import { ExportCandidate, planExportOperations } from './download/coordinator';
 import {
   clampFrameSecond,
   defaultFrameSecond,
   frameFilename,
-  frameTimestampAriaValue,
-  formatFrameTimestamp,
   maximumFrameSecond,
   type FrameExportSetting,
 } from './frame-export/timestamp';
@@ -50,39 +32,24 @@ import {
   openWorkspace,
   replaceWorkspace,
 } from './workspace/coordinator';
-import { isPositiveFinitePair, resolveMediaRatio } from './workspace/media-ratio';
-import { distributeMasonryItems } from './workspace/masonry';
+import { isPositiveFinitePair } from './workspace/media-ratio';
 import { runSilentVideoBatch, type ReencodeCandidate } from './silent-video/batch';
 import { silentProgressMessage } from './silent-video/progress';
-import {
-  captureWhatsAppVisibleStatus,
-  WhatsAppCaptureError,
-  type WhatsAppCaptureHandle,
-} from './whatsapp/capture';
 import { isWhatsAppWebUrl } from './whatsapp/limits';
-import { WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY } from './whatsapp/disclosure';
-import {
-  exportWhatsAppFrame,
-  exportWhatsAppSilent,
-  whatsappSilentProgressMessage,
-} from './whatsapp/export';
-import { whatsappExportSelection, type WhatsAppExportMode } from './whatsapp/mode';
 import type { HistoryEntry } from './history/contracts';
-
-interface MediaItem {
-  index: number;
-  itemIndex?: number;
-  mediaId?: string;
-  history?: { downloaded: boolean; count: number; latestDownloadedAt?: number };
-  type: string;
-  url: string;
-  filenameHint: string;
-  selected: boolean;
-  previewUrl?: string;
-  width?: number;
-  height?: number;
-  creatorUsername?: string;
-}
+import { LoadingButtonLabel } from './popup/loading-button-label';
+import {
+  itemRuntimeAt,
+  updateItemRuntime,
+  withFrame,
+  type ItemRuntime,
+  type ItemRuntimes,
+  type MediaItem,
+} from './popup/media-item';
+import { MediaListSection } from './popup/media-list';
+import { useFrameSeekEffect } from './popup/use-frame-seek';
+import { useWhatsAppCapture } from './popup/use-whatsapp-capture';
+import { WhatsAppStatusPanel } from './popup/whatsapp-status-panel';
 
 interface PreviewResponse {
   previewUrl?: string;
@@ -92,119 +59,15 @@ interface PreviewResponse {
 type VideoBlobResponse = { dataUrl?: string; error?: string };
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
-type FrameRuntime = {
-  status: 'idle' | 'loading' | 'ready' | 'failed' | 'exporting';
-  durationSeconds?: number;
-  dataUrl?: string;
-  error?: string;
-  warning?: string;
-};
-type WhatsAppDisclosureState = 'checking' | 'required' | 'dismissed' | 'acknowledged';
-type WhatsAppCaptureStatus = 'idle' | 'capturing' | 'ready' | 'downloading' | 'started' | 'failed';
-type WhatsAppOperation = {
-  operationId: ReturnType<typeof createOperationId>;
-  requestId: ReturnType<typeof createRequestId>;
-  manualRetryCount: number;
-};
-
-function nextWhatsAppOperation(
-  status: WhatsAppCaptureStatus,
-  previous: WhatsAppOperation | undefined
-): WhatsAppOperation {
-  return status === 'failed' && previous
-    ? {
-        operationId: previous.operationId,
-        requestId: createRequestId(),
-        manualRetryCount: previous.manualRetryCount + 1,
-      }
-    : { operationId: createOperationId(), requestId: createRequestId(), manualRetryCount: 0 };
-}
-
-function whatsAppDownloadContext(
-  handle: WhatsAppCaptureHandle | undefined,
-  item: MediaItem | undefined,
-  operation: WhatsAppOperation | undefined,
-  status: WhatsAppCaptureStatus
-):
-  | {
-      readonly handle: WhatsAppCaptureHandle;
-      readonly item: MediaItem;
-      readonly operation: WhatsAppOperation;
-    }
-  | undefined {
-  return handle && item?.selected && operation && status !== 'downloading'
-    ? { handle, item, operation }
-    : undefined;
-}
-
-function whatsAppAttemptOperation(
-  handle: WhatsAppCaptureHandle,
-  item: MediaItem,
-  operation: WhatsAppOperation,
-  selection: { readonly mode: WhatsAppExportMode; readonly filename: string },
-  frameSetting: FrameExportSetting | undefined
-): AttemptOperation {
-  const originalFilename = handle.filename;
-  return {
-    operationId: operation.operationId,
-    requestId: operation.requestId,
-    itemIndex: 0,
-    url: item.url,
-    originalUrl: item.url,
-    originalFilename,
-    filename: selection.filename,
-    mediaType: handle.descriptor.kind === 'video' ? 'video' : 'image',
-    mode: selection.mode,
-    displayIndex: 0,
-    ...(selection.mode === 'frame'
-      ? { frameTimestampSeconds: frameSetting?.timestampSeconds ?? 0 }
-      : {}),
-  };
-}
-
-function downloadWhatsAppSelection(
-  handle: WhatsAppCaptureHandle,
-  item: MediaItem,
-  operation: WhatsAppOperation,
-  frameSetting: FrameExportSetting | undefined,
-  removeAudio: boolean,
-  onProgress: (message: string) => void
-) {
-  const selection = whatsappExportSelection(
-    { kind: handle.descriptor.kind },
-    frameSetting?.enabled ?? false,
-    removeAudio,
-    handle.filename,
-    frameFilename(handle.filename.replace(/\.[^.]+$/u, ''), frameSetting?.timestampSeconds ?? 0)
-  );
-  const attemptOperation = whatsAppAttemptOperation(
-    handle,
-    item,
-    operation,
-    selection,
-    frameSetting
-  );
-  switch (selection.mode) {
-    case 'direct':
-      return handle.download();
-    case 'frame':
-      return exportWhatsAppFrame(handle, attemptOperation);
-    case 'silent':
-      return exportWhatsAppSilent(handle, attemptOperation, (phase, progress) => {
-        const message = whatsappSilentProgressMessage(attemptOperation, phase, progress);
-        if (message) onProgress(message);
-      });
-  }
-}
 
 function exportCandidate(
   item: MediaItem,
   frameExportSettings: Record<number, FrameExportSetting>,
-  frameRuntime: Record<number, FrameRuntime>,
+  itemRuntimes: ItemRuntimes,
   removeAudioIndexes: ReadonlySet<number>
 ): ExportCandidate {
   const setting = frameExportSettings[item.index];
-  const durationSeconds = frameRuntime[item.index]?.durationSeconds;
+  const durationSeconds = itemRuntimes[item.index]?.frame.durationSeconds;
   return ExportCandidate.make({
     index: item.index,
     itemIndex: item.itemIndex,
@@ -234,29 +97,6 @@ function diagnosticsForAttempt(
   });
 }
 
-function failureMessage(failure: OperationFailure): string {
-  const presentation = presentationForFailure(failure);
-  return `${presentation.title}. ${presentation.explanation}`;
-}
-
-function useFrameSeekEffect(
-  frameSettings: Record<number, FrameExportSetting>,
-  frameRuntime: Record<number, FrameRuntime>,
-  videoRefs: { current: Record<number, HTMLVideoElement | null> }
-): void {
-  useEffect(() => {
-    for (const [index, setting] of Object.entries(frameSettings)) {
-      const runtime = frameRuntime[Number(index)];
-      const video = videoRefs.current[Number(index)];
-      const duration = runtime?.durationSeconds;
-      if (!setting.enabled || runtime?.status !== 'ready' || duration === undefined || !video)
-        continue;
-      const target = clampFrameSecond(setting.timestampSeconds, duration);
-      if (Math.abs(video.currentTime - target) > 0.01) video.currentTime = target;
-    }
-  }, [frameRuntime, frameSettings, videoRefs]);
-}
-
 // fallow-ignore-next-line complexity
 export default function Popup() {
   const initialWorkspaceMode =
@@ -272,33 +112,11 @@ export default function Popup() {
   const [frameExportSettings, setFrameExportSettings] = useState<
     Record<number, FrameExportSetting>
   >({});
-  const [frameRuntime, setFrameRuntime] = useState<Record<number, FrameRuntime>>({});
+  const [itemRuntimes, setItemRuntimes] = useState<ItemRuntimes>({});
   const [removeAudioIndexes, setRemoveAudioIndexes] = useState<Set<number>>(new Set());
-  const [fallbackLoading, setFallbackLoading] = useState<Set<number>>(new Set());
-  const [fallbackFailed, setFallbackFailed] = useState<Set<number>>(new Set());
-  const [intrinsicDimensions, setIntrinsicDimensions] = useState<
-    Record<number, { width: number; height: number }>
-  >({});
   const [autoDetected, setAutoDetected] = useState(false);
   const [platform, setPlatform] = useState<'instagram' | 'whatsapp'>('instagram');
   const [whatsappActive, setWhatsappActive] = useState(false);
-  const [whatsappDisclosure, setWhatsappDisclosure] = useState<WhatsAppDisclosureState>('checking');
-  const [whatsappCaptureStatus, setWhatsappCaptureStatus] = useState<
-    'idle' | 'capturing' | 'ready' | 'downloading' | 'started' | 'failed'
-  >('idle');
-  const [whatsappCaptureMessage, setWhatsappCaptureMessage] = useState(
-    'Capture the photo or video Visible Status currently open in WhatsApp Web.'
-  );
-  const [whatsappFailure, setWhatsappFailure] = useState<OperationFailure>();
-  const [whatsappMediaItem, setWhatsappMediaItem] = useState<MediaItem>();
-  const [whatsappPreviewFailed, setWhatsappPreviewFailed] = useState(false);
-  const [whatsappFrameSetting, setWhatsappFrameSetting] = useState<FrameExportSetting>();
-  const [whatsappFrameRuntime, setWhatsappFrameRuntime] = useState<FrameRuntime>();
-  const [whatsappRemoveAudio, setWhatsappRemoveAudio] = useState(false);
-  const [whatsappOperation, setWhatsappOperation] = useState<WhatsAppOperation>();
-  const whatsappHandleRef = useRef<WhatsAppCaptureHandle | undefined>(undefined);
-  const whatsappPendingFrameDefault = useRef(false);
-  const whatsappFrameMetadataGeneration = useRef(0);
   const [showHistory, setShowHistory] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState<string | null>(null);
@@ -316,6 +134,8 @@ export default function Popup() {
   const pendingFrameDefaults = useRef(new Set<number>());
   const clearAttemptRef = useRef<() => void>(() => {});
 
+  const whatsapp = useWhatsAppCapture({ eligible: whatsappActive, videoRefs });
+
   useEffect(() => {
     let cancelled = false;
     void browser.tabs
@@ -332,41 +152,19 @@ export default function Popup() {
       });
     return () => {
       cancelled = true;
-      whatsappHandleRef.current?.release();
-      whatsappHandleRef.current = undefined;
     };
   }, [initialWorkspaceMode]);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!whatsappActive) {
-      setWhatsappDisclosure('checking');
-      return () => {
-        cancelled = true;
-      };
-    }
-    setWhatsappDisclosure('checking');
-    void browser.storage
-      .get(WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY)
-      .then(stored => {
-        if (!cancelled)
-          setWhatsappDisclosure(
-            stored[WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY] === true ? 'acknowledged' : 'required'
-          );
-      })
-      .catch(() => {
-        if (!cancelled) setWhatsappDisclosure('required');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [whatsappActive]);
+  const patchRuntime = useCallback(
+    (index: number, update: (current: ItemRuntime) => ItemRuntime) =>
+      setItemRuntimes(previous => updateItemRuntime(previous, index, update)),
+    []
+  );
 
   const replaceMediaItems = useCallback<typeof setMediaItems>(action => {
     resultsGeneration.current++;
     pendingFrameDefaults.current.clear();
-    setIntrinsicDimensions({});
-    setFrameRuntime({});
+    setItemRuntimes({});
     setMediaItems(action);
   }, []);
 
@@ -390,139 +188,17 @@ export default function Popup() {
     handleFetchRef.current = handleFetch;
   }, [handleFetch]);
 
-  const acknowledgeWhatsAppViewReceipts = useCallback(async () => {
-    try {
-      await browser.storage.set({ [WHATSAPP_VIEW_RECEIPT_ACKNOWLEDGED_KEY]: true });
-      setWhatsappDisclosure('acknowledged');
-    } catch {
-      setWhatsappCaptureMessage('GramGrab could not remember this acknowledgement. Try again.');
-    }
-  }, []);
-
-  const handleWhatsAppCapture = useCallback(async () => {
-    if (whatsappDisclosure !== 'acknowledged') {
-      setWhatsappDisclosure('required');
-      return;
-    }
-    if (whatsappCaptureStatus === 'capturing') return;
-    const operation = nextWhatsAppOperation(whatsappCaptureStatus, whatsappOperation);
-    setWhatsappOperation(operation);
-    setWhatsappFailure(undefined);
-    setWhatsappCaptureStatus('capturing');
-    setWhatsappCaptureMessage('Reading the Visible Status…');
-    try {
-      const handle = await captureWhatsAppVisibleStatus({
-        operationId: operation.operationId,
-        requestId: operation.requestId,
-        onLeaseExpired: () => {
-          const failure = normalizeWhatsAppCaptureFailure('retention-expired');
-          setWhatsappFailure(failure);
-          setWhatsappMediaItem(undefined);
-          setWhatsappCaptureStatus('failed');
-          setWhatsappCaptureMessage(failureMessage(failure));
-        },
-      });
-      whatsappHandleRef.current?.release();
-      whatsappHandleRef.current = handle;
-      const descriptor = handle.descriptor;
-      whatsappPendingFrameDefault.current = false;
-      whatsappFrameMetadataGeneration.current += 1;
-      setWhatsappPreviewFailed(false);
-      setWhatsappMediaItem({
-        index: 0,
-        type: descriptor.kind === 'video' ? 'video' : 'image',
-        url: handle.snapshot.objectUrl(),
-        filenameHint: 'visible-status',
-        selected: true,
-        width: descriptor.width,
-        height: descriptor.height,
-      });
-      setWhatsappFrameSetting(undefined);
-      setWhatsappFrameRuntime(descriptor.kind === 'video' ? { status: 'idle' } : undefined);
-      setWhatsappRemoveAudio(false);
-      setWhatsappCaptureStatus('ready');
-      setWhatsappCaptureMessage('Visible Status captured. Choose an export to start the download.');
-    } catch (error) {
-      const captureError =
-        error instanceof WhatsAppCaptureError ? error : new WhatsAppCaptureError('transfer-failed');
-      const failure =
-        captureError.reason === 'download-failed' && captureError.browserCause !== undefined
-          ? normalizeBrowserDownloadFailure(captureError.browserCause, 'whatsapp')
-          : normalizeWhatsAppCaptureFailure(captureError.reason, captureError.shape);
-      setWhatsappFailure(failure);
-      setWhatsappCaptureStatus('failed');
-      setWhatsappCaptureMessage(failureMessage(failure));
-    }
-  }, [whatsappCaptureStatus, whatsappDisclosure, whatsappOperation]);
-
-  const handleWhatsAppDownload = useCallback(async () => {
-    const context = whatsAppDownloadContext(
-      whatsappHandleRef.current,
-      whatsappMediaItem,
-      whatsappOperation,
-      whatsappCaptureStatus
-    );
-    if (!context) return;
-    const { handle, item, operation } = context;
-    setWhatsappCaptureStatus('downloading');
-    setWhatsappFailure(undefined);
-    try {
-      const result = await downloadWhatsAppSelection(
-        handle,
-        item,
-        operation,
-        whatsappFrameSetting,
-        whatsappRemoveAudio,
-        setWhatsappCaptureMessage
-      );
-      if ('status' in result && result.status === 'failed') {
-        setWhatsappFailure(result.failure);
-        setWhatsappCaptureStatus('failed');
-        setWhatsappCaptureMessage(failureMessage(result.failure));
-        setWhatsappMediaItem(undefined);
-        whatsappHandleRef.current = undefined;
-        return;
-      }
-      whatsappHandleRef.current = undefined;
-      setWhatsappMediaItem(undefined);
-      setWhatsappCaptureStatus('started');
-      setWhatsappCaptureMessage(
-        result.warning
-          ? WARNING_PRESENTATION[result.warning.code]
-          : 'Download started. The in-memory capture was released.'
-      );
-    } catch (error) {
-      const failure =
-        error instanceof WhatsAppCaptureError && error.browserCause !== undefined
-          ? normalizeBrowserDownloadFailure(error.browserCause, 'whatsapp')
-          : normalizeWhatsAppCaptureFailure(
-              error instanceof WhatsAppCaptureError ? error.reason : 'transfer-failed'
-            );
-      setWhatsappFailure(failure);
-      setWhatsappMediaItem(undefined);
-      whatsappHandleRef.current = undefined;
-      setWhatsappCaptureStatus('failed');
-      setWhatsappCaptureMessage(failureMessage(failure));
-    }
-  }, [
-    whatsappCaptureStatus,
-    whatsappFrameSetting,
-    whatsappMediaItem,
-    whatsappOperation,
-    whatsappRemoveAudio,
-  ]);
-
   const handleIntrinsicDimensions = useCallback(
     (item: MediaItem, width: number, height: number) => {
       if (isPositiveFinitePair(item.width, item.height) || !isPositiveFinitePair(width, height))
         return;
-      setIntrinsicDimensions(previous => {
-        const existing = previous[item.index];
-        if (existing?.width === width && existing.height === height) return previous;
-        return { ...previous, [item.index]: { width, height } };
-      });
+      patchRuntime(item.index, current =>
+        current.intrinsic?.width === width && current.intrinsic.height === height
+          ? current
+          : { ...current, intrinsic: { width, height } }
+      );
     },
-    []
+    [patchRuntime]
   );
 
   const toggleItem = useCallback((index: number) => {
@@ -531,118 +207,36 @@ export default function Popup() {
     );
   }, []);
 
-  const setFrameDuration = useCallback((index: number, durationSeconds: number) => {
-    const maximum = maximumFrameSecond(durationSeconds);
-    if (maximum === undefined) return;
-    setFrameRuntime(previous => ({
-      ...previous,
-      [index]: { ...previous[index], status: 'ready', durationSeconds, error: undefined },
-    }));
-    setFrameExportSettings(previous => {
-      const setting = previous[index];
-      if (!setting) return previous;
-      return {
-        ...previous,
-        [index]: {
-          ...setting,
-          timestampSeconds: clampFrameSecond(
-            pendingFrameDefaults.current.delete(index)
-              ? defaultFrameSecond(durationSeconds)
-              : setting.timestampSeconds,
-            durationSeconds
-          ),
-        },
-      };
-    });
-  }, []);
-
-  const setWhatsAppFrameDuration = useCallback((durationSeconds: number) => {
-    if (maximumFrameSecond(durationSeconds) === undefined) {
-      setWhatsappFrameRuntime({
-        status: 'failed',
-        error: 'Could not load video metadata. Retry.',
-      });
-      return;
-    }
-    const useDefault = whatsappPendingFrameDefault.current;
-    whatsappPendingFrameDefault.current = false;
-    setWhatsappFrameRuntime(previous => ({
-      ...previous,
-      status: 'ready',
-      durationSeconds,
-      error: undefined,
-    }));
-    setWhatsappFrameSetting(previous =>
-      previous
-        ? {
-            ...previous,
+  const setFrameDuration = useCallback(
+    (index: number, durationSeconds: number) => {
+      const maximum = maximumFrameSecond(durationSeconds);
+      if (maximum === undefined) return;
+      patchRuntime(index, current =>
+        withFrame(current, { ...current.frame, status: 'ready', durationSeconds, error: undefined })
+      );
+      setFrameExportSettings(previous => {
+        const setting = previous[index];
+        if (!setting) return previous;
+        return {
+          ...previous,
+          [index]: {
+            ...setting,
             timestampSeconds: clampFrameSecond(
-              useDefault ? defaultFrameSecond(durationSeconds) : previous.timestampSeconds,
+              pendingFrameDefaults.current.delete(index)
+                ? defaultFrameSecond(durationSeconds)
+                : setting.timestampSeconds,
               durationSeconds
             ),
-          }
-        : previous
-    );
-  }, []);
-
-  const toggleWhatsAppFrame = useCallback(() => {
-    const enabled = !(whatsappFrameSetting?.enabled ?? false);
-    setWhatsappFrameSetting(previous => ({
-      enabled,
-      timestampSeconds: previous?.timestampSeconds ?? 0,
-    }));
-    if (!enabled) return;
-
-    whatsappPendingFrameDefault.current = whatsappFrameSetting === undefined;
-    const video = videoRefs.current[0];
-    if (video && maximumFrameSecond(video.duration) !== undefined) {
-      setWhatsAppFrameDuration(video.duration);
-      return;
-    }
-
-    setWhatsappFrameRuntime(previous => ({
-      ...previous,
-      status: 'loading',
-      error: undefined,
-      warning: undefined,
-    }));
-    video?.load();
-  }, [setWhatsAppFrameDuration, whatsappFrameSetting]);
-
-  const toggleWhatsAppRemoveAudio = useCallback(() => {
-    setWhatsappRemoveAudio(previous => !previous);
-  }, []);
-
-  const retryWhatsAppFrameMetadata = useCallback(() => {
-    const handle = whatsappHandleRef.current;
-    if (!handle) return;
-    const generation = whatsappFrameMetadataGeneration.current + 1;
-    whatsappFrameMetadataGeneration.current = generation;
-    setWhatsappPreviewFailed(false);
-    setWhatsappFrameRuntime(previous => ({
-      ...previous,
-      status: 'loading',
-      error: undefined,
-      warning: undefined,
-    }));
-    try {
-      const objectUrl = handle.snapshot.objectUrl();
-      setWhatsappMediaItem(previous => (previous ? { ...previous, url: objectUrl } : previous));
-      const video = videoRefs.current[0];
-      if (video && generation === whatsappFrameMetadataGeneration.current) {
-        video.src = objectUrl;
-        video.load();
-      }
-    } catch {
-      setWhatsappFrameRuntime({
-        status: 'failed',
-        error: 'Could not load video metadata. Retry.',
+          },
+        };
       });
-    }
-  }, []);
+    },
+    [patchRuntime]
+  );
+
+  useFrameSeekEffect(frameExportSettings, itemRuntimes, videoRefs);
 
   const loadFrameMetadata = useCallback(
-    // fallow-ignore-next-line complexity
     async (index: number) => {
       const generation = resultsGeneration.current;
       const itemUrl = mediaItems[index]?.url;
@@ -652,7 +246,9 @@ export default function Popup() {
         setFrameDuration(index, video.duration);
         return;
       }
-      setFrameRuntime(previous => ({ ...previous, [index]: { status: 'loading' } }));
+      patchRuntime(index, current => withFrame(current, { status: 'loading' }));
+      const stale = () =>
+        generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl;
       try {
         const response = (await browser.runtime.sendMessage({
           type: 'FETCH_VIDEO_BLOB',
@@ -660,11 +256,10 @@ export default function Popup() {
         })) as VideoBlobResponse;
         const dataUrl = getVideoBlobDataUrl(response);
         const durationSeconds = await getVideoDuration(dataUrl);
-        if (generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl) return;
-        setFrameRuntime(previous => ({
-          ...previous,
-          [index]: { status: 'ready', durationSeconds, dataUrl },
-        }));
+        if (stale()) return;
+        patchRuntime(index, current =>
+          withFrame(current, { status: 'ready', durationSeconds, dataUrl })
+        );
         setFrameExportSettings(previous => {
           const setting = previous[index];
           if (!setting) return previous;
@@ -682,14 +277,13 @@ export default function Popup() {
           };
         });
       } catch {
-        if (generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl) return;
-        setFrameRuntime(previous => ({
-          ...previous,
-          [index]: { status: 'failed', error: 'Could not load video metadata. Retry.' },
-        }));
+        if (stale()) return;
+        patchRuntime(index, current =>
+          withFrame(current, { status: 'failed', error: 'Could not load video metadata. Retry.' })
+        );
       }
     },
-    [mediaItems, setFrameDuration]
+    [mediaItems, patchRuntime, setFrameDuration]
   );
 
   const toggleExportFrame = useCallback(
@@ -728,124 +322,84 @@ export default function Popup() {
     });
   }, []);
 
-  const changeFrameTimestamp = useCallback((index: number, timestampSeconds: number) => {
-    setFrameExportSettings(previous => ({
-      ...previous,
-      [index]: { enabled: true, timestampSeconds },
-    }));
-    setFrameRuntime(previous => ({
-      ...previous,
-      [index]: { ...previous[index], error: undefined, warning: undefined, status: 'ready' },
-    }));
-  }, []);
-
-  const changeWhatsAppFrameTimestamp = useCallback(
-    (timestampSeconds: number) => {
-      const duration = whatsappFrameRuntime?.durationSeconds;
-      setWhatsappFrameSetting(() => ({
-        enabled: true,
-        timestampSeconds:
-          duration === undefined
-            ? Math.max(0, Math.round(timestampSeconds))
-            : clampFrameSecond(timestampSeconds, duration),
+  const changeFrameTimestamp = useCallback(
+    (index: number, timestampSeconds: number) => {
+      setFrameExportSettings(previous => ({
+        ...previous,
+        [index]: { enabled: true, timestampSeconds },
       }));
-      setWhatsappFrameRuntime(previous =>
-        previous ? { ...previous, status: 'ready', error: undefined, warning: undefined } : previous
+      patchRuntime(index, current =>
+        withFrame(current, {
+          ...current.frame,
+          status: 'ready',
+          error: undefined,
+          warning: undefined,
+        })
       );
     },
-    [whatsappFrameRuntime?.durationSeconds]
+    [patchRuntime]
   );
 
-  const whatsappFrameSettings = useMemo<Record<number, FrameExportSetting>>(() => {
-    const settings: Record<number, FrameExportSetting> = {};
-    if (whatsappFrameSetting) settings[0] = whatsappFrameSetting;
-    return settings;
-  }, [whatsappFrameSetting]);
-  const whatsappFrameRuntimes = useMemo<Record<number, FrameRuntime>>(() => {
-    const runtimes: Record<number, FrameRuntime> = {};
-    if (whatsappFrameRuntime) runtimes[0] = whatsappFrameRuntime;
-    return runtimes;
-  }, [whatsappFrameRuntime]);
-  useFrameSeekEffect(frameExportSettings, frameRuntime, videoRefs);
-  useFrameSeekEffect(whatsappFrameSettings, whatsappFrameRuntimes, videoRefs);
+  const requestFallbackPreview = useCallback(
+    async (index: number, itemUrl: string) => {
+      patchRuntime(index, current => ({ ...current, preview: 'loading' }));
+      try {
+        const res = (await browser.runtime.sendMessage({
+          type: 'GET_PREVIEW_URL',
+          url: itemUrl,
+        })) as PreviewResponse;
 
-  const requestFallbackPreview = useCallback(async (index: number, itemUrl: string) => {
-    setFallbackLoading(prev => new Set(prev).add(index));
-
-    try {
-      const res = (await browser.runtime.sendMessage({
-        type: 'GET_PREVIEW_URL',
-        url: itemUrl,
-      })) as PreviewResponse;
-
-      if (res?.previewUrl) {
-        setMediaItems(prev =>
-          prev.map(item => (item.index === index ? { ...item, previewUrl: res.previewUrl } : item))
-        );
-        setFallbackFailed(prev => {
-          const next = new Set(prev);
-          next.delete(index);
-          return next;
-        });
-      } else {
-        setFallbackFailed(prev => new Set(prev).add(index));
+        if (res?.previewUrl) {
+          setMediaItems(prev =>
+            prev.map(item =>
+              item.index === index ? { ...item, previewUrl: res.previewUrl } : item
+            )
+          );
+          patchRuntime(index, current => ({ ...current, preview: 'idle' }));
+        } else {
+          patchRuntime(index, current => ({ ...current, preview: 'failed' }));
+        }
+      } catch {
+        patchRuntime(index, current => ({ ...current, preview: 'failed' }));
       }
-    } catch {
-      setFallbackFailed(prev => new Set(prev).add(index));
-    } finally {
-      setFallbackLoading(prev => {
-        const next = new Set(prev);
-        next.delete(index);
-        return next;
-      });
-    }
-  }, []);
+    },
+    [patchRuntime]
+  );
 
   const executeFrameAttempt = useCallback(
     async (operation: AttemptOperation): Promise<DownloadOperationResult> => {
-      const runtime = frameRuntime[operation.displayIndex];
-      if (!runtime?.durationSeconds || operation.frameTimestampSeconds === undefined)
+      const index = operation.displayIndex;
+      const frame = itemRuntimes[index]?.frame;
+      if (!frame?.durationSeconds || operation.frameTimestampSeconds === undefined)
         return DownloadFailedResult.make({
           operationId: operation.operationId,
           requestId: operation.requestId,
           status: 'failed',
           failure: normalizeFrameFailure('no-duration'),
         });
-      setFrameRuntime(previous => ({
-        ...previous,
-        [operation.displayIndex]: {
-          ...previous[operation.displayIndex],
-          status: 'exporting',
-          error: undefined,
-        },
-      }));
+      patchRuntime(index, current =>
+        withFrame(current, { ...current.frame, status: 'exporting', error: undefined })
+      );
       const result = await executeFrameExport(operation, fetchedUrl || url, {
         originKind: acquisition,
       });
-      if (result.status === 'started') {
-        setFrameRuntime(previous => ({
-          ...previous,
-          [operation.displayIndex]: {
-            ...previous[operation.displayIndex],
-            status: 'ready',
-            ...(result.warning
-              ? { warning: 'Frame downloaded, but history could not be saved.' }
-              : {}),
-          },
-        }));
-      } else {
-        setFrameRuntime(previous => ({
-          ...previous,
-          [operation.displayIndex]: {
-            ...previous[operation.displayIndex],
-            status: 'failed',
-            error: 'Frame export failed.',
-          },
-        }));
-      }
+      patchRuntime(index, current =>
+        withFrame(
+          current,
+          result.status === 'started'
+            ? {
+                ...current.frame,
+                status: 'ready',
+                ...(result.warning
+                  ? { warning: 'Frame downloaded, but history could not be saved.' }
+                  : {}),
+              }
+            : { ...current.frame, status: 'failed', error: 'Frame export failed.' }
+        )
+      );
       return result;
     },
-    [acquisition, fetchedUrl, frameRuntime, url]
+    [acquisition, fetchedUrl, itemRuntimes, patchRuntime, url]
   );
 
   const executeDirect = useCallback(
@@ -999,9 +553,9 @@ export default function Popup() {
     async (index: number) => {
       const item = mediaItems[index];
       const setting = frameExportSettings[index];
-      const runtime = frameRuntime[index];
-      if (!item || !setting?.enabled || !runtime?.durationSeconds) return;
-      const timestampSeconds = clampFrameSecond(setting.timestampSeconds, runtime.durationSeconds);
+      const durationSeconds = itemRuntimes[index]?.frame.durationSeconds;
+      if (!item || !setting?.enabled || !durationSeconds) return;
+      const timestampSeconds = clampFrameSecond(setting.timestampSeconds, durationSeconds);
       await executeFrameAttempt({
         operationId: createOperationId(),
         requestId: createRequestId(),
@@ -1017,7 +571,7 @@ export default function Popup() {
         frameTimestampSeconds: timestampSeconds,
       });
     },
-    [executeFrameAttempt, frameExportSettings, frameRuntime, mediaItems]
+    [executeFrameAttempt, frameExportSettings, itemRuntimes, mediaItems]
   );
 
   const handleDownload = useCallback(async () => {
@@ -1029,7 +583,7 @@ export default function Popup() {
     }
     const operations = planExportOperations(
       mediaItems.map(item =>
-        exportCandidate(item, frameExportSettings, frameRuntime, removeAudioIndexes)
+        exportCandidate(item, frameExportSettings, itemRuntimes, removeAudioIndexes)
       )
     );
     if (!initialWorkspaceMode && operations.some(operation => operation.mode === 'silent')) {
@@ -1071,8 +625,8 @@ export default function Popup() {
     acquisition,
     fetchedUrl,
     frameExportSettings,
-    frameRuntime,
     initialWorkspaceMode,
+    itemRuntimes,
     mediaItems,
     message,
     removeAudioIndexes,
@@ -1108,8 +662,7 @@ export default function Popup() {
     setMediaItems(prev => prev.map(item => ({ ...item, selected: newSelected })));
   }, [allSelected]);
 
-  const isBusy =
-    isWorkspaceBusy(status) || downloadAttempt.busy || whatsappCaptureStatus === 'capturing';
+  const isBusy = isWorkspaceBusy(status) || downloadAttempt.busy || whatsapp.busy;
   const activeFailures = useMemo(
     () => [
       ...(sourceFailure ? [sourceFailure] : []),
@@ -1143,6 +696,7 @@ export default function Popup() {
     },
     [downloadAttempt.attempt, fetchedUrl, sourceFailure, url]
   );
+  const whatsappFailure = whatsapp.failure;
   const previewWhatsAppDiagnostics = useCallback(
     (trigger: HTMLButtonElement) => {
       if (!whatsappFailure) return;
@@ -1163,29 +717,17 @@ export default function Popup() {
   }, []);
   const handlePreviewError = useCallback(
     (item: MediaItem) => {
-      if (shouldSkipFallbackPreview(item, fallbackLoading, fallbackFailed)) return;
+      if (
+        itemRuntimeAt(itemRuntimes, item.index).preview !== 'idle' ||
+        item.previewUrl?.startsWith('data:') === true
+      )
+        return;
       void requestFallbackPreview(item.index, item.url);
     },
-    [fallbackFailed, fallbackLoading, requestFallbackPreview]
+    [itemRuntimes, requestFallbackPreview]
   );
   const handleVideoRef = useCallback((index: number, el: HTMLVideoElement | null) => {
     videoRefs.current[index] = el;
-  }, []);
-  const handleVideoMetadata = useCallback(
-    (index: number, durationSeconds: number) => setFrameDuration(index, durationSeconds),
-    [setFrameDuration]
-  );
-  const handleWhatsAppVideoMetadata = useCallback(
-    (_index: number, durationSeconds: number) => setWhatsAppFrameDuration(durationSeconds),
-    [setWhatsAppFrameDuration]
-  );
-  const handleWhatsAppPreviewError = useCallback(() => {
-    setWhatsappPreviewFailed(true);
-    setWhatsappFrameRuntime(previous => ({
-      ...(previous ?? { status: 'idle' }),
-      status: 'failed',
-      error: 'Could not load video metadata. Retry.',
-    }));
   }, []);
 
   const loadHistory = useCallback(async () => {
@@ -1387,13 +929,10 @@ export default function Popup() {
   const emptyMessage = status === 'done' && mediaItems.length === 0 ? message : 'No media yet.';
   const mediaListModel = {
     mediaItems,
-    intrinsicDimensions,
+    itemRuntimes,
     allSelected,
-    fallbackLoading,
-    fallbackFailed,
     frameExportSettings,
     removeAudioIndexes,
-    frameRuntime,
     attempt: downloadAttempt.attempt,
     emptyMessage,
   };
@@ -1407,7 +946,7 @@ export default function Popup() {
     onRetryFrameMetadata: loadFrameMetadata,
     onRetryFrameExport: (index: number) => void handleExportFrame(index),
     onVideoRef: handleVideoRef,
-    onVideoMetadata: handleVideoMetadata,
+    onVideoMetadata: setFrameDuration,
     onIntrinsicDimensions: handleIntrinsicDimensions,
   };
 
@@ -1449,35 +988,10 @@ export default function Popup() {
             ) : (
               <>
                 {platform === 'whatsapp' && !workspaceMode ? (
-                  <WhatsAppStatusSurface
+                  <WhatsAppStatusPanel
                     eligible={whatsappActive}
-                    disclosure={whatsappDisclosure}
-                    status={whatsappCaptureStatus}
-                    message={whatsappCaptureMessage}
-                    failure={whatsappFailure}
-                    item={whatsappMediaItem}
-                    frameSetting={whatsappFrameSetting}
-                    frameRuntime={whatsappFrameRuntime}
-                    removeAudio={whatsappRemoveAudio}
-                    previewFailed={whatsappPreviewFailed}
-                    manualRetryCount={whatsappOperation?.manualRetryCount ?? 0}
-                    onAcknowledge={() => void acknowledgeWhatsAppViewReceipts()}
-                    onDismissDisclosure={() => setWhatsappDisclosure('dismissed')}
-                    onReviewDisclosure={() => setWhatsappDisclosure('required')}
-                    onCapture={() => void handleWhatsAppCapture()}
-                    onDownload={() => void handleWhatsAppDownload()}
-                    onToggleItem={() =>
-                      setWhatsappMediaItem(current =>
-                        current ? { ...current, selected: !current.selected } : current
-                      )
-                    }
-                    onToggleFrame={toggleWhatsAppFrame}
-                    onToggleRemoveAudio={toggleWhatsAppRemoveAudio}
-                    onChangeFrameTimestamp={changeWhatsAppFrameTimestamp}
+                    capture={whatsapp}
                     onVideoRef={handleVideoRef}
-                    onVideoMetadata={handleWhatsAppVideoMetadata}
-                    onPreviewError={handleWhatsAppPreviewError}
-                    onRetryFrameMetadata={retryWhatsAppFrameMetadata}
                     onCopyDiagnostics={previewWhatsAppDiagnostics}
                     disabled={isBusy}
                   />
@@ -1737,25 +1251,6 @@ export default function Popup() {
   );
 }
 
-type WhatsAppCaptureSectionProps = {
-  disclosure: WhatsAppDisclosureState;
-  status: WhatsAppCaptureStatus;
-  message: string;
-  failure: OperationFailure | undefined;
-  manualRetryCount: number;
-  onAcknowledge: () => void;
-  onDismissDisclosure: () => void;
-  onReviewDisclosure: () => void;
-  onCapture: () => void;
-  onCopyDiagnostics: (trigger: HTMLButtonElement) => void;
-  disabled: boolean;
-};
-
-type WhatsAppCaptureReadyProps = Omit<
-  WhatsAppCaptureSectionProps,
-  'disclosure' | 'onAcknowledge' | 'onDismissDisclosure' | 'onReviewDisclosure'
->;
-
 function PlatformNavigation({
   platform,
   onChange,
@@ -1782,278 +1277,6 @@ function PlatformNavigation({
         WhatsApp Status
       </button>
     </nav>
-  );
-}
-
-type WhatsAppStatusSurfaceProps = WhatsAppCaptureSectionProps & {
-  eligible: boolean;
-  item: MediaItem | undefined;
-  frameSetting: FrameExportSetting | undefined;
-  frameRuntime: FrameRuntime | undefined;
-  removeAudio: boolean;
-  previewFailed: boolean;
-  onDownload: () => void;
-  onToggleItem: () => void;
-  onToggleFrame: () => void;
-  onToggleRemoveAudio: () => void;
-  onChangeFrameTimestamp: (timestampSeconds: number) => void;
-  onPreviewError: () => void;
-  onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
-  onVideoMetadata: (index: number, durationSeconds: number) => void;
-  onRetryFrameMetadata: () => void;
-};
-
-// fallow-ignore-next-line complexity
-function WhatsAppStatusSurface({
-  eligible,
-  item,
-  frameSetting,
-  frameRuntime,
-  removeAudio,
-  previewFailed,
-  onDownload,
-  onToggleItem,
-  onToggleFrame,
-  onToggleRemoveAudio,
-  onChangeFrameTimestamp,
-  onPreviewError,
-  onVideoRef,
-  onVideoMetadata,
-  onRetryFrameMetadata,
-  ...captureProps
-}: WhatsAppStatusSurfaceProps) {
-  if (!eligible)
-    return (
-      <section className="ext-section whatsapp-capture-section" aria-labelledby="whatsapp-title">
-        <h1 id="whatsapp-title">Open WhatsApp Web</h1>
-        <p className="whatsapp-capture-copy">
-          Open web.whatsapp.com, then open the photo or video Status you want to capture.
-        </p>
-      </section>
-    );
-
-  if (!item) return <WhatsAppCaptureSection {...captureProps} />;
-
-  const model: MediaListModel = {
-    mediaItems: [item],
-    intrinsicDimensions: {},
-    allSelected: item.selected,
-    fallbackLoading: new Set(),
-    fallbackFailed: previewFailed ? new Set([0]) : new Set(),
-    frameExportSettings: frameSetting ? { 0: frameSetting } : {},
-    removeAudioIndexes: removeAudio ? new Set([0]) : new Set(),
-    frameRuntime: frameRuntime ? { 0: frameRuntime } : {},
-    attempt: undefined,
-    emptyMessage: '',
-  };
-  const actions: MediaListActions = {
-    onPreviewError,
-    onToggle: onToggleItem,
-    onToggleAll: onToggleItem,
-    onToggleExportFrame: onToggleFrame,
-    onToggleRemoveAudio,
-    onChangeFrameTimestamp: (_index, timestampSeconds) => onChangeFrameTimestamp(timestampSeconds),
-    onRetryFrameMetadata,
-    onRetryFrameExport: () => {},
-    onVideoRef,
-    onVideoMetadata,
-    onIntrinsicDimensions: () => {},
-  };
-  return (
-    <>
-      <section className="ext-section whatsapp-capture-section" aria-labelledby="whatsapp-title">
-        <h1 id="whatsapp-title">Visible Status captured</h1>
-        <p className="whatsapp-capture-copy">
-          This is the one photo or video that was visible when you captured it. It stays in memory
-          until the download starts, the edit lease expires, or you close GramGrab.
-        </p>
-      </section>
-      <MediaListSection
-        model={model}
-        actions={actions}
-        workspaceMode={false}
-        disabled={captureProps.disabled}
-        allowSilent
-        showPreview
-        layout="hero"
-      />
-      <div className="ext-section">
-        <button
-          type="button"
-          className="btn"
-          onClick={onDownload}
-          disabled={!item.selected || captureProps.disabled}
-          aria-busy={captureProps.status === 'downloading'}
-        >
-          {captureProps.status === 'downloading' ? (
-            <LoadingButtonLabel>Downloading…</LoadingButtonLabel>
-          ) : (
-            'Download Visible Status'
-          )}
-        </button>
-      </div>
-    </>
-  );
-}
-
-function WhatsAppCaptureSection({
-  disclosure,
-  onAcknowledge,
-  onDismissDisclosure,
-  onReviewDisclosure,
-  ...readyProps
-}: WhatsAppCaptureSectionProps) {
-  if (disclosure === 'acknowledged') return <WhatsAppCaptureReady {...readyProps} />;
-  return (
-    <WhatsAppCaptureShell title="Before using WhatsApp Status">
-      <WhatsAppViewReceiptDisclosure
-        disclosure={disclosure}
-        onAcknowledge={onAcknowledge}
-        onDismiss={onDismissDisclosure}
-        onReview={onReviewDisclosure}
-      />
-    </WhatsAppCaptureShell>
-  );
-}
-
-function WhatsAppCaptureReady(props: WhatsAppCaptureReadyProps) {
-  const presentation = props.failure ? presentationForFailure(props.failure) : undefined;
-  const canCapture = canCaptureWhatsAppStatus(props.status, props.manualRetryCount, presentation);
-  return (
-    <WhatsAppCaptureShell title={presentation?.title ?? 'Capture the Visible Status'}>
-      <p className="whatsapp-capture-copy">{props.message}</p>
-      <p className="whatsapp-capture-note">
-        One click captures only the already-visible photo or video. The capture stays in memory for
-        this download and is then released.
-      </p>
-      {canCapture && (
-        <WhatsAppCaptureButton
-          status={props.status}
-          disabled={props.disabled}
-          onCapture={props.onCapture}
-        />
-      )}
-      {props.status === 'failed' && props.failure && (
-        <WhatsAppCaptureFailure
-          failure={props.failure}
-          canCopyDiagnostics={presentation?.actions.includes('copy-diagnostics') ?? false}
-          onCopyDiagnostics={props.onCopyDiagnostics}
-        />
-      )}
-    </WhatsAppCaptureShell>
-  );
-}
-
-function canCaptureWhatsAppStatus(
-  status: WhatsAppCaptureReadyProps['status'],
-  manualRetryCount: number,
-  presentation: ReturnType<typeof presentationForFailure> | undefined
-): boolean {
-  if (status !== 'failed') return true;
-  if (!presentation?.actions.includes('retry-operation')) return false;
-  return presentation.retry !== 'once' || manualRetryCount === 0;
-}
-
-function WhatsAppCaptureButton({
-  status,
-  disabled,
-  onCapture,
-}: Pick<WhatsAppCaptureSectionProps, 'status' | 'disabled' | 'onCapture'>) {
-  return (
-    <button
-      type="button"
-      className="btn"
-      onClick={onCapture}
-      disabled={disabled || status === 'ready' || status === 'downloading'}
-      aria-busy={status === 'capturing'}
-    >
-      {whatsAppCaptureButtonLabel(status)}
-    </button>
-  );
-}
-
-function whatsAppCaptureButtonLabel(status: WhatsAppCaptureSectionProps['status']) {
-  if (status === 'capturing') return <LoadingButtonLabel>Capturing…</LoadingButtonLabel>;
-  if (status === 'downloading') return <LoadingButtonLabel>Downloading…</LoadingButtonLabel>;
-  if (status === 'started') return 'Capture another Visible Status';
-  return status === 'failed' ? 'Capture Visible Status again' : 'Capture Visible Status';
-}
-
-function WhatsAppCaptureFailure({
-  failure,
-  canCopyDiagnostics,
-  onCopyDiagnostics,
-}: {
-  failure: OperationFailure;
-  canCopyDiagnostics: boolean;
-  onCopyDiagnostics: (trigger: HTMLButtonElement) => void;
-}) {
-  return (
-    <div className="status-message error" role="status">
-      <code>{failure.code}</code>
-      {canCopyDiagnostics && (
-        <button
-          type="button"
-          className="workspace-secondary"
-          onClick={event => onCopyDiagnostics(event.currentTarget)}
-        >
-          Copy diagnostics
-        </button>
-      )}
-    </div>
-  );
-}
-
-function WhatsAppCaptureShell({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section
-      className="ext-section whatsapp-capture-section"
-      aria-labelledby="whatsapp-capture-title"
-    >
-      <h1 id="whatsapp-capture-title">{title}</h1>
-      {children}
-    </section>
-  );
-}
-
-function WhatsAppViewReceiptDisclosure({
-  disclosure,
-  onAcknowledge,
-  onDismiss,
-  onReview,
-}: {
-  disclosure: WhatsAppDisclosureState;
-  onAcknowledge: () => void;
-  onDismiss: () => void;
-  onReview: () => void;
-}) {
-  if (disclosure === 'checking')
-    return <p className="whatsapp-capture-copy">Preparing the capture notice…</p>;
-  if (disclosure === 'dismissed')
-    return (
-      <div className="whatsapp-view-receipt-disclosure">
-        <p className="whatsapp-capture-copy">
-          Review the view-receipt notice before capturing a Visible Status.
-        </p>
-        <button type="button" className="btn" onClick={onReview}>
-          Review notice
-        </button>
-      </div>
-    );
-  return (
-    <div className="whatsapp-view-receipt-disclosure" role="status">
-      <p className="whatsapp-capture-copy">
-        WhatsApp controls view receipts. GramGrab does not provide anonymous viewing.
-      </p>
-      <div className="quality-dialog-actions">
-        <button type="button" className="workspace-secondary" onClick={onDismiss}>
-          Not now
-        </button>
-        <button type="button" className="btn" onClick={onAcknowledge}>
-          Continue
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -2413,18 +1636,6 @@ function WorkspaceReplacementAction({
   );
 }
 
-function shouldSkipFallbackPreview(
-  item: MediaItem,
-  fallbackLoading: Set<number>,
-  fallbackFailed: Set<number>
-): boolean {
-  return (
-    fallbackLoading.has(item.index) ||
-    fallbackFailed.has(item.index) ||
-    item.previewUrl?.startsWith('data:') === true
-  );
-}
-
 function renderDownloadButtonLabel(status: Status, selectedCount: number) {
   if (status === 'downloading') {
     return <LoadingButtonLabel>Downloading…</LoadingButtonLabel>;
@@ -2446,198 +1657,6 @@ function renderInstantsButtonLabel(status: Status, acquisition: 'source' | 'inst
     <LoadingButtonLabel>Loading Instants…</LoadingButtonLabel>
   ) : (
     'Load Instants'
-  );
-}
-
-function LoadingButtonLabel({ children }: { children: string }) {
-  return (
-    <span className="loading-button-label">
-      <span className="btn-spinner" aria-hidden="true" />
-      {children}
-    </span>
-  );
-}
-
-type MediaListModel = {
-  mediaItems: MediaItem[];
-  intrinsicDimensions: Record<number, { width: number; height: number }>;
-  allSelected: boolean;
-  fallbackLoading: Set<number>;
-  fallbackFailed: Set<number>;
-  frameExportSettings: Record<number, FrameExportSetting>;
-  removeAudioIndexes: Set<number>;
-  frameRuntime: Record<number, FrameRuntime>;
-  attempt: ReturnType<typeof useDownloadAttempt>['attempt'];
-  emptyMessage: string;
-};
-
-type MediaListActions = {
-  onPreviewError: (item: MediaItem) => void;
-  onToggle: (index: number) => void;
-  onToggleAll: () => void;
-  onToggleExportFrame: (index: number) => void;
-  onToggleRemoveAudio: (index: number) => void;
-  onChangeFrameTimestamp: (index: number, timestampSeconds: number) => void;
-  onRetryFrameMetadata: (index: number) => void;
-  onRetryFrameExport: (index: number) => void;
-  onVideoRef: (index: number, el: HTMLVideoElement | null) => void;
-  onVideoMetadata: (index: number, durationSeconds: number) => void;
-  onIntrinsicDimensions: (item: MediaItem, width: number, height: number) => void;
-};
-
-function useMediaMasonry({
-  mediaItems,
-  workspaceMode,
-  intrinsicDimensions,
-}: {
-  mediaItems: MediaItem[];
-  workspaceMode: boolean;
-  intrinsicDimensions: Record<number, { width: number; height: number }>;
-}) {
-  const masonryRef = useRef<HTMLDivElement>(null);
-  const [masonryWidth, setMasonryWidth] = useState(0);
-  const columnCount = Math.max(1, Math.floor((masonryWidth + 12) / 232));
-  const masonryColumns = useMemo(() => {
-    const columnWidth = Math.max(220, (masonryWidth - (columnCount - 1) * 12) / columnCount);
-    return distributeMasonryItems(mediaItems, workspaceMode ? columnCount : 1, item => {
-      const intrinsic = intrinsicDimensions[item.index];
-      const ratio = resolveMediaRatio(item.width, item.height, intrinsic?.width, intrinsic?.height);
-      return columnWidth / ratio + 104;
-    });
-  }, [columnCount, intrinsicDimensions, masonryWidth, mediaItems, workspaceMode]);
-
-  useEffect(() => {
-    const element = masonryRef.current;
-    if (!workspaceMode || !element || typeof ResizeObserver === 'undefined') return;
-    setMasonryWidth(Math.round(element.getBoundingClientRect().width));
-    const observer = new ResizeObserver(entries => {
-      const width = Math.round(entries[0]?.contentRect.width ?? 0);
-      setMasonryWidth(previous => (previous === width ? previous : width));
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [workspaceMode]);
-
-  return { masonryRef, masonryColumns };
-}
-
-function MediaListSection({
-  model,
-  actions,
-  workspaceMode,
-  disabled,
-  allowSilent = true,
-  showPreview = true,
-  layout = 'list',
-}: {
-  model: MediaListModel;
-  actions: MediaListActions;
-  workspaceMode: boolean;
-  disabled: boolean;
-  allowSilent?: boolean;
-  showPreview?: boolean;
-  layout?: 'list' | 'hero';
-}) {
-  const {
-    mediaItems,
-    intrinsicDimensions,
-    allSelected,
-    fallbackLoading,
-    fallbackFailed,
-    frameExportSettings,
-    removeAudioIndexes,
-    frameRuntime,
-    attempt,
-    emptyMessage,
-  } = model;
-  const {
-    onPreviewError,
-    onToggle,
-    onToggleAll,
-    onToggleExportFrame,
-    onToggleRemoveAudio,
-    onChangeFrameTimestamp,
-    onRetryFrameMetadata,
-    onRetryFrameExport,
-    onVideoRef,
-    onVideoMetadata,
-    onIntrinsicDimensions,
-  } = actions;
-  const { masonryRef, masonryColumns } = useMediaMasonry({
-    mediaItems,
-    workspaceMode,
-    intrinsicDimensions,
-  });
-
-  const renderItem = (item: MediaItem) => (
-    <MediaItemRow
-      key={item.index}
-      item={item}
-      workspaceMode={workspaceMode}
-      layout={layout}
-      showPreview={showPreview}
-      intrinsicDimensions={intrinsicDimensions[item.index]}
-      fallbackLoading={fallbackLoading.has(item.index)}
-      fallbackFailed={fallbackFailed.has(item.index)}
-      onError={() => onPreviewError(item)}
-      onToggle={() => onToggle(item.index)}
-      frameSetting={frameExportSettings[item.index]}
-      removeAudio={allowSilent && removeAudioIndexes.has(item.index)}
-      allowSilent={allowSilent}
-      frameRuntime={frameRuntime[item.index]}
-      attemptEntry={attempt?.entries.find(entry => entry.operation.displayIndex === item.index)}
-      disabled={disabled}
-      onToggleExportFrame={() => onToggleExportFrame(item.index)}
-      onToggleRemoveAudio={() => onToggleRemoveAudio(item.index)}
-      onChangeFrameTimestamp={timestampSeconds =>
-        onChangeFrameTimestamp(item.index, timestampSeconds)
-      }
-      onRetryFrameMetadata={() => onRetryFrameMetadata(item.index)}
-      onRetryFrameExport={() => onRetryFrameExport(item.index)}
-      onVideoRef={el => onVideoRef(item.index, el)}
-      onVideoMetadata={durationSeconds => onVideoMetadata(item.index, durationSeconds)}
-      onIntrinsicDimensions={(width, height) => onIntrinsicDimensions(item, width, height)}
-    />
-  );
-
-  return (
-    <div
-      className={`ext-section${layout === 'hero' ? ' whatsapp-result-hero' : ''}`}
-      style={{ flex: 1 }}
-    >
-      {layout === 'list' && mediaItems.length > 0 && (
-        <div className="media-header">
-          <span className="media-count-label" role="status" aria-live="polite">
-            <strong>{mediaItems.length}</strong> item{mediaItems.length !== 1 ? 's' : ''} found
-          </span>
-          <label className="select-all-label">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={onToggleAll}
-              disabled={disabled}
-            />
-            Select all
-          </label>
-        </div>
-      )}
-
-      <div ref={masonryRef} className={`media-list${workspaceMode ? ' workspace-media-list' : ''}`}>
-        {mediaItems.length === 0 ? (
-          <p className="media-empty" aria-live="polite">
-            {emptyMessage}
-          </p>
-        ) : workspaceMode ? (
-          masonryColumns.map((column, index) => (
-            <div className="workspace-masonry-column" key={index}>
-              {column.map(renderItem)}
-            </div>
-          ))
-        ) : (
-          mediaItems.map(renderItem)
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -2685,375 +1704,4 @@ function getVideoDuration(dataUrl: string): Promise<number> {
     video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
     video.addEventListener('error', onError, { once: true });
   });
-}
-
-interface MediaItemRowProps {
-  item: MediaItem;
-  workspaceMode: boolean;
-  layout: 'list' | 'hero';
-  showPreview: boolean;
-  intrinsicDimensions?: { width: number; height: number };
-  fallbackLoading: boolean;
-  fallbackFailed: boolean;
-  onError: () => void;
-  onToggle: () => void;
-  frameSetting?: FrameExportSetting;
-  removeAudio: boolean;
-  allowSilent: boolean;
-  frameRuntime?: FrameRuntime;
-  onToggleExportFrame: () => void;
-  onToggleRemoveAudio: () => void;
-  onChangeFrameTimestamp: (timestampSeconds: number) => void;
-  onRetryFrameMetadata: () => void;
-  onRetryFrameExport: () => void;
-  onVideoRef: (el: HTMLVideoElement | null) => void;
-  onVideoMetadata: (durationSeconds: number) => void;
-  onIntrinsicDimensions: (width: number, height: number) => void;
-  disabled: boolean;
-  attemptEntry?: AttemptEntry;
-}
-
-function MediaPreview({
-  item,
-  workspaceMode,
-  layout,
-  intrinsicDimensions,
-  fallbackLoading,
-  fallbackFailed,
-  onError,
-  onVideoRef,
-  onVideoMetadata,
-  onIntrinsicDimensions,
-}: Omit<
-  MediaItemRowProps,
-  | 'onToggle'
-  | 'showPreview'
-  | 'frameSetting'
-  | 'removeAudio'
-  | 'allowSilent'
-  | 'frameRuntime'
-  | 'onToggleExportFrame'
-  | 'onToggleRemoveAudio'
-  | 'onChangeFrameTimestamp'
-  | 'onRetryFrameMetadata'
-  | 'onRetryFrameExport'
-  | 'disabled'
-  | 'attemptEntry'
->) {
-  const ratio = resolveMediaRatio(
-    item.width,
-    item.height,
-    intrinsicDimensions?.width,
-    intrinsicDimensions?.height
-  );
-  const previewStyle =
-    workspaceMode || layout === 'hero' ? ({ '--media-ratio': ratio } as CSSProperties) : undefined;
-
-  return (
-    <div className="media-thumb" style={previewStyle}>
-      {item.type === 'video' ? (
-        <VideoPreview
-          item={item}
-          fallbackFailed={fallbackFailed}
-          onError={onError}
-          onVideoRef={onVideoRef}
-          onVideoMetadata={onVideoMetadata}
-          onIntrinsicDimensions={onIntrinsicDimensions}
-        />
-      ) : (
-        <ImagePreview
-          item={item}
-          fallbackFailed={fallbackFailed}
-          onError={onError}
-          onIntrinsicDimensions={onIntrinsicDimensions}
-        />
-      )}
-      {fallbackLoading && !item.previewUrl && <span className="thumb-loading">···</span>}
-    </div>
-  );
-}
-
-function VideoPreview({
-  item,
-  fallbackFailed,
-  onError,
-  onVideoRef,
-  onVideoMetadata,
-  onIntrinsicDimensions,
-}: Pick<
-  MediaItemRowProps,
-  'item' | 'fallbackFailed' | 'onError' | 'onVideoRef' | 'onVideoMetadata' | 'onIntrinsicDimensions'
->) {
-  if (fallbackFailed) {
-    return (
-      <div className="thumb-placeholder">
-        <span className="thumb-icon">◻</span>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <video
-        src={item.url}
-        muted
-        playsInline
-        onError={onError}
-        ref={onVideoRef}
-        onLoadedMetadata={event => {
-          onIntrinsicDimensions(event.currentTarget.videoWidth, event.currentTarget.videoHeight);
-          onVideoMetadata(event.currentTarget.duration);
-        }}
-      />
-      <div className="play-overlay">
-        <div className="play-triangle" />
-      </div>
-    </>
-  );
-}
-
-function ImagePreview({
-  item,
-  fallbackFailed,
-  onError,
-  onIntrinsicDimensions,
-}: Pick<MediaItemRowProps, 'item' | 'fallbackFailed' | 'onError' | 'onIntrinsicDimensions'>) {
-  if (fallbackFailed) {
-    return (
-      <div className="thumb-placeholder">
-        <span className="thumb-icon">◻</span>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={item.previewUrl ?? item.url}
-      alt="Preview"
-      onLoad={event =>
-        onIntrinsicDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
-      }
-      onError={onError}
-    />
-  );
-}
-
-// fallow-ignore-next-line complexity
-function MediaControls({
-  item,
-  frameSetting,
-  removeAudio,
-  allowSilent,
-  frameRuntime,
-  onToggle,
-  onToggleExportFrame,
-  onToggleRemoveAudio,
-  onChangeFrameTimestamp,
-  onRetryFrameMetadata,
-  onRetryFrameExport,
-  disabled,
-  failureDescriptionId,
-}: Pick<
-  MediaItemRowProps,
-  | 'item'
-  | 'frameSetting'
-  | 'removeAudio'
-  | 'allowSilent'
-  | 'frameRuntime'
-  | 'onToggle'
-  | 'onToggleExportFrame'
-  | 'onToggleRemoveAudio'
-  | 'onChangeFrameTimestamp'
-  | 'onRetryFrameMetadata'
-  | 'onRetryFrameExport'
-  | 'disabled'
-> & { failureDescriptionId?: string }) {
-  const duration = frameRuntime?.durationSeconds;
-  const maximum = duration === undefined ? undefined : maximumFrameSecond(duration);
-  const timestampSeconds = frameSetting?.timestampSeconds ?? 0;
-  return (
-    <div className="media-controls">
-      {item.type === 'video' && (
-        <div className="frame-export-control" onClick={event => event.stopPropagation()}>
-          <label className="frame-toggle" title="Export a JPEG frame on download">
-            <input
-              type="checkbox"
-              checked={frameSetting?.enabled ?? false}
-              onChange={onToggleExportFrame}
-              disabled={disabled}
-              className="frame-toggle-checkbox"
-            />
-            Frame
-          </label>
-          {allowSilent && (
-            <label className="frame-toggle" title="Download a silent MP4">
-              <input
-                type="checkbox"
-                checked={removeAudio}
-                onChange={onToggleRemoveAudio}
-                disabled={disabled}
-                className="frame-toggle-checkbox"
-              />
-              Remove audio
-            </label>
-          )}
-          {frameSetting?.enabled && (
-            <div className="frame-timestamp-row">
-              <input
-                type="range"
-                min="0"
-                max={maximum ?? 0}
-                step="1"
-                value={timestampSeconds}
-                disabled={disabled || frameRuntime?.status !== 'ready' || maximum === undefined}
-                aria-label={`Frame timestamp for item ${String(item.index + 1).padStart(2, '0')}`}
-                aria-valuetext={frameTimestampAriaValue(timestampSeconds)}
-                onChange={event => onChangeFrameTimestamp(Number(event.currentTarget.value))}
-              />
-              <output>{formatFrameTimestamp(timestampSeconds)}</output>
-              {frameRuntime?.status === 'loading' && <span>Loading…</span>}
-              {frameRuntime?.status === 'failed' && (
-                <button
-                  type="button"
-                  className="frame-retry"
-                  onClick={frameRuntime.durationSeconds ? onRetryFrameExport : onRetryFrameMetadata}
-                  disabled={disabled}
-                >
-                  Retry
-                </button>
-              )}
-              {frameRuntime?.error && <span className="frame-error">{frameRuntime.error}</span>}
-              {frameRuntime?.warning && <span>{frameRuntime.warning}</span>}
-            </div>
-          )}
-        </div>
-      )}
-      <input
-        className="item-checkbox"
-        type="checkbox"
-        checked={item.selected}
-        onChange={onToggle}
-        onClick={event => event.stopPropagation()}
-        disabled={disabled}
-        aria-describedby={failureDescriptionId}
-      />
-    </div>
-  );
-}
-
-// fallow-ignore-next-line complexity
-function MediaItemRow(props: MediaItemRowProps) {
-  const {
-    item,
-    workspaceMode,
-    layout,
-    showPreview,
-    intrinsicDimensions,
-    fallbackLoading,
-    fallbackFailed,
-    onError,
-    onToggle,
-    frameSetting,
-    removeAudio,
-    allowSilent,
-    frameRuntime,
-    onToggleExportFrame,
-    onToggleRemoveAudio,
-    onChangeFrameTimestamp,
-    onRetryFrameMetadata,
-    onRetryFrameExport,
-    onVideoRef,
-    onVideoMetadata,
-    onIntrinsicDimensions,
-    disabled,
-    attemptEntry,
-  } = props;
-  const num = String(item.index + 1).padStart(2, '0');
-
-  return (
-    <div
-      className={`media-item${item.selected ? ' selected' : ''}`}
-      onClick={() => !disabled && onToggle()}
-    >
-      <span className="item-number">{num}</span>
-
-      {showPreview && (
-        <MediaPreview
-          item={item}
-          workspaceMode={workspaceMode}
-          layout={layout}
-          intrinsicDimensions={intrinsicDimensions}
-          fallbackLoading={fallbackLoading}
-          fallbackFailed={fallbackFailed}
-          onError={onError}
-          onVideoRef={onVideoRef}
-          onVideoMetadata={onVideoMetadata}
-          onIntrinsicDimensions={onIntrinsicDimensions}
-        />
-      )}
-
-      <div className="item-info">
-        <span className={`item-type-badge ${item.type}`}>{item.type}</span>
-        {item.history?.downloaded && (
-          <span
-            className="item-type-badge"
-            aria-label={`Downloaded ${new Date(item.history.latestDownloadedAt ?? Date.now()).toLocaleString()}`}
-          >
-            Downloaded
-          </span>
-        )}
-        <span className="item-filename">{item.filenameHint}</span>
-        {item.creatorUsername && <span className="item-creator">@{item.creatorUsername}</span>}
-        {attemptEntry?.outcome.status === 'pending' && (
-          <span className="download-item-status pending">
-            {attemptEntry.outcome.phase
-              ? `${attemptEntry.outcome.phase} ${Math.round((attemptEntry.outcome.progress ?? 0) * 100)}%`
-              : attemptEntry.operation.mode === 'frame'
-                ? 'Exporting…'
-                : 'Starting…'}
-          </span>
-        )}
-        {attemptEntry?.outcome.status === 'started' && (
-          <span className="download-item-status accepted">
-            {attemptEntry.operation.mode === 'frame' ? 'Frame exported' : 'Download started'}
-          </span>
-        )}
-        {attemptEntry?.outcome.status === 'started' && attemptEntry.outcome.warning && (
-          <span className="download-item-status warning">
-            {WARNING_PRESENTATION[attemptEntry.outcome.warning.code]}
-          </span>
-        )}
-        {attemptEntry?.outcome.status === 'failed' && (
-          <span className="download-item-status failed" id={`download-result-${item.index}`}>
-            {FAILURE_PRESENTATION[attemptEntry.outcome.failure.code].title}:{' '}
-            {FAILURE_PRESENTATION[attemptEntry.outcome.failure.code].explanation}{' '}
-            <code>{attemptEntry.outcome.failure.code}</code>
-          </span>
-        )}
-        {attemptEntry?.outcome.status === 'skipped' && (
-          <span className="download-item-status skipped">
-            Skipped: re-encoding was declined. <code>{attemptEntry.outcome.code}</code>
-          </span>
-        )}
-      </div>
-
-      <MediaControls
-        item={item}
-        frameSetting={frameSetting}
-        removeAudio={removeAudio}
-        allowSilent={allowSilent}
-        frameRuntime={frameRuntime}
-        onToggle={onToggle}
-        onToggleExportFrame={onToggleExportFrame}
-        onToggleRemoveAudio={onToggleRemoveAudio}
-        onChangeFrameTimestamp={onChangeFrameTimestamp}
-        onRetryFrameMetadata={onRetryFrameMetadata}
-        onRetryFrameExport={onRetryFrameExport}
-        disabled={disabled}
-        failureDescriptionId={
-          attemptEntry?.outcome.status === 'failed' ? `download-result-${item.index}` : undefined
-        }
-      />
-    </div>
-  );
 }
