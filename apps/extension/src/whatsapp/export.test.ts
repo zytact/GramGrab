@@ -29,6 +29,10 @@ const operation = Schema.decodeUnknownSync(AttemptOperationSchema)({
   frameTimestampSeconds: 1,
 });
 
+// Leases are checked against the wall clock, so deadlines must be relative to the
+// run. An absolute timestamp turns every lease-dependent test into a time bomb.
+const leaseDeadline = () => Date.now() + 10 * 60_000;
+
 const descriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
   captureId: '123e4567-e89b-42d3-a456-426614174000',
   kind: 'video',
@@ -38,7 +42,7 @@ const descriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
   height: 480,
   durationMs: 1_000,
   capturedAt: 1,
-  retentionDeadline: 1_787_000_000_000,
+  retentionDeadline: leaseDeadline(),
 });
 
 describe('exportWhatsAppFrame', () => {
@@ -100,7 +104,7 @@ describe('exportWhatsAppFrame', () => {
 
   it('cancels an active frame download and releases its URL at the retention ceiling', async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(1_786_999_940_000);
+    vi.setSystemTime(descriptor.retentionDeadline - 60_000);
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
 
     await exportWhatsAppFrame(
@@ -201,7 +205,7 @@ describe('exportWhatsAppFrame', () => {
       height: 480,
       durationMs: 1_000,
       capturedAt: 1,
-      retentionDeadline: 1_787_000_000_000,
+      retentionDeadline: leaseDeadline(),
     });
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
     const release = vi.fn(() => snapshot.release());
