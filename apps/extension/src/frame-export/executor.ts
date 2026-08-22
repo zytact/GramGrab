@@ -1,5 +1,5 @@
 import { Either } from 'effect';
-import { browser } from '../lib/browser.ts';
+import { sendMessage } from '../messaging/send.ts';
 import type { AttemptOperation } from '../download/attempt.ts';
 import {
   DownloadAcceptedResult,
@@ -54,7 +54,7 @@ export async function executeFrameExport(
       });
 
     options.onPhase?.('frame-export');
-    const downloaded = (await browser.runtime.sendMessage({
+    const downloaded = await sendMessage({
       type: 'DOWNLOAD_FRAME_EXPORT',
       dataUrl: await blobAsDataUrl(captured.right),
       sourceUrl,
@@ -67,7 +67,7 @@ export async function executeFrameExport(
         mediaType: 'video',
         frameTimestampSeconds: operation.frameTimestampSeconds ?? 0,
       },
-    })) as { error?: string };
+    });
     if (downloaded.error?.startsWith('Frame download failed')) throw new Error(downloaded.error);
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,

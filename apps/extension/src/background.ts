@@ -92,11 +92,18 @@ import {
   DownloadMediaResponse,
   createOperationId,
   createRequestId,
-  decodeDownloadMediaRequest,
-  type DownloadMediaRequest,
   type DownloadOperation,
   type DownloadOperationResult,
 } from './download/contracts.ts';
+import {
+  decodeMessage,
+  type BackgroundMessageType,
+  type MessageOf,
+  type MessageResponse,
+  type MessageType,
+} from './messaging/contracts.ts';
+import { MESSAGE_REFUSALS } from './messaging/refusals.ts';
+import { sendTabMessage } from './messaging/send.ts';
 import type { ReelItem } from './effect/schemas.ts';
 import {
   GraphQLRequestFailed,
@@ -477,15 +484,6 @@ const resolveMediaEffect = (
 // Handler functions — each returns a structured response value
 // ---------------------------------------------------------------------------
 
-interface FetchMediaMsg {
-  type: 'FETCH_MEDIA';
-  url: string;
-}
-
-interface FetchInstantsMsg {
-  type: 'FETCH_INSTANTS';
-}
-
 function hasValidMediaDimensions(
   item: MediaItem
 ): item is MediaItem & { width: number; height: number } {
@@ -497,25 +495,9 @@ function hasValidMediaDimensions(
   );
 }
 
-async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
-  sourceUrl?: string;
-  media:
-    | {
-        url: string;
-        itemIndex: number;
-        mediaId?: string;
-        history: HistoryMarker;
-        type: string;
-        filenameHint: string;
-        previewUrl?: string;
-        width?: number;
-        height?: number;
-        creatorUsername?: string;
-      }[]
-    | undefined;
-  error: string | undefined;
-  failure?: OperationFailure;
-}> {
+async function handleFetchMedia(
+  msg: MessageOf<'FETCH_MEDIA'>
+): Promise<MessageResponse<'FETCH_MEDIA'>> {
   const source = historySource(msg.url);
   if (!source)
     return {
@@ -557,7 +539,9 @@ async function handleFetchMedia(msg: FetchMediaMsg): Promise<{
   };
 }
 
-async function handleFetchInstants(_msg: FetchInstantsMsg) {
+async function handleFetchInstants(
+  _msg: MessageOf<'FETCH_INSTANTS'>
+): Promise<MessageResponse<'FETCH_INSTANTS'>> {
   const result = await runOperationHandler(
     fetchInstantMediaItems().pipe(Effect.map(items => ({ items }))),
     { items: undefined as MediaItem[] | undefined },
@@ -612,22 +596,12 @@ function historyMarker(
   };
 }
 
-interface GetPreviewUrlMsg {
-  type: 'GET_PREVIEW_URL';
-  url: string;
-}
-
 async function handleGetPreviewUrl(
-  msg: GetPreviewUrlMsg
-): Promise<{ previewUrl: string | undefined; error: string | undefined }> {
+  msg: MessageOf<'GET_PREVIEW_URL'>
+): Promise<MessageResponse<'GET_PREVIEW_URL'>> {
   return runHandler(fetchBlobAsDataUrl(msg.url).pipe(Effect.map(previewUrl => ({ previewUrl }))), {
     previewUrl: undefined,
   });
-}
-
-interface FetchVideoBlobMsg {
-  type: 'FETCH_VIDEO_BLOB';
-  url: string;
 }
 
 type DownloadAttempt = { operation: DownloadOperation; result: DownloadOperationResult };
@@ -711,20 +685,9 @@ async function appendAcceptedHistory(
   });
 }
 
-async function handleDownloadMedia(message: unknown): Promise<DownloadMediaResponse> {
-  let request: DownloadMediaRequest;
-  try {
-    request = await decodeDownloadMediaRequest(message);
-  } catch {
-    return DownloadMediaResponse.make({
-      results: [],
-      failure: OperationFailure.make({
-        code: 'DOWNLOAD_UNEXPECTED_FAILURE',
-        phase: 'browser-download',
-        scope: 'batch',
-      }),
-    });
-  }
+async function handleDownloadMedia(
+  request: MessageOf<'DOWNLOAD_MEDIA'>
+): Promise<MessageResponse<'DOWNLOAD_MEDIA'>> {
   const source = request.sourceUrl ? historySource(request.sourceUrl) : null;
   if (request.sourceUrl && !source)
     return DownloadMediaResponse.make({
@@ -753,24 +716,17 @@ function createHistoryId(): string {
   );
 }
 
-async function handleGetDownloadHistory() {
+async function handleGetDownloadHistory(): Promise<MessageResponse<'GET_DOWNLOAD_HISTORY'>> {
   const history = await getHistory();
   return history.kind === 'unknown-version'
     ? { entries: [], error: 'Download history uses a newer version.' }
     : { entries: [...history.entries].reverse(), error: undefined };
 }
 
-function messageReceipt(message: unknown): unknown {
-  return typeof message === 'object' && message !== null && 'receipt' in message
-    ? message.receipt
-    : undefined;
-}
-
-async function handleRecordWhatsAppHistory(message: unknown): Promise<{
-  saved?: true;
-  warning?: 'HISTORY_SAVE_FAILED';
-}> {
-  const receipt = decodeWhatsAppHistoryReceipt(messageReceipt(message));
+async function handleRecordWhatsAppHistory(
+  message: MessageOf<'RECORD_WHATSAPP_HISTORY'>
+): Promise<MessageResponse<'RECORD_WHATSAPP_HISTORY'>> {
+  const receipt = decodeWhatsAppHistoryReceipt(message.receipt);
   if (Either.isLeft(receipt)) return { warning: 'HISTORY_SAVE_FAILED' };
   try {
     await appendWhatsAppHistoryReceipt(receipt.right);
@@ -780,11 +736,10 @@ async function handleRecordWhatsAppHistory(message: unknown): Promise<{
   }
 }
 
-async function handleDeleteWhatsAppHistoryReceipt(message: unknown): Promise<{
-  entries: unknown[];
-  error: string | undefined;
-}> {
-  const receipt = decodeWhatsAppHistoryReceipt(messageReceipt(message));
+async function handleDeleteWhatsAppHistoryReceipt(
+  message: MessageOf<'DELETE_WHATSAPP_HISTORY_RECEIPT'>
+): Promise<MessageResponse<'DELETE_WHATSAPP_HISTORY_RECEIPT'>> {
+  const receipt = decodeWhatsAppHistoryReceipt(message.receipt);
   if (Either.isLeft(receipt)) return { entries: [], error: 'This history entry is invalid.' };
   try {
     const entries = await removeWhatsAppHistoryReceipt(receipt.right);
@@ -795,7 +750,9 @@ async function handleDeleteWhatsAppHistoryReceipt(message: unknown): Promise<{
 }
 
 // fallow-ignore-next-line complexity
-async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
+async function handleRedownloadHistoryEntry(
+  msg: MessageOf<'REDOWNLOAD_HISTORY_ENTRY'>
+): Promise<MessageResponse<'REDOWNLOAD_HISTORY_ENTRY'>> {
   const history = await getHistory();
   if (history.kind === 'unknown-version')
     return { error: 'Download history uses a newer version.' };
@@ -887,18 +844,9 @@ async function handleRedownloadHistoryEntry(msg: { entryId: string }) {
   });
 }
 
-async function handleRecordFrameExport(msg: {
-  sourceUrl: string;
-  originKind?: 'source' | 'instants';
-  item: {
-    itemIndex: number;
-    mediaId?: string;
-    url: string;
-    filename: string;
-    mediaType: 'video';
-    frameTimestampSeconds: number;
-  };
-}): Promise<{ error: string | undefined }> {
+async function handleRecordFrameExport(
+  msg: MessageOf<'RECORD_FRAME_EXPORT'> | MessageOf<'DOWNLOAD_FRAME_EXPORT'>
+): Promise<MessageResponse<'RECORD_FRAME_EXPORT'>> {
   const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
   if (msg.originKind !== 'instants' && !source) return { error: 'Invalid Instagram URL.' };
   try {
@@ -915,8 +863,8 @@ async function handleRecordFrameExport(msg: {
 }
 
 async function handleDownloadFrameExport(
-  msg: Parameters<typeof handleRecordFrameExport>[0] & { dataUrl: string }
-): Promise<{ error: string | undefined }> {
+  msg: MessageOf<'DOWNLOAD_FRAME_EXPORT'>
+): Promise<MessageResponse<'DOWNLOAD_FRAME_EXPORT'>> {
   try {
     const downloadId = await browser.downloads.download({
       url: msg.dataUrl,
@@ -958,18 +906,16 @@ function waitForNonEmptyDownload(downloadId: number): Promise<boolean> {
 }
 
 async function handleFetchVideoBlob(
-  msg: FetchVideoBlobMsg
-): Promise<{ dataUrl: string | undefined; error: string | undefined }> {
+  msg: MessageOf<'FETCH_VIDEO_BLOB'>
+): Promise<MessageResponse<'FETCH_VIDEO_BLOB'>> {
   return runHandler(fetchBlobAsDataUrl(msg.url).pipe(Effect.map(dataUrl => ({ dataUrl }))), {
     dataUrl: undefined,
   });
 }
 
-async function handleRecordSilentExport(msg: {
-  sourceUrl: string;
-  originKind?: 'source' | 'instants';
-  item: AcceptedHistoryOperation;
-}): Promise<{ error: string | undefined }> {
+async function handleRecordSilentExport(
+  msg: MessageOf<'RECORD_SILENT_EXPORT'>
+): Promise<MessageResponse<'RECORD_SILENT_EXPORT'>> {
   const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
   if (msg.originKind !== 'instants' && !source) return { error: 'Invalid Instagram URL.' };
   try {
@@ -985,12 +931,9 @@ async function handleRecordSilentExport(msg: {
   }
 }
 
-interface DebugShapeMsg {
-  type: 'DEBUG_SHAPE';
-  url?: string;
-}
-
-async function handleDebugShape(msg: DebugShapeMsg): Promise<{ raw?: unknown; error?: string }> {
+async function handleDebugShape(
+  msg: MessageOf<'DEBUG_SHAPE'>
+): Promise<MessageResponse<'DEBUG_SHAPE'>> {
   const parsed = parseInstagramUrl(msg.url ?? '');
   if (!parsed || (parsed.type !== 'post' && parsed.type !== 'reel')) {
     return { error: 'Use a post or reel URL for debug' };
@@ -1003,14 +946,9 @@ async function handleDebugShape(msg: DebugShapeMsg): Promise<{ raw?: unknown; er
   );
 }
 
-interface DownloadDebugJsonMsg {
-  type: 'DOWNLOAD_DEBUG_JSON';
-  json?: unknown;
-}
-
 async function handleDownloadDebugJson(
-  msg: DownloadDebugJsonMsg
-): Promise<{ error: string | undefined }> {
+  msg: MessageOf<'DOWNLOAD_DEBUG_JSON'>
+): Promise<MessageResponse<'DOWNLOAD_DEBUG_JSON'>> {
   if (!msg.json) {
     return { error: 'No debug JSON available' };
   }
@@ -1158,9 +1096,9 @@ async function getRunner(): Promise<number> {
 
 type ProtocolExportCommand = ProtocolExport | ProtocolInstantsExport;
 
-async function runInDocument(command: ProtocolExportCommand): Promise<unknown> {
+async function runInDocument(command: ProtocolExportCommand) {
   const tabId = await getRunner();
-  return browser.tabs.sendMessage(tabId, {
+  return sendTabMessage(tabId, {
     type: 'RUN_EXPORT',
     sourceUrl: command._tag === 'Export' ? command.sourceUrl : '',
     originKind: command._tag === 'InstantsExport' ? 'instants' : 'source',
@@ -1192,7 +1130,7 @@ async function inspectCommand(sourceUrl: string): Promise<InspectResult> {
         filenameHint: item.filenameHint,
         ...(item.width ? { width: item.width } : {}),
         ...(item.height ? { height: item.height } : {}),
-        history: ProtocolHistoryMarker.make(item.history),
+        ...(item.history ? { history: ProtocolHistoryMarker.make(item.history) } : {}),
       })
     ),
   });
@@ -1218,7 +1156,7 @@ async function inspectInstantsCommand(): Promise<InstantsInspectResult> {
         ...(item.width ? { width: item.width } : {}),
         ...(item.height ? { height: item.height } : {}),
         ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
-        history: ProtocolHistoryMarker.make(item.history),
+        ...(item.history ? { history: ProtocolHistoryMarker.make(item.history) } : {}),
       })
     ),
   });
@@ -1339,6 +1277,7 @@ async function runDirectExport(
   }
   if (signal.aborted) throw cancellationError();
   const response = await handleDownloadMedia({
+    type: 'DOWNLOAD_MEDIA',
     ...(command._tag === 'Export' ? { sourceUrl: command.sourceUrl } : {}),
     originKind: command._tag === 'InstantsExport' ? 'instants' : 'source',
     operations,
@@ -1453,7 +1392,10 @@ async function executeCommand(
         for (const entryId of command.entryIds.filter(id => known.has(id))) {
           signal.throwIfAborted();
           const entry = instagramEntries.find(candidate => candidate.id === entryId);
-          const response = await abortable(handleRedownloadHistoryEntry({ entryId }), signal);
+          const response = await abortable(
+            handleRedownloadHistoryEntry({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId }),
+            signal
+          );
           const frame = 'frame' in response ? response.frame : undefined;
           const silent = 'silent' in response ? response.silent : undefined;
           const resolvedItem = frame ?? silent;
@@ -1608,19 +1550,21 @@ browser.runtime.onStartup.addListener(() => startNativeBridge(executeCommand));
 // still recommend it, and Firefox supports it alongside promise-return style.
 // ---------------------------------------------------------------------------
 
-type MessageHandler = (message: unknown) => Promise<unknown>;
+type MessageHandlers = {
+  readonly [T in BackgroundMessageType]: (message: MessageOf<T>) => Promise<MessageResponse<T>>;
+};
 
-const messageHandlers: Record<string, MessageHandler> = {
-  FETCH_MEDIA: message => handleFetchMedia(message as FetchMediaMsg),
-  FETCH_INSTANTS: message => handleFetchInstants(message as FetchInstantsMsg),
-  GET_PREVIEW_URL: message => handleGetPreviewUrl(message as GetPreviewUrlMsg),
-  DOWNLOAD_MEDIA: message => handleDownloadMedia(message),
-  GET_DOWNLOAD_HISTORY: () => handleGetDownloadHistory(),
-  RECORD_WHATSAPP_HISTORY: message => handleRecordWhatsAppHistory(message),
-  DELETE_WHATSAPP_HISTORY_RECEIPT: message => handleDeleteWhatsAppHistoryReceipt(message),
+const messageHandlers: MessageHandlers = {
+  FETCH_MEDIA: handleFetchMedia,
+  FETCH_INSTANTS: handleFetchInstants,
+  GET_PREVIEW_URL: handleGetPreviewUrl,
+  DOWNLOAD_MEDIA: handleDownloadMedia,
+  GET_DOWNLOAD_HISTORY: handleGetDownloadHistory,
+  RECORD_WHATSAPP_HISTORY: handleRecordWhatsAppHistory,
+  DELETE_WHATSAPP_HISTORY_RECEIPT: handleDeleteWhatsAppHistoryReceipt,
   DELETE_HISTORY_ENTRY: async message => {
     try {
-      const entries = await removeHistory((message as { entryId: string }).entryId);
+      const entries = await removeHistory(message.entryId);
       return { entries: [...entries].reverse(), error: undefined };
     } catch (err) {
       return { entries: [], error: String(err) };
@@ -1634,57 +1578,72 @@ const messageHandlers: Record<string, MessageHandler> = {
       return { error: String(err) };
     }
   },
-  REDOWNLOAD_HISTORY_ENTRY: message => handleRedownloadHistoryEntry(message as { entryId: string }),
-  RECORD_FRAME_EXPORT: message =>
-    handleRecordFrameExport(message as Parameters<typeof handleRecordFrameExport>[0]),
-  DOWNLOAD_FRAME_EXPORT: message =>
-    handleDownloadFrameExport(message as Parameters<typeof handleDownloadFrameExport>[0]),
-  RECORD_SILENT_EXPORT: message =>
-    handleRecordSilentExport(message as Parameters<typeof handleRecordSilentExport>[0]),
-  FETCH_VIDEO_BLOB: message => handleFetchVideoBlob(message as FetchVideoBlobMsg),
-  DEBUG_SHAPE: message => handleDebugShape(message as DebugShapeMsg),
-  DOWNLOAD_DEBUG_JSON: message => handleDownloadDebugJson(message as DownloadDebugJsonMsg),
+  REDOWNLOAD_HISTORY_ENTRY: handleRedownloadHistoryEntry,
+  RECORD_FRAME_EXPORT: handleRecordFrameExport,
+  DOWNLOAD_FRAME_EXPORT: handleDownloadFrameExport,
+  RECORD_SILENT_EXPORT: handleRecordSilentExport,
+  FETCH_VIDEO_BLOB: handleFetchVideoBlob,
+  DEBUG_SHAPE: handleDebugShape,
+  DOWNLOAD_DEBUG_JSON: handleDownloadDebugJson,
 };
 
-// fallow-ignore-next-line complexity
+/** Indexing the handler map with a type parameter keeps the request and its response correlated. */
+function answer<T extends BackgroundMessageType>(
+  type: T,
+  message: MessageOf<T>
+): Promise<MessageResponse<T>> {
+  return messageHandlers[type](message);
+}
+
+const RUNNER_PHASES: Record<string, Progress['phase']> = {
+  'direct-download': 'direct-download',
+  'frame-metadata': 'frame-metadata',
+  'frame-export': 'frame-export',
+  queued: 'silent-inspection',
+  inspecting: 'silent-inspection',
+  copying: 'silent-copy',
+  reencoding: 'silent-reencode',
+  validating: 'silent-validation',
+  downloading: 'silent-validation',
+};
+
+function isAnswerable(type: MessageType): type is BackgroundMessageType {
+  return type in messageHandlers;
+}
+
+function acceptRunnerReady(senderTabId: number | undefined): false {
+  if (senderTabId === undefined) return false;
+  runnerTabId = senderTabId;
+  resolveRunnerReady?.(senderTabId);
+  resolveRunnerReady = undefined;
+  return false;
+}
+
+function acceptRunnerProgress(message: MessageOf<'RUNNER_PROGRESS'>): false {
+  runnerProgress?.(
+    Progress.make({
+      ...(message.operationId ? { operationId: message.operationId } : {}),
+      ...(message.itemNumber ? { itemNumber: message.itemNumber } : {}),
+      phase: RUNNER_PHASES[message.phase] ?? 'silent-inspection',
+      ...(message.progress === undefined ? {} : { progress: message.progress }),
+    })
+  );
+  return false;
+}
+
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  const internal = msg as {
-    type?: string;
-    operationId?: import('@gramgrab/protocol').OperationId;
-    itemNumber?: import('@gramgrab/protocol').HumanItemNumber;
-    phase?: string;
-    progress?: number;
-  };
-  if (internal.type === 'RUNNER_READY' && sender.tab?.id !== undefined) {
-    runnerTabId = sender.tab.id;
-    resolveRunnerReady?.(sender.tab.id);
-    resolveRunnerReady = undefined;
+  const decoded = decodeMessage(msg);
+  if (decoded.kind === 'foreign') return false;
+  if (decoded.kind === 'unsupported') {
+    if (isAnswerable(decoded.type)) sendResponse(MESSAGE_REFUSALS[decoded.type]());
     return false;
   }
-  if (internal.type === 'RUNNER_PROGRESS' && internal.phase) {
-    const phases: Record<string, Progress['phase']> = {
-      'direct-download': 'direct-download',
-      'frame-metadata': 'frame-metadata',
-      'frame-export': 'frame-export',
-      queued: 'silent-inspection',
-      inspecting: 'silent-inspection',
-      copying: 'silent-copy',
-      reencoding: 'silent-reencode',
-      validating: 'silent-validation',
-      downloading: 'silent-validation',
-    };
-    runnerProgress?.(
-      Progress.make({
-        ...(internal.operationId ? { operationId: internal.operationId } : {}),
-        ...(internal.itemNumber ? { itemNumber: internal.itemNumber } : {}),
-        phase: phases[internal.phase] ?? 'silent-inspection',
-        ...(internal.progress === undefined ? {} : { progress: internal.progress }),
-      })
-    );
-    return false;
-  }
-  const handler = messageHandlers[(msg as { type?: string }).type ?? ''];
-  if (!handler) return false;
-  void handler(msg).then(sendResponse);
+  const message = decoded.message;
+  // RUN_EXPORT belongs to the runner document, and the runner's notifications are absorbed into
+  // worker state rather than answered.
+  if (message.type === 'RUN_EXPORT') return false;
+  if (message.type === 'RUNNER_READY') return acceptRunnerReady(sender.tab?.id);
+  if (message.type === 'RUNNER_PROGRESS') return acceptRunnerProgress(message);
+  void answer(message.type, message).then(sendResponse);
   return true;
 });

@@ -1,17 +1,15 @@
-export interface MediaItem {
+import type { MediaItem as ResolvedMediaItem } from '@gramgrab/protocol';
+
+/**
+ * A resolved media item plus the display index and selection state the popup owns. `itemIndex` is
+ * absent for a WhatsApp capture, which comes from no indexed source, and for workspace snapshots
+ * written before item indexes existed.
+ */
+export type MediaItem = Omit<ResolvedMediaItem, 'itemIndex'> & {
   index: number;
   itemIndex?: number;
-  mediaId?: string;
-  history?: { downloaded: boolean; count: number; latestDownloadedAt?: number };
-  type: string;
-  url: string;
-  filenameHint: string;
   selected: boolean;
-  previewUrl?: string;
-  width?: number;
-  height?: number;
-  creatorUsername?: string;
-}
+};
 
 export type FrameRuntime = {
   status: 'idle' | 'loading' | 'ready' | 'failed' | 'exporting';

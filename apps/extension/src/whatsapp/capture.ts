@@ -1,6 +1,7 @@
 import { Either } from 'effect';
 import { OperationWarning } from '../errors/contracts.ts';
 import { browser, type BrowserShim, type NativePort } from '../lib/browser.ts';
+import { sendMessage } from '../messaging/send.ts';
 import { createOperationId, createRequestId, type OperationId } from '../download/contracts.ts';
 import {
   CaptureAccept,
@@ -78,10 +79,6 @@ export interface WhatsAppCaptureHandle {
   readonly filename: string;
   readonly download: () => Promise<WhatsAppDownloadResult>;
   readonly release: () => void;
-}
-
-export function isAcceptedHistorySaved(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && 'saved' in value && value.saved === true;
 }
 
 export interface WhatsAppCaptureOptions {
@@ -627,19 +624,20 @@ class WhatsAppCaptureSession {
     handle: WhatsAppCaptureHandle
   ): Promise<OperationWarning | undefined> {
     try {
-      const response = await this.#browser.runtime.sendMessage({
-        type: 'RECORD_WHATSAPP_HISTORY',
-        receipt: {
-          source: 'whatsapp',
-          mediaKind: handle.descriptor.kind,
-          timestamp: this.#now(),
-          savedFilename: handle.filename,
-          outcome: 'accepted',
+      const response = await sendMessage(
+        {
+          type: 'RECORD_WHATSAPP_HISTORY',
+          receipt: {
+            source: 'whatsapp',
+            mediaKind: handle.descriptor.kind,
+            timestamp: this.#now(),
+            savedFilename: handle.filename,
+            outcome: 'accepted',
+          },
         },
-      });
-      return isAcceptedHistorySaved(response)
-        ? undefined
-        : OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
+        this.#browser.runtime
+      );
+      return response?.saved ? undefined : OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
     } catch {
       return OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
     }

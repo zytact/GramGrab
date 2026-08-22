@@ -232,6 +232,25 @@ export class HistoryMarker extends Schema.Class<HistoryMarker>('HistoryMarker')(
   latestDownloadedAt: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
 }) {}
 
+/**
+ * One resolved media item as the background worker hands it to the popup. The popup adds its
+ * own display index and selection state on top of this; the CLI receives `InspectedMedia`
+ * instead, which restates the same item with human item numbers.
+ */
+export const MediaItem = Schema.Struct({
+  itemIndex: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+  mediaId: Schema.optional(Schema.String),
+  type: Schema.Literal('image', 'video'),
+  url: Schema.String.pipe(Schema.nonEmptyString()),
+  filenameHint: Schema.String,
+  previewUrl: Schema.optional(Schema.String),
+  width: Schema.optional(Schema.Number),
+  height: Schema.optional(Schema.Number),
+  history: Schema.optional(HistoryMarker),
+  creatorUsername: Schema.optional(Schema.String),
+});
+export type MediaItem = Schema.Schema.Type<typeof MediaItem>;
+
 export class InspectedMedia extends Schema.Class<InspectedMedia>('InspectedMedia')({
   itemNumber: HumanItemNumber,
   mediaIdentity: MediaIdentity,

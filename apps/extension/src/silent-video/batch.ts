@@ -1,4 +1,5 @@
 import { browser } from '../lib/browser.ts';
+import { sendMessage } from '../messaging/send.ts';
 import {
   DownloadAcceptedResult,
   DownloadFailedResult,
@@ -121,12 +122,12 @@ async function recordSilentHistory(
   originKind: 'source' | 'instants'
 ) {
   try {
-    return (await browser.runtime.sendMessage({
+    return await sendMessage({
       type: 'RECORD_SILENT_EXPORT',
       sourceUrl,
       originKind,
       item: operation,
-    })) as { error?: string };
+    });
   } catch {
     return { error: 'Download started, but history could not be saved.' };
   }

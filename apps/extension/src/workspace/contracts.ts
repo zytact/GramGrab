@@ -1,20 +1,8 @@
 import { browser } from '../lib/browser';
 import type { FrameExportSetting } from '../frame-export/timestamp.ts';
+import type { MediaItem } from '../popup/media-item.ts';
 
-export interface WorkspaceMediaItem {
-  index: number;
-  itemIndex?: number;
-  mediaId?: string;
-  history?: { downloaded: boolean; count: number; latestDownloadedAt?: number };
-  type: string;
-  url: string;
-  filenameHint: string;
-  selected: boolean;
-  previewUrl?: string;
-  width?: number;
-  height?: number;
-  creatorUsername?: string;
-}
+export type WorkspaceMediaItem = MediaItem;
 
 export type WorkspaceAcquisition = { kind: 'source' } | { kind: 'instants' };
 
