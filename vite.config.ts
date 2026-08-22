@@ -1,13 +1,14 @@
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite-plus';
 import react from '@vitejs/plugin-react';
+import { createManifest, parseBrowserTarget } from './apps/extension/scripts/manifest.mjs';
 
-// Target browser is passed via the BROWSER env variable.
-// Defaults to 'chromium' so plain `vite build` still works during development.
-const browser = (process.env.BROWSER ?? 'chromium') as 'chromium' | 'firefox';
+const browser = parseBrowserTarget(process.env.BROWSER ?? 'chromium');
 const autoInput = { auto: true } as const;
 const viteTempInput = { pattern: 'node_modules/.vite-temp/**', base: 'workspace' as const };
 const extensionRoot = resolve(__dirname, 'apps/extension');
+const extensionOutput = resolve(__dirname, `extension/${browser}`);
 const chromiumOutput = { pattern: 'extension/chromium/**', base: 'workspace' as const };
 const firefoxOutput = { pattern: 'extension/firefox/**', base: 'workspace' as const };
 const chromiumPackageOutput = {
@@ -43,18 +44,12 @@ export default defineConfig({
     },
     tasks: {
       'build-chromium': {
-        command: [
-          'BROWSER=chromium vp build',
-          'BROWSER=chromium node apps/extension/scripts/postbuild.mjs',
-        ],
+        command: 'BROWSER=chromium vp build',
         input: [autoInput, `!${viteTempInput.pattern}`, `!${chromiumOutput.pattern}`],
         output: [chromiumOutput],
       },
       'build-firefox': {
-        command: [
-          'BROWSER=firefox vp build',
-          'BROWSER=firefox node apps/extension/scripts/postbuild.mjs',
-        ],
+        command: 'BROWSER=firefox vp build',
         input: [autoInput, `!${viteTempInput.pattern}`, `!${firefoxOutput.pattern}`],
         output: [firefoxOutput],
       },
@@ -270,10 +265,41 @@ export default defineConfig({
     sortPackageJson: false,
     ignorePatterns: ['extension/**', '.repos', '.agents', '.claude'],
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'extension-metadata',
+      async writeBundle() {
+        await mkdir(resolve(extensionOutput, 'icons'), { recursive: true });
+        await Promise.all([
+          writeFile(
+            resolve(extensionOutput, 'manifest.json'),
+            `${JSON.stringify(createManifest(browser), null, 2)}\n`
+          ),
+          copyFile(
+            resolve(extensionRoot, 'icons/icon-16.png'),
+            resolve(extensionOutput, 'icons/icon-16.png')
+          ),
+          copyFile(
+            resolve(extensionRoot, 'icons/icon-48.png'),
+            resolve(extensionOutput, 'icons/icon-48.png')
+          ),
+          copyFile(
+            resolve(extensionRoot, 'icons/icon-96.png'),
+            resolve(extensionOutput, 'icons/icon-96.png')
+          ),
+          copyFile(resolve(__dirname, 'LICENSE'), resolve(extensionOutput, 'LICENSE')),
+          copyFile(
+            resolve(__dirname, 'THIRD_PARTY_NOTICES'),
+            resolve(extensionOutput, 'THIRD_PARTY_NOTICES')
+          ),
+        ]);
+      },
+    },
+  ],
   root: resolve(extensionRoot, 'templates'),
   build: {
-    outDir: resolve(__dirname, `extension/${browser}`),
+    outDir: extensionOutput,
     emptyOutDir: true,
     modulePreload: false,
     rollupOptions: {
