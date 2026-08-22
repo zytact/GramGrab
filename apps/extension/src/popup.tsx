@@ -10,7 +10,7 @@ import {
 } from './download/contracts';
 import type { OperationFailure, RecoveryAction } from './errors/contracts';
 import { normalizeFrameFailure } from './errors/normalize';
-import { FAILURE_PRESENTATION } from './errors/presentation';
+import { FAILURE_PRESENTATION, presentationForFailure } from './errors/presentation';
 import { buildDiagnostics, buildWhatsAppDiagnostics } from './errors/diagnostics';
 import type { AttemptOperation, DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
@@ -51,9 +51,57 @@ import { useFrameSeekEffect } from './popup/use-frame-seek';
 import { useWhatsAppCapture } from './popup/use-whatsapp-capture';
 import { WhatsAppStatusPanel } from './popup/whatsapp-status-panel';
 import { sendMessage } from './messaging/send';
-import type { MessageResponse } from './messaging/contracts';
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
+
+/** Reassurance appended when a redownload fails: the stored history entry is left untouched. */
+const HISTORY_KEPT = 'History was kept.';
+
+const VIDEO_METADATA_UNAVAILABLE = 'Could not load video metadata. Retry.';
+
+/**
+ * Fetches one video through the background worker and measures it. A failure the worker classified
+ * is reported in its own words; anything the popup itself could not do stays generic.
+ */
+async function loadVideoMetadata(
+  url: string
+): Promise<{ dataUrl: string; durationSeconds: number } | { error: string }> {
+  try {
+    const response = await sendMessage({ type: 'FETCH_VIDEO_BLOB', url });
+    if (!response.dataUrl)
+      return {
+        error: response.failure ? failureMessage(response.failure) : VIDEO_METADATA_UNAVAILABLE,
+      };
+    return {
+      dataUrl: response.dataUrl,
+      durationSeconds: await getVideoDuration(response.dataUrl),
+    };
+  } catch {
+    return { error: VIDEO_METADATA_UNAVAILABLE };
+  }
+}
+
+/** Holds one item's chosen frame second inside a newly measured duration. */
+function withClampedFrameSecond(
+  settings: Record<number, FrameExportSetting>,
+  index: number,
+  durationSeconds: number,
+  resetToDefault: boolean
+): Record<number, FrameExportSetting> {
+  const setting = settings[index];
+  if (!setting) return settings;
+  const requested = resetToDefault ? defaultFrameSecond(durationSeconds) : setting.timestampSeconds;
+  return {
+    ...settings,
+    [index]: { ...setting, timestampSeconds: clampFrameSecond(requested, durationSeconds) },
+  };
+}
+
+/** The one way the popup turns a failure into a sentence a person reads. */
+function failureMessage(failure: OperationFailure, suffix?: string): string {
+  const presentation = presentationForFailure(failure);
+  return `${presentation.title}. ${presentation.explanation}${suffix ? ` ${suffix}` : ''}`;
+}
 
 function exportCandidate(
   item: MediaItem,
@@ -242,38 +290,19 @@ export default function Popup() {
         return;
       }
       patchRuntime(index, current => withFrame(current, { status: 'loading' }));
-      const stale = () =>
-        generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl;
-      try {
-        const response = await sendMessage({ type: 'FETCH_VIDEO_BLOB', url: itemUrl });
-        const dataUrl = getVideoBlobDataUrl(response);
-        const durationSeconds = await getVideoDuration(dataUrl);
-        if (stale()) return;
+      const loaded = await loadVideoMetadata(itemUrl);
+      if (generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl) return;
+      if ('error' in loaded) {
         patchRuntime(index, current =>
-          withFrame(current, { status: 'ready', durationSeconds, dataUrl })
+          withFrame(current, { status: 'failed', error: loaded.error })
         );
-        setFrameExportSettings(previous => {
-          const setting = previous[index];
-          if (!setting) return previous;
-          return {
-            ...previous,
-            [index]: {
-              ...setting,
-              timestampSeconds: clampFrameSecond(
-                pendingFrameDefaults.current.delete(index)
-                  ? defaultFrameSecond(durationSeconds)
-                  : setting.timestampSeconds,
-                durationSeconds
-              ),
-            },
-          };
-        });
-      } catch {
-        if (stale()) return;
-        patchRuntime(index, current =>
-          withFrame(current, { status: 'failed', error: 'Could not load video metadata. Retry.' })
-        );
+        return;
       }
+      patchRuntime(index, current => withFrame(current, { status: 'ready', ...loaded }));
+      const resetToDefault = pendingFrameDefaults.current.delete(index);
+      setFrameExportSettings(previous =>
+        withClampedFrameSecond(previous, index, loaded.durationSeconds, resetToDefault)
+      );
     },
     [mediaItems, patchRuntime, setFrameDuration]
   );
@@ -346,7 +375,11 @@ export default function Popup() {
           );
           patchRuntime(index, current => ({ ...current, preview: 'idle' }));
         } else {
-          patchRuntime(index, current => ({ ...current, preview: 'failed' }));
+          patchRuntime(index, current => ({
+            ...current,
+            preview: 'failed',
+            ...(res?.failure ? { previewFailure: res.failure } : {}),
+          }));
         }
       } catch {
         patchRuntime(index, current => ({ ...current, preview: 'failed' }));
@@ -494,12 +527,10 @@ export default function Popup() {
     if (response.failure) {
       setSourceFailure(response.failure);
       setStatus('error');
-      setMessage(
-        `${FAILURE_PRESENTATION[response.failure.code].title}. ${FAILURE_PRESENTATION[response.failure.code].explanation}`
-      );
+      setMessage(failureMessage(response.failure));
       return;
     }
-    if (response.error || !response.media) {
+    if (!response.media) {
       setStatus('error');
       setMessage('GramGrab could not refresh active Instants.');
       return;
@@ -717,9 +748,9 @@ export default function Popup() {
 
   const loadHistory = useCallback(async () => {
     const response = await sendMessage({ type: 'GET_DOWNLOAD_HISTORY' });
-    if (response.error) {
+    if (response.failure) {
       setStatus('error');
-      setMessage(response.error);
+      setMessage(failureMessage(response.failure));
       return;
     }
     setHistoryEntries([...response.entries]);
@@ -734,7 +765,7 @@ export default function Popup() {
     async (entryId: string) => {
       setHistoryBusy(entryId);
       const response = await sendMessage({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId });
-      const redownloadError = 'error' in response ? response.error : undefined;
+      const redownloadFailure = 'failure' in response ? response.failure : undefined;
       if ('silent' in response) {
         const createdAt = Date.now();
         const item = {
@@ -805,16 +836,18 @@ export default function Popup() {
           'results' in response
             ? response.results.find(result => result.status === 'failed')
             : undefined;
-        const failure =
-          failed?.status === 'failed' ? FAILURE_PRESENTATION[failed.failure.code] : undefined;
-        if (redownloadError || failure) setStatus('error');
+        const failure = failed?.status === 'failed' ? failed.failure : undefined;
+        if (redownloadFailure || failure) setStatus('error');
         setMessage(
-          redownloadError ??
-            (failure ? `${failure.title}. ${failure.explanation}` : 'Download started.')
+          redownloadFailure
+            ? failureMessage(redownloadFailure, HISTORY_KEPT)
+            : failure
+              ? failureMessage(failure)
+              : 'Download started.'
         );
       }
       setHistoryBusy(null);
-      if (!redownloadError) void loadHistory();
+      if (!redownloadFailure) void loadHistory();
     },
     [loadHistory]
   );
@@ -822,17 +855,17 @@ export default function Popup() {
     const response = await ('source' in entry
       ? sendMessage({ type: 'DELETE_WHATSAPP_HISTORY_RECEIPT', receipt: entry })
       : sendMessage({ type: 'DELETE_HISTORY_ENTRY', entryId: entry.id }));
-    if (response.error) {
+    if (response.failure) {
       setStatus('error');
-      setMessage(response.error);
+      setMessage(failureMessage(response.failure));
     } else setHistoryEntries([...response.entries]);
   }, []);
   const clearDownloadHistory = useCallback(async () => {
     if (!window.confirm('Clear all download history?')) return;
     const response = await sendMessage({ type: 'CLEAR_DOWNLOAD_HISTORY' });
-    if (response.error) {
+    if (response.failure) {
       setStatus('error');
-      setMessage(response.error);
+      setMessage(failureMessage(response.failure));
     } else setHistoryEntries([]);
   }, []);
 
@@ -1615,13 +1648,6 @@ function renderInstantsButtonLabel(status: Status, acquisition: 'source' | 'inst
   ) : (
     'Load Instants'
   );
-}
-
-function getVideoBlobDataUrl(response: MessageResponse<'FETCH_VIDEO_BLOB'>): string {
-  if (response?.error || !response?.dataUrl) {
-    throw new Error('cors');
-  }
-  return response.dataUrl;
 }
 
 function createExportVideo(dataUrl: string) {

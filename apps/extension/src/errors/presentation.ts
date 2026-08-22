@@ -114,6 +114,12 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     ['retry-operation', 'refetch-source'],
     'once'
   ),
+  MEDIA_UNEXPECTED_FAILURE: policy(
+    'Could not load the media',
+    'Retry once, then fetch the source again.',
+    ['retry-operation', 'refetch-source', 'copy-diagnostics'],
+    'once'
+  ),
   BROWSER_DOWNLOAD_BLOCKED: policy(
     'Browser blocked the download',
     'Allow downloads for GramGrab, then retry.',
@@ -257,6 +263,27 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'Media processing failed',
     'Download the original video or copy diagnostics.',
     ['download-original', 'copy-diagnostics']
+  ),
+  HISTORY_VERSION_UNSUPPORTED: policy(
+    'Download history uses a newer version',
+    'Update GramGrab to read the download history in this browser profile.',
+    []
+  ),
+  HISTORY_ENTRY_NOT_FOUND: policy(
+    'History entry is no longer available',
+    'Reopen download history to see the current list.',
+    []
+  ),
+  HISTORY_ITEM_UNRESOLVED: policy(
+    'Could not match this history entry',
+    'GramGrab could not safely match this item after refetching the source.',
+    ['open-in-instagram']
+  ),
+  HISTORY_STORE_FAILED: policy(
+    'Could not update download history',
+    'Retry, then reopen download history to see the current list.',
+    ['retry-operation'],
+    'after-user-action'
   ),
   WHATSAPP_PAGE_ACCESS_FAILED: policy(
     'WhatsApp page access was lost',

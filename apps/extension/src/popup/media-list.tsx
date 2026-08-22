@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { AttemptEntry, DownloadAttempt } from '../download/attempt';
-import { FAILURE_PRESENTATION, WARNING_PRESENTATION } from '../errors/presentation';
+import {
+  FAILURE_PRESENTATION,
+  WARNING_PRESENTATION,
+  presentationForFailure,
+} from '../errors/presentation';
 import {
   formatFrameTimestamp,
   frameTimestampAriaValue,
@@ -208,6 +212,13 @@ interface MediaItemRowProps {
   attemptEntry?: AttemptEntry;
 }
 
+/** Why an item shows a placeholder instead of a preview, when the background worker said why. */
+function previewFailureTitle(runtime: ItemRuntime): string {
+  return runtime.previewFailure
+    ? presentationForFailure(runtime.previewFailure).title
+    : 'No preview available';
+}
+
 type MediaPreviewProps = Pick<
   MediaItemRowProps,
   | 'item'
@@ -243,8 +254,9 @@ function MediaPreview({
   return (
     <div className="media-thumb" style={previewStyle}>
       {failed ? (
-        <div className="thumb-placeholder">
+        <div className="thumb-placeholder" title={previewFailureTitle(runtime)}>
           <span className="thumb-icon">◻</span>
+          <span className="thumb-placeholder-note">{previewFailureTitle(runtime)}</span>
         </div>
       ) : item.type === 'video' ? (
         <VideoPreview

@@ -64,18 +64,6 @@ export function useMediaFetch(options: UseMediaFetchOptions) {
         options.setStatus('error');
         return;
       }
-      if (response?.error) {
-        options.onFailure?.(
-          OperationFailureModel.make({
-            code: 'SOURCE_UNEXPECTED_FAILURE',
-            phase: 'source',
-            scope: 'batch',
-          })
-        );
-        options.setMessage('GramGrab could not load this source.');
-        options.setStatus('error');
-        return;
-      }
       options.setFetchedUrl(options.acquisition === 'source' ? trimmedUrl : '');
       applyFetchSuccess(response?.media ?? [], options);
       options.onSuccess?.();

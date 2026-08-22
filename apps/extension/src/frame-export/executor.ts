@@ -68,13 +68,19 @@ export async function executeFrameExport(
         frameTimestampSeconds: operation.frameTimestampSeconds ?? 0,
       },
     });
-    if (downloaded.error?.startsWith('Frame download failed')) throw new Error(downloaded.error);
+    if (downloaded.failure)
+      return DownloadFailedResult.make({
+        operationId: operation.operationId,
+        requestId: operation.requestId,
+        status: 'failed',
+        failure: downloaded.failure,
+      });
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,
       requestId: operation.requestId,
       status: 'started',
-      ...(downloaded.error
-        ? { warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }) }
+      ...(downloaded.warning
+        ? { warning: OperationWarning.make({ code: downloaded.warning }) }
         : {}),
     });
   } catch (cause) {

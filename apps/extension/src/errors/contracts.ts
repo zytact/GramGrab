@@ -16,6 +16,7 @@ export const FailurePhaseSchema = Schema.Literal(
   'silent-reencode',
   'silent-validation',
   'silent-worker',
+  'history',
   'whatsapp-page-access',
   'whatsapp-extraction'
 );
@@ -104,6 +105,7 @@ const InstagramFailureCodeSchema = Schema.Literal(
   'INSTANT_NOT_ACTIVE',
   'MEDIA_NETWORK_FAILED',
   'MEDIA_RESPONSE_EMPTY',
+  'MEDIA_UNEXPECTED_FAILURE',
   'BROWSER_DOWNLOAD_BLOCKED',
   'BROWSER_DOWNLOAD_NETWORK_FAILED',
   'BROWSER_DOWNLOAD_FILE_FAILED',
@@ -129,7 +131,11 @@ const InstagramFailureCodeSchema = Schema.Literal(
   'SILENT_OUTPUT_NO_VIDEO',
   'SILENT_OUTPUT_HAS_AUDIO',
   'SILENT_WORKER_UNAVAILABLE',
-  'SILENT_WORKER_PROTOCOL_FAILURE'
+  'SILENT_WORKER_PROTOCOL_FAILURE',
+  'HISTORY_VERSION_UNSUPPORTED',
+  'HISTORY_ENTRY_NOT_FOUND',
+  'HISTORY_ITEM_UNRESOLVED',
+  'HISTORY_STORE_FAILED'
 );
 export type InstagramFailureCode = Schema.Schema.Type<typeof InstagramFailureCodeSchema>;
 
