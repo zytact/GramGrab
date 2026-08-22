@@ -9,7 +9,8 @@ import {
 } from '../errors/normalize.ts';
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
 import { browser } from '../lib/browser.ts';
-import { isAcceptedHistorySaved, type WhatsAppCaptureHandle } from './capture.ts';
+import { sendMessage } from '../messaging/send.ts';
+import type { WhatsAppCaptureHandle } from './capture.ts';
 import { silentProgressMessage } from '../silent-video/progress.ts';
 import { createWhatsAppSilentVideo, type WhatsAppSilentProgress } from './mute.ts';
 import { fitsWithinWhatsAppLease, fitsWithinWhatsAppPeakMemory } from './lease.ts';
@@ -108,23 +109,21 @@ export async function exportWhatsAppFrame(
     );
     handle.release();
     frameUrl = undefined;
-    const response = await browser.runtime
-      .sendMessage({
-        type: 'RECORD_WHATSAPP_HISTORY',
-        receipt: {
-          source: 'whatsapp',
-          mediaKind: 'photo',
-          timestamp: Date.now(),
-          savedFilename: operation.filename,
-          outcome: 'accepted',
-        },
-      })
-      .catch(() => undefined);
+    const response = await sendMessage({
+      type: 'RECORD_WHATSAPP_HISTORY',
+      receipt: {
+        source: 'whatsapp',
+        mediaKind: 'photo',
+        timestamp: Date.now(),
+        savedFilename: operation.filename,
+        outcome: 'accepted',
+      },
+    }).catch(() => undefined);
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,
       requestId: operation.requestId,
       status: 'started',
-      ...(isAcceptedHistorySaved(response)
+      ...(response?.saved
         ? {}
         : { warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }) }),
     });
@@ -206,23 +205,21 @@ export async function exportWhatsAppSilent(
     silentUrl = undefined;
     handle.release();
     onProgress?.('downloading', 1);
-    const response = await browser.runtime
-      .sendMessage({
-        type: 'RECORD_WHATSAPP_HISTORY',
-        receipt: {
-          source: 'whatsapp',
-          mediaKind: 'video',
-          timestamp: Date.now(),
-          savedFilename: operation.filename,
-          outcome: 'accepted',
-        },
-      })
-      .catch(() => undefined);
+    const response = await sendMessage({
+      type: 'RECORD_WHATSAPP_HISTORY',
+      receipt: {
+        source: 'whatsapp',
+        mediaKind: 'video',
+        timestamp: Date.now(),
+        savedFilename: operation.filename,
+        outcome: 'accepted',
+      },
+    }).catch(() => undefined);
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,
       requestId: operation.requestId,
       status: 'started',
-      ...(isAcceptedHistorySaved(response)
+      ...(response?.saved
         ? {}
         : { warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }) }),
     });

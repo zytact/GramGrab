@@ -1,29 +1,13 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
-import { browser } from '../lib/browser';
+import type { MediaItem } from '@gramgrab/protocol';
 import type { WorkspaceMediaItem } from './contracts';
 import type { FrameExportSetting } from '../frame-export/timestamp';
 import type { OperationFailure } from '../errors/contracts';
 import { OperationFailure as OperationFailureModel } from '../errors/contracts';
 import { FAILURE_PRESENTATION } from '../errors/presentation';
+import { sendMessage } from '../messaging/send';
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
-
-interface MediaResponse {
-  media?: {
-    url: string;
-    itemIndex: number;
-    mediaId?: string;
-    history: { downloaded: boolean; count: number; latestDownloadedAt?: number };
-    type: string;
-    filenameHint: string;
-    previewUrl?: string;
-    width?: number;
-    height?: number;
-    creatorUsername?: string;
-  }[];
-  error?: string;
-  failure?: OperationFailure;
-}
 
 interface UseMediaFetchOptions {
   url: string;
@@ -38,7 +22,7 @@ interface UseMediaFetchOptions {
 }
 
 function applyFetchSuccess(
-  media: NonNullable<MediaResponse['media']>,
+  media: readonly MediaItem[],
   options: Omit<UseMediaFetchOptions, 'url' | 'setFetchedUrl'>
 ) {
   const items = media.map((item, index) => ({ ...item, index, selected: true }));
@@ -69,11 +53,9 @@ export function useMediaFetch(options: UseMediaFetchOptions) {
     options.setStatus('fetching');
     options.setMessage('Fetching media…');
     try {
-      const response = (await browser.runtime.sendMessage(
-        options.acquisition === 'instants'
-          ? { type: 'FETCH_INSTANTS' }
-          : { type: 'FETCH_MEDIA', url: trimmedUrl }
-      )) as MediaResponse;
+      const response = await (options.acquisition === 'instants'
+        ? sendMessage({ type: 'FETCH_INSTANTS' })
+        : sendMessage({ type: 'FETCH_MEDIA', url: trimmedUrl }));
       if (generation !== requestGeneration.current) return;
       if (response?.failure) {
         options.onFailure?.(response.failure);

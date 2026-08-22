@@ -50,13 +50,8 @@ import { MediaListSection } from './popup/media-list';
 import { useFrameSeekEffect } from './popup/use-frame-seek';
 import { useWhatsAppCapture } from './popup/use-whatsapp-capture';
 import { WhatsAppStatusPanel } from './popup/whatsapp-status-panel';
-
-interface PreviewResponse {
-  previewUrl?: string;
-  error?: string;
-}
-
-type VideoBlobResponse = { dataUrl?: string; error?: string };
+import { sendMessage } from './messaging/send';
+import type { MessageResponse } from './messaging/contracts';
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
@@ -250,10 +245,7 @@ export default function Popup() {
       const stale = () =>
         generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl;
       try {
-        const response = (await browser.runtime.sendMessage({
-          type: 'FETCH_VIDEO_BLOB',
-          url: itemUrl,
-        })) as VideoBlobResponse;
+        const response = await sendMessage({ type: 'FETCH_VIDEO_BLOB', url: itemUrl });
         const dataUrl = getVideoBlobDataUrl(response);
         const durationSeconds = await getVideoDuration(dataUrl);
         if (stale()) return;
@@ -344,10 +336,7 @@ export default function Popup() {
     async (index: number, itemUrl: string) => {
       patchRuntime(index, current => ({ ...current, preview: 'loading' }));
       try {
-        const res = (await browser.runtime.sendMessage({
-          type: 'GET_PREVIEW_URL',
-          url: itemUrl,
-        })) as PreviewResponse;
+        const res = await sendMessage({ type: 'GET_PREVIEW_URL', url: itemUrl });
 
         if (res?.previewUrl) {
           setMediaItems(prev =>
@@ -404,7 +393,7 @@ export default function Popup() {
 
   const executeDirect = useCallback(
     (operations: readonly DownloadOperation[]) =>
-      browser.runtime.sendMessage({
+      sendMessage({
         type: 'DOWNLOAD_MEDIA',
         ...(acquisition === 'source' ? { sourceUrl: fetchedUrl || url } : {}),
         originKind: acquisition,
@@ -501,11 +490,7 @@ export default function Popup() {
     }
     setStatus('fetching');
     setMessage('Refreshing active Instants…');
-    const response = (await browser.runtime.sendMessage({ type: 'FETCH_INSTANTS' })) as {
-      media?: Omit<MediaItem, 'index' | 'selected'>[];
-      failure?: OperationFailure;
-      error?: string;
-    };
+    const response = await sendMessage({ type: 'FETCH_INSTANTS' });
     if (response.failure) {
       setSourceFailure(response.failure);
       setStatus('error');
@@ -731,16 +716,13 @@ export default function Popup() {
   }, []);
 
   const loadHistory = useCallback(async () => {
-    const response = (await browser.runtime.sendMessage({ type: 'GET_DOWNLOAD_HISTORY' })) as {
-      entries?: HistoryEntry[];
-      error?: string;
-    };
+    const response = await sendMessage({ type: 'GET_DOWNLOAD_HISTORY' });
     if (response.error) {
       setStatus('error');
       setMessage(response.error);
       return;
     }
-    setHistoryEntries(response.entries ?? []);
+    setHistoryEntries([...response.entries]);
   }, []);
 
   const openHistory = useCallback(() => {
@@ -751,40 +733,15 @@ export default function Popup() {
     // fallow-ignore-next-line complexity
     async (entryId: string) => {
       setHistoryBusy(entryId);
-      const response = (await browser.runtime.sendMessage({
-        type: 'REDOWNLOAD_HISTORY_ENTRY',
-        entryId,
-      })) as {
-        error?: string;
-        results?: {
-          status: 'started' | 'failed';
-          failure?: { code: keyof typeof FAILURE_PRESENTATION };
-        }[];
-        frame?: {
-          itemIndex: number;
-          mediaId?: string;
-          url: string;
-          filenameHint: string;
-          timestampSeconds: number;
-          sourceUrl: string;
-          originKind: 'source' | 'instants';
-        };
-        silent?: {
-          itemIndex: number;
-          mediaId?: string;
-          url: string;
-          filenameHint: string;
-          sourceUrl: string;
-          originKind: 'source' | 'instants';
-        };
-      };
-      if (response.silent) {
+      const response = await sendMessage({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId });
+      const redownloadError = 'error' in response ? response.error : undefined;
+      if ('silent' in response) {
         const createdAt = Date.now();
         const item = {
           index: 0,
           itemIndex: response.silent.itemIndex,
           ...(response.silent.mediaId ? { mediaId: response.silent.mediaId } : {}),
-          type: 'video',
+          type: 'video' as const,
           url: response.silent.url,
           filenameHint: response.silent.filenameHint,
           selected: true,
@@ -815,7 +772,7 @@ export default function Popup() {
           else await openWorkspace(snapshot);
           setMessage('Silent download moved to the GramGrab workspace.');
         }
-      } else if (response.frame) {
+      } else if ('frame' in response) {
         const timestampSeconds = response.frame.timestampSeconds;
         const result = await executeFrameExport(
           {
@@ -844,35 +801,35 @@ export default function Popup() {
         );
         if (result.status === 'failed') setStatus('error');
       } else {
-        const failed = response.results?.find(result => result.status === 'failed');
-        const failure = failed?.failure ? FAILURE_PRESENTATION[failed.failure.code] : undefined;
-        if (response.error || failure) setStatus('error');
+        const failed =
+          'results' in response
+            ? response.results.find(result => result.status === 'failed')
+            : undefined;
+        const failure =
+          failed?.status === 'failed' ? FAILURE_PRESENTATION[failed.failure.code] : undefined;
+        if (redownloadError || failure) setStatus('error');
         setMessage(
-          response.error ??
+          redownloadError ??
             (failure ? `${failure.title}. ${failure.explanation}` : 'Download started.')
         );
       }
       setHistoryBusy(null);
-      if (!response.error) void loadHistory();
+      if (!redownloadError) void loadHistory();
     },
     [loadHistory]
   );
   const removeHistoryEntry = useCallback(async (entry: HistoryEntry) => {
-    const response = (await browser.runtime.sendMessage(
-      'source' in entry
-        ? { type: 'DELETE_WHATSAPP_HISTORY_RECEIPT', receipt: entry }
-        : { type: 'DELETE_HISTORY_ENTRY', entryId: entry.id }
-    )) as { entries?: HistoryEntry[]; error?: string };
+    const response = await ('source' in entry
+      ? sendMessage({ type: 'DELETE_WHATSAPP_HISTORY_RECEIPT', receipt: entry })
+      : sendMessage({ type: 'DELETE_HISTORY_ENTRY', entryId: entry.id }));
     if (response.error) {
       setStatus('error');
       setMessage(response.error);
-    } else setHistoryEntries(response.entries ?? []);
+    } else setHistoryEntries([...response.entries]);
   }, []);
   const clearDownloadHistory = useCallback(async () => {
     if (!window.confirm('Clear all download history?')) return;
-    const response = (await browser.runtime.sendMessage({ type: 'CLEAR_DOWNLOAD_HISTORY' })) as {
-      error?: string;
-    };
+    const response = await sendMessage({ type: 'CLEAR_DOWNLOAD_HISTORY' });
     if (response.error) {
       setStatus('error');
       setMessage(response.error);
@@ -1660,7 +1617,7 @@ function renderInstantsButtonLabel(status: Status, acquisition: 'source' | 'inst
   );
 }
 
-function getVideoBlobDataUrl(response: VideoBlobResponse): string {
+function getVideoBlobDataUrl(response: MessageResponse<'FETCH_VIDEO_BLOB'>): string {
   if (response?.error || !response?.dataUrl) {
     throw new Error('cors');
   }

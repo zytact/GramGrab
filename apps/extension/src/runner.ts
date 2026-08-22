@@ -7,12 +7,13 @@ import {
   InternalItemIndex,
   MediaIdentity,
   OperationFailure as ProtocolOperationFailure,
-  type Export,
-  type InstantsExport,
   type ExportOperation,
   type ItemOutcome,
+  type MediaItem,
 } from '@gramgrab/protocol';
 import { browser } from './lib/browser.ts';
+import { decodeMessage, type MessageOf } from './messaging/contracts.ts';
+import { notify, sendMessage } from './messaging/send.ts';
 import {
   createRequestId,
   type DownloadOperation,
@@ -29,25 +30,12 @@ import { executeFrameExport } from './frame-export/executor.ts';
 import { runSilentVideoBatch } from './silent-video/batch.ts';
 import { approvedReencodeOperationIds } from './silent-video/policy.ts';
 
-interface RunnerRequest {
-  readonly type: 'RUN_EXPORT';
-  readonly sourceUrl: string;
-  readonly originKind: 'source' | 'instants';
-  readonly command: Export | InstantsExport;
-}
-
-interface InspectedRunnerMedia {
-  readonly url: string;
-  readonly itemIndex: number;
-  readonly mediaId?: string;
-  readonly type: 'image' | 'video';
-  readonly filenameHint: string;
-}
+type RunnerRequest = MessageOf<'RUN_EXPORT'>;
 
 export function resolveRequestedRunnerMedia(
-  media: readonly InspectedRunnerMedia[],
+  media: readonly MediaItem[],
   requested: ExportOperation
-): InspectedRunnerMedia | undefined {
+): MediaItem | undefined {
   const mediaId = requested.mediaIdentity?.mediaId;
   if (mediaId) {
     const matches = media.filter(item => item.mediaId === mediaId);
@@ -99,9 +87,9 @@ function toOutcome(operation: ExportOperation, result: DownloadOperationResult):
 
 // fallow-ignore-next-line complexity
 async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<ExportResult> {
-  const inspected = (await browser.runtime.sendMessage(
-    originKind === 'instants' ? { type: 'FETCH_INSTANTS' } : { type: 'FETCH_MEDIA', url: sourceUrl }
-  )) as { media?: readonly InspectedRunnerMedia[] };
+  const inspected = await (originKind === 'instants'
+    ? sendMessage({ type: 'FETCH_INSTANTS' })
+    : sendMessage({ type: 'FETCH_MEDIA', url: sourceUrl }));
   const operations: AttemptOperation[] = [];
   const invalid: ItemOutcome[] = [];
   const requestedById = new Map<string, ExportOperation>();
@@ -154,31 +142,28 @@ async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<E
       executeFrameExport(operation, sourceUrl, {
         originKind,
         onPhase: phase =>
-          void browser.runtime.sendMessage({
+          notify({
             type: 'RUNNER_PROGRESS',
             operationId: operation.operationId,
             itemNumber: requestedById.get(operation.operationId)?.itemNumber,
             phase,
           }),
       }),
-    direct: (direct: readonly DownloadOperation[]) =>
-      Promise.all(
-        direct.map(operation =>
-          browser.runtime.sendMessage({
-            type: 'RUNNER_PROGRESS',
-            operationId: operation.operationId,
-            itemNumber: requestedById.get(operation.operationId)?.itemNumber,
-            phase: 'direct-download',
-          })
-        )
-      ).then(() =>
-        browser.runtime.sendMessage({
-          type: 'DOWNLOAD_MEDIA',
-          ...(originKind === 'source' ? { sourceUrl } : {}),
-          originKind,
-          operations: direct,
-        })
-      ),
+    direct: (direct: readonly DownloadOperation[]) => {
+      for (const operation of direct)
+        notify({
+          type: 'RUNNER_PROGRESS',
+          operationId: operation.operationId,
+          itemNumber: requestedById.get(operation.operationId)?.itemNumber,
+          phase: 'direct-download',
+        });
+      return sendMessage({
+        type: 'DOWNLOAD_MEDIA',
+        ...(originKind === 'source' ? { sourceUrl } : {}),
+        originKind,
+        operations: direct,
+      });
+    },
     silent: (silent, progress, preflight, approvedIds) =>
       runSilentVideoBatch(
         silent,
@@ -197,7 +182,7 @@ async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<E
     progress: (requestId, phase, progress) => {
       const operation = operations.find(candidate => candidate.requestId === requestId);
       const requested = operation && requestedById.get(operation.operationId);
-      void browser.runtime.sendMessage({
+      notify({
         type: 'RUNNER_PROGRESS',
         ...(requested
           ? { operationId: requested.operationId, itemNumber: requested.itemNumber }
@@ -226,9 +211,10 @@ async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<E
 }
 
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if ((message as { type?: string }).type !== 'RUN_EXPORT') return false;
-  void run(message as RunnerRequest).then(sendResponse);
+  const decoded = decodeMessage(message);
+  if (decoded.kind !== 'message' || decoded.message.type !== 'RUN_EXPORT') return false;
+  void run(decoded.message).then(sendResponse);
   return true;
 });
 
-void browser.runtime.sendMessage({ type: 'RUNNER_READY' });
+notify({ type: 'RUNNER_READY' });
