@@ -129,7 +129,7 @@ async function recordSilentHistory(
       item: operation,
     });
   } catch {
-    return { error: 'Download started, but history could not be saved.' };
+    return { warning: 'HISTORY_SAVE_FAILED' as const };
   }
 }
 
@@ -165,7 +165,7 @@ async function processCandidate(
     const warning = processed.alreadySilent
       ? undefined
       : await trackOwnedDownload(operation, downloadId, url, client, ownership);
-    const historyWarning = (await recordSilentHistory(sourceUrl, operation, originKind)).error;
+    const historyWarning = (await recordSilentHistory(sourceUrl, operation, originKind)).warning;
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,
       requestId: operation.requestId,

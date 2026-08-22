@@ -35,6 +35,7 @@ causes are never ordinary UI copy or serialized report data.
 | `INSTANT_NOT_ACTIVE`                   | item  | after refetch                           | `refetch-source`                                                         | cause                                  | upstream media           |
 | `MEDIA_NETWORK_FAILED`                 | item  | once per operation                      | `retry-operation`, `refetch-source`                                      | cause                                  | network                  |
 | `MEDIA_RESPONSE_EMPTY`                 | item  | once per operation                      | `retry-operation`, `refetch-source`                                      | cause                                  | network protocol         |
+| `MEDIA_UNEXPECTED_FAILURE`             | item  | once per operation                      | `retry-operation`, `refetch-source`, `copy-diagnostics`                  | cause, copy offered                    | extension boundary       |
 | `BROWSER_DOWNLOAD_BLOCKED`             | item  | after user action                       | `retry-operation`                                                        | cause                                  | browser                  |
 | `BROWSER_DOWNLOAD_NETWORK_FAILED`      | item  | once per operation                      | `retry-operation`, `refetch-source`                                      | cause                                  | browser network          |
 | `BROWSER_DOWNLOAD_FILE_FAILED`         | item  | after user action                       | `retry-operation`                                                        | cause                                  | browser storage          |
@@ -61,6 +62,10 @@ causes are never ordinary UI copy or serialized report data.
 | `SILENT_OUTPUT_HAS_AUDIO`              | item  | never                                   | `download-original`, `copy-diagnostics`                                  | cause, copy offered                    | extension validation     |
 | `SILENT_WORKER_UNAVAILABLE`            | item  | once per operation with fresh worker    | `retry-operation`, `download-original`                                   | cause                                  | browser worker lifecycle |
 | `SILENT_WORKER_PROTOCOL_FAILURE`       | item  | never                                   | `download-original`, `copy-diagnostics`                                  | cause, copy offered                    | extension protocol       |
+| `HISTORY_VERSION_UNSUPPORTED`          | batch | never                                   | none                                                                     | none                                   | history store version    |
+| `HISTORY_ENTRY_NOT_FOUND`              | item  | never                                   | none                                                                     | none                                   | history store            |
+| `HISTORY_ITEM_UNRESOLVED`              | item  | never                                   | `open-in-instagram`                                                      | none                                   | history reconciliation   |
+| `HISTORY_STORE_FAILED`                 | batch | after user action                       | `retry-operation`                                                        | none                                   | history store            |
 | `WHATSAPP_PAGE_ACCESS_FAILED`          | item  | after user action                       | `retry-operation`, `copy-diagnostics`                                    | structural                             | page access              |
 | `WHATSAPP_STATUS_NOT_VISIBLE`          | item  | after user action                       | `retry-operation`                                                        | none                                   | acquisition              |
 | `WHATSAPP_STATUS_UNSUPPORTED`          | item  | after user action                       | `retry-operation`                                                        | none                                   | acquisition              |
@@ -70,6 +75,16 @@ causes are never ordinary UI copy or serialized report data.
 | `WHATSAPP_ACQUISITION_FAILED`          | item  | once manually; after edit lease expiry  | normal: `retry-operation`, `copy-diagnostics`; expiry: `retry-operation` | structural; copy offered except expiry | extension boundary       |
 
 Warnings are `HISTORY_SAVE_FAILED` and `SILENT_TEMPORARY_FILE_CLEANUP_UNCONFIRMED`. The skip code is `SILENT_REENCODE_DECLINED`.
+
+A saved file whose history entry could not be written is `HISTORY_SAVE_FAILED`, a warning, not a
+failure: the export succeeded. The `HISTORY_*` failure codes cover the opposite case, where the
+download-history store itself cannot answer. The store is shared by every platform and holds names a
+WhatsApp receipt must never expose, so `HISTORY_*` failures carry no diagnostic cause at all and
+`phase` is `history`.
+
+`MEDIA_UNEXPECTED_FAILURE` is the media-transfer sibling of the other `*_UNEXPECTED_FAILURE` codes.
+It covers a direct read of an already-resolved media URL that failed for a reason HTTP status does
+not classify, including a message this build could not read.
 
 `retention-expired` remains a producer reason rather than a new failure code. It normalizes to
 `WHATSAPP_ACQUISITION_FAILED` with structural invariant `retention-expired`, and uses the

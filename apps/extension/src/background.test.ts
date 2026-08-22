@@ -552,7 +552,7 @@ describe('background dispatcher', () => {
         },
       });
 
-      expect(result).toEqual({ error: undefined });
+      expect(result).toEqual({});
       expect(fakeBrowserObj.fakeBrowser.downloads.search).toHaveBeenCalledWith({ id: 1 });
       expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalled();
     });
@@ -575,7 +575,7 @@ describe('background dispatcher', () => {
         },
       });
 
-      expect(result).toEqual({ error: 'Frame download failed.' });
+      expect(result).toMatchObject({ failure: { code: 'BROWSER_DOWNLOAD_FILE_FAILED' } });
       expect(fakeBrowserObj.fakeBrowser.storage.set).not.toHaveBeenCalled();
     });
 
@@ -592,7 +592,7 @@ describe('background dispatcher', () => {
           frameTimestampSeconds: 5,
         },
       });
-      expect(result).toEqual({ error: undefined });
+      expect(result).toEqual({});
       expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
         'download-history': expect.objectContaining({
           entries: [
@@ -669,10 +669,7 @@ describe('background dispatcher', () => {
         entryId: 'instant-history',
       });
 
-      expect(response).toMatchObject({
-        error: 'This Instant is no longer active. History was kept.',
-        failureCode: 'INSTANT_NOT_ACTIVE',
-      });
+      expect(response).toMatchObject({ failure: { code: 'INSTANT_NOT_ACTIVE' } });
       expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
       expect(fakeBrowserObj.fakeBrowser.storage.remove).not.toHaveBeenCalled();
     });
@@ -686,7 +683,7 @@ describe('background dispatcher', () => {
         entryId: 'instant-history',
       });
 
-      expect(response).toMatchObject({ failureCode: 'IG_NOT_AUTHENTICATED' });
+      expect(response).toMatchObject({ failure: { code: 'IG_NOT_AUTHENTICATED' } });
       expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
     });
   });
@@ -787,10 +784,10 @@ describe('background dispatcher', () => {
         url: 'https://www.instagram.com/p/fallback1/',
       })) as {
         media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
-        error: undefined;
+        failure: undefined;
       };
 
-      expect(result.error).toBeUndefined();
+      expect(result.failure).toBeUndefined();
       expect(result.media).toHaveLength(1);
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/fallback.jpg');
       expectConfiguredShortcodeCall(1);
@@ -819,10 +816,10 @@ describe('background dispatcher', () => {
         url: 'https://www.instagram.com/reel/fallback2/',
       })) as {
         media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
-        error: undefined;
+        failure: undefined;
       };
 
-      expect(result.error).toBeUndefined();
+      expect(result.failure).toBeUndefined();
       expect(result.media[0]?.type).toBe('video');
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/fallback.mp4');
       expect(globalThis.fetch).toHaveBeenCalledTimes(2);
@@ -869,10 +866,10 @@ describe('background dispatcher', () => {
         url: 'https://www.instagram.com/p/newdoc1/',
       })) as {
         media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
-        error: undefined;
+        failure: undefined;
       };
 
-      expect(result.error).toBeUndefined();
+      expect(result.failure).toBeUndefined();
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/newdoc.jpg');
       expect(globalThis.fetch).toHaveBeenCalledTimes(nextCandidateIndex + 1);
       expectConfiguredShortcodeCall(nextCandidateIndex);
@@ -944,13 +941,55 @@ describe('background dispatcher', () => {
     });
   });
 
+  // ── Media transfer and history failures ───────────────────────────────────
+
+  describe('typed failures on the media-transfer and history paths', () => {
+    it.each(['GET_PREVIEW_URL', 'FETCH_VIDEO_BLOB'] as const)(
+      'reports an expired media link from %s as a typed failure',
+      async type => {
+        globalThis.fetch = fetchMock(async () => new Response('', { status: 403 }));
+
+        const result = await invoke(await loadBackground(), {
+          type,
+          url: 'https://cdn.instagram.com/signed.mp4',
+        });
+
+        expect(result).toMatchObject({
+          failure: { code: 'MEDIA_URL_EXPIRED', phase: 'media-transfer', scope: 'item' },
+        });
+      }
+    );
+
+    it('reports a history store written by a newer build as a typed failure', async () => {
+      fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue({
+        'download-history': { version: 999, entries: [] },
+      });
+
+      const result = await invoke(await loadBackground(), { type: 'GET_DOWNLOAD_HISTORY' });
+
+      expect(result).toMatchObject({
+        entries: [],
+        failure: { code: 'HISTORY_VERSION_UNSUPPORTED', phase: 'history', scope: 'batch' },
+      });
+    });
+
+    it('reports a missing history entry as a typed failure', async () => {
+      const result = await invoke(await loadBackground(), {
+        type: 'REDOWNLOAD_HISTORY_ENTRY',
+        entryId: 'not-a-real-entry',
+      });
+
+      expect(result).toMatchObject({ failure: { code: 'HISTORY_ENTRY_NOT_FOUND' } });
+    });
+  });
+
   // ── DOWNLOAD_DEBUG_JSON ───────────────────────────────────────────────────
 
   describe('DOWNLOAD_DEBUG_JSON', () => {
-    it('returns { error } when no json payload provided', async () => {
+    it('returns a typed failure when no json payload provided', async () => {
       const listener = await loadBackground();
       const result = await invoke(listener, { type: 'DOWNLOAD_DEBUG_JSON' });
-      expect(result).toMatchObject({ error: 'No debug JSON available' });
+      expect(result).toMatchObject({ failure: { code: 'DOWNLOAD_UNEXPECTED_FAILURE' } });
     });
 
     it('downloads a data: URL (no URL.createObjectURL)', async () => {
@@ -1106,10 +1145,10 @@ describe('background dispatcher', () => {
         url: 'https://www.instagram.com/someuser/',
       })) as {
         media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
-        error: undefined;
+        failure: undefined;
       };
 
-      expect(result.error).toBeUndefined();
+      expect(result.failure).toBeUndefined();
       expect(result.media).toHaveLength(3);
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/pic_hd.jpg');
       expect(result.media[0]).toMatchObject({ width: 320, height: 320 });
@@ -1141,9 +1180,9 @@ describe('background dispatcher', () => {
       const result = (await invoke(listener, {
         type: 'FETCH_MEDIA',
         url: 'https://www.instagram.com/someuser/',
-      })) as { media: { url: string }[]; error: undefined };
+      })) as { media: { url: string }[]; failure: undefined };
 
-      expect(result.error).toBeUndefined();
+      expect(result.failure).toBeUndefined();
       expect(result.media).toHaveLength(1);
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/pic_hd.jpg');
       expect(warnSpy).toHaveBeenCalledWith('highlights_tray failed:', expect.anything());

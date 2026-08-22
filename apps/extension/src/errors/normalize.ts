@@ -59,6 +59,42 @@ export function normalizeSourceFailure(cause: unknown): OperationFailure {
   return failure('SOURCE_UNEXPECTED_FAILURE', 'source', cause, 'batch');
 }
 
+/**
+ * Failures of a direct transfer of an already-resolved media URL: previews, video blobs, and any
+ * other read of a signed CDN link. HTTP status carries the whole distinction, exactly as the
+ * silent-video input cache classifies it.
+ */
+export function normalizeMediaTransferFailure(cause: unknown): OperationFailure {
+  if (cause instanceof NetworkError)
+    return failure('MEDIA_NETWORK_FAILED', 'media-transfer', cause);
+  if (cause instanceof HttpError) {
+    if (cause.status === 401 || cause.status === 403)
+      return failure('MEDIA_URL_EXPIRED', 'media-transfer', cause);
+    if (cause.status === 404) return failure('MEDIA_NOT_FOUND', 'media-transfer', cause);
+    return failure('MEDIA_NETWORK_FAILED', 'media-transfer', cause);
+  }
+  return failure('MEDIA_UNEXPECTED_FAILURE', 'media-transfer', cause);
+}
+
+/**
+ * Failures of GramGrab's own download-history store. The store is shared by every platform and
+ * holds names a WhatsApp receipt must never expose, so these failures carry no diagnostic cause.
+ */
+export function historyFailure(
+  code:
+    | 'HISTORY_VERSION_UNSUPPORTED'
+    | 'HISTORY_ENTRY_NOT_FOUND'
+    | 'HISTORY_ITEM_UNRESOLVED'
+    | 'HISTORY_STORE_FAILED'
+): OperationFailure {
+  return OperationFailure.make({
+    code,
+    phase: 'history',
+    scope:
+      code === 'HISTORY_VERSION_UNSUPPORTED' || code === 'HISTORY_STORE_FAILED' ? 'batch' : 'item',
+  });
+}
+
 // downloads.download exposes only runtime.lastError.message in callback-based browsers.
 export function normalizeBrowserDownloadFailure(
   cause: unknown,

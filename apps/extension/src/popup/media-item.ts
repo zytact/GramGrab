@@ -1,4 +1,5 @@
 import type { MediaItem as ResolvedMediaItem } from '@gramgrab/protocol';
+import type { OperationFailure } from '../errors/contracts';
 
 /**
  * A resolved media item plus the display index and selection state the popup owns. `itemIndex` is
@@ -26,6 +27,7 @@ export type PreviewRuntime = 'idle' | 'loading' | 'failed';
 export type ItemRuntime = {
   frame: FrameRuntime;
   preview: PreviewRuntime;
+  previewFailure?: OperationFailure;
   intrinsic?: { width: number; height: number };
 };
 

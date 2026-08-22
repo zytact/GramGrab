@@ -5,11 +5,10 @@ import {
   HumanItemNumber,
   OperationId as ProtocolOperationId,
   type ExportResult,
-  type FailureCode,
   type MediaItem,
 } from '@gramgrab/protocol';
 import { DownloadMediaRequest, type DownloadMediaResponse } from '../download/contracts.ts';
-import type { OperationFailure } from '../errors/contracts.ts';
+import type { OperationFailure, WarningCode } from '../errors/contracts.ts';
 import type { HistoryEntry } from '../history/contracts.ts';
 
 // ---------------------------------------------------------------------------
@@ -180,24 +179,31 @@ export type BackgroundMessageType = Exclude<MessageType, NotificationType | 'RUN
 interface SourceMediaResponse {
   sourceUrl?: string;
   media?: readonly MediaItem[];
-  error?: string;
   failure?: OperationFailure;
 }
 
 interface InstantsMediaResponse {
   acquisition?: 'instants';
   media?: readonly MediaItem[];
-  error?: string;
   failure?: OperationFailure;
 }
 
 interface HistoryEntriesResponse {
   entries: readonly HistoryEntry[];
-  error: string | undefined;
+  failure: OperationFailure | undefined;
 }
 
-interface ErrorOnlyResponse {
-  error: string | undefined;
+interface FailureOnlyResponse {
+  failure: OperationFailure | undefined;
+}
+
+/**
+ * An export that writes a history entry after the file is on its way. A failed export is a
+ * failure; a saved file whose history entry could not be written is only a warning.
+ */
+interface ExportRecordResponse {
+  failure?: OperationFailure;
+  warning?: WarningCode;
 }
 
 interface RedownloadFrame {
@@ -213,28 +219,31 @@ interface RedownloadFrame {
 type RedownloadSilent = Omit<RedownloadFrame, 'timestampSeconds'>;
 
 type RedownloadHistoryEntryResponse =
-  | { error: string; failureCode?: FailureCode }
-  | { frame: RedownloadFrame; error: undefined }
-  | { silent: RedownloadSilent; error: undefined }
+  | { failure: OperationFailure }
+  | { frame: RedownloadFrame; failure: undefined }
+  | { silent: RedownloadSilent; failure: undefined }
   | DownloadMediaResponse;
 
 interface MessageResponses extends Record<MessageType, unknown> {
   FETCH_MEDIA: SourceMediaResponse;
   FETCH_INSTANTS: InstantsMediaResponse;
-  GET_PREVIEW_URL: { previewUrl: string | undefined; error: string | undefined };
-  FETCH_VIDEO_BLOB: { dataUrl: string | undefined; error: string | undefined };
+  GET_PREVIEW_URL: { previewUrl: string | undefined; failure: OperationFailure | undefined };
+  FETCH_VIDEO_BLOB: { dataUrl: string | undefined; failure: OperationFailure | undefined };
   DOWNLOAD_MEDIA: DownloadMediaResponse;
   GET_DOWNLOAD_HISTORY: HistoryEntriesResponse;
-  CLEAR_DOWNLOAD_HISTORY: ErrorOnlyResponse;
+  CLEAR_DOWNLOAD_HISTORY: FailureOnlyResponse;
   DELETE_HISTORY_ENTRY: HistoryEntriesResponse;
   REDOWNLOAD_HISTORY_ENTRY: RedownloadHistoryEntryResponse;
   RECORD_WHATSAPP_HISTORY: { saved?: true; warning?: 'HISTORY_SAVE_FAILED' };
   DELETE_WHATSAPP_HISTORY_RECEIPT: HistoryEntriesResponse;
-  RECORD_FRAME_EXPORT: ErrorOnlyResponse;
-  DOWNLOAD_FRAME_EXPORT: ErrorOnlyResponse;
-  RECORD_SILENT_EXPORT: ErrorOnlyResponse;
+  RECORD_FRAME_EXPORT: ExportRecordResponse;
+  DOWNLOAD_FRAME_EXPORT: ExportRecordResponse;
+  RECORD_SILENT_EXPORT: ExportRecordResponse;
+  // A debug inspection surface, not an operation: `raw` is the unmodified upstream response and
+  // `error` is its free-form counterpart. Neither is rendered as UI copy or offered for copying,
+  // so neither belongs in the failure registry.
   DEBUG_SHAPE: { raw?: unknown; error?: string };
-  DOWNLOAD_DEBUG_JSON: ErrorOnlyResponse;
+  DOWNLOAD_DEBUG_JSON: FailureOnlyResponse;
   RUN_EXPORT: ExportResult;
   RUNNER_READY: void;
   RUNNER_PROGRESS: void;

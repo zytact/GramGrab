@@ -59,7 +59,7 @@ import {
   type HistoryMarker,
 } from './history/contracts.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
-import { runHandler, runOperationHandler } from './effect/runtime.ts';
+import { runOperationHandler } from './effect/runtime.ts';
 import {
   protocolConfig,
   type ProtocolCandidate,
@@ -118,8 +118,12 @@ import {
 } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
-import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from './errors/normalize.ts';
-import { FAILURE_PRESENTATION } from './errors/presentation.ts';
+import {
+  historyFailure,
+  normalizeBrowserDownloadFailure,
+  normalizeMediaTransferFailure,
+  normalizeSourceFailure,
+} from './errors/normalize.ts';
 
 const DOWNLOAD_CONCURRENCY = 3;
 
@@ -502,7 +506,6 @@ async function handleFetchMedia(
   if (!source)
     return {
       media: undefined,
-      error: undefined,
       failure: OperationFailure.make({
         code: 'INPUT_INVALID_SOURCE_URL',
         phase: 'input',
@@ -514,11 +517,10 @@ async function handleFetchMedia(
     { items: undefined as MediaItem[] | undefined },
     normalizeSourceFailure
   );
-  if (result.failure || !result.items)
-    return { media: undefined, error: undefined, failure: result.failure };
+  if (result.failure || !result.items) return { media: undefined, failure: result.failure };
   const stored = await getHistory();
   if (stored.kind === 'unknown-version')
-    return { media: undefined, error: 'Download history uses a newer version.' };
+    return { media: undefined, failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
   const instagramHistory = stored.entries.filter(
     (entry): entry is DownloadHistoryEntry => 'origin' in entry
   );
@@ -535,7 +537,6 @@ async function handleFetchMedia(
       ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
       ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
     })),
-    error: undefined,
   };
 }
 
@@ -547,11 +548,10 @@ async function handleFetchInstants(
     { items: undefined as MediaItem[] | undefined },
     normalizeSourceFailure
   );
-  if (result.failure || !result.items)
-    return { media: undefined, error: undefined, failure: result.failure };
+  if (result.failure || !result.items) return { media: undefined, failure: result.failure };
   const stored = await getHistory();
   if (stored.kind === 'unknown-version')
-    return { media: undefined, error: 'Download history uses a newer version.' };
+    return { media: undefined, failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
   const instagramHistory = stored.entries.filter(
     (entry): entry is DownloadHistoryEntry => 'origin' in entry
   );
@@ -568,7 +568,6 @@ async function handleFetchInstants(
       history: historyMarker(instagramHistory, { kind: 'instants' }, item),
       ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
     })),
-    error: undefined,
   };
 }
 
@@ -599,9 +598,11 @@ function historyMarker(
 async function handleGetPreviewUrl(
   msg: MessageOf<'GET_PREVIEW_URL'>
 ): Promise<MessageResponse<'GET_PREVIEW_URL'>> {
-  return runHandler(fetchBlobAsDataUrl(msg.url).pipe(Effect.map(previewUrl => ({ previewUrl }))), {
-    previewUrl: undefined,
-  });
+  return runOperationHandler(
+    fetchBlobAsDataUrl(msg.url).pipe(Effect.map(previewUrl => ({ previewUrl }))),
+    { previewUrl: undefined },
+    normalizeMediaTransferFailure
+  );
 }
 
 type DownloadAttempt = { operation: DownloadOperation; result: DownloadOperationResult };
@@ -719,8 +720,8 @@ function createHistoryId(): string {
 async function handleGetDownloadHistory(): Promise<MessageResponse<'GET_DOWNLOAD_HISTORY'>> {
   const history = await getHistory();
   return history.kind === 'unknown-version'
-    ? { entries: [], error: 'Download history uses a newer version.' }
-    : { entries: [...history.entries].reverse(), error: undefined };
+    ? { entries: [], failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') }
+    : { entries: [...history.entries].reverse(), failure: undefined };
 }
 
 async function handleRecordWhatsAppHistory(
@@ -740,12 +741,13 @@ async function handleDeleteWhatsAppHistoryReceipt(
   message: MessageOf<'DELETE_WHATSAPP_HISTORY_RECEIPT'>
 ): Promise<MessageResponse<'DELETE_WHATSAPP_HISTORY_RECEIPT'>> {
   const receipt = decodeWhatsAppHistoryReceipt(message.receipt);
-  if (Either.isLeft(receipt)) return { entries: [], error: 'This history entry is invalid.' };
+  if (Either.isLeft(receipt))
+    return { entries: [], failure: historyFailure('HISTORY_ENTRY_NOT_FOUND') };
   try {
     const entries = await removeWhatsAppHistoryReceipt(receipt.right);
-    return { entries: [...entries].reverse(), error: undefined };
-  } catch (error) {
-    return { entries: [], error: String(error) };
+    return { entries: [...entries].reverse(), failure: undefined };
+  } catch {
+    return { entries: [], failure: historyFailure('HISTORY_STORE_FAILED') };
   }
 }
 
@@ -755,12 +757,12 @@ async function handleRedownloadHistoryEntry(
 ): Promise<MessageResponse<'REDOWNLOAD_HISTORY_ENTRY'>> {
   const history = await getHistory();
   if (history.kind === 'unknown-version')
-    return { error: 'Download history uses a newer version.' };
+    return { failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
   const entry = history.entries.find(
     (candidate): candidate is DownloadHistoryEntry =>
       'id' in candidate && candidate.id === msg.entryId
   );
-  if (!entry) return { error: 'This history entry no longer exists.' };
+  if (!entry) return { failure: historyFailure('HISTORY_ENTRY_NOT_FOUND') };
   const resolved =
     entry.origin.kind === 'instants'
       ? await runOperationHandler(
@@ -775,27 +777,28 @@ async function handleRedownloadHistoryEntry(
           { items: undefined as MediaItem[] | undefined },
           normalizeSourceFailure
         );
-  if (resolved.failure) {
-    const presentation = FAILURE_PRESENTATION[resolved.failure.code];
+  if (resolved.failure) return { failure: resolved.failure };
+  if (!resolved.items)
     return {
-      error: `${presentation.title}. ${presentation.explanation} History was not changed.`,
-      failureCode: resolved.failure.code,
+      failure: OperationFailure.make({
+        code: 'SOURCE_UNEXPECTED_FAILURE',
+        phase: 'source',
+        scope: 'batch',
+      }),
     };
-  }
-  if (!resolved.items) return { error: 'Unable to refetch this source. History was not changed.' };
   const match = reconcileHistoryEntry(entry, resolved.items);
   if (match.kind === 'missing')
     return {
-      error:
+      failure:
         entry.origin.kind === 'instants'
-          ? 'This Instant is no longer active. History was kept.'
-          : 'This item is no longer available at its original source. History was kept.',
-      ...(entry.origin.kind === 'instants' ? { failureCode: 'INSTANT_NOT_ACTIVE' as const } : {}),
+          ? OperationFailure.make({
+              code: 'INSTANT_NOT_ACTIVE',
+              phase: 'source',
+              scope: 'item',
+            })
+          : OperationFailure.make({ code: 'MEDIA_NOT_FOUND', phase: 'source', scope: 'item' }),
     };
-  if (match.kind === 'ambiguous')
-    return {
-      error: 'GramGrab could not safely match this item after refetching. History was kept.',
-    };
+  if (match.kind === 'ambiguous') return { failure: historyFailure('HISTORY_ITEM_UNRESOLVED') };
   const item = resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!;
   if (entry.exportMode === 'frame') {
     return {
@@ -808,7 +811,7 @@ async function handleRedownloadHistoryEntry(
         sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
         originKind: entry.origin.kind,
       },
-      error: undefined,
+      failure: undefined,
     };
   }
   if (entry.exportMode === 'silent') {
@@ -821,7 +824,7 @@ async function handleRedownloadHistoryEntry(
         sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
         originKind: entry.origin.kind,
       },
-      error: undefined,
+      failure: undefined,
     };
   }
   return handleDownloadMedia({
@@ -848,7 +851,7 @@ async function handleRecordFrameExport(
   msg: MessageOf<'RECORD_FRAME_EXPORT'> | MessageOf<'DOWNLOAD_FRAME_EXPORT'>
 ): Promise<MessageResponse<'RECORD_FRAME_EXPORT'>> {
   const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
-  if (msg.originKind !== 'instants' && !source) return { error: 'Invalid Instagram URL.' };
+  if (msg.originKind !== 'instants' && !source) return { warning: 'HISTORY_SAVE_FAILED' };
   try {
     await appendAcceptedHistory(
       { ...msg.item, exportMode: 'frame' },
@@ -856,9 +859,9 @@ async function handleRecordFrameExport(
         ? { kind: 'instants' }
         : { kind: 'source', sourceUrl: source!.url, sourceKind: source!.kind }
     );
-    return { error: undefined };
+    return {};
   } catch {
-    return { error: 'Frame downloaded, but history could not be saved.' };
+    return { warning: 'HISTORY_SAVE_FAILED' };
   }
 }
 
@@ -871,9 +874,16 @@ async function handleDownloadFrameExport(
       filename: msg.item.filename,
       saveAs: false,
     });
-    if (!(await waitForNonEmptyDownload(downloadId))) return { error: 'Frame download failed.' };
-  } catch {
-    return { error: 'Frame download failed.' };
+    if (!(await waitForNonEmptyDownload(downloadId)))
+      return {
+        failure: OperationFailure.make({
+          code: 'BROWSER_DOWNLOAD_FILE_FAILED',
+          phase: 'browser-download',
+          scope: 'item',
+        }),
+      };
+  } catch (cause) {
+    return { failure: normalizeBrowserDownloadFailure(cause) };
   }
   return handleRecordFrameExport(msg);
 }
@@ -908,16 +918,18 @@ function waitForNonEmptyDownload(downloadId: number): Promise<boolean> {
 async function handleFetchVideoBlob(
   msg: MessageOf<'FETCH_VIDEO_BLOB'>
 ): Promise<MessageResponse<'FETCH_VIDEO_BLOB'>> {
-  return runHandler(fetchBlobAsDataUrl(msg.url).pipe(Effect.map(dataUrl => ({ dataUrl }))), {
-    dataUrl: undefined,
-  });
+  return runOperationHandler(
+    fetchBlobAsDataUrl(msg.url).pipe(Effect.map(dataUrl => ({ dataUrl }))),
+    { dataUrl: undefined },
+    normalizeMediaTransferFailure
+  );
 }
 
 async function handleRecordSilentExport(
   msg: MessageOf<'RECORD_SILENT_EXPORT'>
 ): Promise<MessageResponse<'RECORD_SILENT_EXPORT'>> {
   const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
-  if (msg.originKind !== 'instants' && !source) return { error: 'Invalid Instagram URL.' };
+  if (msg.originKind !== 'instants' && !source) return { warning: 'HISTORY_SAVE_FAILED' };
   try {
     await appendAcceptedHistory(
       { ...msg.item, exportMode: 'silent' },
@@ -925,9 +937,9 @@ async function handleRecordSilentExport(
         ? { kind: 'instants' }
         : { kind: 'source', sourceUrl: source!.url, sourceKind: source!.kind }
     );
-    return { error: undefined };
+    return {};
   } catch {
-    return { error: 'Silent video downloaded, but history could not be saved.' };
+    return { warning: 'HISTORY_SAVE_FAILED' };
   }
 }
 
@@ -950,7 +962,13 @@ async function handleDownloadDebugJson(
   msg: MessageOf<'DOWNLOAD_DEBUG_JSON'>
 ): Promise<MessageResponse<'DOWNLOAD_DEBUG_JSON'>> {
   if (!msg.json) {
-    return { error: 'No debug JSON available' };
+    return {
+      failure: OperationFailure.make({
+        code: 'DOWNLOAD_UNEXPECTED_FAILURE',
+        phase: 'browser-download',
+        scope: 'item',
+      }),
+    };
   }
   try {
     // Use jsonToDataUrl — avoids URL.createObjectURL which is unavailable in
@@ -961,9 +979,9 @@ async function handleDownloadDebugJson(
       filename: `gramgrab-debug-${Date.now()}.json`,
       saveAs: true,
     });
-    return { error: undefined };
-  } catch (err) {
-    return { error: String(err) };
+    return { failure: undefined };
+  } catch (cause) {
+    return { failure: normalizeBrowserDownloadFailure(cause) };
   }
 }
 
@@ -1461,20 +1479,15 @@ async function executeCommand(
             );
             continue;
           }
+          const failure = response.failure;
           const directFailed =
-            'results' in response &&
-            (response.failure || response.results.some(result => result.status !== 'started'));
-          const error = 'error' in response ? response.error : undefined;
-          const failureCode =
-            'failureCode' in response && response.failureCode
-              ? response.failureCode
-              : 'MEDIA_NOT_FOUND';
+            'results' in response && response.results.some(result => result.status !== 'started');
           outcomes.push(
-            error || directFailed
+            failure || directFailed
               ? HistoryRedownloadFailed.make({
                   entryId,
                   failure: ProtocolOperationFailure.make({
-                    code: failureCode,
+                    code: failure?.code ?? 'MEDIA_NOT_FOUND',
                     scope: 'item',
                   }),
                 })
@@ -1565,17 +1578,17 @@ const messageHandlers: MessageHandlers = {
   DELETE_HISTORY_ENTRY: async message => {
     try {
       const entries = await removeHistory(message.entryId);
-      return { entries: [...entries].reverse(), error: undefined };
-    } catch (err) {
-      return { entries: [], error: String(err) };
+      return { entries: [...entries].reverse(), failure: undefined };
+    } catch {
+      return { entries: [], failure: historyFailure('HISTORY_STORE_FAILED') };
     }
   },
   CLEAR_DOWNLOAD_HISTORY: async () => {
     try {
       await clearHistory();
-      return { error: undefined };
-    } catch (err) {
-      return { error: String(err) };
+      return { failure: undefined };
+    } catch {
+      return { failure: historyFailure('HISTORY_STORE_FAILED') };
     }
   },
   REDOWNLOAD_HISTORY_ENTRY: handleRedownloadHistoryEntry,

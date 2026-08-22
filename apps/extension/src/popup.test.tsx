@@ -603,13 +603,25 @@ describe('Popup', () => {
     const user = userEvent.setup();
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
       async (message: { type: string }) =>
-        message.type === 'GET_DOWNLOAD_HISTORY' ? { error: 'History is unavailable.' } : {}
+        message.type === 'GET_DOWNLOAD_HISTORY'
+          ? {
+              entries: [],
+              failure: {
+                platform: 'instagram',
+                code: 'HISTORY_VERSION_UNSUPPORTED',
+                phase: 'history',
+                scope: 'batch',
+              },
+            }
+          : {}
     );
     await act(async () => render(<Popup />));
 
     await user.click(screen.getByRole('button', { name: 'History' }));
 
-    expect((await screen.findByRole('status')).textContent).toBe('History is unavailable.');
+    expect((await screen.findByRole('status')).textContent).toBe(
+      'Download history uses a newer version. Update GramGrab to read the download history in this browser profile.'
+    );
   });
 
   it('does not transfer previous results after the draft source changes', async () => {

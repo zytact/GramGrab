@@ -114,6 +114,7 @@ describe('protocol version 1', () => {
     expect(FAILURE_CODES).toContain('WHATSAPP_PAGE_ACCESS_FAILED');
     expect(FAILURE_CODES).toContain('WHATSAPP_ACQUISITION_FAILED');
     expect(FAILURE_CODES).toContain('SILENT_MEMORY_CAPACITY_EXCEEDED');
-    expect(FAILURE_CODES).toHaveLength(50);
+    expect(FAILURE_CODES).toContain('HISTORY_VERSION_UNSUPPORTED');
+    expect(FAILURE_CODES).toHaveLength(55);
   });
 });
