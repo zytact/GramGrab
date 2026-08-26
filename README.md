@@ -43,18 +43,6 @@ _Open larger collections in GramGrab's responsive workspace to preview, configur
 
 ---
 
-## Built with Codex
-
-Codex with GPT-5.6 specifically was used throughout the hackathon as an engineering partner. During OpenAI Build Week, I sanitized the Instagram fixtures and created the silent-video export and workspace tab features with Codex. The work is spread across many focused threads rather than one dominant thread because each issue or pull request was treated as a separate unit of work. Across those threads, Codex helped challenge product decisions, turn ideas into scoped plans, implement and review features, diagnose browser-specific failures, and run the project's test and code-health checks.
-
-One especially useful contribution was the Instagram fixture workflow. When Instagram changed its undocumented responses, Codex helped update the DevTools capture script to download real responses from the authenticated browser session, investigate missing shortcode fixtures and unexpected HTML responses, and build the sanitization and fixture-test pipeline that keeps private capture data out of the repository. This made API changes reproducible: capture fresh data, sanitize it, decode it through strict Effect schemas, and let focused tests identify exactly what changed.
-
-Codex also helped shape major additions such as the dedicated workspace tab, adaptive media previews, download history, silent-video export, and the structured error model. Because Effect is less represented in current models' training data than mainstream TypeScript libraries, the Effect repository is vendored under `.repos/effect/` as read-only reference material. This lets Codex inspect upstream source, tests, and conventions before writing Effect code instead of relying on incomplete model knowledge. I kept the final product and engineering decisions, while using Codex to explore tradeoffs, implement them, review the resulting diffs, and catch regressions before each PR.
-
-Note: I have continued developing it after the hackathon, so there are more features here currently than when I submitted.
-
----
-
 ## Requirements
 
 - **Google Chrome** 88+ or **Mozilla Firefox** 109+
