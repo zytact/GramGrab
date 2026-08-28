@@ -44,7 +44,7 @@ describe('manifest generation', () => {
       expect(createManifest(browser)).toMatchObject({
         manifest_version: 3,
         name: 'GramGrab',
-        version: '1.0.0',
+        version: '1.0.1',
         action: {
           default_popup: 'popup.html',
           default_title: 'GramGrab',

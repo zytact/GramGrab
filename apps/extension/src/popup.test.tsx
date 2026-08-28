@@ -264,6 +264,72 @@ describe('Popup', () => {
     capture.mockRestore();
   });
 
+  it('keeps the WhatsApp frame and remove-audio choices mutually exclusive', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'video',
+        mimeType: 'video/mp4',
+        byteLength: 1,
+        width: 640,
+        height: 480,
+        durationMs: 12_000,
+        capturedAt: 1,
+        retentionDeadline: 60_001,
+      },
+      snapshot: { objectUrl: () => 'blob:visible-status' },
+      filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
+      download: vi.fn(),
+      release: vi.fn(),
+    } as never);
+    const silentExport = vi
+      .spyOn(whatsappFrameExport, 'exportWhatsAppSilent')
+      .mockImplementation(async (_handle, operation) =>
+        DownloadAcceptedResult.make({
+          operationId: operation.operationId,
+          requestId: operation.requestId,
+          status: 'started',
+        })
+      );
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+    const heroVideo = document.querySelector('.whatsapp-result-hero video');
+    if (!(heroVideo instanceof HTMLVideoElement)) throw new Error('Expected the hero video.');
+    fakeVideoMedia(heroVideo, 12);
+    fireEvent.loadedMetadata(heroVideo);
+
+    const frameToggle = screen.getByLabelText('Frame');
+    const removeAudioToggle = screen.getByLabelText('Remove audio');
+    await user.click(frameToggle);
+    expect((frameToggle as HTMLInputElement).checked).toBe(true);
+
+    await user.click(removeAudioToggle);
+    expect((removeAudioToggle as HTMLInputElement).checked).toBe(true);
+    expect((frameToggle as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByRole('slider', { name: 'Frame timestamp for item 01' })).toBeNull();
+
+    await user.click(frameToggle);
+    expect((frameToggle as HTMLInputElement).checked).toBe(true);
+    expect((removeAudioToggle as HTMLInputElement).checked).toBe(false);
+
+    await user.click(removeAudioToggle);
+    await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
+    await waitFor(() => expect(silentExport).toHaveBeenCalledOnce());
+    expect(silentExport.mock.calls[0]?.[1]).toMatchObject({
+      mode: 'silent',
+      filename: 'whatsapp-visible-status-20260101T000000Z-muted.mp4',
+    });
+
+    silentExport.mockRestore();
+    capture.mockRestore();
+  });
+
   it('marks hero metadata failure and retries by re-reading the snapshot object URL', async () => {
     mockBrowser.tabs.query.mockResolvedValue([
       { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },

@@ -3,6 +3,7 @@ import type { OperationFailure } from '../errors/contracts';
 import { presentationForFailure } from '../errors/presentation';
 import type { FrameExportSetting } from '../frame-export/timestamp';
 import type { WhatsAppCaptureHandle } from '../whatsapp/capture';
+import { DIRECT_EXPORT, type WhatsAppExportChoice } from '../whatsapp/mode';
 import type { FrameRuntime, MediaItem } from './media-item';
 
 export type WhatsAppOperation = {
@@ -11,12 +12,14 @@ export type WhatsAppOperation = {
   readonly manualRetryCount: number;
 };
 
-/** The export choices a person can make while a capture is held in memory. */
+/**
+ * The export choice a person has made while a capture is held in memory. The choice is one
+ * value, so a frame export and a silent re-encode can never both be selected.
+ */
 export type WhatsAppEdit = {
   readonly item: MediaItem;
-  readonly frameSetting?: FrameExportSetting;
+  readonly exportChoice: WhatsAppExportChoice;
   readonly frameRuntime?: FrameRuntime;
-  readonly removeAudio: boolean;
   readonly previewFailed: boolean;
 };
 
@@ -95,7 +98,7 @@ export function captured(
         height: descriptor.height,
       },
       ...(descriptor.kind === 'video' ? { frameRuntime: { status: 'idle' as const } } : {}),
-      removeAudio: false,
+      exportChoice: DIRECT_EXPORT,
       previewFailed: false,
     },
   };
@@ -135,4 +138,18 @@ export function withEdit(
 
 export function editOf(state: WhatsAppCaptureState): WhatsAppEdit | undefined {
   return state._tag === 'Ready' || state._tag === 'Downloading' ? state.edit : undefined;
+}
+
+/** Projects the one export choice into the two independent props the shared media list takes. */
+export function mediaListChoice(choice: WhatsAppExportChoice | undefined): {
+  readonly frameSettings: Record<number, FrameExportSetting>;
+  readonly removeAudioIndexes: ReadonlySet<number>;
+} {
+  return {
+    frameSettings:
+      choice?.mode === 'frame'
+        ? { 0: { enabled: true, timestampSeconds: choice.timestampSeconds } }
+        : {},
+    removeAudioIndexes: choice?.mode === 'silent' ? new Set([0]) : new Set(),
+  };
 }

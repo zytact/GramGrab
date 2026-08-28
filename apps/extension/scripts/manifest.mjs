@@ -63,7 +63,7 @@ export function createManifest(browser) {
   return {
     manifest_version: 3,
     name: 'GramGrab',
-    version: '1.0.0',
+    version: '1.0.1',
     description:
       'Download Instagram posts, reels, stories, and highlights directly from your browser session.',
     icons: {

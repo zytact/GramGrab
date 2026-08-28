@@ -5,6 +5,7 @@ import {
   maximumFrameSecond,
 } from '../frame-export/timestamp';
 import type { WhatsAppCaptureHandle } from '../whatsapp/capture';
+import { DIRECT_EXPORT } from '../whatsapp/mode';
 import type { WhatsAppEdit } from './whatsapp-capture-state';
 
 const METADATA_FAILURE = 'Could not load video metadata. Retry.';
@@ -21,7 +22,8 @@ export function useWhatsAppFrameEdit({
   handleRef: { current: WhatsAppCaptureHandle | undefined };
   videoRefs: { current: Record<number, HTMLVideoElement | null> };
 }) {
-  const pendingDefault = useRef(false);
+  /** The second to restore when the frame is chosen again, absent until one is chosen. */
+  const chosenSecond = useRef<number | undefined>(undefined);
   const metadataGeneration = useRef(0);
 
   const setFrameDuration = useCallback(
@@ -33,8 +35,9 @@ export function useWhatsAppFrameEdit({
         }));
         return;
       }
-      const useDefault = pendingDefault.current;
-      pendingDefault.current = false;
+      const requested = chosenSecond.current ?? defaultFrameSecond(durationSeconds);
+      const timestampSeconds = clampFrameSecond(requested, durationSeconds);
+      chosenSecond.current = timestampSeconds;
       patchEdit(current => ({
         ...current,
         frameRuntime: {
@@ -43,18 +46,8 @@ export function useWhatsAppFrameEdit({
           durationSeconds,
           error: undefined,
         },
-        ...(current.frameSetting
-          ? {
-              frameSetting: {
-                ...current.frameSetting,
-                timestampSeconds: clampFrameSecond(
-                  useDefault
-                    ? defaultFrameSecond(durationSeconds)
-                    : current.frameSetting.timestampSeconds,
-                  durationSeconds
-                ),
-              },
-            }
+        ...(current.exportChoice.mode === 'frame'
+          ? { exportChoice: { mode: 'frame' as const, timestampSeconds } }
           : {}),
       }));
     },
@@ -62,14 +55,15 @@ export function useWhatsAppFrameEdit({
   );
 
   const toggleFrame = useCallback(() => {
-    const enabled = !(edit?.frameSetting?.enabled ?? false);
+    const enabled = edit?.exportChoice.mode !== 'frame';
     patchEdit(current => ({
       ...current,
-      frameSetting: { enabled, timestampSeconds: current.frameSetting?.timestampSeconds ?? 0 },
+      exportChoice: enabled
+        ? { mode: 'frame', timestampSeconds: chosenSecond.current ?? 0 }
+        : DIRECT_EXPORT,
     }));
     if (!enabled) return;
 
-    pendingDefault.current = edit?.frameSetting === undefined;
     const video = videoRefs.current[0];
     if (video && maximumFrameSecond(video.duration) !== undefined) {
       setFrameDuration(video.duration);
@@ -85,20 +79,19 @@ export function useWhatsAppFrameEdit({
       },
     }));
     video?.load();
-  }, [edit?.frameSetting, patchEdit, setFrameDuration, videoRefs]);
+  }, [edit?.exportChoice.mode, patchEdit, setFrameDuration, videoRefs]);
 
   const changeFrameTimestamp = useCallback(
     (timestampSeconds: number) => {
       const duration = edit?.frameRuntime?.durationSeconds;
+      const chosen =
+        duration === undefined
+          ? Math.max(0, Math.round(timestampSeconds))
+          : clampFrameSecond(timestampSeconds, duration);
+      chosenSecond.current = chosen;
       patchEdit(current => ({
         ...current,
-        frameSetting: {
-          enabled: true,
-          timestampSeconds:
-            duration === undefined
-              ? Math.max(0, Math.round(timestampSeconds))
-              : clampFrameSecond(timestampSeconds, duration),
-        },
+        exportChoice: { mode: 'frame', timestampSeconds: chosen },
         ...(current.frameRuntime
           ? {
               frameRuntime: {
@@ -153,9 +146,9 @@ export function useWhatsAppFrameEdit({
     }
   }, [handleRef, patchEdit, videoRefs]);
 
-  /** Reset on a fresh capture: the next enabled frame starts at the default second. */
+  /** Reset on a fresh capture: the next chosen frame starts at the default second. */
   const resetFrameDefaults = useCallback(() => {
-    pendingDefault.current = false;
+    chosenSecond.current = undefined;
     metadataGeneration.current += 1;
   }, []);
 
