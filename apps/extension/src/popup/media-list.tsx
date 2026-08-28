@@ -20,7 +20,7 @@ export type MediaListModel = {
   itemRuntimes: ItemRuntimes;
   allSelected: boolean;
   frameExportSettings: Record<number, FrameExportSetting>;
-  removeAudioIndexes: Set<number>;
+  removeAudioIndexes: ReadonlySet<number>;
   attempt: DownloadAttempt | undefined;
   emptyMessage: string;
 };

@@ -48,8 +48,8 @@ export function WhatsAppStatusPanel({
     mediaItems: [edit.item],
     itemRuntimes: capture.itemRuntimes,
     allSelected: edit.item.selected,
-    frameExportSettings: edit.frameSetting ? { 0: edit.frameSetting } : {},
-    removeAudioIndexes: edit.removeAudio ? new Set([0]) : new Set(),
+    frameExportSettings: capture.frameSettings,
+    removeAudioIndexes: capture.removeAudioIndexes,
     attempt: undefined,
     emptyMessage: '',
   };

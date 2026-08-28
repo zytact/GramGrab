@@ -6,7 +6,7 @@ import {
   normalizeBrowserDownloadFailure,
   normalizeWhatsAppCaptureFailure,
 } from '../errors/normalize';
-import { frameFilename, type FrameExportSetting } from '../frame-export/timestamp';
+import { frameFilename } from '../frame-export/timestamp';
 import {
   captureWhatsAppVisibleStatus,
   WhatsAppCaptureError,
@@ -17,7 +17,12 @@ import {
   exportWhatsAppSilent,
   whatsappSilentProgressMessage,
 } from '../whatsapp/export';
-import { whatsappExportSelection, type WhatsAppExportMode } from '../whatsapp/mode';
+import {
+  DIRECT_EXPORT,
+  SILENT_EXPORT,
+  whatsappExportSelection,
+  type WhatsAppExportSelection,
+} from '../whatsapp/mode';
 import type { ItemRuntimes } from './media-item';
 import { useFrameSeekEffect } from './use-frame-seek';
 import { useWhatsAppDisclosure } from './use-whatsapp-disclosure';
@@ -28,6 +33,7 @@ import {
   downloading,
   editOf,
   failed,
+  mediaListChoice,
   IDLE_WHATSAPP_CAPTURE,
   started,
   withDownloadProgress,
@@ -41,7 +47,7 @@ function attemptOperation(
   handle: WhatsAppCaptureHandle,
   edit: WhatsAppEdit,
   operation: WhatsAppOperation,
-  selection: { readonly mode: WhatsAppExportMode; readonly filename: string }
+  selection: WhatsAppExportSelection
 ): AttemptOperation {
   return {
     operationId: operation.operationId,
@@ -55,7 +61,7 @@ function attemptOperation(
     mode: selection.mode,
     displayIndex: 0,
     ...(selection.mode === 'frame'
-      ? { frameTimestampSeconds: edit.frameSetting?.timestampSeconds ?? 0 }
+      ? { frameTimestampSeconds: selection.frameTimestampSeconds }
       : {}),
   };
 }
@@ -68,12 +74,11 @@ function downloadSelection(
 ) {
   const selection = whatsappExportSelection(
     { kind: handle.descriptor.kind },
-    edit.frameSetting?.enabled ?? false,
-    edit.removeAudio,
+    edit.exportChoice,
     handle.filename,
     frameFilename(
       handle.filename.replace(/\.[^.]+$/u, ''),
-      edit.frameSetting?.timestampSeconds ?? 0
+      edit.exportChoice.mode === 'frame' ? edit.exportChoice.timestampSeconds : 0
     )
   );
   const operationForExport = attemptOperation(handle, edit, operation, selection);
@@ -205,7 +210,10 @@ export function useWhatsAppCapture({
   }, [state]);
 
   const toggleRemoveAudio = useCallback(() => {
-    patchEdit(current => ({ ...current, removeAudio: !current.removeAudio }));
+    patchEdit(current => ({
+      ...current,
+      exportChoice: current.exportChoice.mode === 'silent' ? DIRECT_EXPORT : SILENT_EXPORT,
+    }));
   }, [patchEdit]);
 
   const toggleItem = useCallback(() => {
@@ -215,11 +223,11 @@ export function useWhatsAppCapture({
     }));
   }, [patchEdit]);
 
-  const frameSetting = edit?.frameSetting;
-  const frameSettings = useMemo((): Record<number, FrameExportSetting> => {
-    if (!frameSetting) return {};
-    return { 0: frameSetting };
-  }, [frameSetting]);
+  const exportChoice = edit?.exportChoice;
+  const { frameSettings, removeAudioIndexes } = useMemo(
+    () => mediaListChoice(exportChoice),
+    [exportChoice]
+  );
   const itemRuntimes = useMemo((): ItemRuntimes => {
     if (!edit) return {};
     return {
@@ -235,6 +243,8 @@ export function useWhatsAppCapture({
     state,
     disclosure,
     itemRuntimes,
+    frameSettings,
+    removeAudioIndexes,
     busy: state._tag === 'Capturing',
     failure: state._tag === 'Failed' ? state.failure : undefined,
     acknowledge,
