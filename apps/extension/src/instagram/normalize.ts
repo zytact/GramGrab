@@ -469,6 +469,7 @@ function sanitizedUsername(value: string): string {
   const sanitized = value
     .toLowerCase()
     .replace(/[^a-z0-9._]+/g, '_')
+    .replace(/^\.+/, '')
     .replace(/^_+|_+$/g, '')
     .slice(0, 30);
   return sanitized || 'instagram_user';

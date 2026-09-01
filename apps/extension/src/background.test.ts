@@ -267,14 +267,19 @@ describe('background dispatcher', () => {
       json: async () => ({ data: {} }),
     }) as unknown as typeof fetch;
     const listener = await loadBackground();
-    const sendResponse = vi.fn();
 
+    // Awaiting the answer matters: the dispatch keeps issuing configured requests after the
+    // listener returns, and an unawaited one would consume a later test's mocked fetch.
+    let answer!: () => void;
+    const answered = new Promise<void>(resolve => (answer = resolve));
     const ret = listener(
       { type: 'FETCH_MEDIA', url: 'https://www.instagram.com/p/abc123/' },
       {},
-      sendResponse
+      answer
     );
+
     expect(ret).toBe(true);
+    await answered;
   });
 
   it('returns false for unknown message types', async () => {
@@ -916,10 +921,9 @@ describe('background dispatcher', () => {
     });
 
     it('surfaces known shortcode nodes that have no usable media url', async () => {
-      globalThis.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({
+      document.body.innerHTML = '<input name="lsd" value="token123" />';
+      installFetchSequence([
+        jsonResponse({
           data: {
             xdt_shortcode_media: {
               __typename: 'XDTGraphImage',
@@ -927,7 +931,7 @@ describe('background dispatcher', () => {
             },
           },
         }),
-      }) as unknown as typeof fetch;
+      ]);
 
       const listener = await loadBackground();
       const result = (await invoke(listener, {
