@@ -1010,6 +1010,20 @@ describe('background dispatcher', () => {
     });
   });
 
+  describe('FETCH_MEDIA — story', () => {
+    it('preserves a username lookup rate limit', async () => {
+      globalThis.fetch = fetchMock(async () => jsonResponse({}, 429));
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/stories/someuser/',
+      });
+
+      expect(result).toMatchObject({ failure: { code: 'IG_RATE_LIMITED' } });
+    });
+  });
+
   // ── FETCH_MEDIA (profile) ─────────────────────────────────────────────────
 
   describe('FETCH_MEDIA — profile', () => {
