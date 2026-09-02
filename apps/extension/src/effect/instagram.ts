@@ -26,6 +26,15 @@ const shouldRetryGraphqlError = (err: NetworkError | GraphQLRequestFailed | Rate
   err._tag === 'RateLimited' ||
   (err._tag === 'GraphQLRequestFailed' && err.status >= 500);
 
+const requireSuccessfulResponse = <E>(
+  response: Response,
+  rejected: (response: Response) => E
+): Effect.Effect<void, E | RateLimited> => {
+  if (response.ok) return Effect.void;
+  if (response.status === 429) return Effect.fail(new RateLimited({ status: 429 }));
+  return Effect.fail(rejected(response));
+};
+
 const parseInstagramLsdToken = (html: string): string | undefined =>
   html.match(/"LSD",\[\],\{"token":"([^"]+)"/)?.[1] ??
   html.match(/"lsd":"([^"]+)"/)?.[1] ??
@@ -68,10 +77,10 @@ export const graphqlFetch = (
       try: () => fetch(`${url}?${qs}`, { credentials: 'include', headers }),
       catch: cause => new NetworkError({ cause }),
     });
-    if (!res.ok) {
-      if (res.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
-      return yield* Effect.fail(new GraphQLRequestFailed({ status: res.status }));
-    }
+    yield* requireSuccessfulResponse(
+      res,
+      response => new GraphQLRequestFailed({ status: response.status })
+    );
     return yield* Effect.tryPromise({
       try: () => res.json() as Promise<Record<string, unknown>>,
       catch: cause => new NetworkError({ cause }),
@@ -114,10 +123,10 @@ export const graphqlPost = (
         }),
       catch: cause => new NetworkError({ cause }),
     });
-    if (!res.ok) {
-      if (res.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
-      return yield* Effect.fail(new GraphQLRequestFailed({ status: res.status }));
-    }
+    yield* requireSuccessfulResponse(
+      res,
+      response => new GraphQLRequestFailed({ status: response.status })
+    );
     return yield* Effect.tryPromise({
       try: () => res.json() as Promise<Record<string, unknown>>,
       catch: cause => new NetworkError({ cause }),
@@ -174,10 +183,10 @@ export const fetchInstantsFeed = (
         }),
       catch: cause => new NetworkError({ cause }),
     });
-    if (!res.ok) {
-      if (res.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
-      return yield* Effect.fail(new GraphQLRequestFailed({ status: res.status }));
-    }
+    yield* requireSuccessfulResponse(
+      res,
+      response => new GraphQLRequestFailed({ status: response.status })
+    );
     const raw = yield* Effect.tryPromise({
       try: () => res.json() as Promise<unknown>,
       catch: cause => new NetworkError({ cause }),
@@ -210,14 +219,19 @@ export const fetchWebProfileInfoUser = (
   url: string,
   credentials: RequestCredentials,
   headers: Record<string, string>
-): Effect.Effect<WebProfileInfoUser | undefined, HttpError | NetworkError | ResponseShapeUnknown> =>
+): Effect.Effect<
+  WebProfileInfoUser | undefined,
+  HttpError | NetworkError | RateLimited | ResponseShapeUnknown
+> =>
   Effect.gen(function* () {
     const res = yield* Effect.tryPromise({
       try: () => fetch(url, { credentials, headers }),
       catch: cause => new NetworkError({ cause }),
     });
-    if (!res.ok)
-      return yield* Effect.fail(new HttpError({ status: res.status, message: res.statusText }));
+    yield* requireSuccessfulResponse(
+      res,
+      response => new HttpError({ status: response.status, message: response.statusText })
+    );
     const json = yield* Effect.tryPromise({
       try: () => res.json() as Promise<unknown>,
       catch: cause => new NetworkError({ cause }),
@@ -283,10 +297,10 @@ export const fetchHighlightsTray = (
       try: () => fetch(url, { credentials: 'include', headers }),
       catch: cause => new NetworkError({ cause }),
     });
-    if (!res.ok) {
-      if (res.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
-      return yield* Effect.fail(new HttpError({ status: res.status, message: res.statusText }));
-    }
+    yield* requireSuccessfulResponse(
+      res,
+      response => new HttpError({ status: response.status, message: response.statusText })
+    );
     const json = yield* Effect.tryPromise({
       try: () => res.json() as Promise<unknown>,
       catch: cause => new NetworkError({ cause }),

@@ -166,24 +166,25 @@ function parseInstagramUrl(url: string): ParsedUrl | null {
   return canonicalizeInstagramUrl(url)?.target ?? null;
 }
 
-async function resolveUsernameToId(username: string): Promise<string | null> {
+function resolveUsernameToId(
+  username: string
+): Effect.Effect<string | null, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> {
   const url = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
-  const user = await Effect.runPromise(
-    fetchWebProfileInfoUser(url, 'include', {
-      ...IG_HEADERS,
-      Origin: 'https://www.instagram.com',
-    }).pipe(
-      Effect.tapError(err =>
-        Effect.sync(() => {
-          if (err._tag === 'ResponseShapeUnknown')
-            console.warn('resolveUsernameToId: unexpected web_profile_info shape');
-        })
-      ),
-      Effect.catchAll(() => Effect.succeed(undefined))
-    )
+  return fetchWebProfileInfoUser(url, 'include', {
+    ...IG_HEADERS,
+    Origin: 'https://www.instagram.com',
+  }).pipe(
+    Effect.tapError(err =>
+      Effect.sync(() => {
+        if (err._tag === 'ResponseShapeUnknown')
+          console.warn('resolveUsernameToId: unexpected web_profile_info shape');
+      })
+    ),
+    Effect.map(user => {
+      const userId = user?.id ?? user?.pk;
+      return userId != null ? String(userId) : null;
+    })
   );
-  const userId = user?.id ?? user?.pk;
-  return userId != null ? String(userId) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -371,13 +372,15 @@ const fetchStoryMediaItems = (
   username: string
 ): Effect.Effect<
   MediaItem[],
-  UsernameUnresolved | GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+  | UsernameUnresolved
+  | GraphQLRequestFailed
+  | HttpError
+  | RateLimited
+  | NetworkError
+  | ResponseShapeUnknown
 > =>
   Effect.gen(function* () {
-    const userId = yield* Effect.tryPromise({
-      try: () => resolveUsernameToId(username),
-      catch: cause => new NetworkError({ cause }),
-    });
+    const userId = yield* resolveUsernameToId(username);
 
     if (!userId) {
       return yield* Effect.fail(new UsernameUnresolved({ username }));
@@ -390,7 +393,7 @@ const fetchStoryMediaItems = (
 
 const fetchProfileMediaItems = (
   username: string
-): Effect.Effect<MediaItem[], HttpError | NetworkError | ResponseShapeUnknown> => {
+): Effect.Effect<MediaItem[], HttpError | NetworkError | RateLimited | ResponseShapeUnknown> => {
   const profileInfoUrl = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
 
   return fetchWebProfileInfoUser(profileInfoUrl, 'omit', IG_GRAPHQL_HEADERS).pipe(
