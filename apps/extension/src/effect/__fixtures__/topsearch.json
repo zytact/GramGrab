@@ -1,0 +1,49 @@
+{
+  "users": [
+    {
+      "position": 0,
+      "user": {
+        "fbid_v2": "SANITIZED_PERSON_11_FB_ID",
+        "pk": "SANITIZED_PERSON_11_ID",
+        "pk_id": "SANITIZED_PERSON_11_ID",
+        "is_verified_search_boosted": false,
+        "third_party_downloads_enabled": 0,
+        "strong_id__": "SANITIZED_PERSON_11_ID",
+        "id": "SANITIZED_PERSON_11_ID",
+        "full_name": "SANITIZED_PERSON_11_FULL_NAME",
+        "is_private": true,
+        "is_verified": false,
+        "profile_pic_id": "SANITIZED_PROFILE_PICTURE_ID_1",
+        "profile_pic_url": "https://sanitized.invalid/person/11/profile-picture",
+        "username": "SANITIZED_PERSON_11_USERNAME",
+        "account_badges": [],
+        "friendship_status": {
+          "following": true,
+          "is_bestie": false,
+          "is_feed_favorite": false,
+          "is_private": true,
+          "is_restricted": false,
+          "incoming_request": false,
+          "outgoing_request": false
+        },
+        "has_anonymous_profile_picture": false,
+        "is_ring_creator": false,
+        "latest_reel_media": 1788545806,
+        "reel_media_seen_timestamp": 1788545806,
+        "should_show_category": false,
+        "show_ring_award": false,
+        "show_text_post_app_badge": false,
+        "unseen_count": 0,
+        "social_context": "SANITIZED_SOCIAL_CONTEXT_1",
+        "search_social_context": "SANITIZED_SOCIAL_CONTEXT_1",
+        "search_social_context_snippet_type": "typeahead_mutual_followers"
+      }
+    }
+  ],
+  "places": [],
+  "hashtags": [],
+  "has_more": false,
+  "rank_token": "SANITIZED_RANK_TOKEN_1",
+  "clear_client_cache": false,
+  "status": "ok"
+}

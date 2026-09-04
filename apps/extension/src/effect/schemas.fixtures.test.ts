@@ -19,6 +19,7 @@ import {
   InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
   ShortcodeMediaResponseSchema,
+  TopSearchResponseSchema,
   WebProfileInfoResponseSchema,
 } from './schemas.ts';
 import type {
@@ -188,6 +189,23 @@ describe('fixtures: web-profile-info.json', () => {
     );
     const id = result.data?.user?.id;
     expect(id).toBeDefined();
+    expect(typeof id === 'string' || typeof id === 'number').toBe(true);
+  });
+});
+
+describe('fixtures: topsearch.json', () => {
+  it('decodes successfully', async () => {
+    const json = loadFixture('topsearch.json');
+    const result = await Effect.runPromise(Schema.decodeUnknown(TopSearchResponseSchema)(json));
+    expect(result.users?.length).toBeGreaterThan(0);
+  });
+
+  it('exposes a username and id for the exact-match lookup', async () => {
+    const json = loadFixture('topsearch.json');
+    const result = await Effect.runPromise(Schema.decodeUnknown(TopSearchResponseSchema)(json));
+    const user = result.users?.[0]?.user;
+    expect(typeof user?.username).toBe('string');
+    const id = user?.pk ?? user?.pk_id;
     expect(typeof id === 'string' || typeof id === 'number').toBe(true);
   });
 });

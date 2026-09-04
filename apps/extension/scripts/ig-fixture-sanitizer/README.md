@@ -7,7 +7,7 @@ the reviewed policy before any output directory is changed.
 
 ## Architecture
 
-- `policy.ts` defines the eleven-file contract and the declarative allowlist and denylist. Reusable
+- `policy.ts` defines the twelve-file contract and the declarative allowlist and denylist. Reusable
   fragments cover repeated person, media resource, Story item, Reel, and Post shapes.
 - `entities.ts` discovers synthetic entities, correlates strong identifiers, and assigns stable
   numbers for one complete batch.
@@ -113,9 +113,9 @@ After reviewing staging, run:
 vp run sanitize:ig-fixtures -- --write
 ```
 
-The write path prepares a sibling directory, copies non-fixture destination files, writes all eleven
+The write path prepares a sibling directory, copies non-fixture destination files, writes all twelve
 candidates, renames the existing destination to a backup, and renames the prepared directory into
-place. If the final rename fails, the backup is restored. The eleven committed fixtures therefore
+place. If the final rename fails, the backup is restored. The twelve committed fixtures therefore
 change together or not at all. Raw input is read-only and is never deleted automatically.
 
 Diagnostics contain only filename, normalized path, expected type or contract, observed type or
