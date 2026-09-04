@@ -82,6 +82,11 @@ node apps/cli/bin/gramgrab.mjs instants inspect --json
 - `inspect` and `export` hit real Instagram. Rate limits are a real outcome and
   a real failure code, not a flaky test. `docs/instagram-protocol.md` covers
   what to do when the request shape itself stopped working.
+- Instagram answers `web_profile_info` with 429 for an ordinary signed-in
+  session, so a story or profile username is resolved through `topsearch`
+  instead (#164). A story run that fails at `SOURCE_USERNAME_UNRESOLVED` for an
+  account that plainly exists means both lookups are refusing; check them by
+  hand from the service worker before treating it as a code bug.
 - `ResponseShapeUnknown` means Instagram changed a payload. That is a fixture
   and schema task (`vp run generate:ig-fixtures`), not something to work around
   in the harness.

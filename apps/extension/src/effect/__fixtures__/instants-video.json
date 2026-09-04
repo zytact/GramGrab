@@ -61,15 +61,15 @@
           "caption": null,
           "user": {
             "__typename": "XDTUserDict",
-            "strong_id__": "SANITIZED_PERSON_15_ID",
-            "id": "SANITIZED_PERSON_15_ID",
+            "strong_id__": "SANITIZED_PERSON_16_ID",
+            "id": "SANITIZED_PERSON_16_ID",
             "__is_XDTUserDict": true,
-            "fbid_v2": "SANITIZED_PERSON_15_FB_ID",
-            "full_name": "SANITIZED_PERSON_15_FULL_NAME",
-            "username": "SANITIZED_PERSON_15_USERNAME",
+            "fbid_v2": "SANITIZED_PERSON_16_FB_ID",
+            "full_name": "SANITIZED_PERSON_16_FULL_NAME",
+            "username": "SANITIZED_PERSON_16_USERNAME",
             "account_badges": [],
             "profile_pic_id": "SANITIZED_MEDIA_51_PROFILE_PICTURE_ID",
-            "profile_pic_url": "https://sanitized.invalid/person/15/profile-picture"
+            "profile_pic_url": "https://sanitized.invalid/person/16/profile-picture"
           },
           "source_type": 1,
           "quick_snap_info": {

@@ -7,6 +7,7 @@ import {
   InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
   ShortcodeMediaResponseSchema,
+  TopSearchResponseSchema,
   WebProfileInfoResponseSchema,
 } from '../../src/effect/schemas.ts';
 import { isJsonValue, sanitizeBatch, type SanitizerViolation } from './sanitize.ts';
@@ -230,6 +231,7 @@ const endpointDecoders = {
   'shortcode-image.json': endpointDecoder(ShortcodeMediaResponseSchema),
   'shortcode-sidecar.json': endpointDecoder(ShortcodeMediaResponseSchema),
   'shortcode-video.json': endpointDecoder(ShortcodeMediaResponseSchema),
+  'topsearch.json': endpointDecoder(TopSearchResponseSchema),
   'web-profile-info.json': endpointDecoder(WebProfileInfoResponseSchema),
 };
 

@@ -2,6 +2,7 @@ import { Effect } from 'effect';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import {
   fetchBlobAsDataUrl,
+  fetchTopSearchUserId,
   fetchWebProfileInfoUser,
   graphqlFetch,
   graphqlPost,
@@ -447,5 +448,48 @@ describe('fetchWebProfileInfoUser', () => {
       expect(result.left).toBeInstanceOf(ResponseShapeUnknown);
       expect((result.left as ResponseShapeUnknown).context).toBe('web_profile_info');
     }
+  });
+});
+
+describe('fetchTopSearchUserId', () => {
+  const topSearchResponse = (usernames: readonly string[]) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      users: usernames.map((username, index) => ({
+        user: { username, pk: String(index + 1) },
+      })),
+    }),
+  });
+
+  it('picks the exact username from fuzzy results', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        topSearchResponse(['personabc', 'PersonA', 'persona'])
+      ) as unknown as typeof fetch;
+
+    const result = await Effect.runPromise(fetchTopSearchUserId('persona', {}));
+    expect(result).toBe('2');
+  });
+
+  it('returns undefined when no result matches the username', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(topSearchResponse(['someoneelse'])) as unknown as typeof fetch;
+
+    const result = await Effect.runPromise(fetchTopSearchUserId('persona', {}));
+    expect(result).toBeUndefined();
+  });
+
+  it('fails with RateLimited on 429 response', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+    }) as unknown as typeof fetch;
+
+    const result = await Effect.runPromise(fetchTopSearchUserId('persona', {}).pipe(Effect.either));
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') expect(result.left).toBeInstanceOf(RateLimited);
   });
 });

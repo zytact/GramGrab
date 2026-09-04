@@ -9,6 +9,7 @@ export type FixtureFilename =
   | 'shortcode-sidecar.json'
   | 'shortcode-video.json'
   | 'story.json'
+  | 'topsearch.json'
   | 'web-profile-info.json';
 
 export const FIXTURE_FILENAMES: ReadonlyArray<FixtureFilename> = [
@@ -19,6 +20,7 @@ export const FIXTURE_FILENAMES: ReadonlyArray<FixtureFilename> = [
   'shortcode-sidecar.json',
   'shortcode-video.json',
   'story.json',
+  'topsearch.json',
   'web-profile-info.json',
   'instants-photo.json',
   'instants-video.json',
@@ -603,6 +605,48 @@ const instantEmptyContainers: FixturePolicy['emptyContainers'] = [
   emptyArray(`${instantItem}.video_versions`),
 ];
 
+const searchUser = 'users[].user';
+const topSearchRules: ReadonlyArray<PolicyRule> = [
+  preserve('status'),
+  preserve('has_more', ['boolean']),
+  preserve('clear_client_cache', ['boolean']),
+  opaque('rank_token', 'RANK_TOKEN'),
+  preserve('users[].position', ['number']),
+  ...person(searchUser),
+  entityField(
+    `${searchUser}.fbid_v2`,
+    'PERSON',
+    searchUser,
+    'FB_ID',
+    ['string', 'number'],
+    'PERSON_FB'
+  ),
+  opaque(`${searchUser}.profile_pic_id`, 'PROFILE_PICTURE_ID'),
+  // Social context names other accounts, so it is opaque rather than preserved.
+  opaque(`${searchUser}.social_context`, 'SOCIAL_CONTEXT'),
+  opaque(`${searchUser}.search_social_context`, 'SOCIAL_CONTEXT'),
+  preserve(`${searchUser}.search_social_context_snippet_type`),
+  preserve(`${searchUser}.friendship_status.following`, ['boolean']),
+  preserve(`${searchUser}.friendship_status.incoming_request`, ['boolean']),
+  preserve(`${searchUser}.friendship_status.is_bestie`, ['boolean']),
+  preserve(`${searchUser}.friendship_status.is_feed_favorite`, ['boolean']),
+  preserve(`${searchUser}.friendship_status.is_private`, ['boolean']),
+  preserve(`${searchUser}.friendship_status.is_restricted`, ['boolean']),
+  preserve(`${searchUser}.friendship_status.outgoing_request`, ['boolean']),
+  preserve(`${searchUser}.has_anonymous_profile_picture`, ['boolean']),
+  preserve(`${searchUser}.is_private`, ['boolean']),
+  preserve(`${searchUser}.is_ring_creator`, ['boolean']),
+  preserve(`${searchUser}.is_verified`, ['boolean']),
+  preserve(`${searchUser}.is_verified_search_boosted`, ['boolean']),
+  preserve(`${searchUser}.latest_reel_media`, ['number']),
+  preserve(`${searchUser}.reel_media_seen_timestamp`, ['number']),
+  preserve(`${searchUser}.should_show_category`, ['boolean']),
+  preserve(`${searchUser}.show_ring_award`, ['boolean']),
+  preserve(`${searchUser}.show_text_post_app_badge`, ['boolean']),
+  preserve(`${searchUser}.third_party_downloads_enabled`, ['number']),
+  preserve(`${searchUser}.unseen_count`, ['number']),
+];
+
 export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> = {
   'avatar.json': {
     rules: [preserve('status')],
@@ -638,6 +682,14 @@ export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> 
   'story.json': {
     rules: [...reel('data.reels_media[]'), ...graphqlErrors],
     emptyContainers: storyEmptyContainers,
+  },
+  'topsearch.json': {
+    rules: topSearchRules,
+    emptyContainers: [
+      emptyArray('places'),
+      emptyArray('hashtags'),
+      emptyArray(`${searchUser}.account_badges`),
+    ],
   },
   'web-profile-info.json': {
     rules: profileRules,

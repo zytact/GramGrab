@@ -12,6 +12,7 @@ import {
   StatusResult,
   TransportFailure,
   ValidationFailure,
+  validationFailureFrom,
 } from '@gramgrab/protocol';
 import { browser, type NativePort } from './lib/browser.ts';
 
@@ -118,7 +119,14 @@ export function handleNativeMessage(message: unknown): void {
         if (!controller.signal.aborted) post(request.requestId, event);
       },
       controller.signal
-    ).finally(() => activeRequests.delete(request.requestId));
+    )
+      // An accepted request must always reach a terminal event. A handler that rejects would
+      // otherwise leave the client waiting on a reply that never comes.
+      .catch(cause => {
+        if (!controller.signal.aborted)
+          post(request.requestId, Rejected.make({ failure: validationFailureFrom(cause) }));
+      })
+      .finally(() => activeRequests.delete(request.requestId));
     return;
   }
   post(

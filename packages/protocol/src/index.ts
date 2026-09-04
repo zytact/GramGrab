@@ -197,6 +197,15 @@ export class ValidationFailure extends Schema.TaggedClass<ValidationFailure>()(
   { message: Schema.String.pipe(Schema.nonEmptyString()) }
 ) {}
 
+/**
+ * Describes an arbitrary thrown value as a ValidationFailure. `message` is non-empty, so
+ * constructing one directly from `Error.message` can throw where the throw site cannot recover.
+ */
+export const validationFailureFrom = (cause: unknown): ValidationFailure =>
+  ValidationFailure.make({
+    message: (cause instanceof Error ? cause.message : String(cause)) || 'Command failed.',
+  });
+
 export class CommandFailure extends Schema.TaggedClass<CommandFailure>()('CommandFailure', {
   failure: OperationFailure,
 }) {}

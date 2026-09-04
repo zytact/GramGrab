@@ -338,6 +338,22 @@
           dl('web-profile-info.json', trim(json));
         },
       },
+      {
+        label: `topsearch.json (topsearch) for @${PROFILE_USERNAME}`,
+        run: async () => {
+          const r = await fetch(
+            `https://www.instagram.com/web/search/topsearch/?context=blended&query=${encodeURIComponent(PROFILE_USERNAME)}`,
+            { credentials: 'include', headers: { 'X-IG-App-ID': APP_ID } }
+          );
+          console.log('  status:', r.status);
+          const j = await r.json();
+          const wanted = PROFILE_USERNAME.toLowerCase();
+          if (!j?.users?.some(entry => entry.user?.username?.toLowerCase() === wanted)) {
+            throw new Error(`topsearch returned no exact match for @${PROFILE_USERNAME}`);
+          }
+          dl('topsearch.json', trim(j));
+        },
+      },
       ...[
         ['shortcode-image.json', POST_IMAGE, 'image post', /Image/],
         ['shortcode-video.json', POST_VIDEO, 'video reel', /Video|ClipsShareVideo/],
