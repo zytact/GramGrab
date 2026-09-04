@@ -44,14 +44,8 @@ node $D wait "popup.html?surface" "FETCH MEDIA"
 node $D shot "popup.html?surface" "$EV/before-fetch.png"
 
 # type into the real field and click the real button
-node $D eval "popup.html?surface" "
-  const i = document.querySelector('#source-url');
-  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
-  set.call(i, 'https://www.instagram.com/p/SHORTCODE/');
-  i.dispatchEvent(new Event('input', {bubbles:true}));
-  document.querySelector('.fetch-row button').click();
-  'submitted'
-"
+node $D type "popup.html?surface" "#source-url" "https://www.instagram.com/p/SHORTCODE/"
+node $D click "popup.html?surface" ".fetch-row button"
 node $D wait "popup.html?surface" "selected" 60000
 node $D shot "popup.html?surface" "$EV/after-fetch.png"
 ```
