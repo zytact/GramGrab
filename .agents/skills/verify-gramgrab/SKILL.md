@@ -53,6 +53,33 @@ extension's service worker calls `connectNative` on startup, so the socket
 existing proves the extension loaded and native messaging is wired. The script
 waits for it and fails loudly after 30 seconds.
 
+### The worker you launch is the code you built
+
+Chromium caches the extension's service worker script in the profile and does
+not re-read it just because the unpacked directory changed. A rebuilt extension
+runs the previous worker, so a fix reads as "still broken" when it was never
+loaded. This cost one real debugging session: `inspect` kept hanging after the
+hang was fixed.
+
+`launch.sh` removes `Default/Service Worker` before starting the browser, which
+forces the re-read. It costs no sign-in, because Instagram's session is in
+`Default/Cookies` and the WhatsApp Web link is in `Default/IndexedDB`.
+
+Two things follow. Do not remove `ScriptCache` on its own: that leaves a
+registration pointing at a script that is gone, and the worker fails to start
+with `DidStartWorkerFail` in `browser.log`. And do not reach for
+`chrome.runtime.reload()` from a driven page; on an unpacked extension it can
+leave the extension `DISABLED`, which `doctor.mjs` then reports.
+
+When a source change must be proven live and you suspect the worker anyway,
+read the built file back out of the running browser rather than trusting the
+build:
+
+```bash
+node $D eval "background.js" \
+  "fetch(chrome.runtime.getURL('js/background.js')).then(r=>r.text()).then(t=>t.includes('YOUR_MARKER'))"
+```
+
 Every later command needs the session variables:
 
 ```bash
@@ -263,10 +290,12 @@ To throw the sign-ins away and start clean:
 That only ever deletes the default `.local/verify-profile/`. A directory named
 through `GRAMGRAB_PROFILE` belongs to whoever named it and is never removed.
 
-One side effect worth knowing: `launch.sh` rebuilds `extension/chromium`, and
+Two side effects worth knowing. `launch.sh` rebuilds `extension/chromium`, and
 any other browser that loaded that same directory unpacked will pick up the new
 build. That is a rebuild, not a data change, but it can surprise someone using
-the extension in another window.
+the extension in another window. It also drops the verify profile's service
+worker registrations, so the first page load of any site in that profile
+re-registers its worker. Sign-ins are unaffected.
 
 ## Helpers
 

@@ -64,6 +64,17 @@ node -e '
   writeFileSync(file,JSON.stringify(prefs));
 ' "$profile/Default/Preferences" "$downloads"
 
+# Chromium caches the extension's service worker script per profile and does not
+# re-read it just because the unpacked directory changed. A rebuilt extension
+# would then run the previous worker, which reads as "the fix does not work"
+# when the fix was never loaded. Dropping the registration forces a re-read.
+#
+# This costs no sign-in: Instagram's session lives in Default/Cookies and the
+# WhatsApp Web link lives in Default/IndexedDB. Only Database and ScriptCache
+# live here, and both are rebuilt on demand. Removing ScriptCache alone leaves
+# a registration pointing at a script that is gone, which fails to start at all.
+rm -rf "$profile/Default/Service Worker"
+
 # Chromium derives an unpacked extension's ID from the absolute directory path.
 ext_id="$(node -e '
   const {createHash}=require("node:crypto");

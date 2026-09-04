@@ -60,9 +60,25 @@ GRAMGRAB_IPC_PATH=/tmp/gramgrab-nope.sock node apps/cli/bin/gramgrab.mjs status
   `WhatsApp Status downloads are only available in the browser extension.` and
   exit 2, with no request crossing the socket.
 - The bogus endpoint fails with `IPC_UNAVAILABLE` and exit 2.
+- **Every command reaches a terminal event.** A failing command prints a
+  `Rejected` on stderr and exits 1 (rejection) or 2 (invalid input or
+  transport), never nothing. Drive at least one failure per run, because a
+  passing success path proves nothing about the failure path:
+
+  ```bash
+  node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/explore/ --json
+  # {"failure":{"code":"INPUT_INVALID_SOURCE_URL","scope":"batch"},"_tag":"CommandFailure"}, exit 1
+  ```
 
 ## Gotchas
 
+- A command that only prints `{"type":"progress","phase":"resolving"}` and then
+  waits is never "slow Instagram". The extension emits progress before it does
+  any work, so this means the worker never reached a terminal event. Read the
+  service worker's exceptions rather than raising the timeout: attach CDP to the
+  `background.js` target, enable `Runtime`, and watch `Runtime.exceptionThrown`.
+  A throw inside the handler's own `catch` block presents exactly this way, and
+  #164 fixed one that hung every failing command.
 - `gramgrab debug export` sets `saveAs: true`, so it opens a native Save As
   dialog and leaves the download `in_progress` with an empty filename until a
   human answers. It will look like a hang in a scripted run. Use `debug get`,
