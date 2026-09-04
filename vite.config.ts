@@ -251,7 +251,7 @@ export default defineConfig({
     ],
   },
   staged: {
-    '{,!(.repos)/**/}*.{ts,tsx,js,mjs}': ['vp lint --fix', 'vp fmt'],
+    '{,!(.repos|.agents|.claude)/**/}*.{ts,tsx,js,mjs}': ['vp lint --fix', 'vp fmt'],
   },
   fmt: {
     singleQuote: true,

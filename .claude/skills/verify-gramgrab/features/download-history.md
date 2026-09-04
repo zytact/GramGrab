@@ -1,0 +1,72 @@
+# Download history
+
+A record of what GramGrab already saved, so a person can see what they have and
+fetch something again without hunting for the URL.
+
+## Sub-features
+
+- List, with a per-item downloaded-at timestamp and an `Open source` link back
+  to Instagram.
+- Re-download a single entry.
+- Remove one entry, or clear everything.
+- Repair: a corrupt store is rebuilt rather than thrown away, reported as
+  `repaired: true` on a list.
+- WhatsApp receipts, which are deliberately weaker: a receipt has no display
+  name and no re-download affordance. Only removal applies.
+
+## How to get to it (user POV)
+
+Click `History` in the popup or workspace header. The button toggles to
+`Results` while history is showing. `gramgrab history list` prints the same
+store.
+
+## Driving it with the harness
+
+```bash
+cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+D=.agents/skills/verify-gramgrab/scripts/drive.mjs
+
+node apps/cli/bin/gramgrab.mjs history list
+node $D open "chrome-extension://$GRAMGRAB_EXT_ID/popup.html?surface=workspace"
+node $D eval "popup.html?surface" \
+  "[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='History').click(), 'toggled'"
+node $D wait "popup.html?surface" "RESULTS"
+node $D shot "popup.html?surface" "$EV/history.png"
+```
+
+The button's `textContent` is `History`, but CSS uppercases it, so `drive.mjs
+text` and `wait` see `HISTORY` and `RESULTS`. Select on `textContent`, wait on
+the uppercase form.
+
+Removing and clearing are destructive to the store, so drive them only against
+the scratch profile:
+
+```bash
+node apps/cli/bin/gramgrab.mjs history remove ENTRY_ID
+node apps/cli/bin/gramgrab.mjs history clear
+```
+
+## What proves it works
+
+- After a real download, `history list` gains an entry whose item number and
+  source match what was downloaded, and the same entry appears under the
+  `Download history` section in the UI. Check both surfaces; they read the same
+  store through different paths.
+- `history remove ENTRY_ID` drops exactly that entry and leaves the rest.
+- `history clear` empties it, and the UI shows the cleared state without a
+  reload.
+- A WhatsApp receipt shows no display name and no re-download button. Its only
+  control is `Remove WhatsApp receipt from history`. That absence is the
+  feature, so capture it.
+
+## Gotchas
+
+- History is per-profile browser storage, and the profile persists, so entries
+  from earlier runs are still there. An empty list on a brand-new profile proves
+  nothing; a list carrying yesterday's entries is the store working. Fill it with
+  a real download before judging either way.
+- `history clear` on the developer's own profile destroys their real record.
+  Confirm which socket the CLI is pointed at before running it.
+- Re-download goes back to Instagram and can fail for the same reasons a fresh
+  fetch can, including rate limits. A failing re-download is not automatically a
+  history bug.
