@@ -10,10 +10,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { Schema } from 'effect';
 import {
   DirectExport,
+  Event,
   Export,
   ExportOperation,
   FrameExport,
   HumanItemNumber,
+  Inspect,
   InstantsExport,
   InternalItemIndex,
   MediaIdentity,
@@ -351,6 +353,30 @@ describe('background dispatcher', () => {
         })
       )
     );
+  });
+
+  it('reports a batch command failure as a decodable Rejected event', async () => {
+    await loadBackground();
+    const request = Schema.decodeUnknownSync(Request)({
+      version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(),
+      command: Inspect.make({ sourceUrl: 'https://example.com/not-instagram' }),
+    });
+
+    fakeBrowserObj.getNativeMessageListener()?.(Schema.encodeSync(Request)(request));
+
+    await vi.waitFor(() => {
+      const rejected = fakeBrowserObj.nativeMessages
+        .map(message => Schema.decodeUnknownSync(Event)(message))
+        .find(decoded => decoded.event._tag === 'Rejected');
+      expect(rejected?.event).toMatchObject({
+        _tag: 'Rejected',
+        failure: {
+          _tag: 'CommandFailure',
+          failure: { code: 'INPUT_INVALID_SOURCE_URL', scope: 'batch' },
+        },
+      });
+    });
   });
 
   it('direct native Instant export reconciles a reordered feed by media ID', async () => {

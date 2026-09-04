@@ -1,5 +1,6 @@
 import { Effect, Schema } from 'effect';
-import { describe, expect, it } from 'vite-plus/test';
+import { describe, expect, it, vi } from 'vite-plus/test';
+import { getMockBrowser } from './test/setup.ts';
 import {
   CancelRequest,
   Event,
@@ -48,5 +49,35 @@ describe('native bridge cancellation', () => {
     );
 
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe('native bridge request termination', () => {
+  it('terminates a request whose handler rejects', async () => {
+    const posted: unknown[] = [];
+    const runtime = getMockBrowser().runtime as unknown as Record<string, unknown>;
+    runtime.connectNative = () => ({
+      postMessage: (message: unknown) => posted.push(message),
+      onMessage: { addListener: () => {} },
+      onDisconnect: { addListener: () => {} },
+    });
+    vi.resetModules();
+    const bridge = await import('./native-bridge.ts');
+    const request = Schema.decodeUnknownSync(Request)({
+      version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(),
+      command: Inspect.make({ sourceUrl: 'https://www.instagram.com/p/example/' }),
+    });
+    bridge.startNativeBridge(async () => {
+      throw new Error('handler blew up');
+    });
+
+    bridge.handleNativeMessage(Schema.encodeSync(Request)(request));
+    await vi.waitFor(() => expect(posted.length).toBeGreaterThan(1));
+
+    expect(Schema.decodeUnknownSync(Event)(posted.at(-1)).event).toMatchObject({
+      _tag: 'Rejected',
+      failure: { _tag: 'ValidationFailure', message: 'handler blew up' },
+    });
   });
 });

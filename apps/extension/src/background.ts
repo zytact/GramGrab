@@ -2,6 +2,7 @@ import { Either, Effect, Schema } from 'effect';
 import { browser } from './lib/browser.ts';
 import { startNativeBridge } from './native-bridge.ts';
 import {
+  CommandFailure,
   Completed,
   CommandResult,
   DebugExportResult,
@@ -72,6 +73,7 @@ import {
   fetchHighlightsTray,
   fetchInstantsFeed,
   fetchReelsMedia,
+  fetchTopSearchUserId,
   fetchWebProfileInfoUser,
   graphqlFetch as graphqlFetchEffect,
   graphqlPost as graphqlPostEffect,
@@ -170,20 +172,24 @@ function resolveUsernameToId(
   username: string
 ): Effect.Effect<string | null, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> {
   const url = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
-  return fetchWebProfileInfoUser(url, 'include', {
-    ...IG_HEADERS,
-    Origin: 'https://www.instagram.com',
-  }).pipe(
-    Effect.tapError(err =>
-      Effect.sync(() => {
-        if (err._tag === 'ResponseShapeUnknown')
-          console.warn('resolveUsernameToId: unexpected web_profile_info shape');
-      })
-    ),
+  const headers = { ...IG_HEADERS, Origin: 'https://www.instagram.com' };
+  // Instagram throttles web_profile_info hard enough to 429 an ordinary signed-in
+  // session, so topsearch resolves the id whenever that endpoint does not answer.
+  return fetchWebProfileInfoUser(url, 'include', headers).pipe(
     Effect.map(user => {
       const userId = user?.id ?? user?.pk;
-      return userId != null ? String(userId) : null;
-    })
+      return userId != null ? String(userId) : undefined;
+    }),
+    Effect.catchAll(err =>
+      Effect.sync(() => {
+        console.warn('resolveUsernameToId: web_profile_info failed:', err._tag);
+        return undefined;
+      })
+    ),
+    Effect.flatMap(userId =>
+      userId === undefined ? fetchTopSearchUserId(username, headers) : Effect.succeed(userId)
+    ),
+    Effect.map(userId => userId ?? null)
   );
 }
 
@@ -1543,7 +1549,7 @@ async function executeCommand(
       Rejected.make({
         failure:
           error instanceof ProtocolOperationFailure
-            ? { _tag: 'CommandFailure', failure: error }
+            ? CommandFailure.make({ failure: error })
             : ValidationFailure.make({
                 message: error instanceof Error ? error.message : String(error),
               }),
