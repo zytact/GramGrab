@@ -12,6 +12,7 @@ import {
   HighlightsTrayResponseSchema,
   InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
+  TopSearchResponseSchema,
   WebProfileInfoResponseSchema,
 } from './schemas.ts';
 import type { HdAvatarUser, HighlightsTrayItem, ReelItem, WebProfileInfoUser } from './schemas.ts';
@@ -215,17 +216,16 @@ export const fetchBlobAsDataUrl = (url: string) =>
     });
   });
 
-export const fetchWebProfileInfoUser = (
+/** Reads a REST endpoint and decodes it, reporting a decode failure as ResponseShapeUnknown. */
+const fetchDecodedJson = <A, I>(
   url: string,
-  credentials: RequestCredentials,
-  headers: Record<string, string>
-): Effect.Effect<
-  WebProfileInfoUser | undefined,
-  HttpError | NetworkError | RateLimited | ResponseShapeUnknown
-> =>
+  init: RequestInit,
+  schema: Schema.Schema<A, I>,
+  context: string
+): Effect.Effect<A, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> =>
   Effect.gen(function* () {
     const res = yield* Effect.tryPromise({
-      try: () => fetch(url, { credentials, headers }),
+      try: () => fetch(url, init),
       catch: cause => new NetworkError({ cause }),
     });
     yield* requireSuccessfulResponse(
@@ -236,11 +236,49 @@ export const fetchWebProfileInfoUser = (
       try: () => res.json() as Promise<unknown>,
       catch: cause => new NetworkError({ cause }),
     });
-    const decoded = yield* Schema.decodeUnknown(WebProfileInfoResponseSchema)(json).pipe(
-      Effect.mapError(() => new ResponseShapeUnknown({ context: 'web_profile_info' }))
+    return yield* Schema.decodeUnknown(schema)(json).pipe(
+      Effect.mapError(() => new ResponseShapeUnknown({ context }))
     );
-    return decoded.data?.user;
   });
+
+export const fetchWebProfileInfoUser = (
+  url: string,
+  credentials: RequestCredentials,
+  headers: Record<string, string>
+): Effect.Effect<
+  WebProfileInfoUser | undefined,
+  HttpError | NetworkError | RateLimited | ResponseShapeUnknown
+> =>
+  fetchDecodedJson(
+    url,
+    { credentials, headers },
+    WebProfileInfoResponseSchema,
+    'web_profile_info'
+  ).pipe(Effect.map(decoded => decoded.data?.user));
+
+/** Resolves a username to its numeric id through topsearch, matching the exact username. */
+export const fetchTopSearchUserId = (
+  username: string,
+  headers: Record<string, string>
+): Effect.Effect<
+  string | undefined,
+  HttpError | NetworkError | RateLimited | ResponseShapeUnknown
+> =>
+  fetchDecodedJson(
+    `https://www.instagram.com/web/search/topsearch/?context=blended&query=${encodeURIComponent(username)}`,
+    { credentials: 'include', headers },
+    TopSearchResponseSchema,
+    'topsearch'
+  ).pipe(
+    Effect.map(decoded => {
+      const wanted = username.toLowerCase();
+      const match = decoded.users?.find(
+        entry => entry.user.username.toLowerCase() === wanted
+      )?.user;
+      const id = match?.pk ?? match?.pk_id;
+      return id == null ? undefined : String(id);
+    })
+  );
 
 export const fetchReelsMedia = (
   graphqlUrl: string,
@@ -291,22 +329,9 @@ export const fetchHighlightsTray = (
   readonly HighlightsTrayItem[],
   HttpError | NetworkError | RateLimited | ResponseShapeUnknown
 > =>
-  Effect.gen(function* () {
-    const url = `https://i.instagram.com/api/v1/highlights/${encodeURIComponent(userId)}/highlights_tray/`;
-    const res = yield* Effect.tryPromise({
-      try: () => fetch(url, { credentials: 'include', headers }),
-      catch: cause => new NetworkError({ cause }),
-    });
-    yield* requireSuccessfulResponse(
-      res,
-      response => new HttpError({ status: response.status, message: response.statusText })
-    );
-    const json = yield* Effect.tryPromise({
-      try: () => res.json() as Promise<unknown>,
-      catch: cause => new NetworkError({ cause }),
-    });
-    const decoded = yield* Schema.decodeUnknown(HighlightsTrayResponseSchema)(json).pipe(
-      Effect.mapError(() => new ResponseShapeUnknown({ context: 'highlights_tray' }))
-    );
-    return decoded.tray;
-  });
+  fetchDecodedJson(
+    `https://i.instagram.com/api/v1/highlights/${encodeURIComponent(userId)}/highlights_tray/`,
+    { credentials: 'include', headers },
+    HighlightsTrayResponseSchema,
+    'highlights_tray'
+  ).pipe(Effect.map(decoded => decoded.tray));
