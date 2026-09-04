@@ -30,8 +30,6 @@ vp run package:tools      # vp pack → artifacts/ for the CLI and native host
 
 Use Vite+ as the primary workflow surface: prefer `vp` commands over package-manager wrappers.
 
-Verify in this order after any change: `vp check` (typecheck, lint, format in one), then `vp test run`, then `vp run fallow`.
-
 ## Architecture
 
 - **Build.** Vite root is `apps/extension/templates/`. `vite.config.ts` declares four rollup inputs: `popup.html`, `runner.html`, the WhatsApp controller (`src/whatsapp/controller-entry.ts`), and `src/background.ts` bundled directly as `js/background.js` with no HTML wrapper. Keep the controller entry free of exports and external imports so it stays injectable as a classic packaged script.
@@ -106,11 +104,18 @@ This project is using Vite+, a unified toolchain built on top of Vite, Rolldown,
 
 Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.dev/guide/.
 
-## Review Checklist
-
-- [ ] Run `vp install` after pulling remote changes and before getting started.
-- [ ] Run `vp check` and `vp test` to format, lint, type check and test changes.
-- [ ] Check if there are `vite.config.ts` tasks or `package.json` scripts necessary for validation, run via `vp run <script>`.
-- [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
-
 <!--VITE PLUS END-->
+
+## Validation
+
+Run `vp install` after pulling remote changes. After any change, run:
+
+```sh
+vp check
+vp test run
+vp run fallow
+```
+
+`vp check` formats, lints and type checks in one pass. After a build or manifest change, also run `vp run verify:whatsapp-packages` against the built output.
+
+Check `package.json` and `vite.config.ts` for scripts or tasks a change touches, and run them with `vp run <name>`. If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
