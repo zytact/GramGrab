@@ -36,8 +36,53 @@ EV=.local/verify-evidence/$(date -u +%Y%m%dT%H%M%SZ) && mkdir -p "$EV"
 node apps/cli/bin/gramgrab.mjs export https://www.instagram.com/p/SHORTCODE/ \
   --item 1 --mode frame --at 3 --json > "$EV/frame-export.json"
 
+node apps/cli/bin/gramgrab.mjs export https://www.instagram.com/p/SHORTCODE/ \
+  --item 1 --mode direct --json > "$EV/direct-export.json"
+
+node apps/cli/bin/gramgrab.mjs export https://www.instagram.com/reel/SHORTCODE/ \
+  --item 1 --mode silent --reencode allow --json > "$EV/silent-export.json"
+
+node apps/cli/bin/gramgrab.mjs instants export \
+  --item 1 --mode direct --json > "$EV/instant-export.json"
+
 ls -l "$GRAMGRAB_VERIFY_DOWNLOADS"
 ```
+
+For a mixed workspace batch, fetch a multi-item fixture, clear the selection,
+then select three rows. Leave one direct, enable `Frame` on one video, set its
+`Frame timestamp for item NN` slider above zero, and enable `Remove audio` on a
+different video. Click `.workspace-download`. If the quality dialog opens,
+capture it and exercise `Skip affected videos`; repeat the batch and exercise
+`Re-encode affected videos`.
+
+For plan replay, inspect first and copy the chosen item's `itemNumber` and
+`mediaIdentity`. Write an array in this shape, using a real UUID:
+
+```json
+[
+  {
+    "operationId": "00000000-0000-4000-8000-000000000001",
+    "itemNumber": 1,
+    "mediaIdentity": { "itemIndex": 0, "mediaId": "COPY_FROM_INSPECT" },
+    "mode": { "_tag": "FrameExport", "timestampSeconds": 3 }
+  }
+]
+```
+
+Run it twice and require the same operation ID in both results:
+
+```bash
+node apps/cli/bin/gramgrab.mjs export "$GG_VIDEO_URL" --plan "$EV/plan.json" --json
+node apps/cli/bin/gramgrab.mjs export "$GG_VIDEO_URL" --plan "$EV/plan.json" --json
+```
+
+Exercise `--reencode forbid`, `allow`, and `require` against the same video.
+`forbid` must never re-encode. If stream copy is unavailable it may skip the
+item. `allow` and `require` may re-encode, but every successful result must pass
+the no-audio stream check below. Also run one export with no `--item`; its
+terminal result must contain one outcome for every inspected item. Run one
+command with repeated `--item` flags and different modes to prove mixed CLI
+batches preserve each requested mode.
 
 Watch the runner appear while an export runs, which is the only visible sign
 that the second document is doing the work:
@@ -62,6 +107,9 @@ node .agents/skills/verify-gramgrab/scripts/drive.mjs targets | grep runner.html
 
 - A frame export shows the timestamp that was requested, not frame zero. The
   preview shown in the UI and the saved frame must match.
+- A mixed batch reports one terminal outcome for every selected item and keeps
+  each mode attached to the intended item.
+- Plan results retain the supplied operation ID across retries.
 - `export --json` exits 0 when every outcome is `ItemSucceeded`, and exits 1
   when any item failed, with the failure codes in the terminal JSON.
 

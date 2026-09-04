@@ -4,6 +4,10 @@
 //
 //   drive.mjs targets                      list every debuggable target
 //   drive.mjs open <url>                   open a tab and print its target id
+//   drive.mjs activate <match>             bring a matching page to the front
+//   drive.mjs click <match> <selector>     click an element
+//   drive.mjs type <match> <selector> <v>  replace an input value and dispatch input
+//   drive.mjs blur <match> <selector>      blur an element
 //   drive.mjs eval <match> <expression>    evaluate in the first target whose url contains <match>
 //   drive.mjs text <match>                 print document.body.innerText
 //   drive.mjs shot <match> <file>          save a PNG screenshot
@@ -126,6 +130,36 @@ if (command === 'targets') {
   const info = await fetch(`${base}/json/version`).then(response => response.json());
   await send({ webSocketDebuggerUrl: info.webSocketDebuggerUrl }, 'Browser.close').catch(() => {});
   process.stdout.write('closing\n');
+} else if (command === 'activate') {
+  const [match] = rest;
+  if (!match) fail('Usage: drive.mjs activate <match>');
+  await send(await findTarget(match), 'Page.bringToFront');
+  process.stdout.write(`${match}\n`);
+} else if (command === 'click') {
+  const [match, selector] = rest;
+  if (!match || !selector) fail('Usage: drive.mjs click <match> <selector>');
+  await evaluate(
+    match,
+    `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!(element instanceof HTMLElement)) throw new Error('Clickable element not found.'); element.click(); })()`
+  );
+  process.stdout.write(`${selector}\n`);
+} else if (command === 'type') {
+  const [match, selector, value] = rest;
+  if (!match || !selector || value === undefined)
+    fail('Usage: drive.mjs type <match> <selector> <value>');
+  await evaluate(
+    match,
+    `(() => { const input = document.querySelector(${JSON.stringify(selector)}); if (!(input instanceof HTMLInputElement)) throw new Error('Input not found.'); input.focus(); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, ${JSON.stringify(value)}); input.dispatchEvent(new Event('input', { bubbles: true })); })()`
+  );
+  process.stdout.write(`${selector}\n`);
+} else if (command === 'blur') {
+  const [match, selector] = rest;
+  if (!match || !selector) fail('Usage: drive.mjs blur <match> <selector>');
+  await evaluate(
+    match,
+    `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!(element instanceof HTMLElement)) throw new Error('Element not found.'); element.blur(); element.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); })()`
+  );
+  process.stdout.write(`${selector}\n`);
 } else if (command === 'eval') {
   const [match, expression] = rest;
   if (!match || !expression) fail('Usage: drive.mjs eval <match> <expression>');
@@ -160,5 +194,5 @@ if (command === 'targets') {
   }
   process.stdout.write(`${needle}\n`);
 } else {
-  fail('Usage: drive.mjs targets|open|eval|text|shot|wait ...');
+  fail('Usage: drive.mjs targets|open|activate|click|type|blur|eval|text|shot|wait ...');
 }

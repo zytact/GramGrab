@@ -127,6 +127,10 @@ D=.agents/skills/verify-gramgrab/scripts/drive.mjs
 
 node $D targets                                   # every debuggable target
 node $D open "chrome-extension://$GRAMGRAB_EXT_ID/popup.html?surface=workspace"
+node $D activate "popup.html?surface"             # bring a page to the front
+node $D type  "popup.html" "#source-url" "https://www.instagram.com/p/SHORTCODE/"
+node $D blur  "popup.html" "#source-url"
+node $D click "popup.html" ".fetch-row button"
 node $D text  "popup.html"                        # innerText of the first match
 node $D wait  "popup.html" "No media yet." 15000  # poll until text appears
 node $D eval  "popup.html" "document.querySelector('.url-input').value"
@@ -273,5 +277,5 @@ All are executable and take no arguments beyond what is shown above.
 | `scripts/launch.sh`  | Build, register the native host, start the browser                     |
 | `scripts/signin.sh`  | Launch with Instagram and WhatsApp Web open for a one-time sign-in     |
 | `scripts/doctor.mjs` | Six read-only health checks, non-zero exit on any failure              |
-| `scripts/drive.mjs`  | CDP client: `targets`, `open`, `eval`, `text`, `wait`, `shot`, `close` |
+| `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, reading, and capturing pages |
 | `scripts/cleanup.sh` | Close the browser, remove run state, keep the profile and evidence     |
