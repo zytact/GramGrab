@@ -758,18 +758,21 @@ describe('background dispatcher', () => {
     });
 
     it.each([
-      [
-        'instants-photo.json',
-        'https://sanitized.invalid/media/46/instant-image',
-        'sanitized_person_14_username',
-      ],
-      [
-        'instants-video.json',
-        'https://sanitized.invalid/media/50/instant-video',
-        'sanitized_person_15_username',
-      ],
-    ])('selects the verified candidate policy for %s', async (name, url, username) => {
-      const fixture = instantFixture(name);
+      ['instants-photo.json', 'https://sanitized.invalid/media/46/instant-image'],
+      ['instants-video.json', 'https://sanitized.invalid/media/50/instant-video'],
+    ])('selects the verified candidate policy for %s', async (name, url) => {
+      const fixture = instantFixture(name) as {
+        data: {
+          xdt_get_quick_snaps: {
+            items_ordered_by_time: { user?: { username?: string } }[];
+          };
+        };
+      };
+      // The fixture pseudonym is read rather than hardcoded: sanitizer numbering is batch-wide,
+      // so adding any fixture renumbers it.
+      const username =
+        fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]?.user?.username?.toLowerCase();
+      expect(username).toBeDefined();
       globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
       const response = (await invoke(await loadBackground(), { type: 'FETCH_INSTANTS' })) as {
         media?: { url: string; creatorUsername?: string }[];
@@ -1037,14 +1040,76 @@ describe('background dispatcher', () => {
   });
 
   describe('FETCH_MEDIA — story', () => {
+    const storyUrl = 'https://www.instagram.com/stories/someuser/';
+    const topSearchHit = {
+      users: [{ user: { username: 'someuser', pk: '4242' } }],
+    };
+
+    function storyFetchMock(topSearch: () => Response, reels: () => Response) {
+      return fetchMock(async input => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes('/web_profile_info/')) return jsonResponse({}, 429);
+        if (url.includes('/web/search/topsearch/')) return topSearch();
+        return reels();
+      });
+    }
+
     it('preserves a username lookup rate limit', async () => {
       globalThis.fetch = fetchMock(async () => jsonResponse({}, 429));
 
       const listener = await loadBackground();
-      const result = await invoke(listener, {
-        type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/stories/someuser/',
-      });
+      const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });
+
+      expect(result).toMatchObject({ failure: { code: 'IG_RATE_LIMITED' } });
+    });
+
+    it('resolves the username through topsearch when web_profile_info is throttled', async () => {
+      globalThis.fetch = storyFetchMock(
+        () => jsonResponse(topSearchHit),
+        () =>
+          jsonResponse({
+            data: {
+              reels_media: [
+                {
+                  __typename: 'GraphReel',
+                  id: '4242',
+                  items: [
+                    {
+                      __typename: 'GraphStoryImage',
+                      id: '99',
+                      is_video: false,
+                      display_url: 'https://sanitized.invalid/story.jpg',
+                      display_resources: [
+                        {
+                          src: 'https://sanitized.invalid/story.jpg',
+                          config_width: 1,
+                          config_height: 1,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          })
+      );
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });
+
+      expect(result).toMatchObject({ media: [{ type: 'image' }] });
+      expect(result).not.toHaveProperty('failure.code');
+    });
+
+    it('reports the throttle rather than an unresolved username when topsearch also fails', async () => {
+      globalThis.fetch = storyFetchMock(
+        () => jsonResponse({}, 500),
+        () => jsonResponse({})
+      );
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });
 
       expect(result).toMatchObject({ failure: { code: 'IG_RATE_LIMITED' } });
     });

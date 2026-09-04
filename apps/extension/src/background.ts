@@ -33,7 +33,7 @@ import {
   Progress,
   Rejected,
   SilentExport,
-  ValidationFailure,
+  validationFailureFrom,
   type EventPayload,
   type Request,
 } from '@gramgrab/protocol';
@@ -173,23 +173,20 @@ function resolveUsernameToId(
 ): Effect.Effect<string | null, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> {
   const url = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
   const headers = { ...IG_HEADERS, Origin: 'https://www.instagram.com' };
-  // Instagram throttles web_profile_info hard enough to 429 an ordinary signed-in
-  // session, so topsearch resolves the id whenever that endpoint does not answer.
   return fetchWebProfileInfoUser(url, 'include', headers).pipe(
     Effect.map(user => {
       const userId = user?.id ?? user?.pk;
-      return userId != null ? String(userId) : undefined;
+      return userId != null ? String(userId) : null;
     }),
-    Effect.catchAll(err =>
-      Effect.sync(() => {
-        console.warn('resolveUsernameToId: web_profile_info failed:', err._tag);
-        return undefined;
-      })
-    ),
-    Effect.flatMap(userId =>
-      userId === undefined ? fetchTopSearchUserId(username, headers) : Effect.succeed(userId)
-    ),
-    Effect.map(userId => userId ?? null)
+    // Instagram throttles web_profile_info hard enough to 429 an ordinary signed-in session, so
+    // topsearch resolves the id instead. Its own failure surfaces the original one, which carries
+    // the recovery the person actually needs.
+    Effect.catchAll(profileError =>
+      fetchTopSearchUserId(username, headers).pipe(
+        Effect.map(userId => userId ?? null),
+        Effect.catchAll(() => Effect.fail(profileError))
+      )
+    )
   );
 }
 
@@ -1550,9 +1547,7 @@ async function executeCommand(
         failure:
           error instanceof ProtocolOperationFailure
             ? CommandFailure.make({ failure: error })
-            : ValidationFailure.make({
-                message: error instanceof Error ? error.message : String(error),
-              }),
+            : validationFailureFrom(error),
       })
     );
   }

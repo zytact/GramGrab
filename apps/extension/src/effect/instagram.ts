@@ -216,12 +216,14 @@ export const fetchBlobAsDataUrl = (url: string) =>
     });
   });
 
+type RestContext = 'web_profile_info' | 'topsearch' | 'highlights_tray';
+
 /** Reads a REST endpoint and decodes it, reporting a decode failure as ResponseShapeUnknown. */
 const fetchDecodedJson = <A, I>(
   url: string,
   init: RequestInit,
   schema: Schema.Schema<A, I>,
-  context: string
+  context: RestContext
 ): Effect.Effect<A, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> =>
   Effect.gen(function* () {
     const res = yield* Effect.tryPromise({

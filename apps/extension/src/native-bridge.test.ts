@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect';
-import { describe, expect, it, vi } from 'vite-plus/test';
+import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test';
 import { getMockBrowser } from './test/setup.ts';
 import {
   CancelRequest,
@@ -8,6 +8,7 @@ import {
   PROTOCOL_VERSION,
   Request,
   RequestId,
+  validationFailureFrom,
 } from '@gramgrab/protocol';
 import {
   handleNativeMessage,
@@ -56,10 +57,15 @@ describe('native bridge request termination', () => {
   it('terminates a request whose handler rejects', async () => {
     const posted: unknown[] = [];
     const runtime = getMockBrowser().runtime as unknown as Record<string, unknown>;
+    const originalConnectNative = runtime.connectNative;
     runtime.connectNative = () => ({
       postMessage: (message: unknown) => posted.push(message),
       onMessage: { addListener: () => {} },
       onDisconnect: { addListener: () => {} },
+    });
+    onTestFinished(() => {
+      runtime.connectNative = originalConnectNative;
+      vi.resetModules();
     });
     vi.resetModules();
     const bridge = await import('./native-bridge.ts');
@@ -79,5 +85,17 @@ describe('native bridge request termination', () => {
       _tag: 'Rejected',
       failure: { _tag: 'ValidationFailure', message: 'handler blew up' },
     });
+  });
+});
+
+describe('validationFailureFrom', () => {
+  // ValidationFailure.message is non-empty, so an empty thrown message must not throw here.
+  it.each([
+    [new Error(''), 'Command failed.'],
+    ['', 'Command failed.'],
+    [new Error('boom'), 'boom'],
+    [{ nope: true }, '[object Object]'],
+  ])('describes %o as a non-empty message', (cause, message) => {
+    expect(validationFailureFrom(cause)).toMatchObject({ _tag: 'ValidationFailure', message });
   });
 });
