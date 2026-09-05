@@ -20,7 +20,7 @@ export type FrameRuntime = {
   warning?: string;
 };
 
-/** Preview state of one item: `failed` means the fallback preview request did not yield a URL. */
+/** Preview state of one item: `failed` means no preview URL can be shown for it. */
 export type PreviewRuntime = 'idle' | 'loading' | 'failed';
 
 /** Everything transient about one media item, so frame, preview and size cannot drift apart. */

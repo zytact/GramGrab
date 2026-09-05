@@ -156,4 +156,31 @@ describe('integration: user-facing flows', () => {
 
     void PREVIEW_DATA_URL; // suppress lint
   });
+
+  it('shows a placeholder for a failed video preview without fetching a fallback', async () => {
+    setMockMessageHandler('FETCH_MEDIA', () => ({
+      media: [
+        { url: 'https://cdn.instagram.com/video.mp4', type: 'video', filenameHint: 'post_abc' },
+      ],
+      error: undefined,
+    }));
+    const previewRequests = vi.fn(() => ({ previewUrl: 'data:video/mp4;base64,abc==' }));
+    setMockMessageHandler('GET_PREVIEW_URL', previewRequests);
+
+    const user = userEvent.setup();
+    render(<Popup />);
+
+    await waitFor(() => {
+      expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe(INSTAGRAM_URL);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('1 item found'));
+
+    const video = document.querySelector('video');
+    if (!video) throw new Error('Expected a video preview to render.');
+    fireEvent.error(video);
+
+    await waitFor(() => expect(screen.getByText('No preview available')).toBeTruthy());
+    expect(previewRequests).not.toHaveBeenCalled();
+  });
 });

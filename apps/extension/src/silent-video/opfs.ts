@@ -160,6 +160,21 @@ export async function transferOutputToDownload(
   });
 }
 
+/** A video that was already silent is downloaded from its cached input, so the download owns it. */
+export async function transferInputToDownload(
+  operationId: string,
+  downloadId: number
+): Promise<void> {
+  const existing = await readLedger(operationId);
+  await writeLedger({
+    operationId,
+    inputName: existing?.inputName ?? inputName(operationId),
+    owner: 'download',
+    downloadId,
+    updatedAt: Date.now(),
+  });
+}
+
 export async function readOutput(name: string): Promise<File> {
   return (await (await directory()).getFileHandle(name)).getFile();
 }

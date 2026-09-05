@@ -274,6 +274,145 @@ describe('silent video batch', () => {
     expect(worker.terminated).toBe(true);
   });
 
+  it('processes an inspected video while the next input is still downloading', async () => {
+    const operations = [operation(11), operation(12), operation(13)];
+    const secondInspection = deferred<void>();
+    const batch = runSilentVideoBatch(
+      operations,
+      () => Promise.resolve(new Set<string>()),
+      () => {},
+      'https://www.instagram.com/p/example/',
+      () => {},
+      new Set()
+    );
+    const worker = FakeWorker.instance;
+    if (!worker) throw new Error('Expected the batch worker to be created.');
+    worker.onRequest = request => {
+      if (!request.requestId || !request.operationId) return;
+      if (request._tag === 'inspect') {
+        if (request.operationId === operations[1]?.operationId) {
+          void secondInspection.promise.then(() => {
+            if (request.operationId && request.requestId)
+              worker.respond(inspected(request.operationId, request.requestId));
+          });
+          return;
+        }
+        worker.respond(inspected(request.operationId, request.requestId));
+      }
+      if (request._tag === 'process') {
+        directory.files.set(`${request.requestId}.mp4`, ['silent video']);
+        worker.respond(
+          SilentProcessed.make({
+            operationId: request.operationId,
+            requestId: request.requestId,
+            alreadySilent: false,
+            opfsName: `${request.requestId}.mp4`,
+          })
+        );
+      }
+    };
+
+    await drainMicrotasks();
+    expect(
+      worker.requests.some(
+        request => request._tag === 'process' && request.operationId === operations[0]?.operationId
+      )
+    ).toBe(true);
+    expect(
+      worker.requests.some(
+        request => request._tag === 'inspect' && request.operationId === operations[1]?.operationId
+      )
+    ).toBe(true);
+
+    secondInspection.resolve();
+    const results = await batch;
+    expect(results.outcomes.map(result => result.status)).toEqual([
+      'started',
+      'started',
+      'started',
+    ]);
+  });
+
+  it('stops inspecting inputs once the processing buffer is full', async () => {
+    const operations = [15, 16, 17, 18, 19].map(operation);
+    void runSilentVideoBatch(
+      operations,
+      () => Promise.resolve(new Set<string>()),
+      () => {},
+      'https://www.instagram.com/p/example/',
+      () => {},
+      new Set()
+    );
+    const worker = FakeWorker.instance;
+    if (!worker) throw new Error('Expected the batch worker to be created.');
+    worker.onRequest = request => {
+      if (!request.requestId || !request.operationId) return;
+      // Processing never answers, so every inspected input keeps holding its slot.
+      if (request._tag === 'inspect')
+        worker.respond(inspected(request.operationId, request.requestId));
+    };
+
+    await drainMicrotasks();
+    expect(worker.requests.filter(request => request._tag === 'inspect')).toHaveLength(3);
+  });
+
+  it('downloads an already-silent video from its cached input instead of the network', async () => {
+    const target = operation(14);
+    directory.files.set(`${target.operationId}.source`, ['already silent']);
+    const downloaded: string[] = [];
+    globalThis.browser = {
+      runtime: {
+        getURL: (path: string) => path,
+        sendMessage: () => Promise.resolve({}),
+        onMessage: { addListener: () => {} },
+      },
+      downloads: {
+        download: ({ url }: { url: string }) => {
+          downloaded.push(url);
+          return Promise.resolve(nextDownloadId++);
+        },
+        search: () => Promise.resolve([]),
+        onChanged: {
+          addListener: (listener: DownloadListener) => downloadListeners.push(listener),
+          removeListener: (listener: DownloadListener) => {
+            downloadListeners = downloadListeners.filter(candidate => candidate !== listener);
+          },
+        },
+      },
+    };
+
+    const batch = runSilentVideoBatch(
+      [target],
+      () => Promise.resolve(new Set<string>()),
+      () => {},
+      'https://www.instagram.com/p/example/',
+      () => {},
+      new Set()
+    );
+    const worker = FakeWorker.instance;
+    if (!worker) throw new Error('Expected the batch worker to be created.');
+    worker.onRequest = request => {
+      if (!request.requestId || !request.operationId) return;
+      if (request._tag === 'inspect')
+        worker.respond(inspected(request.operationId, request.requestId));
+      if (request._tag === 'process')
+        worker.respond(
+          SilentProcessed.make({
+            operationId: request.operationId,
+            requestId: request.requestId,
+            alreadySilent: true,
+          })
+        );
+      if (request._tag === 'release')
+        worker.respond(
+          SilentReleased.make({ operationId: request.operationId, requestId: request.requestId })
+        );
+    };
+
+    await expect(batch).resolves.toMatchObject({ outcomes: [{ status: 'started' }] });
+    expect(downloaded).toEqual([`blob:${target.operationId}.source`]);
+  });
+
   it('preserves a worker failure kind and reason in the batch result', async () => {
     const operationToFail = operation(3);
     const batch = runSilentVideoBatch(

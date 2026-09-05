@@ -119,12 +119,13 @@ export async function getHistory(): Promise<HistoryReadResult> {
   return read();
 }
 
-function append(entry: HistoryEntry): Promise<HistoryEntry[]> {
+/** Every mutation rewrites the whole store, so a batch is written once instead of once per entry. */
+function append(added: readonly HistoryEntry[]): Promise<HistoryEntry[]> {
   return enqueue(async () => {
     const current = await read();
     if (current.kind === 'unknown-version')
       throw new Error('Download history uses a newer version.');
-    const entries = [...current.entries, entry].slice(-DOWNLOAD_HISTORY_LIMIT);
+    const entries = [...current.entries, ...added].slice(-DOWNLOAD_HISTORY_LIMIT);
     await browser.storage.set({
       [DOWNLOAD_HISTORY_KEY]: { version: DOWNLOAD_HISTORY_VERSION, entries },
     });
@@ -133,21 +134,28 @@ function append(entry: HistoryEntry): Promise<HistoryEntry[]> {
 }
 
 export function appendHistory(entry: DownloadHistoryEntry): Promise<HistoryEntry[]> {
-  return append(entry);
+  return append([entry]);
+}
+
+export function appendHistoryEntries(
+  entries: readonly DownloadHistoryEntry[]
+): Promise<HistoryEntry[]> {
+  return append(entries);
 }
 
 export function appendWhatsAppHistoryReceipt(
   receipt: WhatsAppHistoryReceipt
 ): Promise<HistoryEntry[]> {
-  return append(receipt);
+  return append([receipt]);
 }
 
-export function removeHistory(id: string): Promise<HistoryEntry[]> {
+export function removeHistoryEntries(ids: readonly string[]): Promise<HistoryEntry[]> {
+  const removed = new Set(ids);
   return enqueue(async () => {
     const current = await read();
     if (current.kind === 'unknown-version')
       throw new Error('Download history uses a newer version.');
-    const entries = current.entries.filter(entry => !('id' in entry && entry.id === id));
+    const entries = current.entries.filter(entry => !('id' in entry && removed.has(entry.id)));
     await browser.storage.set({
       [DOWNLOAD_HISTORY_KEY]: { version: DOWNLOAD_HISTORY_VERSION, entries },
     });

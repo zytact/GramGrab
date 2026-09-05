@@ -7,39 +7,44 @@ import {
   SilentProgress,
   SilentReleased,
   SilentWorkerError,
+  type SilentPhase,
   type SilentWorkerResponse,
 } from './contracts.ts';
 import { cleanFailedOutput, inspectSilentVideo, processSilentVideo } from './engine.ts';
 import { cacheInput, readInput, removeOutput, outputName } from './opfs.ts';
+import { throttleProgress } from './throttle.ts';
 import { isOperationFailure, OperationFailure, diagnosticCause } from '../errors/contracts.ts';
 
 declare const self: DedicatedWorkerGlobalScope;
+
+type SilentWorkerRequest = Awaited<ReturnType<typeof decodeSilentWorkerRequest>>;
 
 function post(response: SilentWorkerResponse): void {
   self.postMessage(response);
 }
 
-async function handleRequest(request: Awaited<ReturnType<typeof decodeSilentWorkerRequest>>) {
-  if (request._tag === 'inspect') {
+/** One throttle per request, because several requests can be in flight in the same worker. */
+function progressFor(request: SilentWorkerRequest) {
+  return throttleProgress<SilentPhase>(tick =>
     post(
       SilentProgress.make({
         operationId: request.operationId,
         requestId: request.requestId,
-        phase: 'inspecting',
-        progress: 0,
+        phase: tick.phase,
+        progress: tick.progress,
       })
-    );
+    )
+  );
+}
+
+async function handleRequest(request: SilentWorkerRequest) {
+  const emitProgress = progressFor(request);
+  if (request._tag === 'inspect') {
+    emitProgress({ phase: 'inspecting', progress: 0 });
     const file = request.useCachedInput
       ? await readInput(request.operationId)
       : await cacheInput(request.operationId, request.url, progress =>
-          post(
-            SilentProgress.make({
-              operationId: request.operationId,
-              requestId: request.requestId,
-              phase: 'inspecting',
-              progress,
-            })
-          )
+          emitProgress({ phase: 'inspecting', progress })
         );
     post(
       SilentInspected.make({
@@ -57,24 +62,9 @@ async function handleRequest(request: Awaited<ReturnType<typeof decodeSilentWork
     request.operationId,
     request.requestId,
     request.transcode,
-    progress =>
-      post(
-        SilentProgress.make({
-          operationId: request.operationId,
-          requestId: request.requestId,
-          phase: 'processing',
-          progress,
-        })
-      )
+    progress => emitProgress({ phase: 'processing', progress })
   );
-  post(
-    SilentProgress.make({
-      operationId: request.operationId,
-      requestId: request.requestId,
-      phase: 'validating',
-      progress: 1,
-    })
-  );
+  emitProgress({ phase: 'validating', progress: 1 });
   post(
     SilentProcessed.make({
       operationId: request.operationId,
@@ -86,7 +76,7 @@ async function handleRequest(request: Awaited<ReturnType<typeof decodeSilentWork
 
 self.addEventListener('message', event => {
   void (async () => {
-    let request: Awaited<ReturnType<typeof decodeSilentWorkerRequest>>;
+    let request: SilentWorkerRequest;
     try {
       request = await decodeSilentWorkerRequest(event.data);
     } catch {

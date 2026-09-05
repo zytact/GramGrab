@@ -11,6 +11,8 @@ const SilentPhase = Schema.Literal(
   'starting'
 );
 
+export type SilentPhase = Schema.Schema.Type<typeof SilentPhase>;
+
 export class SilentPreflight extends Schema.Class<SilentPreflight>('SilentPreflight')({
   requestId: RequestIdSchema,
   operationId: OperationIdSchema,
