@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vite-plus/test';
 import { throttleProgress, type ProgressTick } from './throttle.ts';
 
 function collector() {
-  const ticks: ProgressTick[] = [];
+  const ticks: ProgressTick<string>[] = [];
   let clock = 0;
   const emit = throttleProgress(
     tick => ticks.push(tick),

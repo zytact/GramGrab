@@ -5,7 +5,7 @@
  */
 const PROGRESS_INTERVAL_MS = 150;
 
-export interface ProgressTick<Phase extends string = string> {
+export interface ProgressTick<Phase extends string> {
   readonly phase: Phase;
   readonly progress: number;
 }

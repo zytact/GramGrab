@@ -333,6 +333,29 @@ describe('silent video batch', () => {
     ]);
   });
 
+  it('stops inspecting inputs once the processing buffer is full', async () => {
+    const operations = [15, 16, 17, 18, 19].map(operation);
+    void runSilentVideoBatch(
+      operations,
+      () => Promise.resolve(new Set<string>()),
+      () => {},
+      'https://www.instagram.com/p/example/',
+      () => {},
+      new Set()
+    );
+    const worker = FakeWorker.instance;
+    if (!worker) throw new Error('Expected the batch worker to be created.');
+    worker.onRequest = request => {
+      if (!request.requestId || !request.operationId) return;
+      // Processing never answers, so every inspected input keeps holding its slot.
+      if (request._tag === 'inspect')
+        worker.respond(inspected(request.operationId, request.requestId));
+    };
+
+    await drainMicrotasks();
+    expect(worker.requests.filter(request => request._tag === 'inspect')).toHaveLength(3);
+  });
+
   it('downloads an already-silent video from its cached input instead of the network', async () => {
     const target = operation(14);
     directory.files.set(`${target.operationId}.source`, ['already silent']);

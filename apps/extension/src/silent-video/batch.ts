@@ -24,9 +24,12 @@ import {
   transferInputToDownload,
   transferOutputToDownload,
 } from './opfs.ts';
-import type { SilentPreflight } from './contracts.ts';
+import type { SilentPreflight, SilentProcessed } from './contracts.ts';
 
 const INSPECTION_CONCURRENCY = 2;
+
+/** How many inspected inputs may sit in OPFS ahead of the processing that consumes them. */
+const INPUT_BUFFER_LIMIT = 3;
 
 export interface ReencodeCandidate {
   readonly operation: AttemptOperation;
@@ -62,6 +65,26 @@ function silentFailure(
     : OperationFailure.make({ code, phase, scope: 'item', cause: diagnosticCause(cause) });
 }
 
+/**
+ * Bounds how far inspection runs ahead of processing. A slot is held from the moment an input
+ * starts downloading until the work that consumes it settles, so a long batch never accumulates
+ * every input in OPFS at once.
+ */
+function inputBudget(limit: number) {
+  let held = 0;
+  const waiting: (() => void)[] = [];
+  return {
+    async acquire(): Promise<void> {
+      while (held >= limit) await new Promise<void>(resolve => waiting.push(resolve));
+      held++;
+    },
+    release(): void {
+      held--;
+      waiting.shift()?.();
+    },
+  };
+}
+
 /** Processing runs one candidate at a time so a batch never holds more than one output in flight. */
 function serialQueue() {
   let tail = Promise.resolve();
@@ -88,13 +111,15 @@ function needsReencodeDecision(
  * Inspects inputs with bounded concurrency and hands every candidate that needs no decision to
  * `onReady` the moment its input lands, so processing overlaps the downloads still running.
  * Candidates that need a re-encode decision are returned instead, because that decision is one
- * prompt covering the whole batch.
+ * prompt covering the whole batch, and they free their slot rather than stalling inspection behind
+ * a person. A candidate passed to `onReady` holds its slot until the caller releases it.
  */
 async function inspectOperations(
   client: SilentVideoClient,
   operations: readonly AttemptOperation[],
   onProgress: (requestId: string, phase: string, progress: number) => void,
   approvedOperationIds: ReadonlySet<string>,
+  budget: ReturnType<typeof inputBudget>,
   onReady: (candidate: ReencodeCandidate, index: number) => void,
   onFailed: (result: DownloadOperationResult, index: number) => void
 ): Promise<UndecidedCandidate[]> {
@@ -104,6 +129,7 @@ async function inspectOperations(
     const index = nextIndex++;
     const operation = operations[index];
     if (!operation) return;
+    await budget.acquire();
     try {
       const preflight = await client.inspect(
         operation.operationId,
@@ -113,9 +139,10 @@ async function inspectOperations(
         (phase, progress) => onProgress(operation.requestId, phase, progress)
       );
       const candidate: ReencodeCandidate = { operation, preflight };
-      if (needsReencodeDecision(candidate, approvedOperationIds))
+      if (needsReencodeDecision(candidate, approvedOperationIds)) {
         undecided.push({ candidate, index });
-      else onReady(candidate, index);
+        budget.release();
+      } else onReady(candidate, index);
     } catch (reason) {
       onFailed(
         DownloadFailedResult.make({
@@ -126,6 +153,7 @@ async function inspectOperations(
         }),
         index
       );
+      budget.release();
     }
     await inspectNext();
   };
@@ -168,13 +196,9 @@ async function recordSilentHistory(
   }
 }
 
-/**
- * A video that was already silent is served from the input inspection just downloaded rather than
- * fetched again. If that input can no longer be read, the original remote URL still holds the same
- * bytes, so the download falls back to it and the worker drops its temporary file.
- */
+/** An already-silent video is served from the input inspection downloaded, not fetched again. */
 async function resolveDownloadSource(
-  processed: { alreadySilent: boolean; opfsName?: string },
+  processed: SilentProcessed,
   operation: AttemptOperation,
   client: SilentVideoClient
 ): Promise<DownloadSource> {
@@ -189,8 +213,19 @@ async function resolveDownloadSource(
       artifact: 'input',
     };
   } catch {
+    // The remote URL still holds the same bytes when the cached input has gone.
     await client.release(operation.operationId, operation.requestId).catch(() => undefined);
     return { url: operation.url, artifact: 'remote' };
+  }
+}
+
+/** A download that never starts must not leave its object URL behind. */
+async function startDownload(source: DownloadSource, filename: string): Promise<number> {
+  try {
+    return await browser.downloads.download({ url: source.url, filename, saveAs: false });
+  } catch (cause) {
+    if (source.artifact !== 'remote') URL.revokeObjectURL(source.url);
+    throw cause;
   }
 }
 
@@ -213,11 +248,7 @@ async function processCandidate(
       (phase, progress) => onProgress(operation.requestId, phase, progress)
     );
     const source = await resolveDownloadSource(processed, operation, client);
-    const downloadId = await browser.downloads.download({
-      url: source.url,
-      filename: operation.filename,
-      saveAs: false,
-    });
+    const downloadId = await startDownload(source, operation.filename);
     onProgress(operation.requestId, 'downloading', 1);
     const warning =
       source.artifact === 'remote'
@@ -286,24 +317,34 @@ export async function runSilentVideoBatch(
     await sweepOnce();
     const results = operations.map<DownloadOperationResult | undefined>(() => undefined);
     const queue = serialQueue();
+    const budget = inputBudget(INPUT_BUFFER_LIMIT);
+    const heldInputs = new Set<number>();
     const enqueueProcessing = (candidate: ReencodeCandidate, index: number) =>
       queue.add(async () => {
-        results[index] = await processCandidate(
-          candidate,
-          client,
-          sourceUrl,
-          onProgress,
-          ownership,
-          approvedRequestIds,
-          originKind
-        );
+        try {
+          results[index] = await processCandidate(
+            candidate,
+            client,
+            sourceUrl,
+            onProgress,
+            ownership,
+            approvedRequestIds,
+            originKind
+          );
+        } finally {
+          if (heldInputs.delete(index)) budget.release();
+        }
       });
     const undecided = await inspectOperations(
       client,
       operations,
       onProgress,
       approvedRequestIds,
-      enqueueProcessing,
+      budget,
+      (candidate, index) => {
+        heldInputs.add(index);
+        enqueueProcessing(candidate, index);
+      },
       (result, index) => {
         results[index] = result;
       }
