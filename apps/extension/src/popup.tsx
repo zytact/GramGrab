@@ -733,14 +733,16 @@ export default function Popup() {
   }, []);
   const handlePreviewError = useCallback(
     (item: MediaItem) => {
-      if (
-        itemRuntimeAt(itemRuntimes, item.index).preview !== 'idle' ||
-        item.previewUrl?.startsWith('data:') === true
-      )
+      if (itemRuntimeAt(itemRuntimes, item.index).preview !== 'idle') return;
+      // The fallback data URL only feeds the image preview; a video preview always plays item.url.
+      if (item.type === 'video') {
+        patchRuntime(item.index, current => ({ ...current, preview: 'failed' }));
         return;
+      }
+      if (item.previewUrl?.startsWith('data:') === true) return;
       void requestFallbackPreview(item.index, item.url);
     },
-    [itemRuntimes, requestFallbackPreview]
+    [itemRuntimes, patchRuntime, requestFallbackPreview]
   );
   const handleVideoRef = useCallback((index: number, el: HTMLVideoElement | null) => {
     videoRefs.current[index] = el;

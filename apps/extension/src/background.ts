@@ -48,10 +48,11 @@ import { historySource } from './history/source.ts';
 import { reconcileHistoryEntry } from './history/reconciliation.ts';
 import {
   appendHistory,
+  appendHistoryEntries,
   appendWhatsAppHistoryReceipt,
   clearHistory,
   getHistory,
-  removeHistory,
+  removeHistoryEntries,
   removeWhatsAppHistoryReceipt,
 } from './history/repository.ts';
 import {
@@ -617,31 +618,13 @@ function historyFilenameHint(filename: string): string {
   return filename.replace(/\.[^.]+$/, '');
 }
 
-async function downloadItem(
-  operation: DownloadOperation,
-  origin: DownloadHistoryEntry['origin'] | undefined
-): Promise<DownloadAttempt> {
+async function downloadItem(operation: DownloadOperation): Promise<DownloadAttempt> {
   try {
     await browser.downloads.download({
       url: operation.url,
       filename: operation.filename,
       saveAs: false,
     });
-    if (origin) {
-      try {
-        await appendAcceptedHistory(operation, origin);
-      } catch {
-        return {
-          operation,
-          result: DownloadAcceptedResult.make({
-            operationId: operation.operationId,
-            requestId: operation.requestId,
-            status: 'started',
-            warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }),
-          }),
-        };
-      }
-    }
     return {
       operation,
       result: DownloadAcceptedResult.make({
@@ -672,11 +655,11 @@ interface AcceptedHistoryOperation {
   frameTimestampSeconds?: number;
 }
 
-async function appendAcceptedHistory(
+function acceptedHistoryEntry(
   item: AcceptedHistoryOperation,
   origin: DownloadHistoryEntry['origin']
-) {
-  await appendHistory({
+): DownloadHistoryEntry {
+  return {
     id: createHistoryId(),
     origin,
     itemIndex: item.itemIndex,
@@ -689,7 +672,43 @@ async function appendAcceptedHistory(
       : {}),
     downloadedAt: Date.now(),
     outcome: 'accepted',
-  });
+  };
+}
+
+async function appendAcceptedHistory(
+  item: AcceptedHistoryOperation,
+  origin: DownloadHistoryEntry['origin']
+) {
+  await appendHistory(acceptedHistoryEntry(item, origin));
+}
+
+/**
+ * One history write covers a whole download batch. A failed write warns every entry it would have
+ * held, so an item still reports its own history outcome.
+ */
+async function recordAcceptedHistory(
+  attempts: readonly DownloadAttempt[],
+  origin: DownloadHistoryEntry['origin']
+): Promise<DownloadOperationResult[]> {
+  const accepted = attempts.filter(attempt => attempt.result.status === 'started');
+  if (accepted.length === 0) return attempts.map(attempt => attempt.result);
+  try {
+    await appendHistoryEntries(
+      accepted.map(attempt => acceptedHistoryEntry(attempt.operation, origin))
+    );
+    return attempts.map(attempt => attempt.result);
+  } catch {
+    return attempts.map(attempt =>
+      attempt.result.status === 'started'
+        ? DownloadAcceptedResult.make({
+            operationId: attempt.operation.operationId,
+            requestId: attempt.operation.requestId,
+            status: 'started',
+            warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }),
+          })
+        : attempt.result
+    );
+  }
 }
 
 async function handleDownloadMedia(
@@ -711,10 +730,12 @@ async function handleDownloadMedia(
       : source
         ? ({ kind: 'source', sourceUrl: source.url, sourceKind: source.kind } as const)
         : undefined;
-  const attempts = await mapWithConcurrency(request.operations, DOWNLOAD_CONCURRENCY, operation =>
-    downloadItem(operation, origin)
-  );
-  return DownloadMediaResponse.make({ results: attempts.map(attempt => attempt.result) });
+  const attempts = await mapWithConcurrency(request.operations, DOWNLOAD_CONCURRENCY, downloadItem);
+  return DownloadMediaResponse.make({
+    results: origin
+      ? await recordAcceptedHistory(attempts, origin)
+      : attempts.map(attempt => attempt.result),
+  });
 }
 
 function createHistoryId(): string {
@@ -1391,7 +1412,8 @@ async function executeCommand(
         );
         const known = new Set(instagramEntries.map(entry => entry.id));
         const removedEntryIds = command.entryIds.filter(id => known.has(id));
-        for (const id of removedEntryIds) await abortable(removeHistory(id), signal);
+        if (removedEntryIds.length > 0)
+          await abortable(removeHistoryEntries(removedEntryIds), signal);
         result = HistoryRemoveResult.make({
           removedEntryIds,
           unknownEntryIds: command.entryIds.filter(id => !known.has(id)),
@@ -1581,7 +1603,7 @@ const messageHandlers: MessageHandlers = {
   DELETE_WHATSAPP_HISTORY_RECEIPT: handleDeleteWhatsAppHistoryReceipt,
   DELETE_HISTORY_ENTRY: async message => {
     try {
-      const entries = await removeHistory(message.entryId);
+      const entries = await removeHistoryEntries([message.entryId]);
       return { entries: [...entries].reverse(), failure: undefined };
     } catch {
       return { entries: [], failure: historyFailure('HISTORY_STORE_FAILED') };

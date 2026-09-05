@@ -503,6 +503,53 @@ describe('background dispatcher', () => {
       expect(JSON.stringify(result.results[0]?.failure)).toContain('signed url token=secret');
     });
 
+    const historyOperations = [0, 1].map(index => ({
+      operationId: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      requestId: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      itemIndex: index,
+      url: `https://cdn.instagram.com/${index}.jpg`,
+      filename: `hint_${index}.jpg`,
+      originalUrl: `https://cdn.instagram.com/${index}.jpg`,
+      originalFilename: `hint_${index}.jpg`,
+      mediaType: 'image',
+    }));
+
+    it('records the whole accepted batch in one history write', async () => {
+      const listener = await loadBackground();
+      await invoke(listener, {
+        type: 'DOWNLOAD_MEDIA',
+        sourceUrl: 'https://www.instagram.com/p/example/',
+        operations: historyOperations,
+      });
+
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledTimes(1);
+      expect(fakeBrowserObj.fakeBrowser.storage.set.mock.calls[0]?.[0]).toMatchObject({
+        'download-history': {
+          entries: [
+            expect.objectContaining({ filenameHint: 'hint_0' }),
+            expect.objectContaining({ filenameHint: 'hint_1' }),
+          ],
+        },
+      });
+    });
+
+    it('warns every accepted item when the batch history write fails', async () => {
+      fakeBrowserObj.fakeBrowser.storage.set.mockRejectedValueOnce(
+        new Error('storage unavailable')
+      );
+      const listener = await loadBackground();
+      const result = (await invoke(listener, {
+        type: 'DOWNLOAD_MEDIA',
+        sourceUrl: 'https://www.instagram.com/p/example/',
+        operations: historyOperations,
+      })) as { results: { status: string; warning?: { code: string } }[] };
+
+      expect(result.results).toEqual([
+        expect.objectContaining({ status: 'started', warning: { code: 'HISTORY_SAVE_FAILED' } }),
+        expect.objectContaining({ status: 'started', warning: { code: 'HISTORY_SAVE_FAILED' } }),
+      ]);
+    });
+
     it('rejects legacy and malformed payloads as a batch error', async () => {
       const listener = await loadBackground();
       const result = await invoke(listener, {

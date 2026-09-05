@@ -119,6 +119,13 @@ export function MediaListSection({
     workspaceMode,
     itemRuntimes,
   });
+  const attemptEntries = useMemo(() => {
+    const byDisplayIndex = new Map<number, AttemptEntry>();
+    for (const entry of attempt?.entries ?? [])
+      if (!byDisplayIndex.has(entry.operation.displayIndex))
+        byDisplayIndex.set(entry.operation.displayIndex, entry);
+    return byDisplayIndex;
+  }, [attempt]);
 
   const renderItem = (item: MediaItem) => (
     <MediaItemRow
@@ -133,7 +140,7 @@ export function MediaListSection({
       frameSetting={frameExportSettings[item.index]}
       removeAudio={allowSilent && removeAudioIndexes.has(item.index)}
       allowSilent={allowSilent}
-      attemptEntry={attempt?.entries.find(entry => entry.operation.displayIndex === item.index)}
+      attemptEntry={attemptEntries.get(item.index)}
       disabled={disabled}
       onToggleExportFrame={() => onToggleExportFrame(item.index)}
       onToggleRemoveAudio={() => onToggleRemoveAudio(item.index)}
@@ -292,6 +299,7 @@ function VideoPreview({
         src={item.url}
         muted
         playsInline
+        preload="metadata"
         onError={onError}
         ref={onVideoRef}
         onLoadedMetadata={event => {
@@ -315,6 +323,8 @@ function ImagePreview({
     <img
       src={item.previewUrl ?? item.url}
       alt="Preview"
+      loading="lazy"
+      decoding="async"
       onLoad={event =>
         onIntrinsicDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
       }

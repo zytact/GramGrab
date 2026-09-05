@@ -17,17 +17,39 @@ import {
 } from '../errors/contracts.ts';
 import type { AttemptOperation } from '../download/attempt.ts';
 import { SilentVideoClient } from './client.ts';
-import { readOutput, sweepOutputs, transferOutputToDownload } from './opfs.ts';
+import {
+  readInput,
+  readOutput,
+  sweepOutputs,
+  transferInputToDownload,
+  transferOutputToDownload,
+} from './opfs.ts';
 import type { SilentPreflight } from './contracts.ts';
+
+const INSPECTION_CONCURRENCY = 2;
 
 export interface ReencodeCandidate {
   readonly operation: AttemptOperation;
   readonly preflight: SilentPreflight;
 }
 
+/** A candidate held back until the person decides whether its re-encode may run. */
+interface UndecidedCandidate {
+  readonly candidate: ReencodeCandidate;
+  readonly index: number;
+}
+
 interface OwnershipState {
   activeDownloads: number;
   batchComplete: boolean;
+}
+
+/** Which temporary file the browser download reads, and therefore which one it now owns. */
+type DownloadArtifact = 'input' | 'output' | 'remote';
+
+interface DownloadSource {
+  readonly url: string;
+  readonly artifact: DownloadArtifact;
 }
 
 function silentFailure(
@@ -40,75 +62,88 @@ function silentFailure(
     : OperationFailure.make({ code, phase, scope: 'item', cause: diagnosticCause(cause) });
 }
 
+/** Processing runs one candidate at a time so a batch never holds more than one output in flight. */
+function serialQueue() {
+  let tail = Promise.resolve();
+  return {
+    add(task: () => Promise<void>): void {
+      tail = tail.then(task, task);
+    },
+    drain: () => tail,
+  };
+}
+
+function needsReencodeDecision(
+  candidate: ReencodeCandidate,
+  approvedOperationIds: ReadonlySet<string>
+): boolean {
+  return (
+    candidate.preflight.audioTrackCount > 0 &&
+    !candidate.preflight.copyCompatible &&
+    !approvedOperationIds.has(candidate.operation.operationId)
+  );
+}
+
+/**
+ * Inspects inputs with bounded concurrency and hands every candidate that needs no decision to
+ * `onReady` the moment its input lands, so processing overlaps the downloads still running.
+ * Candidates that need a re-encode decision are returned instead, because that decision is one
+ * prompt covering the whole batch.
+ */
 async function inspectOperations(
   client: SilentVideoClient,
   operations: readonly AttemptOperation[],
   onProgress: (requestId: string, phase: string, progress: number) => void,
-  approvedRequestIds: ReadonlySet<string>
-) {
-  const settled = operations.map<PromiseSettledResult<SilentPreflight> | undefined>(
-    () => undefined
-  );
+  approvedOperationIds: ReadonlySet<string>,
+  onReady: (candidate: ReencodeCandidate, index: number) => void,
+  onFailed: (result: DownloadOperationResult, index: number) => void
+): Promise<UndecidedCandidate[]> {
+  const undecided: UndecidedCandidate[] = [];
   let nextIndex = 0;
   const inspectNext = async (): Promise<void> => {
     const index = nextIndex++;
     const operation = operations[index];
     if (!operation) return;
     try {
-      settled[index] = {
-        status: 'fulfilled',
-        value: await client.inspect(
-          operation.operationId,
-          operation.requestId,
-          operation.url,
-          approvedRequestIds.has(operation.operationId),
-          (phase, progress) => onProgress(operation.requestId, phase, progress)
-        ),
-      };
+      const preflight = await client.inspect(
+        operation.operationId,
+        operation.requestId,
+        operation.url,
+        approvedOperationIds.has(operation.operationId),
+        (phase, progress) => onProgress(operation.requestId, phase, progress)
+      );
+      const candidate: ReencodeCandidate = { operation, preflight };
+      if (needsReencodeDecision(candidate, approvedOperationIds))
+        undecided.push({ candidate, index });
+      else onReady(candidate, index);
     } catch (reason) {
-      settled[index] = { status: 'rejected', reason };
-    }
-    await inspectNext();
-  };
-  await Promise.all(Array.from({ length: Math.min(2, operations.length) }, inspectNext));
-  const candidates: ReencodeCandidate[] = [];
-  const failures: DownloadOperationResult[] = [];
-  settled.forEach((result, index) => {
-    const operation = operations[index];
-    if (!operation || !result) return;
-    if (result.status === 'fulfilled') candidates.push({ operation, preflight: result.value });
-    else
-      failures.push(
+      onFailed(
         DownloadFailedResult.make({
           operationId: operation.operationId,
           requestId: operation.requestId,
           status: 'failed',
-          failure: silentFailure(
-            result.reason,
-            'SILENT_INPUT_INSPECTION_FAILED',
-            'silent-inspection'
-          ),
-        })
+          failure: silentFailure(reason, 'SILENT_INPUT_INSPECTION_FAILED', 'silent-inspection'),
+        }),
+        index
       );
-  });
-  return { candidates, failures };
+    }
+    await inspectNext();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(INSPECTION_CONCURRENCY, operations.length) }, inspectNext)
+  );
+  return undecided.sort((first, second) => first.index - second.index);
 }
 
 async function declinedReencodes(
-  candidates: readonly ReencodeCandidate[],
+  undecided: readonly UndecidedCandidate[],
   approvedRequestIds: Set<string>,
   approveReencode: (candidates: readonly ReencodeCandidate[]) => Promise<ReadonlySet<string>>
 ): Promise<Set<string>> {
-  const undecided = candidates.filter(
-    candidate =>
-      candidate.preflight.audioTrackCount > 0 &&
-      !candidate.preflight.copyCompatible &&
-      !approvedRequestIds.has(candidate.operation.operationId)
-  );
   if (undecided.length === 0) return new Set();
-  const approved = await approveReencode(undecided);
+  const approved = await approveReencode(undecided.map(pending => pending.candidate));
   const declined = new Set<string>();
-  for (const candidate of undecided) {
+  for (const { candidate } of undecided) {
     const operationId = candidate.operation.operationId;
     if (approved.has(operationId)) approvedRequestIds.add(operationId);
     else declined.add(operationId);
@@ -133,6 +168,32 @@ async function recordSilentHistory(
   }
 }
 
+/**
+ * A video that was already silent is served from the input inspection just downloaded rather than
+ * fetched again. If that input can no longer be read, the original remote URL still holds the same
+ * bytes, so the download falls back to it and the worker drops its temporary file.
+ */
+async function resolveDownloadSource(
+  processed: { alreadySilent: boolean; opfsName?: string },
+  operation: AttemptOperation,
+  client: SilentVideoClient
+): Promise<DownloadSource> {
+  if (!processed.alreadySilent)
+    return {
+      url: URL.createObjectURL(await readOutput(processed.opfsName!)),
+      artifact: 'output',
+    };
+  try {
+    return {
+      url: URL.createObjectURL(await readInput(operation.operationId)),
+      artifact: 'input',
+    };
+  } catch {
+    await client.release(operation.operationId, operation.requestId).catch(() => undefined);
+    return { url: operation.url, artifact: 'remote' };
+  }
+}
+
 async function processCandidate(
   candidate: ReencodeCandidate,
   client: SilentVideoClient,
@@ -151,20 +212,17 @@ async function processCandidate(
       !preflight.copyCompatible || approvedOperationIds.has(operation.operationId),
       (phase, progress) => onProgress(operation.requestId, phase, progress)
     );
-    if (processed.alreadySilent)
-      await client.release(operation.operationId, operation.requestId).catch(() => undefined);
-    const url = processed.alreadySilent
-      ? operation.url
-      : URL.createObjectURL(await readOutput(processed.opfsName!));
+    const source = await resolveDownloadSource(processed, operation, client);
     const downloadId = await browser.downloads.download({
-      url,
+      url: source.url,
       filename: operation.filename,
       saveAs: false,
     });
     onProgress(operation.requestId, 'downloading', 1);
-    const warning = processed.alreadySilent
-      ? undefined
-      : await trackOwnedDownload(operation, downloadId, url, client, ownership);
+    const warning =
+      source.artifact === 'remote'
+        ? undefined
+        : await trackOwnedDownload(operation, downloadId, source, client, ownership);
     const historyWarning = (await recordSilentHistory(sourceUrl, operation, originKind)).warning;
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,
@@ -191,13 +249,16 @@ async function processCandidate(
 async function trackOwnedDownload(
   operation: AttemptOperation,
   downloadId: number,
-  url: string,
+  source: DownloadSource,
   client: SilentVideoClient,
   ownership: OwnershipState
 ): Promise<string | undefined> {
   ownership.activeDownloads++;
-  const ownershipReady = transferOutputToDownload(operation.operationId, downloadId);
-  releaseWhenComplete(downloadId, url, client, operation, ownershipReady, () => {
+  const ownershipReady =
+    source.artifact === 'output'
+      ? transferOutputToDownload(operation.operationId, downloadId)
+      : transferInputToDownload(operation.operationId, downloadId);
+  releaseWhenComplete(downloadId, source.url, client, operation, ownershipReady, () => {
     ownership.activeDownloads--;
     if (ownership.batchComplete && ownership.activeDownloads === 0) client.close();
   });
@@ -223,40 +284,53 @@ export async function runSilentVideoBatch(
   for (const operation of operations) onProgress(operation.requestId, 'queued', 0);
   try {
     await sweepOnce();
-    const inspected = await inspectOperations(client, operations, onProgress, approvedRequestIds);
-    const skipped = await declinedReencodes(
-      inspected.candidates,
+    const results = operations.map<DownloadOperationResult | undefined>(() => undefined);
+    const queue = serialQueue();
+    const enqueueProcessing = (candidate: ReencodeCandidate, index: number) =>
+      queue.add(async () => {
+        results[index] = await processCandidate(
+          candidate,
+          client,
+          sourceUrl,
+          onProgress,
+          ownership,
+          approvedRequestIds,
+          originKind
+        );
+      });
+    const undecided = await inspectOperations(
+      client,
+      operations,
+      onProgress,
       approvedRequestIds,
-      approveReencode
+      enqueueProcessing,
+      (result, index) => {
+        results[index] = result;
+      }
     );
+    const declined = await declinedReencodes(undecided, approvedRequestIds, approveReencode);
     onPreflightComplete();
-    const results = [...inspected.failures];
-    for (const candidate of inspected.candidates) {
-      if (skipped.has(candidate.operation.operationId)) {
+    for (const { candidate, index } of undecided) {
+      if (!declined.has(candidate.operation.operationId)) {
+        enqueueProcessing(candidate, index);
+        continue;
+      }
+      results[index] = DownloadSkippedResult.make({
+        operationId: candidate.operation.operationId,
+        requestId: candidate.operation.requestId,
+        status: 'skipped',
+        code: 'SILENT_REENCODE_DECLINED',
+      });
+      queue.add(async () => {
         await client
           .release(candidate.operation.operationId, candidate.operation.requestId)
           .catch(() => undefined);
-      }
-      results.push(
-        skipped.has(candidate.operation.operationId)
-          ? DownloadSkippedResult.make({
-              operationId: candidate.operation.operationId,
-              requestId: candidate.operation.requestId,
-              status: 'skipped',
-              code: 'SILENT_REENCODE_DECLINED',
-            })
-          : await processCandidate(
-              candidate,
-              client,
-              sourceUrl,
-              onProgress,
-              ownership,
-              approvedRequestIds,
-              originKind
-            )
-      );
+      });
     }
-    return OperationBatchOutcome.make({ outcomes: results });
+    await queue.drain();
+    return OperationBatchOutcome.make({
+      outcomes: results.flatMap(result => (result ? [result] : [])),
+    });
   } catch (cause) {
     const itemFailure = silentFailure(cause, 'SILENT_STORAGE_UNAVAILABLE', 'silent-storage');
     const failure =

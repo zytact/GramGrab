@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
-import { appendHistory, appendWhatsAppHistoryReceipt, getHistory } from './repository.ts';
-import { WhatsAppHistoryReceipt } from './contracts.ts';
+import {
+  appendHistory,
+  appendHistoryEntries,
+  appendWhatsAppHistoryReceipt,
+  getHistory,
+  removeHistoryEntries,
+} from './repository.ts';
+import { WhatsAppHistoryReceipt, type DownloadHistoryEntry } from './contracts.ts';
 
 describe('download history origin migration', () => {
   beforeEach(resetBrowserMocks);
@@ -119,5 +125,45 @@ describe('download history origin migration', () => {
     });
 
     await expect(getHistory()).resolves.toEqual({ kind: 'ok', entries: [], repaired: true });
+  });
+});
+
+describe('batched history writes', () => {
+  beforeEach(resetBrowserMocks);
+
+  const entry = (id: string): DownloadHistoryEntry => ({
+    id,
+    origin: { kind: 'instants' },
+    itemIndex: 0,
+    mediaType: 'image',
+    filenameHint: id,
+    downloadedAt: 1,
+    outcome: 'accepted',
+  });
+
+  it('writes one store update for a whole batch of entries', async () => {
+    vi.mocked(getMockBrowser().storage.get).mockResolvedValue({});
+    await appendHistoryEntries([entry('a'), entry('b'), entry('c')]);
+
+    expect(vi.mocked(getMockBrowser().storage.set).mock.calls).toHaveLength(1);
+    expect(vi.mocked(getMockBrowser().storage.set).mock.calls[0]?.[0]).toMatchObject({
+      'download-history': {
+        entries: [
+          expect.objectContaining({ id: 'a' }),
+          expect.objectContaining({ id: 'b' }),
+          expect.objectContaining({ id: 'c' }),
+        ],
+      },
+    });
+  });
+
+  it('removes every requested entry in one store update', async () => {
+    vi.mocked(getMockBrowser().storage.get).mockResolvedValue({
+      'download-history': { version: 4, entries: [entry('a'), entry('b'), entry('c')] },
+    });
+    await expect(removeHistoryEntries(['a', 'c'])).resolves.toEqual([
+      expect.objectContaining({ id: 'b' }),
+    ]);
+    expect(vi.mocked(getMockBrowser().storage.set).mock.calls).toHaveLength(1);
   });
 });
