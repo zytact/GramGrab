@@ -1660,6 +1660,12 @@ body:has(.workspace-container) {
   word-break: break-all;
 }
 
+.rotate-toggle {
+  min-width: 7.5em;
+  justify-content: center;
+  margin-right: 6px;
+}
+
 /* Rotated previews. A quarter turn swaps the box's axes, so the media is sized to the box's height
    and width before it turns. */
 .media-thumb[data-rotation] {
