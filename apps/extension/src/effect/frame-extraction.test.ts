@@ -35,7 +35,7 @@ function fireEvent(
 }
 
 function makeCanvas() {
-  const ctx = { drawImage: vi.fn() };
+  const ctx = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() };
   const canvas = {
     width: 0,
     height: 0,
@@ -84,6 +84,20 @@ describe('captureFrameFromVideoEffect', () => {
     if (result._tag === 'Right') {
       expect(result.right).toBeInstanceOf(Blob);
     }
+  });
+
+  it('turns a rotated frame onto a canvas with swapped axes', async () => {
+    const video = makeVideo({ readyState: 4, duration: 10, currentTime: 3 });
+
+    const result = await Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3, 90).pipe(Effect.either)
+    );
+
+    expect(result._tag).toBe('Right');
+    expect(currentCanvas).toMatchObject({ width: 480, height: 640 });
+    const ctx = currentCanvas.getContext.mock.results[0]?.value;
+    expect(ctx.rotate).toHaveBeenCalledWith(Math.PI / 2);
+    expect(ctx.drawImage).toHaveBeenCalledWith(video, -320, -240, 640, 480);
   });
 
   it('waits for loadedmetadata when readyState < 1', async () => {

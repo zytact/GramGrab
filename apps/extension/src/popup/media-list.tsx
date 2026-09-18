@@ -13,6 +13,7 @@ import {
 } from '../frame-export/timestamp';
 import { distributeMasonryItems } from '../workspace/masonry';
 import { resolveMediaRatio } from '../workspace/media-ratio';
+import { swapsAxes } from '../rotation/contracts';
 import { itemRuntimeAt, type ItemRuntime, type ItemRuntimes, type MediaItem } from './media-item';
 
 export type MediaListModel = {
@@ -28,6 +29,8 @@ export type MediaListModel = {
 export type MediaListActions = {
   onPreviewError: (item: MediaItem) => void;
   onToggle: (index: number) => void;
+  /** Absent where outputs cannot be rotated, which hides the control. */
+  onRotate?: (index: number) => void;
   onToggleAll: () => void;
   onToggleExportFrame: (index: number) => void;
   onToggleRemoveAudio: (index: number) => void;
@@ -38,6 +41,17 @@ export type MediaListActions = {
   onVideoMetadata: (index: number, durationSeconds: number) => void;
   onIntrinsicDimensions: (item: MediaItem, width: number, height: number) => void;
 };
+
+/** The width-to-height ratio an item shows at, after its rotation. */
+function displayRatio(item: MediaItem, runtime: ItemRuntime | undefined): number {
+  const ratio = resolveMediaRatio(
+    item.width,
+    item.height,
+    runtime?.intrinsic?.width,
+    runtime?.intrinsic?.height
+  );
+  return swapsAxes(item.rotation) ? 1 / ratio : ratio;
+}
 
 function useMediaMasonry({
   mediaItems,
@@ -53,11 +67,11 @@ function useMediaMasonry({
   const columnCount = Math.max(1, Math.floor((masonryWidth + 12) / 232));
   const masonryColumns = useMemo(() => {
     const columnWidth = Math.max(220, (masonryWidth - (columnCount - 1) * 12) / columnCount);
-    return distributeMasonryItems(mediaItems, workspaceMode ? columnCount : 1, item => {
-      const intrinsic = itemRuntimes[item.index]?.intrinsic;
-      const ratio = resolveMediaRatio(item.width, item.height, intrinsic?.width, intrinsic?.height);
-      return columnWidth / ratio + 104;
-    });
+    return distributeMasonryItems(
+      mediaItems,
+      workspaceMode ? columnCount : 1,
+      item => columnWidth / displayRatio(item, itemRuntimes[item.index]) + 104
+    );
   }, [columnCount, itemRuntimes, masonryWidth, mediaItems, workspaceMode]);
 
   useEffect(() => {
@@ -104,6 +118,7 @@ export function MediaListSection({
   const {
     onPreviewError,
     onToggle,
+    onRotate,
     onToggleAll,
     onToggleExportFrame,
     onToggleRemoveAudio,
@@ -137,6 +152,7 @@ export function MediaListSection({
       runtime={itemRuntimeAt(itemRuntimes, item.index)}
       onError={() => onPreviewError(item)}
       onToggle={() => onToggle(item.index)}
+      onRotate={onRotate && (() => onRotate(item.index))}
       frameSetting={frameExportSettings[item.index]}
       removeAudio={allowSilent && removeAudioIndexes.has(item.index)}
       allowSilent={allowSilent}
@@ -204,6 +220,7 @@ interface MediaItemRowProps {
   runtime: ItemRuntime;
   onError: () => void;
   onToggle: () => void;
+  onRotate?: () => void;
   frameSetting?: FrameExportSetting;
   removeAudio: boolean;
   allowSilent: boolean;
@@ -248,18 +265,14 @@ function MediaPreview({
   onVideoMetadata,
   onIntrinsicDimensions,
 }: MediaPreviewProps) {
-  const ratio = resolveMediaRatio(
-    item.width,
-    item.height,
-    runtime.intrinsic?.width,
-    runtime.intrinsic?.height
-  );
   const previewStyle =
-    workspaceMode || layout === 'hero' ? ({ '--media-ratio': ratio } as CSSProperties) : undefined;
+    workspaceMode || layout === 'hero'
+      ? ({ '--media-ratio': displayRatio(item, runtime) } as CSSProperties)
+      : undefined;
   const failed = runtime.preview === 'failed';
 
   return (
-    <div className="media-thumb" style={previewStyle}>
+    <div className="media-thumb" style={previewStyle} data-rotation={item.rotation}>
       {failed ? (
         <div className="thumb-placeholder" title={previewFailureTitle(runtime)}>
           <span className="thumb-icon">◻</span>
@@ -341,6 +354,7 @@ function MediaControls({
   allowSilent,
   runtime,
   onToggle,
+  onRotate,
   onToggleExportFrame,
   onToggleRemoveAudio,
   onChangeFrameTimestamp,
@@ -356,6 +370,7 @@ function MediaControls({
   | 'allowSilent'
   | 'runtime'
   | 'onToggle'
+  | 'onRotate'
   | 'onToggleExportFrame'
   | 'onToggleRemoveAudio'
   | 'onChangeFrameTimestamp'
@@ -424,6 +439,22 @@ function MediaControls({
           )}
         </div>
       )}
+      {onRotate && (
+        <button
+          type="button"
+          className="frame-toggle rotate-toggle"
+          aria-pressed={item.rotation !== undefined}
+          aria-label={`Rotate item ${String(item.index + 1).padStart(2, '0')} clockwise, now ${item.rotation ?? 0} degrees`}
+          title="Rotate 90° clockwise before download"
+          onClick={event => {
+            event.stopPropagation();
+            onRotate();
+          }}
+          disabled={disabled}
+        >
+          ↻ {item.rotation ?? 0}°
+        </button>
+      )}
       <input
         className="item-checkbox"
         type="checkbox"
@@ -447,6 +478,7 @@ function MediaItemRow(props: MediaItemRowProps) {
     runtime,
     onError,
     onToggle,
+    onRotate,
     frameSetting,
     removeAudio,
     allowSilent,
@@ -535,6 +567,7 @@ function MediaItemRow(props: MediaItemRowProps) {
         allowSilent={allowSilent}
         runtime={runtime}
         onToggle={onToggle}
+        onRotate={onRotate}
         onToggleExportFrame={onToggleExportFrame}
         onToggleRemoveAudio={onToggleRemoveAudio}
         onChangeFrameTimestamp={onChangeFrameTimestamp}

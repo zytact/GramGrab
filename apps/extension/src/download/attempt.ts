@@ -2,14 +2,21 @@ import { createRequestId, DownloadOperation, type DownloadOperationResult } from
 import { Schema } from 'effect';
 import { OperationFailure, type OperationWarning, type SkipCode } from '../errors/contracts.ts';
 import { FAILURE_PRESENTATION, presentationForFailure, retryable } from '../errors/presentation.ts';
+import { RotationSchema, type Rotation } from '../rotation/contracts.ts';
 
 export const AttemptOperationSchema = Schema.Struct({
   ...DownloadOperation.fields,
   mode: Schema.Literal('direct', 'frame', 'silent'),
   displayIndex: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
   frameTimestampSeconds: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  rotation: Schema.optional(RotationSchema),
 });
 export type AttemptOperation = Schema.Schema.Type<typeof AttemptOperationSchema>;
+export type RotatedOperation = AttemptOperation & { readonly rotation: Rotation };
+
+/** A direct export with a rotation is turned by the calling document instead of the browser. */
+export const isRotatedDirect = (operation: AttemptOperation): operation is RotatedOperation =>
+  operation.mode === 'direct' && operation.rotation !== undefined;
 
 export type AttemptOutcome =
   | { readonly status: 'pending'; readonly phase?: string; readonly progress?: number }
@@ -104,6 +111,7 @@ export function attemptReducer(
               url: entry.operation.originalUrl,
               filename: entry.operation.originalFilename,
               mode: 'direct',
+              rotation: undefined,
             },
             outcome: { status: 'pending' },
             executionCount: entry.executionCount + 1,

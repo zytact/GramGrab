@@ -1,4 +1,5 @@
 import { Either, Schema } from 'effect';
+import type { Rotation } from '../rotation/contracts.ts';
 
 export const DOWNLOAD_HISTORY_KEY = 'download-history';
 export const DOWNLOAD_HISTORY_VERSION = 4 as const;
@@ -19,6 +20,7 @@ export interface DownloadHistoryEntry {
   filenameHint: string;
   exportMode?: 'direct' | 'frame' | 'silent';
   frameTimestampSeconds?: number;
+  rotation?: Rotation;
   downloadedAt: number;
   outcome: 'accepted';
 }

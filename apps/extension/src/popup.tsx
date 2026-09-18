@@ -23,6 +23,8 @@ import {
   type FrameExportSetting,
 } from './frame-export/timestamp';
 import { executeFrameExport } from './frame-export/executor';
+import { executeRotatedExport } from './rotation/executor';
+import { nextRotation } from './rotation/contracts';
 import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
@@ -123,6 +125,7 @@ function exportCandidate(
     frameTimestampSeconds: setting?.timestampSeconds ?? 0,
     frameDurationSeconds: durationSeconds,
     removeAudio: removeAudioIndexes.has(item.index),
+    rotation: item.rotation,
   });
 }
 
@@ -247,6 +250,17 @@ export default function Popup() {
   const toggleItem = useCallback((index: number) => {
     setMediaItems(prev =>
       prev.map(item => (item.index === index ? { ...item, selected: !item.selected } : item))
+    );
+  }, []);
+
+  const rotateItem = useCallback((index: number) => {
+    setMediaItems(prev =>
+      prev.map(item => {
+        if (item.index !== index) return item;
+        const { rotation, ...unrotated } = item;
+        const next = nextRotation(rotation);
+        return next ? { ...unrotated, rotation: next } : unrotated;
+      })
     );
   }, []);
 
@@ -461,6 +475,7 @@ export default function Popup() {
   const downloadAttempt = useDownloadAttempt({
     executeFrame: executeFrameAttempt,
     executeDirect,
+    executeRotated: operation => executeRotatedExport(operation, fetchedUrl || url, acquisition),
     executeSilent: (operations, onProgress, onPreflightComplete, approvedRequestIds) =>
       runSilentVideoBatch(
         operations,
@@ -585,6 +600,7 @@ export default function Popup() {
         mode: 'frame',
         displayIndex: index,
         frameTimestampSeconds: timestampSeconds,
+        ...(item.rotation ? { rotation: item.rotation } : {}),
       });
     },
     [executeFrameAttempt, frameExportSettings, itemRuntimes, mediaItems]
@@ -778,6 +794,7 @@ export default function Popup() {
           url: response.silent.url,
           filenameHint: response.silent.filenameHint,
           selected: true,
+          ...(response.silent.rotation ? { rotation: response.silent.rotation } : {}),
         };
         const snapshot = {
           version: 4 as const,
@@ -821,6 +838,7 @@ export default function Popup() {
             mode: 'frame',
             displayIndex: 0,
             frameTimestampSeconds: timestampSeconds,
+            ...(response.frame.rotation ? { rotation: response.frame.rotation } : {}),
           },
           response.frame.sourceUrl,
           { originKind: response.frame.originKind }
@@ -833,6 +851,31 @@ export default function Popup() {
             : 'Frame export failed. Download the original video or try again.'
         );
         if (result.status === 'failed') setStatus('error');
+      } else if ('rotated' in response) {
+        const { rotated } = response;
+        const filename = `${rotated.filenameHint}_${rotated.itemIndex + 1}.${rotated.mediaType === 'video' ? 'mp4' : 'jpg'}`;
+        const result = await executeRotatedExport(
+          {
+            operationId: createOperationId(),
+            requestId: createRequestId(),
+            itemIndex: rotated.itemIndex,
+            ...(rotated.mediaId ? { mediaId: rotated.mediaId } : {}),
+            url: rotated.url,
+            originalUrl: rotated.url,
+            filename,
+            originalFilename: filename,
+            mediaType: rotated.mediaType,
+            mode: 'direct',
+            displayIndex: 0,
+            rotation: rotated.rotation,
+          },
+          rotated.sourceUrl,
+          rotated.originKind
+        );
+        if (result.status === 'failed') setStatus('error');
+        setMessage(
+          result.status === 'failed' ? failureMessage(result.failure) : 'Download started.'
+        );
       } else {
         const failed =
           'results' in response
@@ -931,6 +974,7 @@ export default function Popup() {
   const mediaListActions = {
     onPreviewError: handlePreviewError,
     onToggle: toggleItem,
+    onRotate: rotateItem,
     onToggleAll: toggleAll,
     onToggleExportFrame: toggleExportFrame,
     onToggleRemoveAudio: toggleRemoveAudio,

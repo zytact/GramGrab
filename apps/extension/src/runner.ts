@@ -27,6 +27,7 @@ import {
 } from './download/coordinator.ts';
 import type { AttemptOperation } from './download/attempt.ts';
 import { executeFrameExport } from './frame-export/executor.ts';
+import { executeRotatedExport } from './rotation/executor.ts';
 import { runSilentVideoBatch } from './silent-video/batch.ts';
 import { approvedReencodeOperationIds } from './silent-video/policy.ts';
 
@@ -133,6 +134,7 @@ async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<E
       ...(requested.mode._tag === 'FrameExport'
         ? { frameTimestampSeconds: requested.mode.timestampSeconds }
         : {}),
+      ...(requested.rotation ? { rotation: requested.rotation } : {}),
     });
     requestedById.set(requested.operationId, requested);
   }
@@ -164,6 +166,7 @@ async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<E
         operations: direct,
       });
     },
+    rotated: operation => executeRotatedExport(operation, sourceUrl, originKind),
     silent: (silent, progress, preflight, approvedIds) =>
       runSilentVideoBatch(
         silent,

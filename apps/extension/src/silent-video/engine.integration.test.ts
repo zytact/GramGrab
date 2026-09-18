@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import type { StreamTargetChunk } from 'mediabunny';
+import { ALL_FORMATS, BlobSource, Input, type StreamTargetChunk } from 'mediabunny';
 import { operationIdFrom, requestIdFrom } from '../download/contracts.ts';
 import { inspectSilentVideo, processSilentVideo } from './engine.ts';
 
@@ -95,7 +95,7 @@ describe('silent video media processing', () => {
     const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
     directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
 
-    const result = await processSilentVideo(operationId, requestId, false, () => {});
+    const result = await processSilentVideo(operationId, requestId, false, undefined, () => {});
 
     expect(result.alreadySilent).toBe(false);
     expect(result.opfsName).toBe(`${operationId}.mp4`);
@@ -106,5 +106,25 @@ describe('silent video media processing', () => {
     expect(preflight.audioTrackCount).toBe(0);
     expect(preflight.width).toBe(16);
     expect(preflight.height).toBe(16);
+  });
+
+  it('writes a requested rotation into the silent output', async () => {
+    const requestId = requestIdFrom('00000000-0000-4000-8000-000000000002');
+    const operationId = operationIdFrom('10000000-0000-4000-8000-000000000002');
+    const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
+    directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
+
+    await processSilentVideo(operationId, requestId, false, 270, () => {});
+
+    const outputBytes = directory.files.get(`${operationId}.mp4`) ?? new Uint8Array();
+    const input = new Input({
+      formats: ALL_FORMATS,
+      source: new BlobSource(new Blob([outputBytes])),
+    });
+    try {
+      expect(await (await input.getPrimaryVideoTrack())?.getRotation()).toBe(270);
+    } finally {
+      input.dispose();
+    }
   });
 });

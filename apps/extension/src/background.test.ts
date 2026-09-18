@@ -685,6 +685,29 @@ describe('background dispatcher', () => {
     });
   });
 
+  describe('rotated export history', () => {
+    it('records a document-made direct export with its rotation', async () => {
+      const result = await invoke(await loadBackground(), {
+        type: 'RECORD_DIRECT_EXPORT',
+        sourceUrl: 'https://www.instagram.com/p/abc123/',
+        item: {
+          itemIndex: 0,
+          url: 'https://cdn.instagram.com/photo.jpg',
+          filename: 'post_1.jpg',
+          mediaType: 'image',
+          rotation: 90,
+        },
+      });
+
+      expect(result).toEqual({});
+      expect(fakeBrowserObj.fakeBrowser.storage.set).toHaveBeenCalledWith({
+        'download-history': expect.objectContaining({
+          entries: [expect.objectContaining({ exportMode: 'direct', rotation: 90 })],
+        }),
+      });
+    });
+  });
+
   describe('Instant history re-download', () => {
     const historyStore = (mediaId: string) => ({
       'download-history': {
@@ -736,6 +759,27 @@ describe('background dispatcher', () => {
       expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledWith(
         expect.objectContaining({ url: 'https://cdn.instagram.com/fresh-target.jpg' })
       );
+    });
+
+    it('hands a rotated entry back to the popup instead of downloading it unrotated', async () => {
+      const fixture = instantFixture('instants-photo.json') as {
+        data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };
+      };
+      const mediaId = String(fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]!.id);
+      const store = historyStore(mediaId);
+      Object.assign(store['download-history'].entries[0]!, { rotation: 270 });
+      fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(store);
+      globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+
+      const response = await invoke(await loadBackground(), {
+        type: 'REDOWNLOAD_HISTORY_ENTRY',
+        entryId: 'instant-history',
+      });
+
+      expect(response).toMatchObject({
+        rotated: { mediaId, mediaType: 'image', rotation: 270, originKind: 'instants' },
+      });
+      expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
     });
 
     it('keeps History and reports an inactive Instant without downloading', async () => {

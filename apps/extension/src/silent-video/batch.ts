@@ -245,6 +245,7 @@ async function processCandidate(
       operation.operationId,
       operation.requestId,
       !preflight.copyCompatible || approvedOperationIds.has(operation.operationId),
+      operation.rotation,
       (phase, progress) => onProgress(operation.requestId, phase, progress)
     );
     const source = await resolveDownloadSource(processed, operation, client);

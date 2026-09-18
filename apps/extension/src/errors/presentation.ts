@@ -176,6 +176,11 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'Download the original video or copy diagnostics.',
     ['download-original', 'copy-diagnostics']
   ),
+  ROTATION_FAILED: policy(
+    'Could not rotate this item',
+    'Download the original or copy diagnostics.',
+    ['download-original', 'copy-diagnostics']
+  ),
   SILENT_STORAGE_UNAVAILABLE: policy(
     'Silent downloads need temporary browser storage',
     'Reload GramGrab or download the originals.',

@@ -18,7 +18,13 @@ import {
   createOperationId,
   createRequestId,
 } from './contracts.ts';
-import { AttemptOperationSchema, type AttemptOperation } from './attempt.ts';
+import {
+  AttemptOperationSchema,
+  isRotatedDirect,
+  type AttemptOperation,
+  type RotatedOperation,
+} from './attempt.ts';
+import { RotationSchema } from '../rotation/contracts.ts';
 
 export class ExportPlan extends Schema.Class<ExportPlan>('ExportPlan')({
   operations: Schema.Array(AttemptOperationSchema).pipe(Schema.minItems(1)),
@@ -36,6 +42,7 @@ export class ExportCandidate extends Schema.Class<ExportCandidate>('ExportCandid
   frameTimestampSeconds: Schema.Number.pipe(Schema.nonNegative()),
   frameDurationSeconds: Schema.optional(Schema.Number.pipe(Schema.positive())),
   removeAudio: Schema.Boolean,
+  rotation: Schema.optional(RotationSchema),
 }) {}
 
 function selectedMode(candidate: ExportCandidate): AttemptOperation['mode'] {
@@ -83,6 +90,7 @@ function planCandidate(candidate: ExportCandidate): AttemptOperation {
     mode,
     displayIndex: candidate.index,
     ...(timestampSeconds === undefined ? {} : { frameTimestampSeconds: timestampSeconds }),
+    ...(candidate.rotation ? { rotation: candidate.rotation } : {}),
   };
 }
 
@@ -97,6 +105,7 @@ export class ExportExecution extends Context.Tag('gramgrab/ExportExecution')<
   {
     readonly frame: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
     readonly direct: (operations: readonly DownloadOperation[]) => Promise<unknown>;
+    readonly rotated: (operation: RotatedOperation) => Promise<DownloadOperationResult>;
     readonly silent?: (
       operations: readonly AttemptOperation[],
       onProgress: (requestId: string, phase: string, progress: number) => void,
@@ -202,7 +211,19 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
       );
     }
 
-    const direct = operations.filter(operation => operation.mode === 'direct');
+    // One at a time, because each rotation holds a whole media file in memory.
+    const rotated = operations.filter(isRotatedDirect);
+    if (rotated.length > 0) {
+      tasks.push(
+        (async () => {
+          for (const operation of rotated) events.settle([await execution.rotated(operation)]);
+        })()
+      );
+    }
+
+    const direct = operations.filter(
+      operation => operation.mode === 'direct' && !isRotatedDirect(operation)
+    );
     if (direct.length > 0) {
       tasks.push(
         (async () => {

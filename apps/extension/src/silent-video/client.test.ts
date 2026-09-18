@@ -66,7 +66,7 @@ describe('SilentVideoClient', () => {
     const requestId = requestIdFrom('00000000-0000-4000-8000-000000000002');
     const operationId = operationIdFrom('10000000-0000-4000-8000-000000000002');
     const client = new SilentVideoClient();
-    const pending = client.process(operationId, requestId, false, undefined);
+    const pending = client.process(operationId, requestId, false, undefined, undefined);
 
     FakeWorker.instances[0]?.emitMessage(
       SilentWorkerError.make({
@@ -87,7 +87,7 @@ describe('SilentVideoClient', () => {
     const operationId = operationIdFrom('10000000-0000-4000-8000-000000000003');
     const requestId = requestIdFrom('00000000-0000-4000-8000-000000000003');
     const client = new SilentVideoClient();
-    const pending = client.process(operationId, requestId, false, undefined);
+    const pending = client.process(operationId, requestId, false, undefined, undefined);
     FakeWorker.instances[0]?.emitMessage(
       SilentProcessed.make({
         operationId: operationIdFrom('20000000-0000-4000-8000-000000000003'),
