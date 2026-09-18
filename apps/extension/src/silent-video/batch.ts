@@ -100,8 +100,9 @@ function needsReencodeDecision(
   candidate: ReencodeCandidate,
   approvedOperationIds: ReadonlySet<string>
 ): boolean {
+  // An already-silent video is still processed, and so may be re-encoded, when it is rotated.
   return (
-    candidate.preflight.audioTrackCount > 0 &&
+    (candidate.preflight.audioTrackCount > 0 || candidate.operation.rotation !== undefined) &&
     !candidate.preflight.copyCompatible &&
     !approvedOperationIds.has(candidate.operation.operationId)
   );

@@ -413,6 +413,46 @@ describe('silent video batch', () => {
     expect(downloaded).toEqual([`blob:${target.operationId}.source`]);
   });
 
+  it('asks before re-encoding a rotated video that is already silent', async () => {
+    const target = { ...operation(15), rotation: 90 as const };
+    const approveReencode = vi.fn(() => Promise.resolve(new Set<string>()));
+    const batch = runSilentVideoBatch(
+      [target],
+      approveReencode,
+      () => {},
+      'https://www.instagram.com/p/example/',
+      () => {},
+      new Set()
+    );
+    const worker = FakeWorker.instance;
+    if (!worker) throw new Error('Expected the batch worker to be created.');
+    worker.onRequest = request => {
+      if (!request.requestId || !request.operationId) return;
+      if (request._tag === 'inspect')
+        worker.respond(
+          SilentInspected.make({
+            preflight: SilentPreflight.make({
+              requestId: request.requestId,
+              operationId: request.operationId,
+              audioTrackCount: 0,
+              videoCodec: 'hevc',
+              durationSeconds: 1,
+              width: 16,
+              height: 16,
+              copyCompatible: false,
+            }),
+          })
+        );
+      if (request._tag === 'release')
+        worker.respond(
+          SilentReleased.make({ operationId: request.operationId, requestId: request.requestId })
+        );
+    };
+
+    await expect(batch).resolves.toMatchObject({ outcomes: [{ status: 'skipped' }] });
+    expect(approveReencode).toHaveBeenCalledOnce();
+  });
+
   it('preserves a worker failure kind and reason in the batch result', async () => {
     const operationToFail = operation(3);
     const batch = runSilentVideoBatch(

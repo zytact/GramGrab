@@ -12,7 +12,7 @@ import type { OperationFailure, RecoveryAction } from './errors/contracts';
 import { normalizeFrameFailure } from './errors/normalize';
 import { FAILURE_PRESENTATION, presentationForFailure } from './errors/presentation';
 import { buildDiagnostics, buildWhatsAppDiagnostics } from './errors/diagnostics';
-import type { AttemptOperation, DownloadAttempt } from './download/attempt';
+import { processesVideo, type AttemptOperation, type DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
 import { ExportCandidate, planExportOperations } from './download/coordinator';
 import {
@@ -618,7 +618,7 @@ export default function Popup() {
         exportCandidate(item, frameExportSettings, itemRuntimes, removeAudioIndexes)
       )
     );
-    if (!initialWorkspaceMode && operations.some(operation => operation.mode === 'silent')) {
+    if (!initialWorkspaceMode && operations.some(processesVideo)) {
       const createdAt = Date.now();
       const snapshot = {
         version: 4 as const,
@@ -646,7 +646,7 @@ export default function Popup() {
       } else {
         await openWorkspace(snapshot);
       }
-      setMessage('Silent batch moved to the GramGrab workspace.');
+      setMessage('Video batch moved to the GramGrab workspace.');
       return;
     }
     setStatus('downloading');
@@ -784,30 +784,37 @@ export default function Popup() {
       setHistoryBusy(entryId);
       const response = await sendMessage({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId });
       const redownloadFailure = 'failure' in response ? response.failure : undefined;
-      if ('silent' in response) {
+      // Video processing outlives the popup, so silent and rotated videos restart in the workspace.
+      const workspaceVideo =
+        'silent' in response
+          ? { ...response.silent, removeAudio: true }
+          : 'rotated' in response && response.rotated.mediaType === 'video'
+            ? { ...response.rotated, removeAudio: false }
+            : undefined;
+      if (workspaceVideo) {
         const createdAt = Date.now();
         const item = {
           index: 0,
-          itemIndex: response.silent.itemIndex,
-          ...(response.silent.mediaId ? { mediaId: response.silent.mediaId } : {}),
+          itemIndex: workspaceVideo.itemIndex,
+          ...(workspaceVideo.mediaId ? { mediaId: workspaceVideo.mediaId } : {}),
           type: 'video' as const,
-          url: response.silent.url,
-          filenameHint: response.silent.filenameHint,
+          url: workspaceVideo.url,
+          filenameHint: workspaceVideo.filenameHint,
           selected: true,
-          ...(response.silent.rotation ? { rotation: response.silent.rotation } : {}),
+          ...(workspaceVideo.rotation ? { rotation: workspaceVideo.rotation } : {}),
         };
         const snapshot = {
           version: 4 as const,
-          acquisition: { kind: response.silent.originKind } as const,
+          acquisition: { kind: workspaceVideo.originKind } as const,
           createdAt,
           expiresAt: createdAt + 60_000,
-          url: response.silent.sourceUrl,
-          fetchedUrl: response.silent.sourceUrl,
+          url: workspaceVideo.sourceUrl,
+          fetchedUrl: workspaceVideo.sourceUrl,
           status: 'done' as const,
           message: 'History item restored.',
           mediaItems: [item],
           frameExportSettings: {},
-          removeAudioIndexes: [0],
+          removeAudioIndexes: workspaceVideo.removeAudio ? [0] : [],
           autoStartDownload: true,
         };
         const existing = await findWorkspaceTab();
@@ -820,7 +827,7 @@ export default function Popup() {
         ) {
           if (existing) await replaceWorkspace(snapshot);
           else await openWorkspace(snapshot);
-          setMessage('Silent download moved to the GramGrab workspace.');
+          setMessage('Video download moved to the GramGrab workspace.');
         }
       } else if ('frame' in response) {
         const timestampSeconds = response.frame.timestampSeconds;

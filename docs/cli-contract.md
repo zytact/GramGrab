@@ -56,6 +56,8 @@ removal and clearing must be explicit commands. Silent re-encoding uses the requ
 not prompt in JSON mode. When `--item` is omitted, the CLI performs a fresh inspection and applies
 the selected mode to every resolved item. When `--mode` is omitted, direct export is used. Frame
 export defaults to timestamp 5 seconds and clamps to the last valid second for shorter videos.
+A `--plan` operation may also carry `rotation` (`90`, `180`, or `270`, clockwise), which the
+extension applies to that item's output. History redownload reproduces a recorded rotation.
 The `instants` commands never accept a Source. They inspect the authenticated active feed afresh,
 preserve its server order, and apply the same item numbering and export-mode rules.
 

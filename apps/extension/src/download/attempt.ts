@@ -18,6 +18,10 @@ export type RotatedOperation = AttemptOperation & { readonly rotation: Rotation 
 export const isRotatedDirect = (operation: AttemptOperation): operation is RotatedOperation =>
   operation.mode === 'direct' && operation.rotation !== undefined;
 
+/** Whether an operation rewrites a whole video, which the popup hands to the workspace tab. */
+export const processesVideo = (operation: AttemptOperation): boolean =>
+  operation.mode === 'silent' || (isRotatedDirect(operation) && operation.mediaType === 'video');
+
 export type AttemptOutcome =
   | { readonly status: 'pending'; readonly phase?: string; readonly progress?: number }
   | { readonly status: 'started'; readonly warning?: OperationWarning }
