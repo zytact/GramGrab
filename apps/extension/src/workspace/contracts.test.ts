@@ -56,6 +56,19 @@ describe('workspace contracts', () => {
     expect(canonicalizeInstagramUrl('https://www.instagram.com/p/example/extra/')).toBeNull();
   });
 
+  it('canonicalizes username-prefixed permanent media URLs', () => {
+    expect(
+      canonicalizeInstagramUrl('https://www.instagram.com/nihaasclipss/reel/DdasFegNWZ7/')
+    ).toEqual({
+      url: 'https://www.instagram.com/reel/DdasFegNWZ7/',
+      target: { type: 'reel', shortcode: 'DdasFegNWZ7' },
+    });
+    expect(canonicalizeInstagramUrl('https://www.instagram.com/creator/p/example/')).toEqual({
+      url: 'https://www.instagram.com/p/example/',
+      target: { type: 'post', shortcode: 'example', carouselIndex: undefined },
+    });
+  });
+
   it('removes transient data URL previews from transfers', () => {
     const item = sanitizeSnapshot(snapshot).mediaItems[0];
     expect(item?.previewUrl).toBeUndefined();

@@ -85,6 +85,10 @@ const USERNAME = /^[a-zA-Z0-9._]{1,30}$/;
 const SHORTCODE = /^[a-zA-Z0-9_-]+$/;
 const NUMERIC_ID = /^\d+$/;
 
+function isUsernamePathSegment(value: string): boolean {
+  return USERNAME.test(value) && !RESERVED_PROFILE_PATHS.has(value.toLowerCase());
+}
+
 interface ParsedInstagramTarget {
   target: InstagramTarget;
   path: string;
@@ -128,12 +132,7 @@ function parseStory(path: string[]): ParsedInstagramTarget | undefined {
 }
 
 function parseProfile(path: string[]): ParsedInstagramTarget | undefined {
-  if (
-    path.length !== 1 ||
-    !USERNAME.test(path[0]!) ||
-    RESERVED_PROFILE_PATHS.has(path[0]!.toLowerCase())
-  )
-    return undefined;
+  if (path.length !== 1 || !isUsernamePathSegment(path[0]!)) return undefined;
   return { target: { type: 'profile', username: path[0] }, path: `/${path[0]!}/` };
 }
 
@@ -147,9 +146,11 @@ export function canonicalizeInstagramUrl(value: string): CanonicalInstagramUrl |
     )
       return null;
     const path = url.pathname.split('/').filter(Boolean);
+    const permanentMediaPath =
+      path.length === 3 && isUsernamePathSegment(path[0]!) ? path.slice(1) : path;
     const parsed = [
-      parsePost(path, url.searchParams.get('img_index')),
-      parseReel(path),
+      parsePost(permanentMediaPath, url.searchParams.get('img_index')),
+      parseReel(permanentMediaPath),
       parseHighlight(path),
       parseStory(path),
       parseProfile(path),
