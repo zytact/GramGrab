@@ -14,7 +14,7 @@ describe('captureFrameFromSource', () => {
       .mockResolvedValueOnce(Either.left(new VideoFrameExtractionFailed({ reason: 'timeout' })))
       .mockResolvedValueOnce(Either.right(new Blob(['frame'])));
 
-    const result = await captureFrameFromSource('blob:video', 0, capture);
+    const result = await captureFrameFromSource('blob:video', 0, undefined, capture);
 
     expect(Either.isRight(result)).toBe(true);
     expect(capture).toHaveBeenCalledTimes(2);
@@ -27,7 +27,7 @@ describe('captureFrameFromSource', () => {
       .fn()
       .mockResolvedValue(Either.left(new VideoFrameExtractionFailed({ reason: 'no-frame' })));
 
-    await captureFrameFromSource('blob:video', 0, capture);
+    await captureFrameFromSource('blob:video', 0, undefined, capture);
 
     expect(capture).toHaveBeenCalledTimes(1);
   });

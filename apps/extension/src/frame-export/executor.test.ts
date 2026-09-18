@@ -49,7 +49,7 @@ describe('executeFrameExport', () => {
     );
 
     expect(result.status).toBe('started');
-    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 7.5);
+    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 7.5, undefined);
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'DOWNLOAD_FRAME_EXPORT',
@@ -68,7 +68,7 @@ describe('executeFrameExport', () => {
 
     await executeFrameExport(withoutTimestamp, 'https://www.instagram.com/p/example/');
 
-    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 0);
+    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 0, undefined);
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ item: expect.objectContaining({ frameTimestampSeconds: 0 }) })
     );

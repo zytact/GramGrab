@@ -10,6 +10,7 @@ import {
   Export as ProtocolExport,
   ExportOperation as ProtocolExportOperation,
   ExportResult as ProtocolExportResult,
+  DirectExport,
   FrameExport,
   HistoryClearResult,
   HistoryEntry as ProtocolHistoryEntry,
@@ -120,6 +121,7 @@ import {
   formatError,
 } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
+import type { Rotation } from './rotation/contracts.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
   historyFailure,
@@ -653,6 +655,7 @@ interface AcceptedHistoryOperation {
   filename: string;
   exportMode?: 'direct' | 'frame' | 'silent';
   frameTimestampSeconds?: number;
+  rotation?: Rotation;
 }
 
 function acceptedHistoryEntry(
@@ -670,6 +673,7 @@ function acceptedHistoryEntry(
     ...(item.frameTimestampSeconds !== undefined
       ? { frameTimestampSeconds: item.frameTimestampSeconds }
       : {}),
+    ...(item.rotation ? { rotation: item.rotation } : {}),
     downloadedAt: Date.now(),
     outcome: 'accepted',
   };
@@ -827,33 +831,26 @@ async function handleRedownloadHistoryEntry(
     };
   if (match.kind === 'ambiguous') return { failure: historyFailure('HISTORY_ITEM_UNRESOLVED') };
   const item = resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!;
-  if (entry.exportMode === 'frame') {
+  const redownload = {
+    itemIndex: item.itemIndex,
+    ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+    url: item.url,
+    filenameHint: item.filenameHint,
+    sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
+    originKind: entry.origin.kind,
+    ...(entry.rotation ? { rotation: entry.rotation } : {}),
+  };
+  if (entry.exportMode === 'frame')
     return {
-      frame: {
-        itemIndex: item.itemIndex,
-        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-        url: item.url,
-        filenameHint: item.filenameHint,
-        timestampSeconds: entry.frameTimestampSeconds ?? 5,
-        sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
-        originKind: entry.origin.kind,
-      },
+      frame: { ...redownload, timestampSeconds: entry.frameTimestampSeconds ?? 5 },
       failure: undefined,
     };
-  }
-  if (entry.exportMode === 'silent') {
+  if (entry.exportMode === 'silent') return { silent: redownload, failure: undefined };
+  if (entry.rotation)
     return {
-      silent: {
-        itemIndex: item.itemIndex,
-        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-        url: item.url,
-        filenameHint: item.filenameHint,
-        sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
-        originKind: entry.origin.kind,
-      },
+      rotated: { ...redownload, mediaType: item.type, rotation: entry.rotation },
       failure: undefined,
     };
-  }
   return handleDownloadMedia({
     type: 'DOWNLOAD_MEDIA',
     ...(entry.origin.kind === 'source' ? { sourceUrl: entry.origin.sourceUrl } : {}),
@@ -874,14 +871,21 @@ async function handleRedownloadHistoryEntry(
   });
 }
 
-async function handleRecordFrameExport(
-  msg: MessageOf<'RECORD_FRAME_EXPORT'> | MessageOf<'DOWNLOAD_FRAME_EXPORT'>
+/** Records an export a document downloaded itself, so history holds what the file became. */
+async function recordDocumentExport(
+  msg: MessageOf<
+    | 'RECORD_FRAME_EXPORT'
+    | 'DOWNLOAD_FRAME_EXPORT'
+    | 'RECORD_SILENT_EXPORT'
+    | 'RECORD_DIRECT_EXPORT'
+  >,
+  exportMode: 'direct' | 'frame' | 'silent'
 ): Promise<MessageResponse<'RECORD_FRAME_EXPORT'>> {
   const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
   if (msg.originKind !== 'instants' && !source) return { warning: 'HISTORY_SAVE_FAILED' };
   try {
     await appendAcceptedHistory(
-      { ...msg.item, exportMode: 'frame' },
+      { ...msg.item, exportMode },
       msg.originKind === 'instants'
         ? { kind: 'instants' }
         : { kind: 'source', sourceUrl: source!.url, sourceKind: source!.kind }
@@ -912,7 +916,7 @@ async function handleDownloadFrameExport(
   } catch (cause) {
     return { failure: normalizeBrowserDownloadFailure(cause) };
   }
-  return handleRecordFrameExport(msg);
+  return recordDocumentExport(msg, 'frame');
 }
 
 function waitForNonEmptyDownload(downloadId: number): Promise<boolean> {
@@ -950,24 +954,6 @@ async function handleFetchVideoBlob(
     { dataUrl: undefined },
     normalizeMediaTransferFailure
   );
-}
-
-async function handleRecordSilentExport(
-  msg: MessageOf<'RECORD_SILENT_EXPORT'>
-): Promise<MessageResponse<'RECORD_SILENT_EXPORT'>> {
-  const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
-  if (msg.originKind !== 'instants' && !source) return { warning: 'HISTORY_SAVE_FAILED' };
-  try {
-    await appendAcceptedHistory(
-      { ...msg.item, exportMode: 'silent' },
-      msg.originKind === 'instants'
-        ? { kind: 'instants' }
-        : { kind: 'source', sourceUrl: source!.url, sourceKind: source!.kind }
-    );
-    return {};
-  } catch {
-    return { warning: 'HISTORY_SAVE_FAILED' };
-  }
 }
 
 async function handleDebugShape(
@@ -1230,7 +1216,11 @@ async function runExport(
   emit: (event: EventPayload) => void,
   signal: AbortSignal
 ) {
-  if (command.operations.every(operation => operation.mode._tag === 'DirectExport'))
+  if (
+    command.operations.every(
+      operation => operation.mode._tag === 'DirectExport' && operation.rotation === undefined
+    )
+  )
     return runDirectExport(command, emit, signal);
   let release = () => {};
   const turn = new Promise<void>(resolve => {
@@ -1444,52 +1434,29 @@ async function executeCommand(
           );
           const frame = 'frame' in response ? response.frame : undefined;
           const silent = 'silent' in response ? response.silent : undefined;
-          const resolvedItem = frame ?? silent;
+          const rotated = 'rotated' in response ? response.rotated : undefined;
+          const resolvedItem = frame ?? silent ?? rotated;
           if (entry && resolvedItem) {
-            const operationId = Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID());
+            const operations = [
+              ProtocolExportOperation.make({
+                operationId: Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID()),
+                itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(resolvedItem.itemIndex + 1),
+                mediaIdentity: MediaIdentity.make({
+                  itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(resolvedItem.itemIndex),
+                  ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
+                }),
+                mode: frame
+                  ? FrameExport.make({ timestampSeconds: frame.timestampSeconds })
+                  : silent
+                    ? SilentExport.make({ reencode: 'allow' })
+                    : DirectExport.make(),
+                ...(resolvedItem.rotation ? { rotation: resolvedItem.rotation } : {}),
+              }),
+            ];
             const historyExport =
               entry.origin.kind === 'instants'
-                ? ProtocolInstantsExport.make({
-                    operations: [
-                      ProtocolExportOperation.make({
-                        operationId,
-                        itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(
-                          resolvedItem.itemIndex + 1
-                        ),
-                        mediaIdentity: MediaIdentity.make({
-                          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(
-                            resolvedItem.itemIndex
-                          ),
-                          ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
-                        }),
-                        mode: frame
-                          ? FrameExport.make({ timestampSeconds: frame.timestampSeconds })
-                          : SilentExport.make({ reencode: 'allow' }),
-                      }),
-                    ],
-                  })
-                : ProtocolExport.make({
-                    sourceUrl: entry.origin.sourceUrl,
-                    operations: [
-                      ProtocolExportOperation.make({
-                        operationId,
-                        itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(
-                          resolvedItem.itemIndex + 1
-                        ),
-                        mediaIdentity: MediaIdentity.make({
-                          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(
-                            resolvedItem.itemIndex
-                          ),
-                          ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
-                        }),
-                        mode: frame
-                          ? FrameExport.make({
-                              timestampSeconds: frame.timestampSeconds,
-                            })
-                          : SilentExport.make({ reencode: 'allow' }),
-                      }),
-                    ],
-                  });
+                ? ProtocolInstantsExport.make({ operations })
+                : ProtocolExport.make({ sourceUrl: entry.origin.sourceUrl, operations });
             const exportResult = await runExport(historyExport, emit, signal);
             const failed =
               exportResult._tag === 'ExportResult' &&
@@ -1618,9 +1585,10 @@ const messageHandlers: MessageHandlers = {
     }
   },
   REDOWNLOAD_HISTORY_ENTRY: handleRedownloadHistoryEntry,
-  RECORD_FRAME_EXPORT: handleRecordFrameExport,
+  RECORD_FRAME_EXPORT: message => recordDocumentExport(message, 'frame'),
   DOWNLOAD_FRAME_EXPORT: handleDownloadFrameExport,
-  RECORD_SILENT_EXPORT: handleRecordSilentExport,
+  RECORD_SILENT_EXPORT: message => recordDocumentExport(message, 'silent'),
+  RECORD_DIRECT_EXPORT: message => recordDocumentExport(message, 'direct'),
   FETCH_VIDEO_BLOB: handleFetchVideoBlob,
   DEBUG_SHAPE: handleDebugShape,
   DOWNLOAD_DEBUG_JSON: handleDownloadDebugJson,

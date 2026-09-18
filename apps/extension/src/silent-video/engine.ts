@@ -19,6 +19,7 @@ import {
   type InstagramFailureCode,
 } from '../errors/contracts.ts';
 import { SilentPreflight } from './contracts.ts';
+import { combineRotations, type Rotation } from '../rotation/contracts.ts';
 import {
   createOutput,
   readInput,
@@ -90,16 +91,24 @@ export async function processSilentVideo(
   operationId: OperationId,
   requestId: RequestId,
   transcode: boolean,
+  rotation: Rotation | undefined,
   onProgress: (progress: number) => void
 ): Promise<{ alreadySilent: boolean; opfsName?: string }> {
   const file = await readInput(operationId);
   const preflight = await inspectSilentVideo(operationId, requestId, file);
-  if (preflight.audioTrackCount === 0) return { alreadySilent: true };
+  if (preflight.audioTrackCount === 0 && !rotation) return { alreadySilent: true };
   if (!preflight.copyCompatible && !transcode)
     throw silentFailure('SILENT_COPY_FAILED', 'silent-copy');
   const owned = await createOutput(operationId);
   try {
-    await processOutput(file, owned.writable, preflight.durationSeconds, transcode, onProgress);
+    await processOutput(
+      file,
+      owned.writable,
+      preflight.durationSeconds,
+      transcode,
+      rotation,
+      onProgress
+    );
     await validateOutput(owned.name);
     return { alreadySilent: false, opfsName: owned.name };
   } catch (error) {
@@ -114,10 +123,11 @@ async function processOutput(
   writable: WritableStream,
   duration: number,
   transcode: boolean,
+  rotation: Rotation | undefined,
   onProgress: (progress: number) => void
 ): Promise<void> {
-  if (transcode) return transcodeVideo(file, writable, onProgress);
-  return copyVideo(file, writable, duration, onProgress);
+  if (transcode) return transcodeVideo(file, writable, rotation, onProgress);
+  return copyVideo(file, writable, duration, rotation, onProgress);
 }
 
 function normalizeProcessingFailure(error: unknown, transcode: boolean): OperationFailure {
@@ -138,6 +148,7 @@ async function copyVideo(
   file: File,
   writable: WritableStream,
   duration: number,
+  rotation: Rotation | undefined,
   onProgress: (progress: number) => void
 ) {
   const input = inputFromFile(file);
@@ -147,7 +158,9 @@ async function copyVideo(
     if (!track || !codec) throw silentFailure('SILENT_SOURCE_NO_VIDEO', 'silent-copy');
     const source = new EncodedVideoPacketSource(codec);
     const output = new Output({ format: mp4, target: new StreamTarget(writable) });
-    output.addVideoTrack(source, { rotation: await track.getRotation() });
+    output.addVideoTrack(source, {
+      rotation: combineRotations(await track.getRotation(), rotation),
+    });
     await output.start();
     const meta = { decoderConfig: (await track.getDecoderConfig()) ?? undefined };
     for await (const packet of new EncodedPacketSink(track).packets(undefined, undefined, {
@@ -166,6 +179,7 @@ async function copyVideo(
 async function transcodeVideo(
   file: File,
   writable: WritableStream,
+  rotation: Rotation | undefined,
   onProgress: (progress: number) => void
 ) {
   if (!(await canEncodeVideo('avc')))
@@ -182,6 +196,7 @@ async function transcodeVideo(
       video: {
         codec: 'avc',
         bitrate: sourceBitrate ? Math.ceil(sourceBitrate * 1.2) : QUALITY_VERY_HIGH,
+        ...(rotation ? { rotate: rotation } : {}),
       },
       audio: { discard: true },
       showWarnings: false,

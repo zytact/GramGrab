@@ -43,11 +43,16 @@ export class SilentExport extends Schema.TaggedClass<SilentExport>()('SilentExpo
 export const ExportMode = Schema.Union(DirectExport, FrameExport, SilentExport);
 export type ExportMode = Schema.Schema.Type<typeof ExportMode>;
 
+/** The clockwise turn applied to an export's output. Absent means unrotated. */
+export const Rotation = Schema.Literal(90, 180, 270);
+export type Rotation = Schema.Schema.Type<typeof Rotation>;
+
 export class ExportOperation extends Schema.Class<ExportOperation>('ExportOperation')({
   operationId: OperationId,
   itemNumber: HumanItemNumber,
   mediaIdentity: Schema.optional(MediaIdentity),
   mode: ExportMode,
+  rotation: Schema.optional(Rotation),
 }) {}
 
 export class Inspect extends Schema.TaggedClass<Inspect>()('Inspect', {
@@ -147,6 +152,7 @@ export const FAILURE_CODES = [
   'FRAME_CANVAS_UNAVAILABLE',
   'FRAME_IMAGE_ENCODING_FAILED',
   'FRAME_UNEXPECTED_FAILURE',
+  'ROTATION_FAILED',
   'SILENT_STORAGE_UNAVAILABLE',
   'SILENT_STORAGE_CAPACITY_EXCEEDED',
   'SILENT_MEMORY_CAPACITY_EXCEEDED',

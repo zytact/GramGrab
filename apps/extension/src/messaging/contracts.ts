@@ -10,6 +10,7 @@ import {
 import { DownloadMediaRequest, type DownloadMediaResponse } from '../download/contracts.ts';
 import type { OperationFailure, WarningCode } from '../errors/contracts.ts';
 import type { HistoryEntry } from '../history/contracts.ts';
+import { RotationSchema, type Rotation } from '../rotation/contracts.ts';
 
 // ---------------------------------------------------------------------------
 // Request schemas
@@ -26,6 +27,7 @@ const HistoryItem = Schema.Struct({
   url: Schema.String.pipe(Schema.nonEmptyString()),
   filename: Schema.String.pipe(Schema.nonEmptyString()),
   mediaType: Schema.Literal('image', 'video'),
+  rotation: Schema.optional(RotationSchema),
 });
 
 const FrameHistoryItem = Schema.Struct({
@@ -107,6 +109,12 @@ const RecordSilentExport = Schema.Struct({
   item: HistoryItem,
 });
 
+const RecordDirectExport = Schema.Struct({
+  type: Schema.Literal('RECORD_DIRECT_EXPORT'),
+  ...RecordExportFields,
+  item: HistoryItem,
+});
+
 const DebugShape = Schema.Struct({
   type: Schema.Literal('DEBUG_SHAPE'),
   url: Schema.optional(Schema.String),
@@ -152,6 +160,7 @@ const MessageSchema = Schema.Union(
   RecordFrameExport,
   DownloadFrameExport,
   RecordSilentExport,
+  RecordDirectExport,
   DebugShape,
   DownloadDebugJson,
   RunExport,
@@ -214,14 +223,18 @@ interface RedownloadFrame {
   timestampSeconds: number;
   sourceUrl: string;
   originKind: 'source' | 'instants';
+  rotation?: Rotation;
 }
 
 type RedownloadSilent = Omit<RedownloadFrame, 'timestampSeconds'>;
+
+type RedownloadRotated = RedownloadSilent & { mediaType: 'image' | 'video'; rotation: Rotation };
 
 type RedownloadHistoryEntryResponse =
   | { failure: OperationFailure }
   | { frame: RedownloadFrame; failure: undefined }
   | { silent: RedownloadSilent; failure: undefined }
+  | { rotated: RedownloadRotated; failure: undefined }
   | DownloadMediaResponse;
 
 interface MessageResponses extends Record<MessageType, unknown> {
@@ -239,6 +252,7 @@ interface MessageResponses extends Record<MessageType, unknown> {
   RECORD_FRAME_EXPORT: ExportRecordResponse;
   DOWNLOAD_FRAME_EXPORT: ExportRecordResponse;
   RECORD_SILENT_EXPORT: ExportRecordResponse;
+  RECORD_DIRECT_EXPORT: ExportRecordResponse;
   // A debug inspection surface, not an operation: `raw` is the unmodified upstream response and
   // `error` is its free-form counterpart. Neither is rendered as UI copy or offered for copying,
   // so neither belongs in the failure registry.

@@ -137,6 +137,33 @@ describe('download attempt reducer', () => {
     expect(fallback.entries[0]?.operation.requestId).not.toBe(silent.requestId);
   });
 
+  it('drops the rotation when falling back to the original', () => {
+    const rotated = { ...operation(), rotation: 90 as const };
+    const fresh = attemptReducer(undefined, { type: 'fresh', operations: [rotated] })!;
+    const failed = attemptReducer(fresh, {
+      type: 'settle',
+      results: [
+        DownloadFailedResult.make({
+          operationId: rotated.operationId,
+          requestId: rotated.requestId,
+          status: 'failed',
+          failure: OperationFailure.make({
+            code: 'ROTATION_FAILED',
+            phase: 'rotation',
+            scope: 'item',
+          }),
+        }),
+      ],
+    })!;
+
+    const fallback = attemptReducer(failed, {
+      type: 'fallback-original',
+      operationIds: new Set([rotated.operationId]),
+    })!;
+
+    expect(fallback.entries[0]?.operation.rotation).toBeUndefined();
+  });
+
   it('counts started warnings without treating browser acceptance as completion', () => {
     const item = operation();
     const fresh = attemptReducer(undefined, { type: 'fresh', operations: [item] })!;

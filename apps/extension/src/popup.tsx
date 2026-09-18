@@ -12,7 +12,7 @@ import type { OperationFailure, RecoveryAction } from './errors/contracts';
 import { normalizeFrameFailure } from './errors/normalize';
 import { FAILURE_PRESENTATION, presentationForFailure } from './errors/presentation';
 import { buildDiagnostics, buildWhatsAppDiagnostics } from './errors/diagnostics';
-import type { AttemptOperation, DownloadAttempt } from './download/attempt';
+import { processesVideo, type AttemptOperation, type DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
 import { ExportCandidate, planExportOperations } from './download/coordinator';
 import {
@@ -23,6 +23,8 @@ import {
   type FrameExportSetting,
 } from './frame-export/timestamp';
 import { executeFrameExport } from './frame-export/executor';
+import { executeRotatedExport } from './rotation/executor';
+import { nextRotation } from './rotation/contracts';
 import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
@@ -123,6 +125,7 @@ function exportCandidate(
     frameTimestampSeconds: setting?.timestampSeconds ?? 0,
     frameDurationSeconds: durationSeconds,
     removeAudio: removeAudioIndexes.has(item.index),
+    rotation: item.rotation,
   });
 }
 
@@ -247,6 +250,17 @@ export default function Popup() {
   const toggleItem = useCallback((index: number) => {
     setMediaItems(prev =>
       prev.map(item => (item.index === index ? { ...item, selected: !item.selected } : item))
+    );
+  }, []);
+
+  const rotateItem = useCallback((index: number) => {
+    setMediaItems(prev =>
+      prev.map(item => {
+        if (item.index !== index) return item;
+        const { rotation, ...unrotated } = item;
+        const next = nextRotation(rotation);
+        return next ? { ...unrotated, rotation: next } : unrotated;
+      })
     );
   }, []);
 
@@ -461,6 +475,7 @@ export default function Popup() {
   const downloadAttempt = useDownloadAttempt({
     executeFrame: executeFrameAttempt,
     executeDirect,
+    executeRotated: operation => executeRotatedExport(operation, fetchedUrl || url, acquisition),
     executeSilent: (operations, onProgress, onPreflightComplete, approvedRequestIds) =>
       runSilentVideoBatch(
         operations,
@@ -585,6 +600,7 @@ export default function Popup() {
         mode: 'frame',
         displayIndex: index,
         frameTimestampSeconds: timestampSeconds,
+        ...(item.rotation ? { rotation: item.rotation } : {}),
       });
     },
     [executeFrameAttempt, frameExportSettings, itemRuntimes, mediaItems]
@@ -602,7 +618,7 @@ export default function Popup() {
         exportCandidate(item, frameExportSettings, itemRuntimes, removeAudioIndexes)
       )
     );
-    if (!initialWorkspaceMode && operations.some(operation => operation.mode === 'silent')) {
+    if (!initialWorkspaceMode && operations.some(processesVideo)) {
       const createdAt = Date.now();
       const snapshot = {
         version: 4 as const,
@@ -630,7 +646,7 @@ export default function Popup() {
       } else {
         await openWorkspace(snapshot);
       }
-      setMessage('Silent batch moved to the GramGrab workspace.');
+      setMessage('Video batch moved to the GramGrab workspace.');
       return;
     }
     setStatus('downloading');
@@ -768,29 +784,37 @@ export default function Popup() {
       setHistoryBusy(entryId);
       const response = await sendMessage({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId });
       const redownloadFailure = 'failure' in response ? response.failure : undefined;
-      if ('silent' in response) {
+      // Video processing outlives the popup, so silent and rotated videos restart in the workspace.
+      const workspaceVideo =
+        'silent' in response
+          ? { ...response.silent, removeAudio: true }
+          : 'rotated' in response && response.rotated.mediaType === 'video'
+            ? { ...response.rotated, removeAudio: false }
+            : undefined;
+      if (workspaceVideo) {
         const createdAt = Date.now();
         const item = {
           index: 0,
-          itemIndex: response.silent.itemIndex,
-          ...(response.silent.mediaId ? { mediaId: response.silent.mediaId } : {}),
+          itemIndex: workspaceVideo.itemIndex,
+          ...(workspaceVideo.mediaId ? { mediaId: workspaceVideo.mediaId } : {}),
           type: 'video' as const,
-          url: response.silent.url,
-          filenameHint: response.silent.filenameHint,
+          url: workspaceVideo.url,
+          filenameHint: workspaceVideo.filenameHint,
           selected: true,
+          ...(workspaceVideo.rotation ? { rotation: workspaceVideo.rotation } : {}),
         };
         const snapshot = {
           version: 4 as const,
-          acquisition: { kind: response.silent.originKind } as const,
+          acquisition: { kind: workspaceVideo.originKind } as const,
           createdAt,
           expiresAt: createdAt + 60_000,
-          url: response.silent.sourceUrl,
-          fetchedUrl: response.silent.sourceUrl,
+          url: workspaceVideo.sourceUrl,
+          fetchedUrl: workspaceVideo.sourceUrl,
           status: 'done' as const,
           message: 'History item restored.',
           mediaItems: [item],
           frameExportSettings: {},
-          removeAudioIndexes: [0],
+          removeAudioIndexes: workspaceVideo.removeAudio ? [0] : [],
           autoStartDownload: true,
         };
         const existing = await findWorkspaceTab();
@@ -803,7 +827,7 @@ export default function Popup() {
         ) {
           if (existing) await replaceWorkspace(snapshot);
           else await openWorkspace(snapshot);
-          setMessage('Silent download moved to the GramGrab workspace.');
+          setMessage('Video download moved to the GramGrab workspace.');
         }
       } else if ('frame' in response) {
         const timestampSeconds = response.frame.timestampSeconds;
@@ -821,6 +845,7 @@ export default function Popup() {
             mode: 'frame',
             displayIndex: 0,
             frameTimestampSeconds: timestampSeconds,
+            ...(response.frame.rotation ? { rotation: response.frame.rotation } : {}),
           },
           response.frame.sourceUrl,
           { originKind: response.frame.originKind }
@@ -833,6 +858,31 @@ export default function Popup() {
             : 'Frame export failed. Download the original video or try again.'
         );
         if (result.status === 'failed') setStatus('error');
+      } else if ('rotated' in response) {
+        const { rotated } = response;
+        const filename = `${rotated.filenameHint}_${rotated.itemIndex + 1}.${rotated.mediaType === 'video' ? 'mp4' : 'jpg'}`;
+        const result = await executeRotatedExport(
+          {
+            operationId: createOperationId(),
+            requestId: createRequestId(),
+            itemIndex: rotated.itemIndex,
+            ...(rotated.mediaId ? { mediaId: rotated.mediaId } : {}),
+            url: rotated.url,
+            originalUrl: rotated.url,
+            filename,
+            originalFilename: filename,
+            mediaType: rotated.mediaType,
+            mode: 'direct',
+            displayIndex: 0,
+            rotation: rotated.rotation,
+          },
+          rotated.sourceUrl,
+          rotated.originKind
+        );
+        if (result.status === 'failed') setStatus('error');
+        setMessage(
+          result.status === 'failed' ? failureMessage(result.failure) : 'Download started.'
+        );
       } else {
         const failed =
           'results' in response
@@ -931,6 +981,7 @@ export default function Popup() {
   const mediaListActions = {
     onPreviewError: handlePreviewError,
     onToggle: toggleItem,
+    onRotate: rotateItem,
     onToggleAll: toggleAll,
     onToggleExportFrame: toggleExportFrame,
     onToggleRemoveAudio: toggleRemoveAudio,

@@ -62,6 +62,7 @@ async function handleRequest(request: SilentWorkerRequest) {
     request.operationId,
     request.requestId,
     request.transcode,
+    request.rotation,
     progress => emitProgress({ phase: 'processing', progress })
   );
   emitProgress({ phase: 'validating', progress: 1 });

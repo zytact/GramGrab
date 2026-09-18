@@ -1,4 +1,6 @@
+import { Schema } from 'effect';
 import { browser } from '../lib/browser.ts';
+import { RotationSchema } from '../rotation/contracts.ts';
 import {
   DOWNLOAD_HISTORY_KEY,
   DOWNLOAD_HISTORY_LIMIT,
@@ -16,6 +18,7 @@ let mutationQueue: Promise<void> = Promise.resolve();
 
 const validKinds = new Set(['post', 'reel', 'story', 'highlight', 'profile']);
 const validTypes = new Set(['image', 'video']);
+const isRotation = Schema.is(RotationSchema);
 const supportedHistoryVersions = new Set([1, 2, 3, 4]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,7 +56,8 @@ function hasValidMedia(item: Partial<DownloadHistoryEntry>): boolean {
       item.exportMode === 'silent') &&
     (item.frameTimestampSeconds === undefined ||
       (Number.isSafeInteger(item.frameTimestampSeconds) && item.frameTimestampSeconds >= 0)) &&
-    (item.exportMode !== 'frame' || item.frameTimestampSeconds !== undefined)
+    (item.exportMode !== 'frame' || item.frameTimestampSeconds !== undefined) &&
+    (item.rotation === undefined || isRotation(item.rotation))
   );
 }
 

@@ -1066,7 +1066,8 @@ input:focus-visible {
   flex-shrink: 0;
 }
 
-.frame-toggle:has(.frame-toggle-checkbox:checked) {
+.frame-toggle:has(.frame-toggle-checkbox:checked),
+.frame-toggle[aria-pressed='true'] {
   background: var(--brand-dim);
   border-color: var(--brand);
   color: var(--brand);
@@ -1657,4 +1658,36 @@ body:has(.workspace-container) {
   color: var(--muted);
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.rotate-toggle {
+  min-width: 7.5em;
+  justify-content: center;
+  margin-right: 6px;
+}
+
+/* Rotated previews. A quarter turn swaps the box's axes, so the media is sized to the box's height
+   and width before it turns. */
+.media-thumb[data-rotation] {
+  container-type: size;
+}
+.media-thumb[data-rotation] :is(img, video) {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+}
+.media-thumb[data-rotation='90'] :is(img, video),
+.media-thumb[data-rotation='270'] :is(img, video) {
+  width: 100cqh;
+  height: 100cqw;
+}
+.media-thumb[data-rotation='90'] :is(img, video) {
+  rotate: 90deg;
+}
+.media-thumb[data-rotation='180'] :is(img, video) {
+  rotate: 180deg;
+}
+.media-thumb[data-rotation='270'] :is(img, video) {
+  rotate: 270deg;
 }

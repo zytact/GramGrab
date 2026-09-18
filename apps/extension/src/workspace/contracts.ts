@@ -1,6 +1,8 @@
 import { browser } from '../lib/browser';
 import type { FrameExportSetting } from '../frame-export/timestamp.ts';
 import type { MediaItem } from '../popup/media-item.ts';
+import { RotationSchema } from '../rotation/contracts.ts';
+import { Schema } from 'effect';
 
 export type WorkspaceMediaItem = MediaItem;
 
@@ -40,6 +42,8 @@ interface WorkspaceSnapshotV2 extends Omit<
 interface WorkspaceSnapshotV3 extends Omit<WorkspaceSnapshot, 'version' | 'acquisition'> {
   version: 3;
 }
+
+const isRotation = Schema.is(RotationSchema);
 
 export const WORKSPACE_TRANSFER_KEY = 'workspace-transfer-v1';
 export const WORKSPACE_STATUS_KEY = 'workspace-status-v1';
@@ -189,6 +193,7 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
       url: item.url,
       filenameHint: item.filenameHint,
       selected: item.selected,
+      ...(isRotation(item.rotation) ? { rotation: item.rotation } : {}),
       ...(item.previewUrl && !item.previewUrl.startsWith('data:')
         ? { previewUrl: item.previewUrl }
         : {}),

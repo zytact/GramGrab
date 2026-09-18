@@ -40,6 +40,7 @@ export const MESSAGE_REFUSALS: {
   RECORD_FRAME_EXPORT: () => ({ warning: 'HISTORY_SAVE_FAILED' }),
   DOWNLOAD_FRAME_EXPORT: () => ({ failure: downloadRefusal() }),
   RECORD_SILENT_EXPORT: () => ({ warning: 'HISTORY_SAVE_FAILED' }),
+  RECORD_DIRECT_EXPORT: () => ({ warning: 'HISTORY_SAVE_FAILED' }),
   DEBUG_SHAPE: () => ({ error: UNREADABLE_REQUEST }),
   DOWNLOAD_DEBUG_JSON: () => ({ failure: downloadRefusal() }),
 };
