@@ -69,6 +69,21 @@ describe('workspace contracts', () => {
     });
   });
 
+  it('canonicalizes singular and plural reel URLs to the same source', () => {
+    const expected = {
+      url: 'https://www.instagram.com/reel/DdqbmumzPYZ/',
+      target: { type: 'reel' as const, shortcode: 'DdqbmumzPYZ' },
+    };
+
+    expect(canonicalizeInstagramUrl('https://www.instagram.com/reel/DdqbmumzPYZ/')).toEqual(
+      expected
+    );
+    expect(canonicalizeInstagramUrl('https://www.instagram.com/reels/DdqbmumzPYZ/')).toEqual(
+      expected
+    );
+    expect(canonicalizeInstagramUrl('https://www.instagram.com/reels/')).toBeNull();
+  });
+
   it('removes transient data URL previews from transfers', () => {
     const item = sanitizeSnapshot(snapshot).mediaItems[0];
     expect(item?.previewUrl).toBeUndefined();

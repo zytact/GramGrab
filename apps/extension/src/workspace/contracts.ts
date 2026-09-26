@@ -110,7 +110,8 @@ function parsePost(path: string[], imgIndex: string | null): ParsedInstagramTarg
 }
 
 function parseReel(path: string[]): ParsedInstagramTarget | undefined {
-  if (path.length !== 2 || path[0] !== 'reel' || !SHORTCODE.test(path[1]!)) return undefined;
+  if (path.length !== 2 || !['reel', 'reels'].includes(path[0]!) || !SHORTCODE.test(path[1]!))
+    return undefined;
   return { target: { type: 'reel', shortcode: path[1] }, path: `/reel/${path[1]!}/` };
 }
 
