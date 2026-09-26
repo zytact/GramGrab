@@ -67,14 +67,18 @@ describe('integration: user-facing flows', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        data: {
-          xdt_shortcode_media: {
-            __typename: 'XDTGraphImage',
-            shortcode: 'abc123',
-            display_url: 'https://cdn.instagram.com/image.jpg',
-            taken_at_timestamp: 1700000000,
+        status: 'ok',
+        items: [
+          {
+            pk: '123',
+            code: 'abc123',
+            media_type: 1,
+            taken_at: 1700000000,
+            image_versions2: {
+              candidates: [{ url: 'https://cdn.instagram.com/image.jpg', width: 640, height: 640 }],
+            },
           },
-        },
+        ],
       }),
     }) as unknown as typeof fetch;
 

@@ -168,7 +168,7 @@ function installFetchSequence(responses: readonly Response[]): void {
 
 function expectConfiguredShortcodeCall(callIndex: number): void {
   const configured = configuredShortcodeRequests[callIndex];
-  const call = vi.mocked(globalThis.fetch).mock.calls[callIndex];
+  const call = vi.mocked(globalThis.fetch).mock.calls[callIndex + 1];
   if (!configured || !call) throw new Error(`Missing configured request call ${callIndex + 1}`);
 
   const [input, init] = call;
@@ -890,6 +890,20 @@ describe('background dispatcher', () => {
   });
 
   describe('FETCH_MEDIA — shortcode fallback', () => {
+    it.each([
+      [401, 'IG_NOT_AUTHENTICATED'],
+      [403, 'IG_ACCESS_FORBIDDEN'],
+      [429, 'IG_RATE_LIMITED'],
+    ] as const)('does not try GraphQL after REST returns %i', async (status, code) => {
+      installFetchSequence([new Response(null, { status })]);
+      const result = await invoke(await loadBackground(), {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/p/terminal1/',
+      });
+      expect(result).toMatchObject({ failure: { code } });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    });
+
     it('tries the next configured request when the first response has no node', async () => {
       document.body.innerHTML = '<input name="lsd" value="token123" />';
       const fallbackMedia = {
@@ -901,7 +915,11 @@ describe('background dispatcher', () => {
           },
         },
       };
-      installFetchSequence([missingShortcodeResponse(), jsonResponse(fallbackMedia)]);
+      installFetchSequence([
+        new Response(null, { status: 503 }),
+        missingShortcodeResponse(),
+        jsonResponse(fallbackMedia),
+      ]);
 
       const listener = await loadBackground();
       const result = (await invoke(listener, {
@@ -931,6 +949,7 @@ describe('background dispatcher', () => {
         },
       };
       installFetchSequence([
+        new Response(null, { status: 503 }),
         new Response('<!doctype html>', { status: 200 }),
         jsonResponse(fallbackMedia),
       ]);
@@ -947,7 +966,7 @@ describe('background dispatcher', () => {
       expect(result.failure).toBeUndefined();
       expect(result.media[0]?.type).toBe('video');
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/fallback.mp4');
-      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(3);
       expectConfiguredShortcodeCall(1);
     });
 
@@ -979,6 +998,7 @@ describe('background dispatcher', () => {
       );
       if (nextCandidateIndex < 1) throw new Error('No shortcode fallback candidate configured');
       installFetchSequence([
+        new Response(null, { status: 503 }),
         ...configuredShortcodeRequests
           .slice(0, nextCandidateIndex)
           .map(() => missingShortcodeResponse()),
@@ -996,19 +1016,20 @@ describe('background dispatcher', () => {
 
       expect(result.failure).toBeUndefined();
       expect(result.media[0]?.url).toBe('https://cdn.instagram.com/newdoc.jpg');
-      expect(globalThis.fetch).toHaveBeenCalledTimes(nextCandidateIndex + 1);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(nextCandidateIndex + 2);
       expectConfiguredShortcodeCall(nextCandidateIndex);
     });
 
     it('surfaces the last failure when every configured shortcode request fails', async () => {
       document.body.innerHTML = '<input name="lsd" value="token123" />';
-      installFetchSequence(
-        configuredShortcodeRequests.map((_, index) =>
+      installFetchSequence([
+        new Response(null, { status: 503 }),
+        ...configuredShortcodeRequests.map((_, index) =>
           index === configuredShortcodeRequests.length - 1
             ? new Response(null, { status: 403 })
             : missingShortcodeResponse()
-        )
-      );
+        ),
+      ]);
 
       const listener = await loadBackground();
       const result = (await invoke(listener, {
@@ -1018,16 +1039,17 @@ describe('background dispatcher', () => {
 
       expect(result.media).toBeUndefined();
       expect(result.failure.code).toBe('IG_ACCESS_FORBIDDEN');
-      expect(globalThis.fetch).toHaveBeenCalledTimes(configuredShortcodeRequests.length);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(configuredShortcodeRequests.length + 1);
     });
 
     it('surfaces malformed shortcode responses when every fallback is empty', async () => {
       document.body.innerHTML = '<input name="lsd" value="token123" />';
-      installFetchSequence(
-        configuredShortcodeRequests.map((_, index) =>
+      installFetchSequence([
+        new Response(null, { status: 503 }),
+        ...configuredShortcodeRequests.map((_, index) =>
           index === 0 ? jsonResponse({ data: [] }) : missingShortcodeResponse()
-        )
-      );
+        ),
+      ]);
 
       const listener = await loadBackground();
       const result = (await invoke(listener, {
@@ -1037,12 +1059,13 @@ describe('background dispatcher', () => {
 
       expect(result.media).toBeUndefined();
       expect(result.failure.code).toBe('IG_RESPONSE_SHAPE_UNKNOWN');
-      expect(globalThis.fetch).toHaveBeenCalledTimes(configuredShortcodeRequests.length);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(configuredShortcodeRequests.length + 1);
     });
 
     it('surfaces known shortcode nodes that have no usable media url', async () => {
       document.body.innerHTML = '<input name="lsd" value="token123" />';
       installFetchSequence([
+        new Response(null, { status: 503 }),
         jsonResponse({
           data: {
             xdt_shortcode_media: {
@@ -1061,7 +1084,7 @@ describe('background dispatcher', () => {
 
       expect(result.media).toBeUndefined();
       expect(result.failure.code).toBe('IG_RESPONSE_SHAPE_UNKNOWN');
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1414,17 +1437,24 @@ describe('background dispatcher', () => {
     });
 
     it('returns { raw } on successful fetch', async () => {
-      const mockRaw = { data: { xdt_shortcode_media: { id: '123' } } };
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => mockRaw,
-      }) as unknown as typeof fetch;
+      const mockRaw = { status: 'ok', items: [{ pk: '123', code: 'abc123', media_type: 1 }] };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => mockRaw,
+        })
+      );
       const listener = await loadBackground();
       const result = await invoke(listener, {
         type: 'DEBUG_SHAPE',
         url: 'https://www.instagram.com/p/abc123/',
       });
       expect(result).toMatchObject({ raw: mockRaw });
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/^https:\/\/www\.instagram\.com\/api\/v1\/media\/\d+\/info\/$/),
+        expect.objectContaining({ credentials: 'include' })
+      );
     });
   });
 });

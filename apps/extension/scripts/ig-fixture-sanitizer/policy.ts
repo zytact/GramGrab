@@ -8,6 +8,7 @@ export type FixtureFilename =
   | 'shortcode-image.json'
   | 'shortcode-sidecar.json'
   | 'shortcode-video.json'
+  | 'shortcode-rest-video.json'
   | 'story.json'
   | 'topsearch.json'
   | 'web-profile-info.json';
@@ -19,6 +20,7 @@ export const FIXTURE_FILENAMES: ReadonlyArray<FixtureFilename> = [
   'shortcode-image.json',
   'shortcode-sidecar.json',
   'shortcode-video.json',
+  'shortcode-rest-video.json',
   'story.json',
   'topsearch.json',
   'web-profile-info.json',
@@ -678,6 +680,24 @@ export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> 
   'shortcode-video.json': {
     rules: [...videoRules, ...graphqlErrors],
     emptyContainers: shortcodeEmptyContainers,
+  },
+  'shortcode-rest-video.json': {
+    rules: [
+      preserve('status'),
+      entityField('items[].pk', 'MEDIA', 'items[]', 'ID', ['string'], 'MEDIA_ID'),
+      entityField('items[].code', 'MEDIA', 'items[]', 'SHORTCODE', ['string'], 'MEDIA_SHORTCODE'),
+      preserve('items[].media_type', ['number']),
+      preserve('items[].taken_at', ['number']),
+      preserve('items[].original_width', ['number']),
+      preserve('items[].original_height', ['number']),
+      url('items[].video_versions[].url', 'VIDEO', 'MEDIA', 'items[]'),
+      preserve('items[].video_versions[].width', ['number']),
+      preserve('items[].video_versions[].height', ['number']),
+      url('items[].image_versions2.candidates[].url', 'IMAGE', 'MEDIA', 'items[]'),
+      preserve('items[].image_versions2.candidates[].width', ['number']),
+      preserve('items[].image_versions2.candidates[].height', ['number']),
+    ],
+    emptyContainers: [emptyArray('items[].carousel_media')],
   },
   'story.json': {
     rules: [...reel('data.reels_media[]'), ...graphqlErrors],

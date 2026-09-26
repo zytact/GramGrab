@@ -165,6 +165,41 @@
       throw new Error(`No shortcode media for "${shortcode}": ${JSON.stringify(failures)}`);
     }
 
+    async function restShortcodeFetch(shortcode) {
+      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+      const id = [...shortcode].reduce(
+        (value, character) => value * 64n + BigInt(alphabet.indexOf(character)),
+        0n
+      );
+      const response = await fetch(`https://www.instagram.com/api/v1/media/${id}/info/`, {
+        credentials: 'include',
+        headers: { 'X-IG-App-ID': APP_ID, 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      if (!response.ok) throw new Error(`REST shortcode request failed: ${response.status}`);
+      const json = await response.json();
+      const media = json.items?.find(item => item.code === shortcode);
+      if (!media || media.media_type !== 2) throw new Error('REST response has no matching video');
+      const version = item => ({ url: item.url, width: item.width, height: item.height });
+      return {
+        status: json.status,
+        items: [
+          {
+            pk: media.pk,
+            code: media.code,
+            media_type: media.media_type,
+            taken_at: media.taken_at,
+            original_width: media.original_width,
+            original_height: media.original_height,
+            video_versions: media.video_versions?.map(version) ?? null,
+            image_versions2: media.image_versions2
+              ? { candidates: media.image_versions2.candidates.map(version) }
+              : null,
+            carousel_media: media.carousel_media ?? null,
+          },
+        ],
+      };
+    }
+
     function jNode(j) {
       return (
         j?.data?.xdt_shortcode_media ??
@@ -381,6 +416,13 @@
           dl(file, { data: trim(j.data), errors: j.errors ?? null });
         },
       })),
+      {
+        label: 'shortcode-rest-video.json for the configured video reel',
+        run: async () => {
+          const shortcode = shortcodeFrom(POST_VIDEO, 'video reel');
+          dl('shortcode-rest-video.json', await restShortcodeFetch(shortcode));
+        },
+      },
     ];
 
     for (let i = 0; i < steps.length; i++) {

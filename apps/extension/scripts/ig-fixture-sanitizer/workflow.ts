@@ -11,6 +11,7 @@ import {
   WebProfileInfoResponseSchema,
 } from '../../src/effect/schemas.ts';
 import { isJsonValue, sanitizeBatch, type SanitizerViolation } from './sanitize.ts';
+import { RestShortcodeResponseSchema } from '../../src/instagram/rest-shortcode.ts';
 import { FIXTURE_FILENAMES, isFixtureFilename, type FixtureFilename } from './policy.ts';
 import type { JsonValue } from './entities.ts';
 
@@ -231,6 +232,7 @@ const endpointDecoders = {
   'shortcode-image.json': endpointDecoder(ShortcodeMediaResponseSchema),
   'shortcode-sidecar.json': endpointDecoder(ShortcodeMediaResponseSchema),
   'shortcode-video.json': endpointDecoder(ShortcodeMediaResponseSchema),
+  'shortcode-rest-video.json': endpointDecoder(RestShortcodeResponseSchema),
   'topsearch.json': endpointDecoder(TopSearchResponseSchema),
   'web-profile-info.json': endpointDecoder(WebProfileInfoResponseSchema),
 };

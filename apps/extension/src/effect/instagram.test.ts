@@ -29,6 +29,43 @@ describe('graphqlFetch', () => {
   const TEST_URL = 'https://www.instagram.com/graphql/query/';
   const vars = { shortcode: 'abc123' };
 
+  it('classifies a successful HTML response as a changed upstream shape', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('<!DOCTYPE html>', {
+          headers: { 'Content-Type': 'text/html' },
+        })
+      )
+    );
+    const result = await Effect.runPromise(
+      graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
+    );
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') expect(result.left).toBeInstanceOf(ResponseShapeUnknown);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a body stream failure as a network error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: () => Promise.reject(new TypeError('stream ended')),
+      })
+    );
+    vi.useFakeTimers();
+    const pending = Effect.runPromise(
+      graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
+    );
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') expect(result.left).toBeInstanceOf(NetworkError);
+  });
+
   it('returns parsed JSON on success', async () => {
     const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -154,6 +191,24 @@ describe('graphqlFetch', () => {
 describe('graphqlPost', () => {
   const TEST_URL = 'https://www.instagram.com/api/graphql/';
   const vars = { shortcode: 'abc123' };
+
+  it('classifies a successful HTML response as a changed upstream shape', async () => {
+    document.body.innerHTML = '<input name="lsd" value="token123" />';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('<!DOCTYPE html>', {
+          headers: { 'Content-Type': 'text/html' },
+        })
+      )
+    );
+    const result = await Effect.runPromise(
+      graphqlPost(TEST_URL, '12345', vars, {}).pipe(Effect.either)
+    );
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') expect(result.left).toBeInstanceOf(ResponseShapeUnknown);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
 
   it('posts form-encoded doc_id variables and returns parsed JSON', async () => {
     const mockData = { data: { xdt_shortcode_media: { id: '1' } } };

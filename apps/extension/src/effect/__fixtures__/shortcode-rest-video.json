@@ -1,0 +1,45 @@
+{
+  "status": "ok",
+  "items": [
+    {
+      "pk": "SANITIZED_MEDIA_44_ID",
+      "code": "SANITIZED_MEDIA_44_SHORTCODE",
+      "media_type": 2,
+      "taken_at": 1790237904,
+      "original_width": 1440,
+      "original_height": 1080,
+      "video_versions": [
+        {
+          "url": "https://sanitized.invalid/media/44/video",
+          "width": 960,
+          "height": 720
+        },
+        {
+          "url": "https://sanitized.invalid/media/44/video",
+          "width": 960,
+          "height": 720
+        },
+        {
+          "url": "https://sanitized.invalid/media/44/video",
+          "width": 960,
+          "height": 720
+        }
+      ],
+      "image_versions2": {
+        "candidates": [
+          {
+            "url": "https://sanitized.invalid/media/44/image",
+            "width": 720,
+            "height": 540
+          },
+          {
+            "url": "https://sanitized.invalid/media/44/image",
+            "width": 320,
+            "height": 240
+          }
+        ]
+      },
+      "carousel_media": null
+    }
+  ]
+}
