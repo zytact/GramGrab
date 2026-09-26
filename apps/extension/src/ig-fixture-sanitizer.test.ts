@@ -144,6 +144,44 @@ const allStrings = (value: JsonValue): ReadonlyArray<string> => {
 };
 
 describe('IG fixture sanitizer policy and transformation', () => {
+  it('sanitizes REST shortcode media and rejects unreviewed personal fields', () => {
+    const raw = {
+      status: 'ok',
+      items: [
+        {
+          pk: 'private-media-id',
+          code: 'private-shortcode',
+          media_type: 2,
+          taken_at: 1700000000,
+          original_width: 1440,
+          original_height: 1080,
+          video_versions: [
+            { url: 'https://cdn.example/private-video?token=secret', width: 960, height: 720 },
+          ],
+          image_versions2: {
+            candidates: [
+              { url: 'https://cdn.example/private-image?token=secret', width: 720, height: 540 },
+            ],
+          },
+          carousel_media: null,
+        },
+      ],
+    };
+    const result = sanitizeBatch(oneFile('shortcode-rest-video.json', raw));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const output = JSON.stringify(result.files.get('shortcode-rest-video.json'));
+    expect(output).not.toContain('private-');
+    expect(output).not.toContain('secret');
+    expect(output).toContain('https://sanitized.invalid/');
+    const rejected = sanitizeBatch(
+      oneFile('shortcode-rest-video.json', {
+        ...raw,
+        items: [{ ...raw.items[0], caption: 'private caption' }],
+      })
+    );
+    expect(rejected.ok).toBe(false);
+  });
   it('fails closed for unknown paths and unexpected types without reporting values', () => {
     const result = sanitizeBatch(
       oneFile('avatar.json', {

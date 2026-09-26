@@ -81,6 +81,7 @@ import {
   graphqlPost as graphqlPostEffect,
 } from './effect/instagram.ts';
 import { ShortcodeMediaResponseSchema } from './effect/schemas.ts';
+import { fetchRestShortcodeMedia, fetchRestShortcodeRaw } from './instagram/rest-shortcode.ts';
 import {
   normalizeHighlightCovers,
   normalizeInstantItems,
@@ -276,7 +277,10 @@ const classifyShortcodeRaw = (raw: Record<string, unknown>) =>
   );
 
 const attemptShortcodeRequest = (
-  request: Effect.Effect<Record<string, unknown>, GraphQLRequestFailed | RateLimited | NetworkError>
+  request: Effect.Effect<
+    Record<string, unknown>,
+    GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+  >
 ): Effect.Effect<ShortcodeFetchAttempt, RateLimited> =>
   request.pipe(
     Effect.flatMap(classifyShortcodeRaw),
@@ -316,13 +320,22 @@ const fetchShortcodeMediaItems = (
   shortcode: string
 ): Effect.Effect<
   MediaItem[],
-  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+  GraphQLRequestFailed | HttpError | RateLimited | NetworkError | ResponseShapeUnknown
 > =>
-  fetchShortcodeMediaRaw(shortcode).pipe(
-    Effect.flatMap(decodeShortcodeResponse),
-    Effect.map(resolveShortcodeResponseNode),
-    Effect.flatMap(normalizeKnownShortcodeMedia)
-  );
+  Effect.gen(function* () {
+    const rest = yield* fetchRestShortcodeMedia(shortcode).pipe(Effect.either);
+    if (rest._tag === 'Right') return rest.right;
+    const error = rest.left;
+    if (
+      error._tag === 'RateLimited' ||
+      error._tag === 'ResponseShapeUnknown' ||
+      (error._tag === 'HttpError' && [401, 403].includes(error.status))
+    )
+      return yield* Effect.fail(error);
+    const raw = yield* fetchShortcodeMediaRaw(shortcode);
+    const decoded = yield* decodeShortcodeResponse(raw);
+    return yield* normalizeKnownShortcodeMedia(resolveShortcodeResponseNode(decoded));
+  });
 
 function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
   return kind === 'highlight'
@@ -964,7 +977,7 @@ async function handleDebugShape(
     return { error: 'Use a post or reel URL for debug' };
   }
   return Effect.runPromise(
-    fetchShortcodeMediaRaw(parsed.shortcode!).pipe(
+    fetchRestShortcodeRaw(parsed.shortcode!).pipe(
       Effect.map(raw => ({ raw })),
       Effect.catchAll(err => Effect.succeed({ error: formatError(err) }))
     )

@@ -22,8 +22,10 @@ const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
   Schedule.compose(Schedule.recurs(3))
 );
 
-const shouldRetryGraphqlError = (err: NetworkError | GraphQLRequestFailed | RateLimited): boolean =>
-  (err._tag === 'NetworkError' && !(err.cause instanceof SyntaxError)) ||
+const shouldRetryGraphqlError = (
+  err: NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+): boolean =>
+  err._tag === 'NetworkError' ||
   err._tag === 'RateLimited' ||
   (err._tag === 'GraphQLRequestFailed' && err.status >= 500);
 
@@ -34,6 +36,29 @@ const requireSuccessfulResponse = <E>(
   if (response.ok) return Effect.void;
   if (response.status === 429) return Effect.fail(new RateLimited({ status: 429 }));
   return Effect.fail(rejected(response));
+};
+
+const parseGraphqlJson = (
+  response: Response
+): Effect.Effect<Record<string, unknown>, NetworkError | ResponseShapeUnknown> => {
+  if (response.headers?.get('content-type')?.includes('text/html'))
+    return Effect.fail(new ResponseShapeUnknown({ context: 'graphql_response' }));
+  return Effect.tryPromise({
+    try: async (): Promise<unknown> => response.json(),
+    catch: cause =>
+      cause instanceof SyntaxError
+        ? new ResponseShapeUnknown({ context: 'graphql_response' })
+        : new NetworkError({ cause }),
+  }).pipe(
+    Effect.flatMap(raw =>
+      Schema.decodeUnknown(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(raw)
+    ),
+    Effect.mapError(error =>
+      error._tag === 'ParseError'
+        ? new ResponseShapeUnknown({ context: 'graphql_response' })
+        : error
+    )
+  );
 };
 
 const parseInstagramLsdToken = (html: string): string | undefined =>
@@ -68,7 +93,10 @@ export const graphqlFetch = (
   operationId: string,
   variables: Record<string, unknown>,
   headers: Record<string, string>
-): Effect.Effect<Record<string, unknown>, NetworkError | GraphQLRequestFailed | RateLimited> => {
+): Effect.Effect<
+  Record<string, unknown>,
+  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+> => {
   const attempt = Effect.gen(function* () {
     const qs = new URLSearchParams({
       [operationKey]: operationId,
@@ -82,10 +110,7 @@ export const graphqlFetch = (
       res,
       response => new GraphQLRequestFailed({ status: response.status })
     );
-    return yield* Effect.tryPromise({
-      try: () => res.json() as Promise<Record<string, unknown>>,
-      catch: cause => new NetworkError({ cause }),
-    });
+    return yield* parseGraphqlJson(res);
   });
 
   return attempt.pipe(
@@ -102,7 +127,10 @@ export const graphqlPost = (
   variables: Record<string, unknown>,
   headers: Record<string, string>,
   operationKey: 'doc_id' | 'query_hash' = 'doc_id'
-): Effect.Effect<Record<string, unknown>, NetworkError | GraphQLRequestFailed | RateLimited> => {
+): Effect.Effect<
+  Record<string, unknown>,
+  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+> => {
   const attempt = Effect.gen(function* () {
     const lsd = yield* getInstagramLsdToken();
     const body = new URLSearchParams({
@@ -128,10 +156,7 @@ export const graphqlPost = (
       res,
       response => new GraphQLRequestFailed({ status: response.status })
     );
-    return yield* Effect.tryPromise({
-      try: () => res.json() as Promise<Record<string, unknown>>,
-      catch: cause => new NetworkError({ cause }),
-    });
+    return yield* parseGraphqlJson(res);
   });
 
   return attempt.pipe(

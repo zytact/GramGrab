@@ -1,5 +1,12 @@
 # Refreshing Instagram protocol metadata
 
+Post and Shortcode Reel acquisition first decodes the shortcode to a numeric media ID and reads
+`/api/v1/media/{id}/info/`. The configured `mediaByShortcode` GraphQL candidates run only if that
+request has a transport or non-terminal HTTP failure. Authentication, rate limits, and a changed
+successful REST response surface directly. Refresh these GraphQL candidates when the fallback is
+needed and a relevant GraphQL request can be observed; a changed REST response instead needs a
+schema and sanitized fixture update.
+
 GramGrab keeps public Instagram request metadata in
 [`apps/extension/src/instagram-protocol/config.json`](../apps/extension/src/instagram-protocol/config.json). The extension and the
 generated fixture capture script both consume this file, so protocol values must not be copied into
