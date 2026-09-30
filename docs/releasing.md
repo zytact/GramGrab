@@ -48,3 +48,5 @@ everyone, so keep a backup.
 | Secret `AMO_JWT_ISSUER`                                                                 | JWT issuer from addons.mozilla.org → Developer Hub → API keys |
 | Secret `AMO_JWT_SECRET`                                                                 | JWT secret from the same page                                 |
 | Settings → Actions → General → Allow GitHub Actions to create and approve pull requests | Enabled, so release-please can open its PR                    |
+
+Without both AMO secrets the release skips Firefox and ships no `gramgrab.xpi` or `updates.json`.
