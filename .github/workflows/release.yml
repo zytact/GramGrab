@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.release-please.outputs.tag }}
+      SIGN_FIREFOX: ${{ secrets.AMO_JWT_ISSUER != '' && secrets.AMO_JWT_SECRET != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,7 +45,9 @@ jobs:
           printf '%s\n' "$CHROMIUM_CRX_KEY" > "$CHROMIUM_CRX_KEY_FILE"
           vp run package-chromium
 
+      # Skipped until the AMO API key secrets exist; the release then ships without Firefox assets.
       - name: Sign Firefox XPI on AMO (unlisted)
+        if: env.SIGN_FIREFOX == 'true'
         env:
           WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
@@ -64,7 +67,7 @@ jobs:
         run: |
           mkdir release
           cp extension/chromium/gramgrab.crx release/
-          cp "$RUNNER_TEMP"/web-ext/*.xpi release/gramgrab.xpi
+          if [ "$SIGN_FIREFOX" = true ]; then cp "$RUNNER_TEMP"/web-ext/*.xpi release/gramgrab.xpi; fi
           cp "$RUNNER_TEMP/gramgrab-tools.tar.gz" install.sh release/
           node apps/extension/scripts/write-update-manifests.mjs release
           (cd release && sha256sum -- * > SHA256SUMS)
