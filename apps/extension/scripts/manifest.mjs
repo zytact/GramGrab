@@ -1,3 +1,5 @@
+import packageJson from '../../../package.json' with { type: 'json' };
+
 const permissionDocumentation = [
   { permission: 'downloads', reason: 'Save media files and debug exports to disk' },
   { permission: 'storage', reason: 'Persist download history and workspace handoff state' },
@@ -63,7 +65,7 @@ export function createManifest(browser) {
   return {
     manifest_version: 3,
     name: 'GramGrab',
-    version: '1.0.1',
+    version: packageJson.version,
     description:
       'Download Instagram posts, reels, stories, and highlights directly from your browser session.',
     icons: {

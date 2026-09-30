@@ -19,6 +19,7 @@ import {
   Request,
   Status,
 } from '@gramgrab/protocol';
+import packageJson from '../../../package.json';
 import { createProgressPrinter, HELP, parseCliArguments, request } from './index.ts';
 
 interface CliProcessResult {
@@ -352,6 +353,13 @@ describe('CLI output', () => {
     } else {
       expect(result.stderr).toContain('Invalid SOURCE: expected an Instagram URL');
     }
+  });
+
+  it('prints the release version from the root package.json', async () => {
+    const result = await runCliProcess(['--version']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(`${packageJson.version}\n`);
   });
 
   it('rejects WhatsApp Status input with its browser-extension boundary message and exit code 2', async () => {

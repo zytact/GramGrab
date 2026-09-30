@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vite-plus/test';
+import packageJson from '../../../package.json';
 import {
   createManifest,
   manifestPermissionDocumentation,
@@ -44,7 +45,7 @@ describe('manifest generation', () => {
       expect(createManifest(browser)).toMatchObject({
         manifest_version: 3,
         name: 'GramGrab',
-        version: '1.0.1',
+        version: packageJson.version,
         action: {
           default_popup: 'popup.html',
           default_title: 'GramGrab',

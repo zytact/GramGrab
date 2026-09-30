@@ -34,6 +34,7 @@ import {
   type InspectResult,
   type InstantsInspectResult,
 } from '@gramgrab/protocol';
+import { version } from '../../../package.json';
 
 export { decodeEvent, decodeRequest, PROTOCOL_VERSION } from '@gramgrab/protocol';
 
@@ -69,6 +70,7 @@ export const HELP = `GramGrab CLI
 
 Usage:
   gramgrab help
+  gramgrab version
   gramgrab status [--json]
   gramgrab inspect SOURCE [--json]
   gramgrab instants inspect [--json]
@@ -517,6 +519,10 @@ export function formatCliError(error: unknown, json: boolean): string {
 export async function runCli(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
   if (requestsHelp(arguments_)) {
     process.stdout.write(HELP);
+    return;
+  }
+  if (['version', '--version'].includes(arguments_[0] ?? '')) {
+    process.stdout.write(`${version}\n`);
     return;
   }
   const parsed = await parse(arguments_);
