@@ -65,7 +65,7 @@ jobs:
           mkdir release
           cp extension/chromium/gramgrab.crx release/
           cp "$RUNNER_TEMP"/web-ext/*.xpi release/gramgrab.xpi
-          cp "$RUNNER_TEMP/gramgrab-tools.tar.gz" release/
+          cp "$RUNNER_TEMP/gramgrab-tools.tar.gz" install.sh release/
           node apps/extension/scripts/write-update-manifests.mjs release
           (cd release && sha256sum -- * > SHA256SUMS)
 

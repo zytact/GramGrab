@@ -18,8 +18,10 @@ import {
   Progress,
   Request,
   Status,
+  StatusResult,
 } from '@gramgrab/protocol';
 import packageJson from '../../../package.json';
+import { versionSkewHint } from './update.ts';
 import { createProgressPrinter, HELP, parseCliArguments, request } from './index.ts';
 
 interface CliProcessResult {
@@ -474,5 +476,24 @@ describe('CLI request lifecycle', () => {
     await new Promise<void>((resolve, reject) =>
       server.close(error => (error ? reject(error) : resolve()))
     );
+  });
+});
+
+describe('version skew hint', () => {
+  const status = (extensionVersion: string, hostVersion: string) =>
+    StatusResult.make({
+      browser: 'chromium',
+      extensionVersion,
+      hostVersion,
+      protocolVersion: PROTOCOL_VERSION,
+      compatible: true,
+    });
+
+  it('stays quiet when the extension and native host match', () => {
+    expect(versionSkewHint(status('1.2.0', '1.2.0'))).toBeUndefined();
+  });
+
+  it('points at gramgrab update when they differ', () => {
+    expect(versionSkewHint(status('1.3.0', '1.2.0'))).toContain('gramgrab update');
   });
 });
