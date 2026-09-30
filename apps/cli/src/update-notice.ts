@@ -1,22 +1,18 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { Option, Schema } from 'effect';
 
 const LATEST_RELEASE_URL = 'https://github.com/zytact/GramGrab/releases/latest';
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const CHECK_TIMEOUT_MS = 1_500;
+const CLAIM_PREFIX = 'update-claim-';
 
-const UpdateCheck = Schema.Struct({
-  checkedAt: Schema.Number,
-  latest: Schema.optional(Schema.String),
-});
-type UpdateCheck = typeof UpdateCheck.Type;
+const LatestRelease = Schema.Struct({ latest: Schema.String });
 
-const defaultCacheFile = join(
+const defaultCacheDirectory = join(
   process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'),
-  'gramgrab',
-  'update-check.json'
+  'gramgrab'
 );
 
 /** Reads the latest release version from GitHub's redirect, which costs no API rate limit. */
@@ -38,40 +34,54 @@ export function isNewer(candidate: string, current: string): boolean {
   return false;
 }
 
-async function readCheck(cacheFile: string): Promise<UpdateCheck | undefined> {
+async function readLatest(cacheFile: string): Promise<string | undefined> {
   try {
     const raw: unknown = JSON.parse(await readFile(cacheFile, 'utf8'));
-    return Option.getOrUndefined(Schema.decodeUnknownOption(UpdateCheck)(raw));
+    return Option.getOrUndefined(Schema.decodeUnknownOption(LatestRelease)(raw))?.latest;
   } catch {
     return undefined;
   }
 }
 
-async function writeCheck(cacheFile: string, check: UpdateCheck): Promise<void> {
-  await mkdir(dirname(cacheFile), { recursive: true });
-  await writeFile(cacheFile, JSON.stringify(check));
+/**
+ * Creating the day's claim file succeeds for exactly one process, so concurrent commands ask
+ * GitHub once. Earlier days' claims are removed by the winner.
+ */
+async function claimToday(directory: string, now: number): Promise<boolean> {
+  const claim = `${CLAIM_PREFIX}${Math.floor(now / DAY_MS)}`;
+  await mkdir(directory, { recursive: true });
+  try {
+    await writeFile(join(directory, claim), '', { flag: 'wx' });
+  } catch {
+    return false;
+  }
+  const stale = (await readdir(directory)).filter(
+    name => name.startsWith(CLAIM_PREFIX) && name !== claim
+  );
+  await Promise.all(stale.map(name => rm(join(directory, name), { force: true })));
+  return true;
 }
 
 interface UpdateNoticeOptions {
   readonly current: string;
   readonly now?: number;
-  readonly cacheFile?: string;
+  readonly cacheDirectory?: string;
   readonly fetchLatest?: () => Promise<string | undefined>;
 }
 
-/** Returns a notice when a newer release exists, asking GitHub at most once a day. */
+/** Returns a notice when a newer release exists, asking GitHub at most once per UTC day. */
 export async function updateNotice({
   current,
   now = Date.now(),
-  cacheFile = defaultCacheFile,
+  cacheDirectory = defaultCacheDirectory,
   fetchLatest = fetchLatestVersion,
 }: UpdateNoticeOptions): Promise<string | undefined> {
-  let check = await readCheck(cacheFile);
-  if (!check || now - check.checkedAt >= CHECK_INTERVAL_MS) {
-    const previous = check?.latest;
-    check = { checkedAt: now, latest: await fetchLatest().catch(() => previous) };
-    await writeCheck(cacheFile, check).catch(() => undefined);
+  const cacheFile = join(cacheDirectory, 'update-check.json');
+  let latest = await readLatest(cacheFile);
+  if (await claimToday(cacheDirectory, now).catch(() => false)) {
+    latest = (await fetchLatest().catch(() => undefined)) ?? latest;
+    if (latest) await writeFile(cacheFile, JSON.stringify({ latest })).catch(() => undefined);
   }
-  if (!check.latest || !isNewer(check.latest, current)) return undefined;
-  return `Update available: ${current} → ${check.latest}. Run "gramgrab update".\n`;
+  if (!latest || !isNewer(latest, current)) return undefined;
+  return `Update available: ${current} → ${latest}. Run "gramgrab update".\n`;
 }

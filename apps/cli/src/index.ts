@@ -108,8 +108,8 @@ Plans:
   stable operation IDs and optional media identities for retries.
 
 Updating:
-  gramgrab update installs the latest release's CLI and native host on Linux and macOS. Once a day,
-  other commands check for a newer release and mention it on stderr. JSON mode and non-terminal
+  gramgrab update installs the latest release's CLI and native host on Linux and macOS. Once per UTC
+  day, other commands check for a newer release and mention it on stderr. JSON mode and non-terminal
   stderr never check.
 
 Output and exit status:
@@ -543,9 +543,12 @@ export async function runCli(arguments_: readonly string[], signal?: AbortSignal
   const notice = wantsUpdateNotice(arguments_)
     ? updateNotice({ current: version }).catch(() => undefined)
     : undefined;
-  await runCommand(arguments_, signal);
-  const text = await notice;
-  if (text) process.stderr.write(text);
+  try {
+    await runCommand(arguments_, signal);
+  } finally {
+    const text = await notice;
+    if (text) process.stderr.write(text);
+  }
 }
 
 async function runCommand(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
