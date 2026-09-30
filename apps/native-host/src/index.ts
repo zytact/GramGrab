@@ -17,6 +17,7 @@ import {
   RequestId as RequestIdSchema,
   StatusResult,
 } from '@gramgrab/protocol';
+import { version as HOST_VERSION } from '../../../package.json';
 
 export { decodeEvent, decodeRequest, PROTOCOL_VERSION } from '@gramgrab/protocol';
 
@@ -27,7 +28,6 @@ const endpoint = localIpcEndpoint({
   override: process.env.GRAMGRAB_IPC_PATH,
 });
 const clients = new Map<Socket, Set<RequestId>>();
-const HOST_VERSION = '0.0.0';
 const ClientEnvelope = Schema.Struct({
   version: Schema.Number,
   requestId: RequestIdSchema,
