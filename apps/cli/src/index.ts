@@ -36,6 +36,7 @@ import {
 } from '@gramgrab/protocol';
 import { version } from '../../../package.json';
 import { update, versionSkewHint } from './update.ts';
+import { updateNotice } from './update-notice.ts';
 
 export { decodeEvent, decodeRequest, PROTOCOL_VERSION } from '@gramgrab/protocol';
 
@@ -107,7 +108,9 @@ Plans:
   stable operation IDs and optional media identities for retries.
 
 Updating:
-  gramgrab update installs the latest release's CLI and native host on Linux and macOS.
+  gramgrab update installs the latest release's CLI and native host on Linux and macOS. Once a day,
+  other commands check for a newer release and mention it on stderr. JSON mode and non-terminal
+  stderr never check.
 
 Output and exit status:
   --json emits compact newline-delimited progress on stderr and one terminal JSON result on stdout.
@@ -533,7 +536,19 @@ async function runLocalCommand(arguments_: readonly string[]): Promise<boolean> 
   return true;
 }
 
+const wantsUpdateNotice = (arguments_: readonly string[]): boolean =>
+  process.stderr.isTTY && arguments_[0] !== 'update' && !arguments_.includes('--json');
+
 export async function runCli(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
+  const notice = wantsUpdateNotice(arguments_)
+    ? updateNotice({ current: version }).catch(() => undefined)
+    : undefined;
+  await runCommand(arguments_, signal);
+  const text = await notice;
+  if (text) process.stderr.write(text);
+}
+
+async function runCommand(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
   if (await runLocalCommand(arguments_)) return;
   const parsed = await parse(arguments_);
   const printProgress = createProgressPrinter(parsed.json);
