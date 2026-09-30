@@ -14,6 +14,10 @@ the GitHub release, and `.github/workflows/release.yml` attaches:
 | `updates.json`          | Firefox update manifest for this version, with the XPI's SHA-256     |
 | `SHA256SUMS`            | Checksums of every asset above                                       |
 
+The bundled Firefox build is minified, so the workflow also uploads the tagged source (without
+the vendored `.repos/`) to AMO, as Mozilla requires. README's "Building from Source" section is the
+build instructions reviewers follow: `vp install`, then `vp run build:firefox`.
+
 `fix:` bumps the patch version, `feat:` the minor version, and a `!` or `BREAKING CHANGE` footer the
 major version. Never edit `CHANGELOG.md` or the version by hand.
 

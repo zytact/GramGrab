@@ -50,8 +50,10 @@ jobs:
           WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
         run: |
           vp run build-firefox
+          git archive --format=zip -o "$RUNNER_TEMP/source.zip" HEAD -- . ':!.repos'
           npx --yes web-ext@8 sign --channel unlisted \
-            --source-dir extension/firefox --artifacts-dir "$RUNNER_TEMP/web-ext"
+            --source-dir extension/firefox --artifacts-dir "$RUNNER_TEMP/web-ext" \
+            --upload-source-code "$RUNNER_TEMP/source.zip"
 
       - name: Package CLI and native host
         run: |
