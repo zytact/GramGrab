@@ -21,6 +21,14 @@ build instructions reviewers follow: `vp install`, then `vp run build:firefox`.
 `fix:` bumps the patch version, `feat:` the minor version, and a `!` or `BREAKING CHANGE` footer the
 major version. Never edit `CHANGELOG.md` or the version by hand.
 
+## How installs update
+
+Both manifests set `update_url` to `releases/latest/download/updates.xml` (Chromium) or
+`updates.json` (Firefox), so installed releases always read the newest release's manifest, which then
+points at that release's versioned CRX or XPI. GitHub answers those URLs with a redirect to its
+asset host, and both browsers follow it. Chromium checks at startup and installs the update on the
+next start, because GramGrab's worker never goes idle while its native port is open.
+
 ## Chromium release key
 
 The CRX signing key pins the Chromium extension ID (`jimjajkoinlnejbiekiaifojpnonfnff`). Its public

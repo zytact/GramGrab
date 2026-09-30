@@ -56,7 +56,29 @@ _Open larger collections in GramGrab's responsive workspace to preview, configur
 
 ## Installation
 
-### Option A - Load the pre-built extension (recommended)
+### Option A - Install a release (recommended, updates itself)
+
+Every [GitHub release](https://github.com/zytact/GramGrab/releases/latest) carries a signed
+`gramgrab.crx` and `gramgrab.xpi`. Installed from there, the browser checks the latest release for
+updates on its own.
+
+**Helium, Chromium, or another Chromium browser on Linux**
+
+- Helium only: open `helium://flags`, set **Handling of extension MIME type requests** to
+  **Always prompt for install**, and relaunch.
+- Open the `gramgrab.crx` link from the release and click **Add extension**.
+
+The browser checks for updates at startup, and **Update** in `chrome://extensions` (developer mode)
+checks immediately. A downloaded update installs the next time the browser starts, because
+GramGrab's background worker stays connected to the CLI bridge. Off-store CRX installs only work on
+Linux; on Windows and macOS use Option B.
+
+**Firefox**
+
+- Open the `gramgrab.xpi` link from the release and click **Add**. Mozilla has signed it, and
+  Firefox updates it like any other add-on.
+
+### Option B - Load the extension from source
 
 1. Clone or download this repository.
 2. Run the build to generate browser-specific output directories:
@@ -81,9 +103,12 @@ _Open larger collections in GramGrab's responsive workspace to preview, configur
 
 4. The GramGrab icon will appear in your browser toolbar.
 
+Builds loaded this way never update themselves. The Chromium build carries the release key, so it
+has the same extension ID as a release install and cannot sit next to one in the same profile.
+
 > **Why separate folders?** Chromium MV3 requires a `service_worker` background entry; Firefox MV3 uses `scripts`. The two builds share the same TypeScript source but get different generated `manifest.json` files.
 
-### Option B - Development mode (live rebuild)
+### Option C - Development mode (live rebuild)
 
 ```bash
 vp install

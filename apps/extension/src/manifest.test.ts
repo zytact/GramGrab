@@ -81,6 +81,12 @@ describe('manifest generation', () => {
     expect(manifest).not.toHaveProperty('browser_specific_settings');
   });
 
+  it('updates Chromium installs from the latest GitHub release', () => {
+    expect(createManifest('chromium').update_url).toBe(
+      'https://github.com/zytact/GramGrab/releases/latest/download/updates.xml'
+    );
+  });
+
   it('pins the Chromium extension ID that installed releases update under', () => {
     expect(createManifest('chromium').key).toBe(CHROMIUM_PUBLIC_KEY);
     expect(CHROMIUM_EXTENSION_ID).toBe('jimjajkoinlnejbiekiaifojpnonfnff');
@@ -95,6 +101,7 @@ describe('manifest generation', () => {
           id: 'gramgrab@zytact',
           strict_min_version: '109.0',
           data_collection_permissions: { required: ['none'] },
+          update_url: 'https://github.com/zytact/GramGrab/releases/latest/download/updates.json',
         },
       },
     });

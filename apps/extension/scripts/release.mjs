@@ -19,6 +19,10 @@ export const CHROMIUM_EXTENSION_ID = createHash('sha256')
 export const chromiumKeyFile =
   process.env.CHROMIUM_CRX_KEY_FILE ?? join(homedir(), '.config/gramgrab-release/chromium.pem');
 
+/** @param {string} name */
+export const latestReleaseAssetUrl = name =>
+  `https://github.com/${RELEASE_REPOSITORY}/releases/latest/download/${name}`;
+
 /**
  * @param {string} version
  * @param {string} name
