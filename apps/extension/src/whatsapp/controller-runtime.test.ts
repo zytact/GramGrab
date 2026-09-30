@@ -156,6 +156,50 @@ describe('isolated WhatsApp foreground extraction', () => {
     );
   });
 
+  it('selects the final progressive layer of an unopened photo', () => {
+    const player = document.createElement('div');
+    player.dataset.testid = 'status-player-uie';
+    player.innerHTML = `
+      <div data-testid="media-url-provider">
+        <div><img data-testid="status-image-thumbnail" src="data:image/jpeg;base64,thumb"></div>
+        <div><div data-testid="status-image"><img src="blob:scan-1"></div></div>
+        <div><div data-testid="status-image"><img src="blob:scan-2"></div></div>
+        <div><div data-testid="status-image"><img src="blob:final"></div></div>
+      </div>`;
+    document.body.append(player);
+
+    const observation = inspectVisibleStatus(document);
+    if (observation.tag !== 'ready' && observation.tag !== 'not-ready')
+      throw new Error(`expected a candidate, got ${observation.tag}`);
+    expect(observation.candidate.source).toBe('blob:final');
+  });
+
+  it('classifies text and not-yet-downloaded photos despite cross-origin avatars', () => {
+    const player = document.createElement('div');
+    player.dataset.testid = 'status-player-uie';
+    player.innerHTML = `
+      <img src="https://avatars.example/a.jpg">
+      <div data-testid="status-text"><img src="data:image/gif;base64,emoji"></div>`;
+    document.body.append(player);
+    expect(inspectVisibleStatus(document).tag).toBe('unsupported');
+
+    player.innerHTML = `
+      <img src="https://avatars.example/a.jpg">
+      <img data-testid="status-image-thumbnail" src="data:image/jpeg;base64,thumb">`;
+    expect(inspectVisibleStatus(document).tag).toBe('pending');
+  });
+
+  it('reports a format change when marked photos do not share one media provider', () => {
+    const player = document.createElement('div');
+    player.dataset.testid = 'status-player-uie';
+    player.innerHTML = `
+      <div data-testid="media-url-provider"><div data-testid="status-image"><img src="blob:a"></div></div>
+      <div data-testid="media-url-provider"><div data-testid="status-image"><img src="blob:b"></div></div>`;
+    document.body.append(player);
+
+    expect(inspectVisibleStatus(document).tag).toBe('format-changed');
+  });
+
   it('reports absent and unsupported players without scanning unrelated document media', () => {
     expect(inspectVisibleStatus(document)).toEqual({ tag: 'not-visible', reason: 'viewer-absent' });
     const player = document.createElement('div');

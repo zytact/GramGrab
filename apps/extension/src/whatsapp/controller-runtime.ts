@@ -4,6 +4,7 @@ const WHATSAPP_MAX_MEDIA_BYTES = 64 * 1024 * 1024;
 const WHATSAPP_MAX_CHUNK_BYTES = 256 * 1024;
 const WHATSAPP_MAX_CHUNKS = 256;
 const WHATSAPP_IDLE_TIMEOUT_MS = 5_000;
+const WHATSAPP_READINESS_TIMEOUT_MS = 4_000;
 const WHATSAPP_TRANSFER_TIMEOUT_MS = 30_000;
 const WHATSAPP_RETENTION_MS = 60_000;
 const WHATSAPP_MIN_DIMENSION = 1;
@@ -31,6 +32,7 @@ function isWhatsAppMimeForKind(
 export type VisibleStatusObservation =
   | { readonly tag: 'not-visible'; readonly reason: 'wrong-origin' | 'viewer-absent' }
   | { readonly tag: 'unsupported'; readonly reason: 'unsupported-media' }
+  | { readonly tag: 'pending'; readonly reason: 'media-downloading' }
   | {
       readonly tag: 'not-ready';
       readonly reason: 'media-loading';
@@ -75,6 +77,7 @@ interface AcquiredBytes {
 function candidateFromObservation(observation: VisibleStatusObservation): ForegroundCandidate {
   if (observation.tag === 'not-visible') throw new ControllerFailure('not-visible');
   if (observation.tag === 'unsupported') throw new ControllerFailure('unsupported');
+  if (observation.tag === 'pending') throw new ControllerFailure('not-ready');
   if (observation.tag === 'format-changed')
     throw new ControllerFailure('format-changed', observation.shape);
   return observation.candidate;
@@ -142,6 +145,26 @@ function hasMarker(element: Element, marker: string): boolean {
     element.classList.contains(marker) ||
     element.getAttribute('aria-label') === marker
   );
+}
+
+function markedAncestorWithinPlayer(
+  element: Element,
+  player: Element,
+  marker: string
+): Element | undefined {
+  for (let current = element.parentElement; current && current !== player; ) {
+    if (hasMarker(current, marker)) return current;
+    current = current.parentElement;
+  }
+  return undefined;
+}
+
+function shareOneMediaProvider(images: HTMLImageElement[], player: Element): boolean {
+  if (images.length <= 1) return true;
+  const providers = new Set(
+    images.map(image => markedAncestorWithinPlayer(image, player, 'media-url-provider'))
+  );
+  return providers.size === 1 && !providers.has(undefined);
 }
 
 function hasMarkerWithinPlayer(element: Element, player: Element, marker: string): boolean {
@@ -296,42 +319,67 @@ function inspectPhoto(
 ): VisibleStatusObservation {
   const images = Array.from(player.querySelectorAll('img'));
   const markedImages = images.filter(image => hasMarkerWithinPlayer(image, player, 'status-image'));
-  const candidateImages = markedImages.length > 0 ? markedImages : images;
-  const foreground = candidateImages.filter(image => {
-    const source = sourceOf(image);
-    return markedImages.length > 0
-      ? isPageOwnedSource(source, document) && !source.startsWith('data:')
-      : source.startsWith('blob:');
-  });
-  const invalidImageSources = candidateImages.filter(image => {
-    const source = sourceOf(image);
-    return (
-      source.length > 0 &&
-      !source.startsWith('data:') &&
-      (markedImages.length === 0
-        ? !source.startsWith('blob:')
-        : !isPageOwnedSource(source, document))
-    );
-  });
-  if (foreground.length > 1 || invalidImageSources.length > 0) {
-    return { tag: 'format-changed', shape };
-  }
-  if (foreground.length === 0) return { tag: 'unsupported', reason: 'unsupported-media' };
+  if (markedImages.length > 0) return inspectMarkedPhoto(player, markedImages, shape, document);
+  if (player.querySelector('[data-testid="status-text"]'))
+    return { tag: 'unsupported', reason: 'unsupported-media' };
+  if (player.querySelector('[data-testid="status-image-thumbnail"]'))
+    return { tag: 'pending', reason: 'media-downloading' };
+  return inspectUnmarkedPhoto(player, images, shape);
+}
 
-  const image = foreground[0];
-  if (!image) return { tag: 'format-changed', shape };
-  const source = sourceOf(image);
-  const ready = image.complete && dimensionsAreValid(image.naturalWidth, image.naturalHeight);
-  const candidate: ForegroundCandidate = {
+function inspectMarkedPhoto(
+  player: Element,
+  images: HTMLImageElement[],
+  shape: WhatsAppShapeEvidence,
+  document: Document
+): VisibleStatusObservation {
+  const sources = images.map(image => sourceOf(image));
+  if (
+    sources.some(
+      source =>
+        source.length > 0 && !source.startsWith('data:') && !isPageOwnedSource(source, document)
+    )
+  )
+    return { tag: 'format-changed', shape };
+  const layers = images.filter((_, index) => {
+    const source = sources[index] ?? '';
+    return isPageOwnedSource(source, document) && !source.startsWith('data:');
+  });
+  if (!shareOneMediaProvider(layers, player)) return { tag: 'format-changed', shape };
+  return photoObservation(player, layers.at(-1));
+}
+
+function inspectUnmarkedPhoto(
+  player: Element,
+  images: HTMLImageElement[],
+  shape: WhatsAppShapeEvidence
+): VisibleStatusObservation {
+  const sources = images.map(image => sourceOf(image));
+  if (
+    sources.some(
+      source => source.length > 0 && !source.startsWith('data:') && !source.startsWith('blob:')
+    )
+  )
+    return { tag: 'format-changed', shape };
+  const blobs = images.filter((_, index) => sources[index]?.startsWith('blob:'));
+  if (blobs.length > 1) return { tag: 'format-changed', shape };
+  return photoObservation(player, blobs[0]);
+}
+
+function photoObservation(
+  player: Element,
+  image: HTMLImageElement | undefined
+): VisibleStatusObservation {
+  if (!image) return { tag: 'unsupported', reason: 'unsupported-media' };
+  return candidateObservation({
     kind: 'photo',
     player,
     media: image,
-    source,
-    ready,
+    source: sourceOf(image),
+    ready: image.complete && dimensionsAreValid(image.naturalWidth, image.naturalHeight),
     width: image.naturalWidth,
     height: image.naturalHeight,
-  };
-  return candidateObservation(candidate);
+  });
 }
 
 function guardMatches(
@@ -368,7 +416,7 @@ function sleep(milliseconds: number): Promise<void> {
 async function waitForReady(
   initial: ForegroundCandidate,
   document: Document = globalThis.document,
-  timeoutMs = WHATSAPP_IDLE_TIMEOUT_MS
+  timeoutMs = WHATSAPP_READINESS_TIMEOUT_MS
 ): Promise<ForegroundCandidate> {
   const deadline = Date.now() + timeoutMs;
   let current = initial;
