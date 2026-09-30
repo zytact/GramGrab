@@ -1,4 +1,5 @@
 import packageJson from '../../../package.json' with { type: 'json' };
+import { CHROMIUM_PUBLIC_KEY, FIREFOX_EXTENSION_ID } from './release.mjs';
 
 const permissionDocumentation = [
   { permission: 'downloads', reason: 'Save media files and debug exports to disk' },
@@ -57,10 +58,14 @@ export function createManifest(browser) {
     browser === 'firefox'
       ? {
           browser_specific_settings: {
-            gecko: { id: 'gramgrab@zytact', strict_min_version: '109.0' },
+            gecko: {
+              id: FIREFOX_EXTENSION_ID,
+              strict_min_version: '109.0',
+              data_collection_permissions: { required: ['none'] },
+            },
           },
         }
-      : {};
+      : { key: CHROMIUM_PUBLIC_KEY };
 
   return {
     manifest_version: 3,

@@ -6,6 +6,7 @@ import {
   manifestPermissionDocumentation,
   parseBrowserTarget,
 } from '../scripts/manifest.mjs';
+import { CHROMIUM_EXTENSION_ID, CHROMIUM_PUBLIC_KEY } from '../scripts/release.mjs';
 
 const expectedPermissions = [
   'downloads',
@@ -80,11 +81,21 @@ describe('manifest generation', () => {
     expect(manifest).not.toHaveProperty('browser_specific_settings');
   });
 
+  it('pins the Chromium extension ID that installed releases update under', () => {
+    expect(createManifest('chromium').key).toBe(CHROMIUM_PUBLIC_KEY);
+    expect(CHROMIUM_EXTENSION_ID).toBe('jimjajkoinlnejbiekiaifojpnonfnff');
+    expect(createManifest('firefox')).not.toHaveProperty('key');
+  });
+
   it('generates the Firefox background and Gecko declarations', () => {
     expect(createManifest('firefox')).toMatchObject({
       background: { scripts: ['js/background.js'], type: 'module' },
       browser_specific_settings: {
-        gecko: { id: 'gramgrab@zytact', strict_min_version: '109.0' },
+        gecko: {
+          id: 'gramgrab@zytact',
+          strict_min_version: '109.0',
+          data_collection_permissions: { required: ['none'] },
+        },
       },
     });
   });

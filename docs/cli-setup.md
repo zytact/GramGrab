@@ -35,10 +35,9 @@ archive tool discarded Unix permissions, restore them with
    absolute path to `artifacts/gramgrab-native-host.mjs`, or
    `artifacts/gramgrab-native-host.cmd` on Windows. When running from source, use the templates and
    host entry point under `apps/native-host` instead.
-3. For Chromium, also replace `__GRAMGRAB_EXTENSION_ID__` with the ID shown for the unpacked
-   extension.
-4. Register the completed manifest using the browser and operating-system location below.
-5. Reload the extension, then run `artifacts/gramgrab.mjs status`.
+3. Register the completed manifest using the browser and operating-system location below. The
+   Chromium template already allows the pinned extension ID `jimjajkoinlnejbiekiaifojpnonfnff`.
+4. Reload the extension, then run `artifacts/gramgrab.mjs status`.
 
 Automatic registration is intentionally not performed. Registration locations and policy differ
 between browser channels and managed devices, so installation remains an explicit administrator or
