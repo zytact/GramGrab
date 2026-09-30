@@ -263,7 +263,7 @@ export default defineConfig({
     arrowParens: 'avoid',
     endOfLine: 'lf',
     sortPackageJson: false,
-    ignorePatterns: ['extension/**', '.repos', '.agents', '.claude'],
+    ignorePatterns: ['extension/**', '.repos', '.agents', '.claude', 'CHANGELOG.md'],
   },
   plugins: [
     react(),
