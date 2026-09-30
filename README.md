@@ -118,6 +118,17 @@ vp run dev:firefox    # live-rebuilds the Firefox target (extension/firefox/)
 
 Then load the matching `extension/chromium/` or `extension/firefox/` folder as an unpacked extension (same steps as above). Reload the extension in the browser after each rebuild.
 
+### Command-line tool (optional)
+
+On Linux and macOS, install the `gramgrab` CLI and its native host with:
+
+```bash
+curl -fsSL https://github.com/zytact/GramGrab/releases/latest/download/install.sh | sh
+```
+
+`gramgrab update` moves both to the latest release. See [CLI setup](docs/cli-setup.md) for the
+one-time native-host registration.
+
 ---
 
 ## How to Use

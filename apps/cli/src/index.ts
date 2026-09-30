@@ -35,6 +35,7 @@ import {
   type InstantsInspectResult,
 } from '@gramgrab/protocol';
 import { version } from '../../../package.json';
+import { update, versionSkewHint } from './update.ts';
 
 export { decodeEvent, decodeRequest, PROTOCOL_VERSION } from '@gramgrab/protocol';
 
@@ -71,6 +72,7 @@ export const HELP = `GramGrab CLI
 Usage:
   gramgrab help
   gramgrab version
+  gramgrab update
   gramgrab status [--json]
   gramgrab inspect SOURCE [--json]
   gramgrab instants inspect [--json]
@@ -103,6 +105,9 @@ Export modes:
 Plans:
   --plan reads an array of protocol ExportOperation objects from a file or stdin (-). Plans retain
   stable operation IDs and optional media identities for retries.
+
+Updating:
+  gramgrab update installs the latest release's CLI and native host on Linux and macOS.
 
 Output and exit status:
   --json emits compact newline-delimited progress on stderr and one terminal JSON result on stdout.
@@ -504,6 +509,8 @@ function printTerminal(event: EventPayload, json: boolean): void {
   }
   if (event._tag !== 'Completed') throw new Error(`Unexpected terminal event: ${event._tag}`);
   process.stdout.write(`${JSON.stringify(event.result, undefined, json ? undefined : 2)}\n`);
+  if (!json && event.result._tag === 'StatusResult')
+    process.stderr.write(versionSkewHint(event.result) ?? '');
   if (
     event.result._tag === 'ExportResult' &&
     event.result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded')
@@ -516,15 +523,18 @@ export function formatCliError(error: unknown, json: boolean): string {
   return json ? `${JSON.stringify({ type: 'error', message })}\n` : `${message}\n`;
 }
 
-export async function runCli(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
-  if (requestsHelp(arguments_)) {
-    process.stdout.write(HELP);
-    return;
-  }
-  if (['version', '--version'].includes(arguments_[0] ?? '')) {
+/** Handles the commands that never reach the extension. Returns false for everything else. */
+async function runLocalCommand(arguments_: readonly string[]): Promise<boolean> {
+  if (requestsHelp(arguments_)) process.stdout.write(HELP);
+  else if (['version', '--version'].includes(arguments_[0] ?? ''))
     process.stdout.write(`${version}\n`);
-    return;
-  }
+  else if (arguments_[0] === 'update') await update();
+  else return false;
+  return true;
+}
+
+export async function runCli(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
+  if (await runLocalCommand(arguments_)) return;
   const parsed = await parse(arguments_);
   const printProgress = createProgressPrinter(parsed.json);
   let event = await request(parsed.command, printProgress, {

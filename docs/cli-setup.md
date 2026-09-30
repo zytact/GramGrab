@@ -15,6 +15,25 @@ remain inside the browser extension.
 Node.js 22 or newer is required. The extension, CLI, and native host must use the same protocol
 version.
 
+## Install and update (Linux and macOS)
+
+```sh
+curl -fsSL https://github.com/zytact/GramGrab/releases/latest/download/install.sh | sh
+```
+
+The installer verifies `gramgrab-tools.tar.gz` against the release's `SHA256SUMS`, unpacks it to
+`~/.local/share/gramgrab/versions/VERSION`, points `~/.local/share/gramgrab/current` at it, and
+links `~/.local/bin/gramgrab`. It writes filled native-host manifests to
+`~/.local/share/gramgrab/chromium.json` and `firefox.json`, whose host path goes through `current`.
+Register the one for your browser once, as shown in the installer's output. Registration survives
+every update.
+
+`gramgrab update` runs the latest release's installer. Restart the browser afterwards so it starts
+the new native host. The installer keeps the previous version and removes older ones. To install a
+specific release, set `GRAMGRAB_RELEASE_URL=https://github.com/zytact/GramGrab/releases/download/vX.Y.Z`.
+
+`gramgrab status` warns when the extension and native host versions differ.
+
 ## Portable artifacts
 
 Run `vp run package-tools` to create the self-contained Node.js distribution under `artifacts/`.

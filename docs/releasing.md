@@ -10,6 +10,7 @@ the GitHub release, and `.github/workflows/release.yml` attaches:
 | `gramgrab.crx`          | Chromium extension, signed with the release key                      |
 | `gramgrab.xpi`          | Firefox extension, signed by AMO on the unlisted channel             |
 | `gramgrab-tools.tar.gz` | CLI and native host, the `artifacts/` directory from `package-tools` |
+| `install.sh`            | Installs or updates the CLI and native host from this release        |
 | `updates.xml`           | Chromium update manifest for this version                            |
 | `updates.json`          | Firefox update manifest for this version, with the XPI's SHA-256     |
 | `SHA256SUMS`            | Checksums of every asset above                                       |
