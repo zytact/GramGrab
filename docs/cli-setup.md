@@ -32,6 +32,13 @@ every update.
 the new native host. The installer keeps the previous version and removes older ones. To install a
 specific release, set `GRAMGRAB_RELEASE_URL=https://github.com/zytact/GramGrab/releases/download/vX.Y.Z`.
 
+Once per UTC day, the first command to run checks GitHub for a newer release and, if there is
+one, ends with `Update available: 1.1.0 → 1.2.0. Run "gramgrab update".` on stderr, even when the
+command itself fails. The check waits at most 1.5 seconds. Its answer is cached in
+`~/.cache/gramgrab/update-check.json`, and a per-day claim file there makes overlapping commands
+ask GitHub only once. `--json` runs, stderr that is not a terminal, and `gramgrab update` itself
+skip it.
+
 `gramgrab status` warns when the extension and native host versions differ.
 
 ## Portable artifacts
