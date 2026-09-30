@@ -47,7 +47,8 @@ async function publish(version: string, { corrupt = false } = {}): Promise<void>
 
 function run(
   command: string,
-  arguments_: string[]
+  arguments_: string[],
+  env: Record<string, string> = {}
 ): Promise<{ code: number | null; output: string }> {
   return new Promise((resolveRun, reject) => {
     const child = spawn(command, arguments_, {
@@ -55,6 +56,7 @@ function run(
         PATH: process.env.PATH,
         HOME: join(root, 'home'),
         GRAMGRAB_RELEASE_URL: releaseUrl,
+        ...env,
       },
     });
     let output = '';
@@ -65,7 +67,7 @@ function run(
   });
 }
 
-const install = () => run('sh', [resolve('install.sh')]);
+const install = (env: Record<string, string> = {}) => run('sh', [resolve('install.sh')], env);
 const dataDir = () => join(root, 'home/.local/share/gramgrab');
 
 beforeEach(async () => {
@@ -127,6 +129,34 @@ describe.skipIf(process.platform === 'win32')('install.sh', () => {
     expect(result.output).toContain('does not match the release checksum');
     expect(await realpath(join(dataDir(), 'current'))).toBe(
       await realpath(join(dataDir(), 'versions/1.0.0'))
+    );
+  });
+  it('keeps the current install when the new CLI cannot report its version', async () => {
+    await publish('1.0.0');
+    await install();
+    await publish('');
+
+    const result = await install();
+
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('needs Node.js 22.18+ or 24.2+');
+    expect(await realpath(join(dataDir(), 'current'))).toBe(
+      await realpath(join(dataDir(), 'versions/1.0.0'))
+    );
+  });
+
+  it('writes a working host path when the data directory needs escaping', async () => {
+    const xdgDataHome = join(root, 'data & "more"');
+    await publish('1.0.0');
+
+    expect((await install({ XDG_DATA_HOME: xdgDataHome })).code).toBe(0);
+
+    const manifest = JSON.parse(
+      await readFile(join(xdgDataHome, 'gramgrab/chromium.json'), 'utf8')
+    ) as { path: string };
+    expect(manifest.path).toBe(join(xdgDataHome, 'gramgrab/current/gramgrab-native-host.mjs'));
+    await expect(realpath(manifest.path)).resolves.toBe(
+      await realpath(join(xdgDataHome, 'gramgrab/versions/1.0.0/gramgrab-native-host.mjs'))
     );
   });
 });

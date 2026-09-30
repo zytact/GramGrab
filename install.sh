@@ -31,7 +31,9 @@ curl -fsSL "$release_url/SHA256SUMS" -o "$tmp/SHA256SUMS"
 
 mkdir "$tmp/tools"
 tar -xzf "$tmp/gramgrab-tools.tar.gz" -C "$tmp/tools"
-version="$(node "$tmp/tools/gramgrab.mjs" --version)"
+version="$(node "$tmp/tools/gramgrab.mjs" --version || true)"
+echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' ||
+  fail "this release needs Node.js 22.18+ or 24.2+, but node is $(node --version)"
 
 previous="$(readlink "$data_dir/current" 2>/dev/null || true)"
 if [ "$previous" = "versions/$version" ]; then
@@ -44,8 +46,13 @@ mkdir -p "$data_dir/versions" "$bin_dir"
 ln -sfn "versions/$version" "$data_dir/current"
 ln -sfn "$data_dir/current/gramgrab.mjs" "$bin_dir/gramgrab"
 for browser in chromium firefox; do
-  sed "s#__GRAMGRAB_NATIVE_HOST_PATH__#$data_dir/current/gramgrab-native-host.mjs#" \
-    "$data_dir/current/$browser.json" >"$data_dir/$browser.json"
+  node -e '
+    const fs = require("node:fs");
+    const [template, output, host] = process.argv.slice(1);
+    const manifest = JSON.parse(fs.readFileSync(template, "utf8"));
+    fs.writeFileSync(output, JSON.stringify({ ...manifest, path: host }, undefined, 2) + "\n");
+  ' "$data_dir/current/$browser.json" "$data_dir/$browser.json" \
+    "$data_dir/current/gramgrab-native-host.mjs"
 done
 
 # Keep the new version and the one it replaced.

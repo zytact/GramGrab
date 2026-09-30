@@ -12,7 +12,7 @@ remain inside the browser extension.
 | macOS            | Implemented, manual run pending | Implemented, manual run pending | `/tmp/gramgrab-UID.sock`                                     |
 | Windows          | Implemented, manual run pending | Implemented, manual run pending | `\\.\pipe\gramgrab`                                          |
 
-Node.js 22 or newer is required. The extension, CLI, and native host must use the same protocol
+Node.js 22.18+ or 24.2+ is required. The extension, CLI, and native host must use the same protocol
 version.
 
 ## Install and update (Linux and macOS)
