@@ -1,39 +1,36 @@
 // fallow-ignore-file unused-file
+import { createPublicKey } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { generateKeyPairSync } from 'node:crypto';
 import { resolve } from 'node:path';
 import { createRequire } from 'node:module';
+import { CHROMIUM_PUBLIC_KEY, chromiumKeyFile } from './release.mjs';
 
 const require = createRequire(import.meta.url);
 const Crx = require('crx');
 
 const srcDir = 'extension/chromium';
-const keyFile = 'extension/chromium/chromium.pem';
 const output = 'extension/chromium/gramgrab.crx';
 
 if (!existsSync(srcDir)) {
-  console.error(`[package-chromium] ${srcDir} not found — run "bun run build:chromium" first`);
+  console.error(`[package-chromium] ${srcDir} not found — run "vp run build:chromium" first`);
   process.exit(1);
 }
 
-let privateKey;
-if (existsSync(keyFile)) {
-  privateKey = readFileSync(keyFile);
-  console.log(`[package-chromium] using existing key: ${keyFile}`);
-} else {
-  const { privateKey: pem } = generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  });
-  privateKey = Buffer.from(pem);
-  writeFileSync(keyFile, privateKey);
-  console.log(`[package-chromium] generated new key: ${keyFile} — keep this safe!`);
+if (!existsSync(chromiumKeyFile)) {
+  console.error(
+    `[package-chromium] release key not found at ${chromiumKeyFile}. Set CHROMIUM_CRX_KEY_FILE to the key that matches CHROMIUM_PUBLIC_KEY.`
+  );
+  process.exit(1);
 }
 
-const crx = new Crx({
-  rootDirectory: resolve(srcDir),
-  privateKey,
-});
+const privateKey = readFileSync(chromiumKeyFile);
+const publicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'der' });
+if (publicKey.toString('base64') !== CHROMIUM_PUBLIC_KEY) {
+  console.error(`[package-chromium] ${chromiumKeyFile} does not match CHROMIUM_PUBLIC_KEY`);
+  process.exit(1);
+}
+
+const crx = new Crx({ rootDirectory: resolve(srcDir), privateKey });
 
 const crxBuffer = await crx.pack();
 writeFileSync(output, crxBuffer);

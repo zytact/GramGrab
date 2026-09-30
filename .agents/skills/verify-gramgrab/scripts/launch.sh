@@ -75,12 +75,11 @@ node -e '
 # a registration pointing at a script that is gone, which fails to start at all.
 rm -rf "$profile/Default/Service Worker"
 
-# Chromium derives an unpacked extension's ID from the absolute directory path.
-ext_id="$(node -e '
-  const {createHash}=require("node:crypto");
-  const hex=createHash("sha256").update(process.argv[1]).digest("hex").slice(0,32);
-  process.stdout.write([...hex].map(d=>String.fromCharCode(97+parseInt(d,16))).join(""));
-' "$ext_dir")"
+# The manifest `key` pins the extension ID, so unpacked builds share the release ID.
+ext_id="$(node --input-type=module -e '
+  const { CHROMIUM_EXTENSION_ID } = await import(process.argv[1]);
+  process.stdout.write(CHROMIUM_EXTENSION_ID);
+' "$repo/apps/extension/scripts/release.mjs")"
 
 port="$(node -e '
   const net=require("node:net");const s=net.createServer();
@@ -90,7 +89,6 @@ port="$(node -e '
 ipc_path="$session_dir/gramgrab.sock"
 
 sed -e "s#__GRAMGRAB_NATIVE_HOST_PATH__#$repo/apps/native-host/bin/gramgrab-native-host.mjs#" \
-    -e "s#__GRAMGRAB_EXTENSION_ID__#$ext_id#" \
     "$repo/apps/native-host/manifests/chromium.json" \
     > "$profile/NativeMessagingHosts/dev.zytact.gramgrab.json"
 

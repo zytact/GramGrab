@@ -138,7 +138,7 @@ vp run build:firefox    # → extension/firefox/
 
 # Package Firefox extension as XPI
 vp run package:firefox   # → extension/firefox/gramgrab.xpi
-# Package Chromium extension as CRX
+# Package Chromium extension as CRX (needs the release key, see docs/releasing.md)
 vp run package:chromium  # → extension/chromium/gramgrab.crx
 
 # Watch mode (rebuilds on save)

@@ -3,5 +3,5 @@
   "description": "GramGrab local CLI bridge",
   "path": "__GRAMGRAB_NATIVE_HOST_PATH__",
   "type": "stdio",
-  "allowed_origins": ["chrome-extension://__GRAMGRAB_EXTENSION_ID__/"]
+  "allowed_origins": ["chrome-extension://jimjajkoinlnejbiekiaifojpnonfnff/"]
 }

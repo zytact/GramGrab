@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: release
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+
+  assets:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: '24'
+          cache: true
+      - run: vp install --frozen-lockfile
+
+      - name: Package Chromium CRX
+        env:
+          CHROMIUM_CRX_KEY: ${{ secrets.CHROMIUM_CRX_KEY }}
+        run: |
+          export CHROMIUM_CRX_KEY_FILE="$RUNNER_TEMP/chromium.pem"
+          printf '%s\n' "$CHROMIUM_CRX_KEY" > "$CHROMIUM_CRX_KEY_FILE"
+          vp run package-chromium
+
+      - name: Sign Firefox XPI on AMO (unlisted)
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          vp run build-firefox
+          npx --yes web-ext@8 sign --channel unlisted \
+            --source-dir extension/firefox --artifacts-dir "$RUNNER_TEMP/web-ext"
+
+      - name: Package CLI and native host
+        run: |
+          vp run package-tools
+          tar -czf "$RUNNER_TEMP/gramgrab-tools.tar.gz" -C artifacts .
+
+      - name: Assemble release assets
+        run: |
+          mkdir release
+          cp extension/chromium/gramgrab.crx release/
+          cp "$RUNNER_TEMP"/web-ext/*.xpi release/gramgrab.xpi
+          cp "$RUNNER_TEMP/gramgrab-tools.tar.gz" release/
+          node apps/extension/scripts/write-update-manifests.mjs release
+          (cd release && sha256sum -- * > SHA256SUMS)
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" release/* --clobber
