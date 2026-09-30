@@ -1,5 +1,5 @@
 import packageJson from '../../../package.json' with { type: 'json' };
-import { CHROMIUM_PUBLIC_KEY, FIREFOX_EXTENSION_ID } from './release.mjs';
+import { CHROMIUM_PUBLIC_KEY, FIREFOX_EXTENSION_ID, latestReleaseAssetUrl } from './release.mjs';
 
 const permissionDocumentation = [
   { permission: 'downloads', reason: 'Save media files and debug exports to disk' },
@@ -62,10 +62,11 @@ export function createManifest(browser) {
               id: FIREFOX_EXTENSION_ID,
               strict_min_version: '109.0',
               data_collection_permissions: { required: ['none'] },
+              update_url: latestReleaseAssetUrl('updates.json'),
             },
           },
         }
-      : { key: CHROMIUM_PUBLIC_KEY };
+      : { key: CHROMIUM_PUBLIC_KEY, update_url: latestReleaseAssetUrl('updates.xml') };
 
   return {
     manifest_version: 3,
