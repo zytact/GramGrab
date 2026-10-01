@@ -4,11 +4,17 @@ import { protocolConfig } from '../instagram-protocol/config.ts';
 import type { MediaItem } from './normalize.ts';
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const PRIVATE_SHORTCODE_SUFFIX_LENGTH = 28;
 
+/** Private-account posts append a 28-character suffix that is not part of the media ID. */
 export function shortcodeMediaId(shortcode: string): string | undefined {
   if (!/^[A-Za-z0-9_-]+$/.test(shortcode)) return undefined;
+  const encoded =
+    shortcode.length > PRIVATE_SHORTCODE_SUFFIX_LENGTH
+      ? shortcode.slice(0, -PRIVATE_SHORTCODE_SUFFIX_LENGTH)
+      : shortcode;
   let id = 0n;
-  for (const character of shortcode) id = id * 64n + BigInt(alphabet.indexOf(character));
+  for (const character of encoded) id = id * 64n + BigInt(alphabet.indexOf(character));
   return id.toString();
 }
 

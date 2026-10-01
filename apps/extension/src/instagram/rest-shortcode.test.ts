@@ -16,6 +16,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('REST shortcode acquisition', () => {
   it('decodes the shortcode without losing precision and resolves captured video shape', async () => {
     expect(shortcodeMediaId('DdqbmumzPYZ')).toBe('3993125428256372249');
+    expect(shortcodeMediaId('DZfms2XHbNVdtwY5zY7AT25mpciUHyGbwg-icU0')).toBe('3918020408629900117');
     expect(Schema.decodeUnknownSync(RestShortcodeResponseSchema)(fixture).items).toHaveLength(1);
     vi.stubGlobal(
       'fetch',
