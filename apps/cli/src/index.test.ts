@@ -7,6 +7,15 @@ import { Effect, Schema } from 'effect';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 import {
   Accepted,
+  CommandFailure,
+  Completed,
+  OperationFailure,
+  Rejected,
+  TransportFailure,
+  UNATTENDED_DISCLOSURE,
+  UnattendedDisclosure,
+  WatchLifecycleResult,
+  type EventPayload,
   decodeClientMessage,
   decodeJsonFrame,
   encodeJsonFrame,
@@ -30,10 +39,14 @@ interface CliProcessResult {
   readonly stderr: string;
 }
 
-function runCliProcess(arguments_: readonly string[]): Promise<CliProcessResult> {
+function runCliProcess(
+  arguments_: readonly string[],
+  endpoint?: string
+): Promise<CliProcessResult> {
   return new Promise((resolveResult, reject) => {
     const child = spawn(process.execPath, [resolve('apps/cli/bin/gramgrab.mjs'), ...arguments_], {
       cwd: process.cwd(),
+      env: endpoint ? { ...process.env, GRAMGRAB_IPC_PATH: endpoint } : process.env,
     });
     const stdout = child.stdout;
     const stderr = child.stderr;
@@ -321,6 +334,149 @@ describe('CLI capability grammar', () => {
   });
 });
 
+/** An extension stand-in that answers each request with `answer`'s terminal event. */
+async function answeringServer(
+  endpoint: string,
+  answer: (request: Request) => EventPayload
+): Promise<{ readonly requests: Request[]; readonly close: () => Promise<void> }> {
+  const requests: Request[] = [];
+  const server = createServer(socket => {
+    const decoder = new FrameDecoder();
+    socket.on('data', chunk => {
+      if (typeof chunk === 'string') return;
+      for (const frame of decoder.push(chunk)) {
+        const incoming = Schema.decodeUnknownSync(Request)(decodeJsonFrame(frame));
+        requests.push(incoming);
+        for (const event of [Accepted.make({}), answer(incoming)])
+          socket.write(
+            encodeJsonFrame(
+              Schema.encodeSync(Event)(
+                Event.make({ version: PROTOCOL_VERSION, requestId: incoming.requestId, event })
+              )
+            )
+          );
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(endpoint, resolve);
+  });
+  return {
+    requests,
+    close: () =>
+      new Promise<void>((resolve, reject) =>
+        server.close(error => (error ? reject(error) : resolve()))
+      ),
+  };
+}
+
+describe('CLI watch grammar', () => {
+  const command = (...arguments_: string[]) => parseCliArguments(['watch', ...arguments_]).command;
+
+  it('reads all-digit selectors as account IDs unless a flag forces the reading', () => {
+    expect(command('show', '12345')).toMatchObject({
+      watch: { _tag: 'AccountIdSelector', accountId: '12345' },
+    });
+    expect(command('show', '12345', '--username')).toMatchObject({
+      watch: { _tag: 'UsernameSelector', username: '12345' },
+    });
+    expect(command('show', '@someone')).toMatchObject({
+      watch: { _tag: 'UsernameSelector', username: 'someone' },
+    });
+    expect(() => command('show', 'someone', '--account-id')).toThrow('Invalid WATCH');
+  });
+
+  it('builds add, set, and multi-Watch lifecycle commands', () => {
+    expect(
+      command('add', 'someone', '--kinds', 'posts,stories', '--actions', 'collect', '--json')
+    ).toMatchObject({
+      _tag: 'WatchAdd',
+      target: 'someone',
+      kinds: ['posts', 'stories'],
+      actions: ['collect'],
+      acceptUnattended: false,
+    });
+    expect(command('set', 'someone', '--actions', 'notify,download')).toMatchObject({
+      _tag: 'WatchSet',
+      actions: ['notify', 'download'],
+    });
+    expect(command('delete', 'one', '222')).toMatchObject({
+      _tag: 'WatchLifecycle',
+      operation: 'delete',
+      watches: [{ username: 'one' }, { accountId: '222' }],
+    });
+  });
+
+  it.each([
+    [['add', 'someone', '--actions', 'collect'], 'needs --kinds and --actions'],
+    [['add', 'someone', '--kinds', 'posts,posts', '--actions', 'collect'], 'Invalid --kinds'],
+    [['set', 'someone'], 'needs --kinds or --actions'],
+    [['pause'], 'needs at least one WATCH'],
+    [['list', 'extra'], 'takes no WATCH'],
+    [['show', 'someone', '--color'], 'Unknown option'],
+  ])('rejects %j', (arguments_, message) => {
+    expect(() => command(...arguments_)).toThrow(message);
+  });
+});
+
+describe('CLI watch process', () => {
+  it('exits 1 with the disclosure when add is not acknowledged', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Rejected.make({
+        failure: CommandFailure.make({
+          failure: OperationFailure.make({ code: 'WATCH_UNATTENDED_NOT_ACCEPTED', scope: 'batch' }),
+          detail: UnattendedDisclosure.make({ text: UNATTENDED_DISCLOSURE }),
+        }),
+      })
+    );
+
+    const result = await runCliProcess(
+      ['watch', 'add', 'someone', '--kinds', 'posts', '--actions', 'collect', '--json'],
+      endpoint
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(UNATTENDED_DISCLOSURE);
+    expect(server.requests[0]?.command).toMatchObject({ acceptUnattended: false });
+    await server.close();
+  });
+
+  it('exits 1 when a lifecycle command names an unknown Watch, keeping other outcomes', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Completed.make({
+        result: WatchLifecycleResult.make({
+          operation: 'pause',
+          watches: [],
+          unknownWatches: ['missing'],
+        }),
+      })
+    );
+
+    const result = await runCliProcess(['watch', 'pause', 'missing', '--json'], endpoint);
+
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({ unknownWatches: ['missing'] });
+    await server.close();
+  });
+
+  it('exits 1 on a protocol version rejection', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Rejected.make({ failure: TransportFailure.make({ code: 'PROTOCOL_VERSION_UNSUPPORTED' }) })
+    );
+
+    const result = await runCliProcess(['watch', 'list', '--json'], endpoint);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('PROTOCOL_VERSION_UNSUPPORTED');
+    await server.close();
+  });
+});
+
 describe('CLI output', () => {
   it('documents help, all-item export, policies, plans, and exit semantics', () => {
     expect(HELP).toContain('gramgrab inspect SOURCE');
@@ -336,6 +492,8 @@ describe('CLI output', () => {
     expect(HELP).toContain('forbid');
     expect(HELP).toContain('--plan');
     expect(HELP).toContain('Exit 0');
+    expect(HELP).toContain('Watches (Beta)');
+    expect(HELP).toContain('--accept-unattended');
   });
 
   it.each([false, true])('rejects invalid source input with exit code 2 (%s JSON)', async json => {

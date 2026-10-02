@@ -34,6 +34,13 @@ const ClientEnvelope = Schema.Struct({
   _tag: Schema.optional(Schema.Literal('CancelRequest')),
 });
 
+/** Just enough of an extension event to track its request, whatever its protocol version. */
+const ExtensionEnvelope = Schema.Struct({
+  version: Schema.Number,
+  requestId: RequestIdSchema,
+  event: Schema.Struct({ _tag: Schema.String }),
+});
+
 async function socketIsActive(path: string): Promise<boolean> {
   return new Promise(resolve => {
     const socket = new Socket();
@@ -130,18 +137,24 @@ export function attachClient(
   socket.on('error', () => clients.delete(socket));
 }
 
+/**
+ * Forwards one extension event to every client. Any protocol version passes through, so an
+ * extension's version rejection reaches a client that speaks another version.
+ */
+export function relayExtensionFrame(frame: Uint8Array): void {
+  const enriched = enrichHostMetadata(frame);
+  const event = Schema.decodeUnknownSync(ExtensionEnvelope)(decodeJsonFrame(frame));
+  if (event.event._tag === 'Completed' || event.event._tag === 'Rejected')
+    for (const requestIds of clients.values()) requestIds.delete(event.requestId);
+  for (const client of clients.keys()) client.write(enriched);
+}
+
 export async function startNativeHost(): Promise<void> {
   const nativeDecoder = new FrameDecoder();
   process.stdin.on('data', chunk => {
     try {
       if (typeof chunk === 'string') return process.stdin.destroy();
-      for (const frame of nativeDecoder.push(chunk)) {
-        const enriched = enrichHostMetadata(frame);
-        const event = Effect.runSync(decodeEvent(decodeJsonFrame(frame)));
-        if (event.event._tag === 'Completed' || event.event._tag === 'Rejected')
-          for (const requestIds of clients.values()) requestIds.delete(event.requestId);
-        for (const client of clients.keys()) client.write(enriched);
-      }
+      for (const frame of nativeDecoder.push(chunk)) relayExtensionFrame(frame);
     } catch {
       process.exitCode = 1;
       process.stdin.destroy();

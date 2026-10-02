@@ -1,6 +1,6 @@
 # CLI capability contract
 
-This document inventories the public GramGrab operations covered by protocol version 1. It is a
+This document inventories the public GramGrab operations covered by protocol version 2. It is a
 behavior contract, not a promise that the CLI transport is implemented before phase 3.
 
 ## Item identity
@@ -32,6 +32,11 @@ gramgrab history clear [--json]
 gramgrab history redownload ENTRY_ID... [--json]
 gramgrab debug get [--json]
 gramgrab debug export [--json]
+gramgrab watch list [--json]
+gramgrab watch show WATCH [--json]
+gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
+gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
+gramgrab watch pause|resume|delete WATCH... [--json]
 ```
 
 `SOURCE` may be a supported Instagram URL or a bare username. A bare username targets that
@@ -61,32 +66,50 @@ extension applies to that item's output. History redownload reproduces a recorde
 The `instants` commands never accept a Source. They inspect the authenticated active feed afresh,
 preserve its server order, and apply the same item numbering and export-mode rules.
 
+Watches (Beta) are standing instructions the extension owns; the CLI only manages them. Kinds are
+`posts`, `stories`, `instants`, and `avatar`, and actions are `notify`, `download`, and `collect`.
+`TARGET` is a username or profile URL. `WATCH` is a username or numeric account ID: all digits mean
+an account ID, and `--account-id` or `--username` forces one reading. Selectors match only the
+verified Instagram login's Watches; another login's Watch is `WATCH_NOT_FOUND`, and an unverifiable
+login rejects every Watch command with `IG_NOT_AUTHENTICATED` and only the stored Watch count. Only
+`add` resolves its target over the network. `add` requires `--accept-unattended` on every call;
+without it the rejection carries the full disclosure. An identical repeated `add` returns the
+existing Watch with `created: false`, and a different configuration is `WATCH_CONFIG_CONFLICT`
+naming the existing Watch. `set` replaces the kinds or actions it is given, and each newly selected
+kind's first check only records a baseline. Lifecycle commands report unknown selectors in
+`unknownWatches` and still apply to the others.
+
 JSON progress is newline-delimited on stderr. Numeric updates are coalesced to 0%, 25%, 50%, 75%,
 and 100% milestones per item and phase. Phase changes are always emitted, and the terminal result
-is emitted once on stdout. Exit 0 means full success, exit 1 means command rejection or at least one
-unsuccessful item outcome, and exit 2 means argument, validation, or transport failure.
+is emitted once on stdout. Exit 0 means full success, exit 1 means command rejection, at least one
+unsuccessful item outcome, or an unknown Watch selector, and exit 2 means argument, validation, or
+transport failure.
 
 ## Capability inventory
 
-| Existing behavior                                                        | Protocol command or event                                 | Progress and edge behavior                                                                      |
-| ------------------------------------------------------------------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Resolve Post, shortcode Reel, Sidecar, Story, Highlight, or Avatar media | `Inspect`                                                 | `resolving`; source and Instagram failures retain their registered codes                        |
-| Inspect the authenticated active Instants feed                           | `InstantsInspect`                                         | `resolving`; no Source or seen-state mutation                                                   |
-| Export active Instant photos and videos                                  | `InstantsExport.operations`                               | Fresh inspection supplies signed URLs and stable media identity                                 |
-| Select one or more media items                                           | `Export.operations`                                       | Reject zero, negative, missing, or out-of-range human item numbers before execution             |
-| Download an original image or video                                      | `DirectExport`                                            | `direct-download`; success means the browser accepted the download                              |
-| Export a video frame                                                     | `FrameExport`                                             | `frame-metadata`, then `frame-export`; original download remains an explicit recovery action    |
-| Remove audio by stream copy                                              | `SilentExport` with `forbid` or `allow`                   | `silent-inspection`, `silent-copy`, `silent-validation`; copy failure may offer re-encode       |
-| Remove audio by re-encoding                                              | `SilentExport` with `allow` or `require`                  | `silent-reencode`; decline is a correlated `ItemSkipped` outcome                                |
-| Run mixed direct, frame, and silent work                                 | One `Export` with multiple operations                     | Each event carries the request ID and item progress carries operation ID plus human item number |
-| Retry or choose original/re-encode fallback                              | A new `Export` preserving operation ID and media identity | Every retry has a fresh request ID; recovery does not erase the prior outcome                   |
-| List download history                                                    | `HistoryList`                                             | `history`; returns only the extension-owned durable history                                     |
-| Remove selected history entries                                          | `HistoryRemove`                                           | Explicit entry IDs; partial or unknown IDs are reported, not silently broadened                 |
-| Clear download history                                                   | `HistoryClear`                                            | Destructive action must be explicitly requested                                                 |
-| Download from history                                                    | `HistoryRedownload`                                       | Uses extension resolution and download behavior, never CLI-side media fetching                  |
-| Read supported diagnostics                                               | `DebugGet`                                                | `diagnostics`; structural-only version-2 report                                                 |
-| Export a diagnostic report                                               | `DebugExport`                                             | Exports the structural-only version-2 report                                                    |
-| Popup layout, workspace layout, navigation, selection controls           | UI-only                                                   | No protocol operation because these present operations rather than define new behavior          |
+| Existing behavior                                                        | Protocol command or event                                 | Progress and edge behavior                                                                       |
+| ------------------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Resolve Post, shortcode Reel, Sidecar, Story, Highlight, or Avatar media | `Inspect`                                                 | `resolving`; source and Instagram failures retain their registered codes                         |
+| Inspect the authenticated active Instants feed                           | `InstantsInspect`                                         | `resolving`; no Source or seen-state mutation                                                    |
+| Export active Instant photos and videos                                  | `InstantsExport.operations`                               | Fresh inspection supplies signed URLs and stable media identity                                  |
+| Select one or more media items                                           | `Export.operations`                                       | Reject zero, negative, missing, or out-of-range human item numbers before execution              |
+| Download an original image or video                                      | `DirectExport`                                            | `direct-download`; success means the browser accepted the download                               |
+| Export a video frame                                                     | `FrameExport`                                             | `frame-metadata`, then `frame-export`; original download remains an explicit recovery action     |
+| Remove audio by stream copy                                              | `SilentExport` with `forbid` or `allow`                   | `silent-inspection`, `silent-copy`, `silent-validation`; copy failure may offer re-encode        |
+| Remove audio by re-encoding                                              | `SilentExport` with `allow` or `require`                  | `silent-reencode`; decline is a correlated `ItemSkipped` outcome                                 |
+| Run mixed direct, frame, and silent work                                 | One `Export` with multiple operations                     | Each event carries the request ID and item progress carries operation ID plus human item number  |
+| Retry or choose original/re-encode fallback                              | A new `Export` preserving operation ID and media identity | Every retry has a fresh request ID; recovery does not erase the prior outcome                    |
+| List download history                                                    | `HistoryList`                                             | `history`; returns only the extension-owned durable history                                      |
+| Remove selected history entries                                          | `HistoryRemove`                                           | Explicit entry IDs; partial or unknown IDs are reported, not silently broadened                  |
+| Clear download history                                                   | `HistoryClear`                                            | Destructive action must be explicitly requested                                                  |
+| Download from history                                                    | `HistoryRedownload`                                       | Uses extension resolution and download behavior, never CLI-side media fetching                   |
+| Read supported diagnostics                                               | `DebugGet`                                                | `diagnostics`; structural-only version-2 report                                                  |
+| Export a diagnostic report                                               | `DebugExport`                                             | Exports the structural-only version-2 report                                                     |
+| List and inspect Watches                                                 | `WatchList`, `WatchShow`                                  | Verifies the signed-in login first; another login's Watches appear only as a count               |
+| Add a Watch                                                              | `WatchAdd`                                                | Requires the per-call disclosure acknowledgement; duplicates return or point to the existing one |
+| Change a Watch's kinds or actions                                        | `WatchSet`                                                | Replaces the supplied sets; initialized baselines are kept                                       |
+| Pause, resume, or delete Watches                                         | `WatchLifecycle`                                          | Unknown selectors are reported per Watch; deletion keeps files and History                       |
+| Popup layout, workspace layout, navigation, selection controls           | UI-only                                                   | No protocol operation because these present operations rather than define new behavior           |
 
 ## Event and failure semantics
 
