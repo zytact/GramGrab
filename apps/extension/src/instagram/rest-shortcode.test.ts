@@ -7,6 +7,10 @@ import {
   RestShortcodeResponseSchema,
   shortcodeMediaId,
 } from './rest-shortcode.ts';
+import { PersonRequests, type InstagramRequests } from './requests.ts';
+
+const run = <A, E>(effect: Effect.Effect<A, E, InstagramRequests>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(PersonRequests)));
 
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -26,7 +30,7 @@ describe('REST shortcode acquisition', () => {
           response({ ...fixture, items: [{ ...fixture.items[0], code: 'DdqbmumzPYZ' }] })
         )
     );
-    const items = await Effect.runPromise(fetchRestShortcodeMedia('DdqbmumzPYZ'));
+    const items = await run(fetchRestShortcodeMedia('DdqbmumzPYZ'));
     expect(items).toMatchObject([
       {
         type: 'video',
@@ -55,7 +59,7 @@ describe('REST shortcode acquisition', () => {
         .fn()
         .mockResolvedValue(response({ status: 'ok', items: [{ ...sidecar, code: 'DdqbmumzPYZ' }] }))
     );
-    const items = await Effect.runPromise(fetchRestShortcodeMedia('DdqbmumzPYZ'));
+    const items = await run(fetchRestShortcodeMedia('DdqbmumzPYZ'));
     expect(items.map(item => [item.type, item.mediaId])).toEqual([
       ['image', 'image-id'],
       ['video', 'video-id'],
@@ -79,9 +83,7 @@ describe('REST shortcode acquisition', () => {
         .fn()
         .mockResolvedValue(response({ status: 'ok', items: [{ ...sidecar, code: 'DdqbmumzPYZ' }] }))
     );
-    const result = await Effect.runPromise(
-      fetchRestShortcodeMedia('DdqbmumzPYZ').pipe(Effect.either)
-    );
+    const result = await run(fetchRestShortcodeMedia('DdqbmumzPYZ').pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') expect(result.left).toBeInstanceOf(ResponseShapeUnknown);
   });
@@ -96,7 +98,7 @@ describe('REST shortcode acquisition', () => {
         })
       )
     );
-    expect(await Effect.runPromise(fetchRestShortcodeMedia('DdqbmumzPYZ'))).toEqual([]);
+    expect(await run(fetchRestShortcodeMedia('DdqbmumzPYZ'))).toEqual([]);
   });
 
   it('keeps a rejected body read as a network failure', async () => {
@@ -108,18 +110,14 @@ describe('REST shortcode acquisition', () => {
         json: () => Promise.reject(new TypeError('body stream ended')),
       })
     );
-    const result = await Effect.runPromise(
-      fetchRestShortcodeMedia('DdqbmumzPYZ').pipe(Effect.either)
-    );
+    const result = await run(fetchRestShortcodeMedia('DdqbmumzPYZ').pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') expect(result.left).toBeInstanceOf(NetworkError);
   });
 
   it.each([401, 403, 429])('keeps HTTP %i as an actionable failure', async status => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({}, status)));
-    const result = await Effect.runPromise(
-      fetchRestShortcodeMedia('DdqbmumzPYZ').pipe(Effect.either)
-    );
+    const result = await run(fetchRestShortcodeMedia('DdqbmumzPYZ').pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left')
       expect(result.left).toBeInstanceOf(status === 429 ? RateLimited : HttpError);
@@ -130,9 +128,7 @@ describe('REST shortcode acquisition', () => {
       'fetch',
       vi.fn().mockResolvedValue(response({ status: 'ok', items: [{ pk: 'id' }] }))
     );
-    const result = await Effect.runPromise(
-      fetchRestShortcodeMedia('DdqbmumzPYZ').pipe(Effect.either)
-    );
+    const result = await run(fetchRestShortcodeMedia('DdqbmumzPYZ').pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') expect(result.left).toBeInstanceOf(ResponseShapeUnknown);
   });
