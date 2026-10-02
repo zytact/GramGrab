@@ -215,18 +215,18 @@ Shared domain code lives under `apps/extension/src/` (`effect/` for Instagram re
 
 ## Permissions
 
-| Permission                  | Why it's needed                                                   |
-| --------------------------- | ----------------------------------------------------------------- |
-| `downloads`                 | Save media files and debug exports to disk                        |
-| `storage`                   | Persist download history and workspace handoff state              |
-| `cookies`                   | Read the current Instagram CSRF token for Instants requests       |
-| `activeTab`                 | Temporarily access the current tab when GramGrab is invoked       |
-| `scripting`                 | Inject the one-shot isolated WhatsApp capture controller          |
-| `tabs`                      | Read and manage tabs for URL detection and the GramGrab workspace |
-| `contextMenus`              | Add GramGrab actions to page and link context menus               |
-| `nativeMessaging`           | Expose GramGrab operations to the local CLI bridge                |
-| `https://*.instagram.com/*` | Fetch media metadata from Instagram                               |
-| `https://*.fbcdn.net/*`     | Load media previews and videos from Instagram’s CDN               |
+| Permission                  | Why it's needed                                                                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------- |
+| `downloads`                 | Save media files and debug exports to disk                                                         |
+| `storage`                   | Persist download history, workspace handoff state, and your Watches on this device                 |
+| `cookies`                   | Read the current Instagram CSRF token right before an Instants or Watch request that sends it back |
+| `activeTab`                 | Temporarily access the current tab when GramGrab is invoked                                        |
+| `scripting`                 | Inject the one-shot isolated WhatsApp capture controller                                           |
+| `tabs`                      | Read and manage tabs for URL detection and the GramGrab workspace                                  |
+| `contextMenus`              | Add GramGrab actions to page and link context menus                                                |
+| `nativeMessaging`           | Expose GramGrab operations to the local CLI bridge                                                 |
+| `https://*.instagram.com/*` | Fetch media metadata from Instagram                                                                |
+| `https://*.fbcdn.net/*`     | Load media previews and videos from Instagram’s CDN                                                |
 
 ---
 

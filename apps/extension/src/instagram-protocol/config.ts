@@ -55,6 +55,8 @@ export class ProtocolConfig extends Schema.Class<ProtocolConfig>('ProtocolConfig
     mediaByShortcode: ProtocolOperation,
     reelsMedia: ProtocolOperation,
     instantsFeed: Schema.optional(ProtocolOperation),
+    viewer: ProtocolOperation,
+    profileById: ProtocolOperation,
   }),
 }) {}
 

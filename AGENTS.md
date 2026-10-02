@@ -4,7 +4,7 @@
 
 GramGrab resolves Instagram and WhatsApp media into items a person can inspect and download. It ships as a Chrome/Firefox MV3 extension plus a local CLI bridge.
 
-- `apps/extension` - popup, background worker, runner document, WhatsApp page controller
+- `apps/extension` - popup, Watches options page, background worker, runner document, WhatsApp page controller
 - `apps/cli` and `apps/native-host` - terminal access to the same operations, bundled by `vp pack` into `artifacts/`
 - `packages/protocol` - wire contracts shared by extension, CLI, and native host
 
@@ -32,13 +32,13 @@ Use Vite+ as the primary workflow surface: prefer `vp` commands over package-man
 
 ## Architecture
 
-- **Build.** Vite root is `apps/extension/templates/`. `vite.config.ts` declares four rollup inputs: `popup.html`, `runner.html`, the WhatsApp controller (`src/whatsapp/controller-entry.ts`), and `src/background.ts` bundled directly as `js/background.js` with no HTML wrapper. Keep the controller entry free of exports and external imports so it stays injectable as a classic packaged script.
+- **Build.** Vite root is `apps/extension/templates/`. `vite.config.ts` declares five rollup inputs: `popup.html`, `runner.html`, `options.html` (the Watches options page), the WhatsApp controller (`src/whatsapp/controller-entry.ts`), and `src/background.ts` bundled directly as `js/background.js` with no HTML wrapper. Keep the controller entry free of exports and external imports so it stays injectable as a classic packaged script.
 - **Output.** `extension/{chromium,firefox}/`. The `extension-metadata` Vite plugin writes the per-browser `manifest.json` from `scripts/manifest.mjs` and copies icons, `LICENSE`, and `THIRD_PARTY_NOTICES` after every build, including watch rebuilds. Chromium gets `service_worker`, Firefox gets `scripts`.
 - **Version.** The root `package.json` `version` is the only release version. The manifest, the CLI (`gramgrab version`), and the native host's `hostVersion` all read it. Workspace packages carry no version. release-please bumps it, and `docs/releasing.md` describes the release pipeline and the Chromium release key. PRs are squash-merged, so the PR title sets the bump: `fix` patch, `feat` minor, and `!` (`feat!:`) or a `BREAKING CHANGE:` footer major. Mark anything that breaks installed extensions, the CLI, or scripts as breaking.
 - **Message contract.** `src/messaging/contracts.ts` is the discriminated union of every message the extension sends itself, keyed by the wire `type`, with each request as an Effect `Schema` and each response as a compile-time type. `messageHandlers` in `background.ts` is typed from it, so a handler that returns the wrong shape is a type error. Add a message type by adding a schema to `MessageSchema`, a `MessageResponses` entry, a `MESSAGE_REFUSALS` entry, and a handler.
 - **Message dispatch.** The single `browser.runtime.onMessage.addListener` in `background.ts` decodes once via `decodeMessage`, so handlers receive typed payloads and never cast. It answers with `sendResponse` plus `return true` (cross-browser-safe), not a returned Promise, and handles the runner's `RUNNER_READY` and `RUNNER_PROGRESS` inline. The popup and runner send through `src/messaging/send.ts`, which correlates the response type to the request at each call site.
 - **Version skew.** A message type this build does not know is `foreign`: ignored with no response, the same as a message meant for another document. A known type whose payload will not decode is `unsupported` and gets that type's entry from `MESSAGE_REFUSALS`, which reuses an existing failure code from that message's own subsystem rather than inventing one. Unknown extra fields decode fine and are dropped, so additive changes from a newer sender are safe, and responses are never decoded, so additive changes from a newer receiver are too.
-- **Subsystems** under `apps/extension/src/`: `effect/` (Instagram requests and schemas), `download/`, `frame-export/`, `silent-video/`, `history/`, `workspace/`, `errors/`, `whatsapp/`, `instagram-protocol/`.
+- **Subsystems** under `apps/extension/src/`: `effect/` (Instagram requests and schemas), `download/`, `frame-export/`, `silent-video/`, `history/`, `workspace/`, `errors/`, `whatsapp/`, `instagram-protocol/`, `instagram/` (request accounting and acquisition pipelines), `watch/` (the Watch store, identity checks, and commands), `options/` (the Watches page).
 - **`browser` global.** Proxy-based shim (`src/lib/browser.ts`) resolving `globalThis.browser` → `globalThis.chrome` → no-op stub, promisifying callback APIs.
 
 ## WhatsApp acquisition

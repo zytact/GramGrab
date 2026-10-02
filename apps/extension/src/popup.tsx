@@ -1588,6 +1588,15 @@ function PopupHeader({
             {workspaceExists ? 'Go to tab' : 'Open in tab'}
           </button>
         )}
+        {!workspaceMode && (
+          <button
+            className="workspace-launch"
+            type="button"
+            onClick={() => void browser.runtime.openOptionsPage()}
+          >
+            Watches
+          </button>
+        )}
       </div>
     </>
   );

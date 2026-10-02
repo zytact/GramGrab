@@ -1,7 +1,13 @@
 import { Schema } from 'effect';
-import { FAILURE_CODES, FailureCodeSchema, type FailureCode } from '@gramgrab/protocol';
+import {
+  FAILURE_CODES,
+  FailureCodeSchema,
+  WatchKind as WatchKindSchema,
+  type FailureCode,
+  type WatchKind,
+} from '@gramgrab/protocol';
 
-export { FAILURE_CODES, FailureCodeSchema, type FailureCode };
+export { FAILURE_CODES, FailureCodeSchema, WatchKindSchema, type FailureCode, type WatchKind };
 
 export const FailurePhaseSchema = Schema.Literal(
   'input',
@@ -19,7 +25,9 @@ export const FailurePhaseSchema = Schema.Literal(
   'silent-worker',
   'history',
   'whatsapp-page-access',
-  'whatsapp-extraction'
+  'whatsapp-extraction',
+  'resolving',
+  'watch'
 );
 export type FailurePhase = Schema.Schema.Type<typeof FailurePhaseSchema>;
 
@@ -30,7 +38,8 @@ const RecoveryActionSchema = Schema.Literal(
   'download-original',
   'try-reencode',
   'copy-diagnostics',
-  'reload-workspace'
+  'reload-workspace',
+  'free-watch-storage'
 );
 export type RecoveryAction = Schema.Schema.Type<typeof RecoveryActionSchema>;
 
@@ -201,6 +210,36 @@ class WhatsAppOperationFailure extends Schema.Class<WhatsAppOperationFailure>(
   structuralEvidence: WhatsAppStructuralEvidence,
 }) {}
 
+const WatchFailureCodeSchema = Schema.Literal(
+  'WATCH_STORY_EXPIRED',
+  'WATCH_AVATAR_CHANGED',
+  'WATCH_INSTANT_NOT_IN_FEED',
+  'WATCH_MEDIA_UNAVAILABLE',
+  'WATCH_USERNAME_UNCONFIRMED',
+  'WATCH_CHECK_INCOMPLETE',
+  'WATCH_STORE_CAPACITY_EXCEEDED',
+  'WATCH_STORE_FAILED',
+  'WATCH_STORE_VERSION_UNSUPPORTED',
+  'WATCH_STORE_UNREADABLE',
+  'WATCH_NOT_FOUND',
+  'WATCH_CONFIG_CONFLICT',
+  'WATCH_UNATTENDED_NOT_ACCEPTED',
+  'WATCH_RECOVERY_NOT_APPLICABLE'
+);
+export type WatchFailureCode = Schema.Schema.Type<typeof WatchFailureCodeSchema>;
+
+/**
+ * A Watch failure. It has no diagnostic cause by construction: a cause could carry an account,
+ * media identifier, or username, and Watch reports are structural only.
+ */
+class WatchOperationFailure extends Schema.Class<WatchOperationFailure>('WatchOperationFailure')({
+  platform: Schema.Literal('watch'),
+  code: WatchFailureCodeSchema,
+  phase: Schema.Literal('resolving', 'watch'),
+  scope: Schema.Literal('batch', 'item'),
+  mediaKind: Schema.optionalWith(WatchKindSchema, { exact: true }),
+}) {}
+
 const LegacyInstagramOperationFailure = Schema.Struct({
   code: InstagramFailureCodeSchema,
   phase: FailurePhaseSchema,
@@ -226,7 +265,8 @@ const DecodedLegacyInstagramOperationFailure = Schema.transform(
 const OperationFailureSchema = Schema.Union(
   InstagramOperationFailure,
   DecodedLegacyInstagramOperationFailure,
-  WhatsAppOperationFailure
+  WhatsAppOperationFailure,
+  WatchOperationFailure
 );
 export type OperationFailure = Schema.Schema.Type<typeof OperationFailureSchema>;
 
@@ -245,6 +285,35 @@ type WhatsAppOperationFailureInput = {
   readonly structuralEvidence: WhatsAppStructuralEvidence;
 };
 
+const WATCH_FAILURE_SHAPE: Readonly<
+  Record<WatchFailureCode, Pick<WatchOperationFailure, 'phase' | 'scope'>>
+> = {
+  WATCH_STORY_EXPIRED: { phase: 'resolving', scope: 'item' },
+  WATCH_AVATAR_CHANGED: { phase: 'resolving', scope: 'item' },
+  WATCH_INSTANT_NOT_IN_FEED: { phase: 'resolving', scope: 'item' },
+  WATCH_MEDIA_UNAVAILABLE: { phase: 'resolving', scope: 'item' },
+  WATCH_USERNAME_UNCONFIRMED: { phase: 'resolving', scope: 'batch' },
+  WATCH_CHECK_INCOMPLETE: { phase: 'resolving', scope: 'batch' },
+  WATCH_STORE_CAPACITY_EXCEEDED: { phase: 'watch', scope: 'batch' },
+  WATCH_STORE_FAILED: { phase: 'watch', scope: 'batch' },
+  WATCH_STORE_VERSION_UNSUPPORTED: { phase: 'watch', scope: 'batch' },
+  WATCH_STORE_UNREADABLE: { phase: 'watch', scope: 'batch' },
+  WATCH_NOT_FOUND: { phase: 'watch', scope: 'batch' },
+  WATCH_CONFIG_CONFLICT: { phase: 'watch', scope: 'batch' },
+  WATCH_UNATTENDED_NOT_ACCEPTED: { phase: 'watch', scope: 'batch' },
+  WATCH_RECOVERY_NOT_APPLICABLE: { phase: 'watch', scope: 'item' },
+};
+
+/** Builds a Watch failure; its phase and scope follow from the code. */
+export function watchFailure(code: WatchFailureCode, mediaKind?: WatchKind): WatchOperationFailure {
+  return WatchOperationFailure.make({
+    platform: 'watch',
+    code,
+    ...WATCH_FAILURE_SHAPE[code],
+    ...(mediaKind ? { mediaKind } : {}),
+  });
+}
+
 function makeOperationFailure(input: InstagramOperationFailureInput): InstagramOperationFailure;
 function makeOperationFailure(input: WhatsAppOperationFailureInput): WhatsAppOperationFailure;
 function makeOperationFailure(
@@ -258,7 +327,7 @@ export const OperationFailure = Object.assign(OperationFailureSchema, {
   make: makeOperationFailure,
 });
 export const isOperationFailure = Schema.is(
-  Schema.Union(InstagramOperationFailure, WhatsAppOperationFailure)
+  Schema.Union(InstagramOperationFailure, WhatsAppOperationFailure, WatchOperationFailure)
 );
 
 export class OperationWarning extends Schema.Class<OperationWarning>('OperationWarning')({

@@ -124,7 +124,7 @@ export function createExtensionHarness() {
     runtime: {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
       getManifest: vi.fn(() => ({ version: 'test' })),
-      sendMessage: vi.fn(async () => undefined),
+      sendMessage: vi.fn((message: unknown) => send(message)),
       openOptionsPage: vi.fn(async () => undefined),
       onMessage: { addListener: vi.fn((listener: Listener) => (messageListener = listener)) },
       onStartup,

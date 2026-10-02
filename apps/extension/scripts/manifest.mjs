@@ -3,8 +3,15 @@ import { CHROMIUM_PUBLIC_KEY, FIREFOX_EXTENSION_ID, latestReleaseAssetUrl } from
 
 const permissionDocumentation = [
   { permission: 'downloads', reason: 'Save media files and debug exports to disk' },
-  { permission: 'storage', reason: 'Persist download history and workspace handoff state' },
-  { permission: 'cookies', reason: 'Read the current Instagram CSRF token for Instants requests' },
+  {
+    permission: 'storage',
+    reason: 'Persist download history, workspace handoff state, and your Watches on this device',
+  },
+  {
+    permission: 'cookies',
+    reason:
+      'Read the current Instagram CSRF token right before an Instants or Watch request that sends it back',
+  },
   {
     permission: 'activeTab',
     reason: 'Temporarily access the current tab when GramGrab is invoked',
@@ -87,6 +94,7 @@ export function createManifest(browser) {
       },
       default_title: 'GramGrab',
     },
+    options_ui: { page: 'options.html', open_in_tab: true },
     permissions: permissionDocumentation.map(({ permission }) => permission),
     host_permissions: hostPermissionDocumentation.map(({ permission }) => permission),
     background,
