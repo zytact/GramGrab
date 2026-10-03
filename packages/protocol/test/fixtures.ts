@@ -91,6 +91,11 @@ export const requestFixtures: readonly unknown[] = [
   {
     version: 2,
     requestId,
+    command: { _tag: 'WatchRecover', action: 'notify', operation: 'retry', entryIds: ['entry-1'] },
+  },
+  {
+    version: 2,
+    requestId,
     command: {
       _tag: 'WatchLifecycle',
       operation: 'pause',
@@ -223,8 +228,20 @@ const resultFixtures: readonly unknown[] = [
     },
     otherLoginWatchCount: 1,
     storage: { usedBytes: 2048, budgetBytes: 2_097_152, status: 'ok' },
-    attentionCount: 1,
+    attentionCount: 2,
     watches: [watchSummary],
+    attentionEntries: [
+      {
+        entryId: 'd4b2f3e5-6c7a-4b8d-9eaf-1a2b3c4d5e6f',
+        watchId: watchSummary.watchId,
+        accountId: '2002',
+        username: 'example',
+        kind: 'avatar',
+        mediaType: 'avatar',
+        discoveredAt: 1_700_000_000_000,
+        notify: { state: 'failed', code: 'WATCH_NOTIFY_PERMISSION_DENIED' },
+      },
+    ],
   },
   {
     _tag: 'WatchShowResult',
@@ -267,6 +284,12 @@ const resultFixtures: readonly unknown[] = [
   },
   { _tag: 'WatchInboxListResult', entries: [] },
   { _tag: 'WatchInboxRemoveResult', removedEntryIds: ['a'], unknownEntryIds: ['b'] },
+  {
+    _tag: 'WatchRecoverResult',
+    recoveredEntryIds: ['a'],
+    refused: [{ entryId: 'b', code: 'WATCH_RECOVERY_NOT_APPLICABLE' }],
+    unknownEntryIds: ['c'],
+  },
   { _tag: 'WatchAddResult', created: false, watch: watchSummary },
   { _tag: 'WatchSetResult', watch: watchSummary, baselineKinds: ['stories'] },
   {

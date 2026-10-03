@@ -405,6 +405,18 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'This item has no failed action, uncertain download, or recovery of that kind.',
     []
   ),
+  WATCH_NOTIFY_PERMISSION_DENIED: policy(
+    'Notifications are not allowed',
+    'GramGrab may not show notifications. Allow them, then retry this notification.',
+    ['retry-operation'],
+    'after-user-action'
+  ),
+  WATCH_NOTIFY_FAILED: policy(
+    'Notification could not be shown',
+    'The browser did not show this notification. Retry it, or dismiss it once you have seen what was found.',
+    ['retry-operation'],
+    'after-user-action'
+  ),
 };
 
 export const WARNING_PRESENTATION: Readonly<Record<WarningCode, string>> = {

@@ -21,7 +21,7 @@ import {
 const decodeUuid = Schema.decodeUnknownSync(Schema.UUID);
 const SECOND_MS = 1000;
 
-const KIND_OF_REF = {
+export const KIND_OF_REF = {
   Post: 'posts',
   Sidecar: 'posts',
   Story: 'stories',
@@ -51,6 +51,10 @@ function discover(ref: MediaRef, watch: Watch, checkId: string, now: number): Di
     ...(watch.actions.includes('collect') ? { collect: { at: now } } : {}),
   };
 }
+
+/** Whether a discovery has a failed action the person has not retried or dismissed. */
+export const needsPerson = (discovery: Discovery) =>
+  discovery.notify?.status === 'failed' && !discovery.notify.dismissed;
 
 /** Whether a discovery still has an action someone must finish, retry, confirm, or dismiss. */
 function unresolved(discovery: Discovery): boolean {
@@ -200,7 +204,10 @@ function downloadOutcome(discovery: Discovery): ActionOutcome | undefined {
   });
 }
 
-const NOTIFY_STATE = { pending: 'waiting', done: 'done', failed: 'failed' } as const;
+function notifyOutcome(notify: NonNullable<Discovery['notify']>): ActionOutcome {
+  if (notify.status === 'failed') return ActionOutcome.make({ state: 'failed', code: notify.code });
+  return ActionOutcome.make({ state: notify.status === 'done' ? 'done' : 'waiting' });
+}
 
 /** Presents a discovery without its media references. */
 export function summarizeDiscovery(
@@ -226,9 +233,7 @@ export function summarizeDiscovery(
     ...(inInbox ? { inboxUntil } : {}),
     ...(discovery.unavailable ? { unavailable: discovery.unavailable } : {}),
     ...(discovery.missingChildren ? { missingChildren: discovery.missingChildren.length } : {}),
-    ...(discovery.notify
-      ? { notify: ActionOutcome.make({ state: NOTIFY_STATE[discovery.notify.status] }) }
-      : {}),
+    ...(discovery.notify ? { notify: notifyOutcome(discovery.notify) } : {}),
     ...(download ? { download } : {}),
     ...(discovery.collect ? { collect: ActionOutcome.make({ state: 'done' }) } : {}),
   });

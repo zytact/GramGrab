@@ -132,6 +132,8 @@ interface KindStep {
   readonly outcome?: KindCheckOutcome;
   readonly stop?: boolean;
   readonly deferredUntil?: number;
+  /** The target's current Avatar URL, held only until this check's notification is sent. */
+  readonly pictureUrl?: string;
 }
 
 /**
@@ -319,10 +321,10 @@ const checkAvatar = (watch: Watch, checkId: string) =>
     );
     if (Either.isLeft(result)) return yield* failed(watch.id, 'avatar', result.left);
     const write = yield* update(watch.id, (current, now) => {
-      const applied = applyAvatarCheck(current, result.right, { checkId, now });
+      const applied = applyAvatarCheck(current, result.right.pictureId, { checkId, now });
       return { watch: applied.watch, value: applied.outcome };
     });
-    return written('avatar', write, outcome => ({ outcome }));
+    return written('avatar', write, outcome => ({ outcome, pictureUrl: result.right.pictureUrl }));
   });
 
 /** A selected kind's turn in a check: skipped while paused, checked otherwise. */
@@ -440,6 +442,7 @@ export const checkWatch = (
     const shared = { ...scope, feedScope: `${viewerId}:${scope.feedScope}` };
     const outcomes: KindCheckOutcome[] = [];
     let blocked = false;
+    let pictureUrl: string | undefined;
     for (const stage of STAGES) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
@@ -449,10 +452,11 @@ export const checkWatch = (
       blocked = result.blocked;
       for (const step of result.steps) {
         if (step.outcome) outcomes.push(step.outcome);
-        if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil };
+        pictureUrl ??= step.pictureUrl;
+        if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil, pictureUrl };
       }
     }
-    return { kinds: outcomes, deferredUntil: undefined };
+    return { kinds: outcomes, deferredUntil: undefined, pictureUrl };
   });
 
 /** The most recent check of any of the Watch's kinds. */

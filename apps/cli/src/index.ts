@@ -91,6 +91,7 @@ Usage:
   gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
   gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
   gramgrab watch pause|resume|delete WATCH ... [--json]
+  gramgrab watch recover notify retry|dismiss ENTRY_ID ... [--json]
 
 Sources:
   SOURCE may be an Instagram post, reel, story, highlight, or profile URL. A bare username (without
@@ -528,6 +529,8 @@ function unsuccessful(result: CommandResult): boolean {
   if (result._tag === 'ExportResult')
     return result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded');
   if (result._tag === 'WatchLifecycleResult') return result.unknownWatches.length > 0;
+  if (result._tag === 'WatchRecoverResult')
+    return result.refused.length > 0 || result.unknownEntryIds.length > 0;
   return false;
 }
 

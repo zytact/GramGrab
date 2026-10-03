@@ -5,12 +5,13 @@ import {
   KindProblem,
   WATCH_KINDS,
   WatchSummary,
+  type DiscoverySummary,
   type WatchKind,
 } from '@gramgrab/protocol';
 import type { Watch } from './contracts.ts';
 import { watchAttention } from './attention.ts';
 import { lastCheckAt } from './check.ts';
-import { summarizeDiscovery } from './discoveries.ts';
+import { needsPerson, summarizeDiscovery } from './discoveries.ts';
 
 /** Whether `kind` has a committed baseline, which pausing or deselecting it keeps. */
 export function initialized(watch: Watch, kind: WatchKind): boolean {
@@ -65,8 +66,15 @@ export function summarize(watch: Watch, now = Date.now()): WatchSummary {
 export const inbox = (watch: Watch, now = Date.now()) =>
   discoveries(watch, now).filter(discovery => discovery.inboxUntil !== undefined);
 
+/** The Watch's discoveries with an action that needs the person, newest first. */
+export const attentionEntries = (watch: Watch, now = Date.now()) =>
+  newestFirst(
+    watch.discoveries.filter(needsPerson).map(entry => summarizeDiscovery(watch, entry, now))
+  );
+
 /** Everything the Watch has found, newest first. */
 export const discoveries = (watch: Watch, now = Date.now()) =>
-  watch.discoveries
-    .map(discovery => summarizeDiscovery(watch, discovery, now))
-    .sort((left, right) => right.discoveredAt - left.discoveredAt);
+  newestFirst(watch.discoveries.map(discovery => summarizeDiscovery(watch, discovery, now)));
+
+const newestFirst = (entries: DiscoverySummary[]) =>
+  entries.sort((left, right) => right.discoveredAt - left.discoveredAt);

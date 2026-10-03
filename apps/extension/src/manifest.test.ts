@@ -62,6 +62,7 @@ describe('manifest generation', () => {
           96: 'icons/icon-96.png',
         },
         permissions: expectedPermissions,
+        optional_permissions: ['notifications'],
         host_permissions: expectedHostPermissions,
         options_ui: { page: 'options.html', open_in_tab: true },
       });

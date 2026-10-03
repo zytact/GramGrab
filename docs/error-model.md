@@ -88,6 +88,8 @@ causes are never ordinary UI copy or serialized report data.
 | `WATCH_CONFIG_CONFLICT`                | batch | never                                   | none                                                                     | none                                   | watch command            |
 | `WATCH_UNATTENDED_NOT_ACCEPTED`        | batch | never                                   | none                                                                     | none                                   | watch command            |
 | `WATCH_RECOVERY_NOT_APPLICABLE`        | item  | never                                   | none                                                                     | none                                   | watch command            |
+| `WATCH_NOTIFY_PERMISSION_DENIED`       | item  | after user action                       | `retry-operation`                                                        | none                                   | browser notifications    |
+| `WATCH_NOTIFY_FAILED`                  | item  | after user action                       | `retry-operation`                                                        | none                                   | browser notifications    |
 
 Warnings are `HISTORY_SAVE_FAILED` and `SILENT_TEMPORARY_FILE_CLEANUP_UNCONFIRMED`. The skip code is `SILENT_REENCODE_DECLINED`.
 

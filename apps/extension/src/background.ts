@@ -100,6 +100,7 @@ import {
   initializeScheduler,
   pump,
 } from './watch/scheduler.ts';
+import { notifiedWatch } from './watch/notify.ts';
 import type { Rotation } from './rotation/contracts.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
@@ -1205,6 +1206,13 @@ browser.alarms.onAlarm.addListener(alarm => {
 });
 browser.runtime.onStartup.addListener(() => void holdForStartup().then(ensureAlarm));
 browser.runtime.onInstalled.addListener(() => void ensureAlarm());
+// A Watch notification opens that Watch's Found tab; the page shows it only to its own login.
+browser.notifications.onClicked.addListener(id => {
+  const watchId = notifiedWatch(id);
+  if (!watchId) return;
+  void browser.notifications.clear(id).catch(() => undefined);
+  void browser.tabs.create({ url: browser.runtime.getURL(`options.html#watch=${watchId}`) });
+});
 void initializeScheduler().catch(() => undefined);
 void refreshBadge();
 

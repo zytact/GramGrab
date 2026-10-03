@@ -9,6 +9,7 @@ import {
   WatchKinds,
   WatchLifecycle,
   WatchList,
+  WatchRecover,
   WatchSet,
   WatchShow,
   type WatchCommand,
@@ -113,6 +114,14 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
       ...(actions ? { actions } : {}),
     });
   },
+  recover: ({ positionals }) => {
+    const [action, operation, ...entryIds] = positionals;
+    if (action !== 'notify' || (operation !== 'retry' && operation !== 'dismiss'))
+      throw new Error('Usage: gramgrab watch recover notify retry|dismiss ENTRY_ID ...');
+    const [first, ...rest] = entryIds;
+    if (!first) throw new Error('gramgrab watch recover needs at least one ENTRY_ID.');
+    return WatchRecover.make({ action, operation, entryIds: [first, ...rest] });
+  },
   ...Object.fromEntries(
     (['pause', 'resume', 'delete'] as const).map(operation => [
       operation,
@@ -129,6 +138,7 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
 export function parseWatchArguments(arguments_: readonly string[]): WatchCommand {
   const action = arguments_[0] ?? '';
   const parse = Object.hasOwn(parsers, action) ? parsers[action] : undefined;
-  if (!parse) throw new Error('Usage: gramgrab watch list|show|add|set|pause|resume|delete');
+  if (!parse)
+    throw new Error('Usage: gramgrab watch list|show|add|set|pause|resume|delete|recover');
   return parse(split(arguments_.slice(1)));
 }

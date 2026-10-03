@@ -323,8 +323,9 @@ describe('fixtures: Watch Avatar identity', () => {
     };
     const { pk, username } = json.users[0]!.user;
 
-    await expect(Effect.runPromise(readAvatar(json, pk, username))).resolves.toMatch(
-      /^SANITIZED_PROFILE_PICTURE_ID_\d+$/
-    );
+    await expect(Effect.runPromise(readAvatar(json, pk, username))).resolves.toEqual({
+      pictureId: expect.stringMatching(/^SANITIZED_PROFILE_PICTURE_ID_\d+$/),
+      pictureUrl: expect.stringMatching(/^https:\/\/sanitized\.invalid\//),
+    });
   });
 });
