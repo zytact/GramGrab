@@ -25,7 +25,7 @@ export function watchAttention(watch: Watch): string[] {
  */
 export async function loginAttention(store: WatchStore, viewerId: string): Promise<string[]> {
   await requestLedger.ready();
-  const paused = requestLedger.pause ? [`pause.${viewerId}`] : [];
+  const paused = requestLedger.pausedUntil(Date.now()) ? [`pause.${viewerId}`] : [];
   const watches = store.watches.filter(watch => watch.viewerId === viewerId);
   return watches.length > 0 ? [...paused, ...watches.flatMap(watchAttention)] : [];
 }

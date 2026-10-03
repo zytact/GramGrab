@@ -91,6 +91,12 @@ a repeated cursor, or a page that claims more without a cursor fail the check wi
 that order where GramGrab can see it, such as an item missing beyond the stopping page, is an
 accepted limit, not a guarantee of a complete snapshot.
 
+An Instants check reads the verified login's own active Instants feed, once per round and shared by
+every Watch in it, and keeps the items whose owner is the Watch's account, in any order. Coverage is
+that feed: an Instant that never appeared in it, or left it before a check, is not found, and
+nothing promises 30 days of Instants. One malformed or unknown item in the feed fails the Instants
+check of every Watch that read it.
+
 JSON progress is newline-delimited on stderr. Numeric updates are coalesced to 0%, 25%, 50%, 75%,
 and 100% milestones per item and phase. Phase changes are always emitted, and the terminal result
 is emitted once on stdout. Exit 0 means full success, exit 1 means command rejection, at least one

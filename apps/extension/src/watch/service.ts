@@ -123,13 +123,13 @@ const list = Effect.gen(function* () {
   const watches = store ? owned(store, viewer).map(watch => summarize(watch)) : [];
   const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
   yield* Effect.promise(() => requestLedger.ready());
-  const pause = requestLedger.pause;
+  const pausedUntil = requestLedger.pausedUntil(Date.now());
   return WatchListResult.make({
     viewer: WatchViewer.make(viewer),
     schedule: WatchSchedule.make({
       ...(schedule.nextRoundAt === undefined ? {} : { nextRoundAt: schedule.nextRoundAt }),
       roundRemaining: schedule.roundRemaining,
-      ...(pause ? { pausedUntil: pause.until } : {}),
+      ...(pausedUntil ? { pausedUntil } : {}),
       suspended: schedule.suspended,
     }),
     otherLoginWatchCount: (store?.watches.length ?? 0) - watches.length,
@@ -310,7 +310,9 @@ const checkOne = (watch: Watch, viewer: Account, checkId: string) =>
     const run =
       earliest > Date.now()
         ? { kinds: [], deferredUntil: earliest }
-        : yield* Effect.promise(() => runCheck(watch.id, viewer.accountId, checkId));
+        : yield* Effect.promise(() =>
+            runCheck(watch.id, viewer.accountId, { checkId, feedScope: checkId })
+          );
     return WatchCheckOutcome.make({
       watchId: watch.id,
       accountId: watch.targetId,

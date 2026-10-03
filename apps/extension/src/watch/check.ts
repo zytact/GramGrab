@@ -40,6 +40,7 @@ import {
   type Traversal,
 } from './posts.ts';
 import { readStories, fetchStories } from './stories.ts';
+import { readInstants, sharedInstantsFeed } from './instants.ts';
 import { mutateStore, readStore } from './store.ts';
 import { fetchViewer } from './identity.ts';
 
@@ -67,7 +68,8 @@ type Acquisition =
 
 type Acquirer = (
   watch: Watch,
-  nowSeconds: number
+  nowSeconds: number,
+  feedScope: string
 ) => Effect.Effect<readonly TimedRef[], Acquisition, InstagramRequests>;
 
 const readPage = (watch: Watch, after: string | undefined, nowSeconds: number) =>
@@ -75,11 +77,15 @@ const readPage = (watch: Watch, after: string | undefined, nowSeconds: number) =
     Effect.flatMap(raw => readPostsPage(raw, watch.targetId, nowSeconds))
   );
 
-/** How each timed kind acquires its baseline, and Stories every later check too. */
+/** How each timed kind acquires its baseline, and Stories and Instants every later check too. */
 const ACQUIRERS: Partial<Record<TimedKind, Acquirer>> = {
   stories: (watch, nowSeconds) =>
     fetchStories(watch.targetId).pipe(
       Effect.flatMap(raw => readStories(raw, watch.targetId, nowSeconds))
+    ),
+  instants: (watch, nowSeconds, feedScope) =>
+    sharedInstantsFeed(feedScope).pipe(
+      Effect.flatMap(items => readInstants(items, watch.targetId, nowSeconds))
     ),
   posts: (watch, nowSeconds) =>
     readPage(watch, undefined, nowSeconds).pipe(Effect.map(page => page.refs)),
@@ -90,7 +96,7 @@ function deferral(
   error: Acquisition | Effect.Effect.Error<typeof fetchViewer>
 ): number | undefined {
   if (error._tag === 'WatchRequestDeferred') return error.until;
-  if (error._tag === 'RateLimited') return requestLedger.pause?.until ?? Date.now();
+  if (error._tag === 'RateLimited') return requestLedger.pausedUntil(Date.now()) ?? Date.now();
   return undefined;
 }
 
@@ -103,6 +109,15 @@ const findWatch = async (watchId: string, viewerId: string) => {
     ? read.store.watches.find(watch => watch.id === watchId && watch.viewerId === viewerId)
     : undefined;
 };
+
+/**
+ * One check's identity, and the scope whose Watches share one Instants feed: a round, or one
+ * person-initiated check of several Watches.
+ */
+export interface CheckScope {
+  readonly checkId: string;
+  readonly feedScope: string;
+}
 
 /** One kind's turn: its outcome, and whether the rest of the check must stop. */
 interface KindStep {
@@ -165,10 +180,11 @@ const failed = (watchId: string, kind: TimedKind, error: Acquisition) =>
     return written(kind, write, outcome => ({ outcome }));
   });
 
-const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, checkId: string) =>
+const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, scope: CheckScope) =>
   Effect.gen(function* () {
+    const { checkId } = scope;
     const proposedCutoff = Math.floor(Date.now() / 1000);
-    const result = yield* Effect.either(acquire(watch, proposedCutoff));
+    const result = yield* Effect.either(acquire(watch, proposedCutoff, scope.feedScope));
     if (Either.isLeft(result)) return yield* failed(watch.id, kind, result.left);
     const write = yield* update(watch.id, (current, now) => {
       const applied = applyTimedCheck(current, kind, result.right, {
@@ -290,15 +306,15 @@ const traversePosts = (watch: Watch, cutoff: number, checkId: string) =>
 const turn = (
   watch: Watch,
   kind: TimedKind,
-  checkId: string
+  scope: CheckScope
 ): Effect.Effect<KindStep, never, InstagramRequests> => {
   const acquire = ACQUIRERS[kind];
   if (!acquire) return Effect.succeed({});
   if (!watch.enabled)
     return Effect.succeed({ outcome: KindCheckSkipped.make({ kind, reason: 'paused' }) });
   const cutoff = watch.tracking[kind]?.baselineCutoff;
-  if (kind === 'posts' && cutoff !== undefined) return traversePosts(watch, cutoff, checkId);
-  return checkKind(watch, kind, acquire, checkId);
+  if (kind === 'posts' && cutoff !== undefined) return traversePosts(watch, cutoff, scope.checkId);
+  return checkKind(watch, kind, acquire, scope);
 };
 
 const selected = (watch: Watch, kind: WatchKind, only: readonly WatchKind[] | undefined) =>
@@ -331,10 +347,11 @@ const checkAuthorization = Effect.fn(function* (
 export const checkWatch = (
   watchId: string,
   viewerId: string,
-  checkId: string,
+  scope: CheckScope,
   only?: readonly WatchKind[]
 ) =>
   Effect.gen(function* () {
+    const shared = { ...scope, feedScope: `${viewerId}:${scope.feedScope}` };
     const outcomes: KindCheckOutcome[] = [];
     for (const kind of KIND_ORDER) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
@@ -342,7 +359,7 @@ export const checkWatch = (
       if (kind === 'avatar' || !selected(watch, kind, only)) continue;
       const authorization = yield* checkAuthorization(watch, only, outcomes);
       if (authorization) return { ...authorization, kinds: [...outcomes, ...authorization.kinds] };
-      const step = yield* turn(watch, kind, checkId);
+      const step = yield* turn(watch, kind, shared);
       if (step.outcome) outcomes.push(step.outcome);
       if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil };
     }

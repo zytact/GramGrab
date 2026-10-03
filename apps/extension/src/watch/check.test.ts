@@ -16,8 +16,10 @@ import { createExtensionHarness, type ExtensionHarness } from '../test/extension
 import {
   TARGET,
   createWatchInstagram,
+  instantsFeed,
   postsPage,
   storyResponse,
+  type FakeInstant,
   type FakePost,
   type FakeStory,
 } from '../test/watch-instagram.ts';
@@ -395,5 +397,64 @@ describe('Posts checks', () => {
     expect(finished.kinds[0]).toMatchObject({ newCount: 1, catchUp: false });
     expect(instagram.state.postRequests.slice(3)).toEqual(['', 'c1', 'c2', 'c3']);
     expect(await found()).toHaveLength(4);
+  });
+});
+
+describe('Instants checks', () => {
+  const setFeed = (instants: readonly FakeInstant[]) =>
+    (instagram.state.instants = instantsFeed(instants));
+
+  async function baselined() {
+    await addWatch(['collect'], 'instants');
+    expect((await checkLater()).kinds).toEqual([
+      { _tag: 'KindBaselineRecorded', kind: 'instants' },
+    ]);
+    return seconds(START + 5 * MINUTE);
+  }
+
+  it("keeps the target's Instants from anywhere in a mixed-order feed", async () => {
+    const cutoff = await baselined();
+    setFeed([
+      { pk: '11', owner: '7777', takenAt: cutoff + 30 },
+      { pk: '12', owner: TARGET.id, takenAt: cutoff + 10 },
+      { pk: '13', owner: TARGET.id, takenAt: cutoff },
+      { pk: '14', owner: TARGET.id, takenAt: cutoff + 20, video: true },
+    ]);
+
+    const outcome = await checkLater();
+    await checkLater();
+
+    expect(outcome.kinds).toEqual([
+      { _tag: 'KindCheckSucceeded', kind: 'instants', newCount: 2, catchUp: false },
+    ]);
+    expect((await found()).map(entry => entry.mediaType).sort()).toEqual(['image', 'video']);
+  });
+
+  it.each([
+    ['an ID bound to another owner', { id: '15_7777' }],
+    ['a future publication time', { taken_at: 9e9 }],
+    ['an unknown item', { __typename: 'XDTSomethingNew' }],
+  ])('cannot establish a baseline from a feed with %s', async (_case, change) => {
+    await addWatch(['collect'], 'instants');
+    const feed = instantsFeed([{ pk: '15', owner: TARGET.id, takenAt: seconds(START) }]);
+    const [item] = feed.data.xdt_get_quick_snaps.items_ordered_by_time;
+    instagram.state.instants = {
+      data: {
+        xdt_get_quick_snaps: {
+          ...feed.data.xdt_get_quick_snaps,
+          items_ordered_by_time: [{ ...item, ...change }],
+        },
+      },
+    };
+
+    expect((await checkLater()).kinds).toEqual([
+      { _tag: 'KindCheckFailed', kind: 'instants', code: 'IG_RESPONSE_SHAPE_UNKNOWN' },
+    ]);
+    expect((await run(WatchList.make(), 'WatchListResult')).watches[0]?.kinds).toContainEqual({
+      _tag: 'KindProblem',
+      kind: 'instants',
+      code: 'IG_RESPONSE_SHAPE_UNKNOWN',
+      since: expect.any(Number),
+    });
   });
 });

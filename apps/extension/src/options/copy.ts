@@ -12,7 +12,8 @@ export const KIND_NOTE: Record<WatchKind, string> = {
   posts:
     'Includes Reels. Posts published before the Watch began never count, even if they reappear.',
   stories: 'Only Stories still active when a check runs. Highlights are not watched.',
-  instants: 'Only Instants that show up in your own Instants feed.',
+  instants:
+    'Only Instants in your own Instants feed when a check runs. Ones that already left it cannot be found.',
   avatar: 'Any new picture counts, even a re-upload of the same-looking image.',
 };
 

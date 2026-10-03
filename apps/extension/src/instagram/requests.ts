@@ -84,8 +84,10 @@ class RequestLedger {
     return this.loaded;
   }
 
-  get pause(): RequestPause | undefined {
-    return this.currentPause;
+  /** When a 429 pause still holding Watch work ends, or undefined once it has run out. */
+  pausedUntil(now: number): number | undefined {
+    const until = this.currentPause?.until;
+    return until !== undefined && until > now ? until : undefined;
   }
 
   get personBusy(): boolean {
