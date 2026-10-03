@@ -332,3 +332,51 @@ select {
   border: 1px solid var(--accent);
   padding: 2px 6px;
 }
+
+.opt-tabs {
+  display: flex;
+  margin: 8px 0;
+}
+.opt-tabs button {
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--text-mid);
+  font: 500 10px var(--font-mono);
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.opt-tabs button.active {
+  background: var(--panel);
+  color: var(--accent);
+}
+.opt-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.opt-chip {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border: 1px solid var(--rule-strong);
+  color: var(--text-mid);
+}
+.opt-done {
+  color: var(--success);
+  background: var(--success-dim);
+  border-color: transparent;
+}
+.opt-failed {
+  color: var(--error);
+  background: var(--error-dim);
+  border-color: transparent;
+}
+.opt-unconfirmed {
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-color: transparent;
+}
+.opt-error {
+  color: var(--error);
+}

@@ -1,18 +1,6 @@
 import { Schema } from 'effect';
 import { FailureCodeSchema } from './failures.ts';
-import {
-  WatchAdd,
-  WatchFailureDetail,
-  WatchLifecycle,
-  WatchList,
-  WatchListResult,
-  WatchAddResult,
-  WatchLifecycleResult,
-  WatchSet,
-  WatchSetResult,
-  WatchShow,
-  WatchShowResult,
-} from './watch.ts';
+import { WatchCommand, WatchFailureDetail, WatchResult } from './watch.ts';
 
 export { decodeJsonFrame, encodeFrame, encodeJsonFrame, FrameDecoder } from './framing.ts';
 export { localIpcEndpoint, type IpcEnvironment } from './ipc.ts';
@@ -120,11 +108,7 @@ export const Command = Schema.Union(
   HistoryRedownload,
   DebugGet,
   DebugExport,
-  WatchList,
-  WatchShow,
-  WatchAdd,
-  WatchSet,
-  WatchLifecycle
+  ...WatchCommand.members
 );
 export type Command = Schema.Schema.Type<typeof Command>;
 
@@ -362,11 +346,7 @@ export const CommandResult = Schema.Union(
   DebugGetResult,
   DebugExportResult,
   InstantsInspectResult,
-  WatchListResult,
-  WatchShowResult,
-  WatchAddResult,
-  WatchSetResult,
-  WatchLifecycleResult
+  ...WatchResult.members
 );
 export type CommandResult = Schema.Schema.Type<typeof CommandResult>;
 

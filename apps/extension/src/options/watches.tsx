@@ -8,7 +8,6 @@ import {
   WatchLifecycle,
   WatchList,
   WatchSet,
-  type KindHealth,
   type WatchAction,
   type WatchCommand,
   type WatchKind,
@@ -22,6 +21,7 @@ import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser } from '../lib/browser.ts';
 import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';
+import { AllInbox, WatchDetail, healthText, runCommand } from './watch-detail.tsx';
 
 type View = 'attention' | 'inbox' | 'new' | { readonly watchId: string };
 
@@ -29,8 +29,6 @@ type Loaded =
   | { readonly kind: 'loading' }
   | { readonly kind: 'ready'; readonly list: WatchListResult }
   | { readonly kind: 'failed'; readonly failure: WatchFailure };
-
-const runCommand = (command: WatchCommand) => sendMessage({ type: 'WATCH_COMMAND', command });
 
 const toggled = <T,>(values: readonly T[], value: T): T[] =>
   values.includes(value) ? values.filter(item => item !== value) : [...values, value];
@@ -166,48 +164,6 @@ function StorageNotice({ storage }: { storage: WatchListResult['storage'] }) {
       <strong>Watches stopped.</strong> {copy.title}. {copy.explanation} Saved Watch data was not
       dropped or reset.
       {copy.actions.includes('copy-diagnostics') && <DiagnosticsPreview code={code} />}
-    </div>
-  );
-}
-
-function healthText(health: KindHealth, enabled: boolean): string {
-  switch (health._tag) {
-    case 'KindOff':
-      return health.baselineKept
-        ? 'Off. Its baseline is kept, so turning it back on catches up on the last 30 days.'
-        : 'Off.';
-    case 'KindBaselinePending':
-      return enabled
-        ? 'First check pending. It records what is already there and acts on nothing.'
-        : 'Paused before its first check.';
-    case 'KindChecked':
-      return enabled ? `Checked ${relativeTime(health.lastSuccessAt)}` : 'Paused';
-    case 'KindProblem': {
-      const copy = FAILURE_PRESENTATION[health.code];
-      const last = health.lastSuccessAt
-        ? ` Last success ${relativeTime(health.lastSuccessAt)}.`
-        : '';
-      return `${copy.title}. ${copy.explanation}${last}`;
-    }
-  }
-}
-
-const HEALTH_CLASS: Record<KindHealth['_tag'], string> = {
-  KindOff: 'opt-health-off',
-  KindBaselinePending: 'opt-health-baseline',
-  KindChecked: '',
-  KindProblem: 'opt-health-problem',
-};
-
-function KindHealthList({ watch }: { watch: WatchSummary }) {
-  return (
-    <div className="opt-health">
-      {watch.kinds.map(health => (
-        <div key={health.kind} className={`opt-health-row ${HEALTH_CLASS[health._tag]}`}>
-          <strong>{KIND_LABEL[health.kind]}</strong>
-          <span>{healthText(health, watch.enabled)}</span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -530,8 +486,7 @@ function WatchRow({
   active: boolean;
   onOpen: () => void;
 }) {
-  const problems = watch.kinds.filter(kind => kind._tag === 'KindProblem').length;
-  const attention = watch.attentionCount + problems;
+  const attention = watch.attentionCount;
   return (
     <button
       className={`opt-item ${active ? 'active' : ''} ${watch.enabled ? '' : 'opt-dim'}`}
@@ -623,40 +578,17 @@ function Navigation({
   );
 }
 
-function WatchDetail({ watch }: { watch: WatchSummary }) {
-  return (
-    <>
-      <div className="opt-account-text">
-        <span className="opt-h1">@{watch.username}</span>
-        {watch.formerUsername && <span className="opt-meta">was @{watch.formerUsername}</span>}
-      </div>
-      {!watch.enabled && (
-        <p className="opt-banner">
-          Paused. The inbox and baselines are kept. Resuming catches up on the last 30 days.
-        </p>
-      )}
-      <KindHealthList watch={watch} />
-    </>
-  );
-}
-
-/** Needs-you items: recorded attention plus every enabled kind's check problem. */
-const attentionTotal = (list: WatchListResult) =>
-  list.attentionCount +
-  list.watches
-    .filter(watch => watch.enabled)
-    .flatMap(watch => watch.kinds)
-    .filter(kind => kind._tag === 'KindProblem').length;
-
 /** The Watches console: navigation, the selected view, and the selected Watch's settings. */
 export function Watches() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
+  const [version, setVersion] = useState(0);
 
   const refresh = useCallback(async () => {
     const response = await runCommand(WatchList.make());
     if (response.failure) setLoaded({ kind: 'failed', failure: response.failure });
     else if (response.result._tag === 'WatchListResult')
       setLoaded({ kind: 'ready', list: response.result });
+    setVersion(current => current + 1);
   }, []);
 
   useEffect(() => {
@@ -665,7 +597,7 @@ export function Watches() {
 
   if (loaded.kind === 'loading') return <p className="opt-gate opt-meta">Loading Watches…</p>;
   if (loaded.kind === 'failed') return <LoginGate failure={loaded.failure} />;
-  return <Console list={loaded.list} refresh={refresh} />;
+  return <Console list={loaded.list} version={version} refresh={refresh} />;
 }
 
 function Feed({
@@ -673,15 +605,19 @@ function Feed({
   current,
   watch,
   actionFailure,
+  version,
   onGo,
   onRun,
+  onChanged,
 }: {
   list: WatchListResult;
   current: View;
   watch: WatchSummary | undefined;
   actionFailure: WatchFailure | undefined;
+  version: number;
   onGo: (view: View) => void;
   onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
+  onChanged: () => void;
 }) {
   return (
     <section className="opt-feed">
@@ -690,30 +626,30 @@ function Feed({
       {current === 'attention' && (
         <AttentionView watches={list.watches} onOpen={id => onGo({ watchId: id })} />
       )}
-      {current === 'inbox' && (
-        <>
-          <h1 className="opt-h1">All inbox</h1>
-          <p className="opt-note">
-            Everything your Watches collected. Entries stay 30 days from when they were found, but
-            Instagram can remove media sooner.
-          </p>
-        </>
-      )}
+      {current === 'inbox' && <AllInbox version={version} onChanged={onChanged} />}
       {current === 'new' && (
         <>
           <h1 className="opt-h1">Add Watch</h1>
           <AddWatchFlow onRun={onRun} onOpen={id => onGo({ watchId: id })} />
         </>
       )}
-      {watch && <WatchDetail watch={watch} />}
+      {watch && <WatchDetail watch={watch} version={version} onChanged={onChanged} />}
     </section>
   );
 }
 
-function Console({ list, refresh }: { list: WatchListResult; refresh: () => Promise<void> }) {
+function Console({
+  list,
+  version,
+  refresh,
+}: {
+  list: WatchListResult;
+  version: number;
+  refresh: () => Promise<void>;
+}) {
   const [view, setView] = useState<View>();
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
-  const attention = attentionTotal(list);
+  const attention = list.attentionCount;
   const current = view ?? (attention > 0 ? 'attention' : 'inbox');
   const watch =
     typeof current === 'object'
@@ -748,8 +684,10 @@ function Console({ list, refresh }: { list: WatchListResult; refresh: () => Prom
         current={current}
         watch={watch}
         actionFailure={actionFailure}
+        version={version}
         onGo={go}
         onRun={run}
+        onChanged={() => void refresh()}
       />
 
       <section className="opt-inspector">

@@ -54,6 +54,9 @@ export interface BrowserShim {
     onStartup: {
       addListener: (callback: () => void) => void;
     };
+    onInstalled: {
+      addListener: (callback: (details: { reason: string }) => void) => void;
+    };
   };
   tabs: {
     query: (queryInfo: {
@@ -111,6 +114,47 @@ export interface BrowserShim {
     onClicked: { addListener: (callback: ContextMenuClickedCallback) => void };
     onShown: { addListener: (callback: ContextMenuShownCallback) => void };
   };
+  action: PromisedApis['action'];
+  alarms: PromisedApis['alarms'];
+  notifications: PromisedApis['notifications'];
+  permissions: PromisedApis['permissions'];
+}
+
+interface AlarmInfo {
+  name: string;
+  scheduledTime: number;
+  periodInMinutes?: number;
+}
+
+/**
+ * APIs that are promise-based in both Chromium MV3 and Firefox, so every shim passes them through
+ * unchanged and only the stub needs its own version.
+ */
+interface PromisedApis {
+  action: {
+    setBadgeText: (details: { text: string }) => Promise<void>;
+    setBadgeBackgroundColor: (details: { color: string }) => Promise<void>;
+  };
+  alarms: {
+    create: (
+      name: string,
+      info: { delayInMinutes?: number; periodInMinutes?: number }
+    ) => Promise<void>;
+    get: (name: string) => Promise<AlarmInfo | undefined>;
+    onAlarm: { addListener: (callback: (alarm: AlarmInfo) => void) => void };
+  };
+  notifications: {
+    create: (
+      id: string,
+      options: { type: 'basic'; title: string; message: string; iconUrl: string }
+    ) => Promise<string>;
+    clear: (id: string) => Promise<boolean>;
+    onClicked: { addListener: (callback: (id: string) => void) => void };
+  };
+  permissions: {
+    contains: (query: { permissions: string[] }) => Promise<boolean>;
+    request: (query: { permissions: string[] }) => Promise<boolean>;
+  };
 }
 
 export interface DownloadDelta {
@@ -145,9 +189,10 @@ interface ChromeRuntime {
   openOptionsPage: (callback: () => void) => void;
   onMessage: { addListener: (callback: OnMessageCallback) => void };
   onStartup?: { addListener: (callback: () => void) => void };
+  onInstalled?: BrowserShim['runtime']['onInstalled'];
 }
 
-interface ChromeGlobal {
+interface ChromeGlobal extends Partial<PromisedApis> {
   runtime: ChromeRuntime;
   tabs: {
     query: (q: unknown, cb: (tabs: unknown[]) => void) => void;
@@ -207,7 +252,7 @@ interface ChromeGlobal {
   };
 }
 
-interface NativeBrowserGlobal {
+interface NativeBrowserGlobal extends Partial<PromisedApis> {
   runtime: {
     getURL: (path: string) => string;
     getManifest: () => { version?: string };
@@ -216,6 +261,7 @@ interface NativeBrowserGlobal {
     openOptionsPage: () => Promise<void>;
     onMessage: { addListener: (callback: OnMessageCallback) => void };
     onStartup?: { addListener: (callback: () => void) => void };
+    onInstalled?: BrowserShim['runtime']['onInstalled'];
   };
   tabs: {
     query: (queryInfo: unknown) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
@@ -303,6 +349,7 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
       onStartup: {
         addListener: callback => chrome.runtime.onStartup?.addListener(callback),
       },
+      onInstalled: chrome.runtime.onInstalled ?? noopRuntimeStartup,
     },
     tabs: {
       query: queryInfo =>
@@ -479,6 +526,17 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
       onClicked: contextMenus.onClicked ?? noopContextMenus.onClicked,
       onShown: contextMenus.onShown ?? noopContextMenus.onShown,
     },
+    ...promisedApis(chrome),
+  };
+}
+
+/** The promise-based APIs a browser global provides, with stubs for any it lacks. */
+function promisedApis(global: Partial<PromisedApis>): PromisedApis {
+  return {
+    action: global.action ?? noopPromisedApis.action,
+    alarms: global.alarms ?? noopPromisedApis.alarms,
+    notifications: global.notifications ?? noopPromisedApis.notifications,
+    permissions: global.permissions ?? noopPromisedApis.permissions,
   };
 }
 
@@ -505,6 +563,7 @@ function nativeRuntime(native: NativeBrowserGlobal): BrowserShim['runtime'] {
     ...native.runtime,
     connectNative: application => native.runtime.connectNative?.(application) ?? noopNativePort,
     onStartup: native.runtime.onStartup ?? noopRuntimeStartup,
+    onInstalled: native.runtime.onInstalled ?? noopRuntimeStartup,
   };
 }
 
@@ -558,6 +617,7 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
       remove: windowId => native.windows.remove(windowId),
     },
     contextMenus: nativeContextMenus(native),
+    ...promisedApis(native),
   };
 }
 
@@ -595,8 +655,27 @@ const noopNativePort: NativePort = {
   onDisconnect: { addListener: () => {}, removeListener: () => {} },
 };
 
-const noopRuntimeStartup: BrowserShim['runtime']['onStartup'] = {
-  addListener: () => {},
+const noopRuntimeStartup = { addListener: () => {} };
+
+const noopPromisedApis: PromisedApis = {
+  action: {
+    setBadgeText: () => Promise.resolve(),
+    setBadgeBackgroundColor: () => Promise.resolve(),
+  },
+  alarms: {
+    create: () => Promise.resolve(),
+    get: () => Promise.resolve(undefined),
+    onAlarm: { addListener: () => {} },
+  },
+  notifications: {
+    create: () => Promise.reject(new Error('Notifications are unavailable.')),
+    clear: () => Promise.resolve(false),
+    onClicked: { addListener: () => {} },
+  },
+  permissions: {
+    contains: () => Promise.resolve(false),
+    request: () => Promise.resolve(false),
+  },
 };
 
 const noopCookies: BrowserShim['cookies'] = {
@@ -624,6 +703,7 @@ const noopShim: BrowserShim = {
     openOptionsPage: () => Promise.resolve(),
     onMessage: { addListener: () => {} },
     onStartup: noopRuntimeStartup,
+    onInstalled: noopRuntimeStartup,
   },
   tabs: {
     query: () => Promise.resolve([]),
@@ -653,6 +733,7 @@ const noopShim: BrowserShim = {
     remove: () => Promise.resolve(),
   },
   contextMenus: noopContextMenus,
+  ...noopPromisedApis,
 };
 
 // ---------------------------------------------------------------------------

@@ -137,7 +137,7 @@ describe('Popup', () => {
     mockBrowser.tabs.query.mockResolvedValueOnce([
       { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
     ]);
-    mockBrowser.storage.get.mockResolvedValueOnce({ 'whatsapp-view-receipt-acknowledged': true });
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
     await act(async () => render(<Popup />));
 
     expect(await screen.findByRole('button', { name: 'Capture Visible Status' })).toBeDefined();

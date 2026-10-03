@@ -219,6 +219,9 @@ body::before {
   background: var(--brand-dim);
   border-color: var(--brand);
 }
+.workspace-launch.watches-attention {
+  color: var(--error);
+}
 .workspace-launch:disabled {
   color: var(--muted);
   cursor: not-allowed;

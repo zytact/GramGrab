@@ -92,6 +92,7 @@ import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
 import { previewWatchTarget, runWatchCommand } from './watch/service.ts';
+import { refreshBadge } from './watch/attention.ts';
 import type { Rotation } from './rotation/contracts.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
@@ -1187,6 +1188,7 @@ async function executeCommand(
 
 startNativeBridge(executeCommand);
 browser.runtime.onStartup.addListener(() => startNativeBridge(executeCommand));
+void refreshBadge();
 
 // ---------------------------------------------------------------------------
 // Single message dispatcher

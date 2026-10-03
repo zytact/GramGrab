@@ -26,7 +26,7 @@ export interface Account {
 }
 
 /** An account ID as Instagram sends it: a decimal string, or a number only while it is exact. */
-const WireAccountId = Schema.Union(
+export const WireAccountId = Schema.Union(
   AccountId,
   Schema.transform(
     Schema.Number.pipe(Schema.int(), Schema.positive(), Schema.filter(Number.isSafeInteger)),
