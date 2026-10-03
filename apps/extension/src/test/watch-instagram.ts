@@ -1,3 +1,4 @@
+import postsFixture from '../effect/__fixtures__/profile-posts.json';
 import storyFixture from '../effect/__fixtures__/story.json';
 import { json } from './extension-harness.ts';
 
@@ -42,9 +43,51 @@ export function storyResponse(targetId: string, stories: readonly FakeStory[]) {
   };
 }
 
+export interface FakePost {
+  readonly id: string;
+  readonly takenAt: number;
+  readonly video?: boolean;
+  /** Sidecar children by ID; a Post without them is a single image or video. */
+  readonly children?: readonly string[];
+  readonly owner?: string;
+}
+
+const POSTS_ROOT = 'xdt_api__v1__feed__user_timeline_graphql_connection';
+
+/**
+ * A Posts page in the shape of the sanitized `profile-posts.json` capture, with numeric identities
+ * in place of its sanitized tokens. `next` is the cursor of the following page; omitting it ends
+ * the list.
+ */
+export function postsPage(posts: readonly FakePost[], next?: string) {
+  const connection = postsFixture.data[POSTS_ROOT];
+  const sidecar = connection.edges.find(edge => edge.node.media_type === 8)!.node;
+  return {
+    data: {
+      [POSTS_ROOT]: {
+        edges: posts.map(post => ({
+          node: {
+            ...sidecar,
+            pk: post.id,
+            code: `C${post.id}`,
+            taken_at: post.takenAt,
+            user: { ...sidecar.user, pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+            media_type: post.children ? 8 : post.video === false ? 1 : 2,
+            carousel_media_count: post.children?.length ?? null,
+            carousel_media:
+              post.children?.map((id, index) => ({ pk: id, media_type: index === 0 ? 1 : 2 })) ??
+              null,
+          },
+        })),
+        page_info: { ...connection.page_info, end_cursor: next ?? null, has_next_page: !!next },
+      },
+    },
+  };
+}
+
 /**
  * A fake of the Instagram endpoints Watches call. Tests change `state` to model a different
- * login, a rename, a lookup Instagram refuses, or the target's current Stories.
+ * login, a rename, a lookup Instagram refuses, or the target's current Stories and Posts pages.
  */
 export function createWatchInstagram() {
   const state = {
@@ -56,12 +99,23 @@ export function createWatchInstagram() {
     /** The raw Story answer per target ID; absent targets get an identified empty reel. */
     stories: {} as Record<string, unknown>,
     storyStatus: 200,
+    /** Posts answers by the cursor that requests them; the first page is under ''. */
+    posts: { '': postsPage([]) } as Record<string, unknown>,
+    /** The cursor of every Posts page requested, '' for the first page. */
+    postRequests: [] as string[],
   };
 
   const variable = (query: URLSearchParams) =>
     String(JSON.parse(query.get('variables') ?? '{}').reel_ids?.[0]);
   const formDocument = (init?: RequestInit) =>
     init?.body instanceof URLSearchParams ? init.body.get('doc_id') : null;
+
+  const postsAnswer = (init: RequestInit | undefined, cursorPage: boolean) => {
+    const body = init?.body as URLSearchParams;
+    const cursor = cursorPage ? String(JSON.parse(body.get('variables') ?? '{}').after) : '';
+    state.postRequests.push(cursor);
+    return json(state.posts[cursor] ?? {}, cursor in state.posts ? 200 : 404);
+  };
 
   /** Each route answers one endpoint the Watch code calls; the first match wins. */
   const routes: readonly ((url: URL, init?: RequestInit) => Response | undefined)[] = [
@@ -81,6 +135,10 @@ export function createWatchInstagram() {
         ? json({ data: { user: state.accounts[searchParams.get('username') ?? ''] } })
         : undefined,
     (_url, init) => (formDocument(init) === '28036671149327607' ? json(state.profile) : undefined),
+    (_url, init) =>
+      formDocument(init) === '28991540097136703' ? postsAnswer(init, false) : undefined,
+    (_url, init) =>
+      formDocument(init) === '29240983615539641' ? postsAnswer(init, true) : undefined,
     // The configured primary Story request answered 403 in every live probe.
     (_url, init) =>
       formDocument(init) === '28299494542988937' ? new Response('', { status: 403 }) : undefined,

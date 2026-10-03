@@ -11,7 +11,8 @@ export type FixtureFilename =
   | 'shortcode-rest-video.json'
   | 'story.json'
   | 'topsearch.json'
-  | 'web-profile-info.json';
+  | 'web-profile-info.json'
+  | 'profile-posts.json';
 
 export const FIXTURE_FILENAMES: ReadonlyArray<FixtureFilename> = [
   'avatar.json',
@@ -27,6 +28,7 @@ export const FIXTURE_FILENAMES: ReadonlyArray<FixtureFilename> = [
   'instants-photo.json',
   'instants-video.json',
   'instants-empty.json',
+  'profile-posts.json',
 ];
 
 export type PrimitiveType = 'boolean' | 'number' | 'string';
@@ -649,6 +651,27 @@ const topSearchRules: ReadonlyArray<PolicyRule> = [
   preserve(`${searchUser}.unseen_count`, ['number']),
 ];
 
+const postsConnection = 'data.xdt_api__v1__feed__user_timeline_graphql_connection';
+const postNode = `${postsConnection}.edges[].node`;
+const postChild = `${postNode}.carousel_media[]`;
+/** The capture keeps only the fields a Watch reads from each Post. */
+const profilePostsRules: ReadonlyArray<PolicyRule> = [
+  entityField(`${postNode}.pk`, 'MEDIA', postNode, 'ID', ['string'], 'MEDIA_ID'),
+  entityField(`${postNode}.code`, 'MEDIA', postNode, 'SHORTCODE', ['string'], 'MEDIA_SHORTCODE'),
+  preserve(`${postNode}.media_type`, ['number']),
+  preserve(`${postNode}.product_type`),
+  preserve(`${postNode}.taken_at`, ['number']),
+  preserve(`${postNode}.carousel_media_count`, ['number']),
+  ...person(`${postNode}.user`),
+  entityField(`${postChild}.pk`, 'MEDIA', postChild, 'ID', ['string'], 'MEDIA_ID'),
+  preserve(`${postChild}.media_type`, ['number']),
+  opaque(`${postsConnection}.page_info.end_cursor`, 'CURSOR'),
+  opaque(`${postsConnection}.page_info.start_cursor`, 'CURSOR'),
+  preserve(`${postsConnection}.page_info.has_next_page`, ['boolean']),
+  preserve(`${postsConnection}.page_info.has_previous_page`, ['boolean']),
+  ...graphqlErrors,
+];
+
 export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> = {
   'avatar.json': {
     rules: [preserve('status')],
@@ -710,6 +733,10 @@ export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> 
       emptyArray('hashtags'),
       emptyArray(`${searchUser}.account_badges`),
     ],
+  },
+  'profile-posts.json': {
+    rules: profilePostsRules,
+    emptyContainers: [emptyArray(`${postsConnection}.edges`)],
   },
   'web-profile-info.json': {
     rules: profileRules,

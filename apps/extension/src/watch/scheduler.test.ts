@@ -10,7 +10,8 @@ import {
   type WatchResult,
 } from '@gramgrab/protocol';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
-import { TARGET, createWatchInstagram, storyResponse } from '../test/watch-instagram.ts';
+import { TARGET, createWatchInstagram, postsPage, storyResponse } from '../test/watch-instagram.ts';
+import type { WatchKind } from '@gramgrab/protocol';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
 import { WatchStore } from './contracts.ts';
 
@@ -59,11 +60,11 @@ async function run<T extends WatchResult['_tag']>(command: WatchCommand, expecte
   return response.result as Extract<WatchResult, { _tag: T }>;
 }
 
-const add = (username: string) =>
+const add = (username: string, kinds: readonly [WatchKind, ...WatchKind[]] = ['stories']) =>
   run(
     WatchAdd.make({
       target: username,
-      kinds: ['stories'],
+      kinds,
       actions: ['collect'],
       acceptUnattended: true,
     }),
@@ -77,6 +78,17 @@ const storyRequests = () =>
     .mock.calls.map(([input]) => new URL(input instanceof Request ? input.url : input))
     .filter(url => url.searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
     .map(url => JSON.parse(url.searchParams.get('variables') ?? '{}').reel_ids[0] as string);
+
+/** Every Story and Posts request so far, in order, as `stories:<target>` or `posts:<cursor>`. */
+const acquisitions = () =>
+  vi.mocked(globalThis.fetch).mock.calls.flatMap(([input, init]) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
+      return [`stories:${JSON.parse(url.searchParams.get('variables') ?? '{}').reel_ids[0]}`];
+    const body = init?.body instanceof URLSearchParams ? init.body : undefined;
+    if (!body?.get('variables')?.includes('"username"')) return [];
+    return [`posts:${JSON.parse(body.get('variables')!).after ?? ''}`];
+  });
 
 /** Delivers the periodic alarm and lets the work it starts run on the fake clock. */
 async function wake(minutes = 3) {
@@ -307,5 +319,35 @@ describe('Watch scheduling', () => {
 
     expect(storyRequests()).toHaveLength(2);
     expect((await schedule()).nextRoundAt).toBe(before);
+  });
+
+  it('continues a long Posts traversal after the rest of the round had its turn', async () => {
+    await add(TARGET.username, ['stories', 'posts']);
+    await add(OTHER.username);
+    await wake();
+    const baselines = acquisitions().length;
+    await vi.advanceTimersByTimeAsync(12 * HOUR);
+    const now = Math.floor(Date.now() / 1000);
+    instagram.state.posts = Object.fromEntries(
+      [0, 1, 2, 3].map(page => [
+        page === 0 ? '' : `c${page}`,
+        postsPage(
+          [{ id: String(90 - page), takenAt: now - page }],
+          page < 3 ? `c${page + 1}` : undefined
+        ),
+      ])
+    );
+
+    await wake();
+    await wake();
+
+    expect(acquisitions().slice(baselines)).toEqual([
+      `stories:${TARGET.id}`,
+      'posts:',
+      'posts:c1',
+      'posts:c2',
+      `stories:${OTHER.id}`,
+      'posts:c3',
+    ]);
   });
 });

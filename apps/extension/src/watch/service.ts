@@ -27,19 +27,14 @@ import {
 } from '@gramgrab/protocol';
 import { canonicalizeInstagramUrl } from '../workspace/contracts.ts';
 import { resolveUsernameToId } from '../instagram/acquisition.ts';
-import {
-  PersonRequests,
-  WatchRequests,
-  requestLedger,
-  type InstagramRequests,
-} from '../instagram/requests.ts';
+import { PersonRequests, requestLedger, type InstagramRequests } from '../instagram/requests.ts';
 import { normalizeSourceFailure } from '../errors/normalize.ts';
 import type { WatchCommandResponse, WatchPreviewResponse } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
 import { loginAttention, refreshBadge, rememberViewer } from './attention.ts';
-import { MANUAL_CHECK_INTERVAL_MS, checkWatch, lastCheckAt } from './check.ts';
+import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
 import { discoveries, inbox, initialized, summarize } from './summary.ts';
-import { exclusive, resumeAfterPerson, scheduleOf } from './scheduler.ts';
+import { resumeAfterPerson, runCheck, scheduleOf } from './scheduler.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
 import {
   mutateStore,
@@ -315,13 +310,7 @@ const checkOne = (watch: Watch, viewer: Account, checkId: string) =>
     const run =
       earliest > Date.now()
         ? { kinds: [], deferredUntil: earliest }
-        : yield* Effect.promise(() =>
-            exclusive(() =>
-              Effect.runPromise(
-                checkWatch(watch.id, viewer.accountId, checkId).pipe(Effect.provide(WatchRequests))
-              )
-            )
-          );
+        : yield* Effect.promise(() => runCheck(watch.id, viewer.accountId, checkId));
     return WatchCheckOutcome.make({
       watchId: watch.id,
       accountId: watch.targetId,

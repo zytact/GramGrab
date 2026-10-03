@@ -44,6 +44,8 @@ const LoginSchedule = Schema.Struct({
   nextRoundAt: Schema.Number,
   /** Watches of the current round still waiting for their turn, in order. */
   remaining: Schema.Array(Schema.UUID),
+  /** Watches whose Posts traversal continues this round once the remaining Watches had a turn. */
+  catchUp: Schema.optional(Schema.Array(Schema.UUID)),
   earlyRetries: Schema.Array(EarlyRetry),
 });
 type LoginSchedule = Schema.Schema.Type<typeof LoginSchedule>;
@@ -99,14 +101,42 @@ const roundOrder = (watches: readonly Watch[]) =>
 
 /** One Watch at a time: a manual check waits for the current turn, then goes before the next. */
 let queue: Promise<unknown> = Promise.resolve();
-export function exclusive<T>(work: () => Promise<T>): Promise<T> {
+function exclusive<T>(work: () => Promise<T>): Promise<T> {
   const result = queue.then(work, work);
   queue = result.catch(() => undefined);
   return result;
 }
 
+/**
+ * Runs one Watch's check after the Watch before it, then books or clears its Posts catch-up for
+ * this round, whoever asked for the check.
+ */
+export async function runCheck(
+  watchId: string,
+  viewerId: string,
+  checkId: string,
+  only?: readonly WatchKind[]
+) {
+  const run = await exclusive(() =>
+    Effect.runPromise(
+      checkWatch(watchId, viewerId, checkId, only).pipe(Effect.provide(WatchRequests))
+    )
+  );
+  const posts = run.kinds.find(outcome => outcome.kind === 'posts');
+  if (posts) {
+    const catchingUp = posts._tag === 'KindCheckSucceeded' && posts.catchUp;
+    await setSchedule(viewerId, current => {
+      const schedule = current ?? { nextRoundAt: Date.now(), remaining: [], earlyRetries: [] };
+      const others = (schedule.catchUp ?? []).filter(id => id !== watchId);
+      return { ...schedule, catchUp: catchingUp ? [...others, watchId] : others };
+    });
+  }
+  return run;
+}
+
 type Job =
   | { readonly _tag: 'round'; readonly watchId: string }
+  | { readonly _tag: 'catchUp'; readonly watchId: string }
   | { readonly _tag: 'retry'; readonly watchId: string; readonly kind: WatchKind };
 
 /** The login's next job, starting a new round when the last one is over and the next is due. */
@@ -121,6 +151,8 @@ function nextJob(
   if (retry) return { job: { _tag: 'retry', ...retry }, schedule: current };
   const remaining = current.remaining.filter(id => enabled.has(id));
   if (remaining[0]) return { job: { _tag: 'round', watchId: remaining[0] }, schedule: current };
+  const catchUp = current.catchUp?.find(id => enabled.has(id));
+  if (catchUp) return { job: { _tag: 'catchUp', watchId: catchUp }, schedule: current };
   if (current.nextRoundAt > now || enabled.size === 0) return { schedule: current };
   const started: LoginSchedule = {
     ...current,
@@ -197,14 +229,9 @@ async function runNextJob(viewerId: string): Promise<boolean> {
   const next = await nextDueJob(viewerId);
   if (!next) return false;
   const { job, schedule } = next;
-  const only = job._tag === 'retry' ? [job.kind] : undefined;
-  const run = await exclusive(() =>
-    Effect.runPromise(
-      checkWatch(job.watchId, viewerId, crypto.randomUUID(), only).pipe(
-        Effect.provide(WatchRequests)
-      )
-    )
-  );
+  const only =
+    job._tag === 'retry' ? [job.kind] : job._tag === 'catchUp' ? ['posts' as const] : undefined;
+  const run = await runCheck(job.watchId, viewerId, crypto.randomUUID(), only);
   await refreshBadge();
   if (run.deferredUntil !== undefined) return false;
   const failures = run.kinds.flatMap(outcome =>

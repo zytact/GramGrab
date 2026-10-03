@@ -114,6 +114,34 @@
           ]
         }
       ]
+    },
+    "profilePosts": {
+      "candidates": [
+        {
+          "kind": "doc_id",
+          "id": "28991540097136703",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query",
+              "transport": "form"
+            }
+          ]
+        }
+      ]
+    },
+    "profilePostsPage": {
+      "candidates": [
+        {
+          "kind": "doc_id",
+          "id": "29240983615539641",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query",
+              "transport": "form"
+            }
+          ]
+        }
+      ]
     }
   }
 }

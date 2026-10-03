@@ -79,6 +79,24 @@ const initialConfig = {
         },
       ],
     },
+    profilePosts: {
+      candidates: [
+        {
+          kind: 'doc_id',
+          id: 'posts-doc-id',
+          requests: [{ endpoint: 'https://www.instagram.com/graphql/query', transport: 'form' }],
+        },
+      ],
+    },
+    profilePostsPage: {
+      candidates: [
+        {
+          kind: 'doc_id',
+          id: 'posts-page-doc-id',
+          requests: [{ endpoint: 'https://www.instagram.com/graphql/query', transport: 'form' }],
+        },
+      ],
+    },
   },
 };
 

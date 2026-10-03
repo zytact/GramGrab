@@ -32,6 +32,10 @@ The updater requires an explicit operation because it does not classify captured
 | `mediaByShortcode` | Posts, Reels, and sidecars fetched from a shortcode     |
 | `reelsMedia`       | Stories and Highlights fetched through reels media data |
 | `instantsFeed`     | The authenticated active Instants feed                  |
+| `viewer`           | Watches: the signed-in viewer's account ID              |
+| `profileById`      | Watches: a watched account's current username by ID     |
+| `profilePosts`     | Watches: the first page of an account's Posts grid      |
+| `profilePostsPage` | Watches: a later Posts grid page, by cursor             |
 
 These are configuration keys for existing code paths. They do not represent separate discovery
 problems, and values such as `shortcode`, `reel_ids`, and `highlight_reel_ids` are runtime inputs,
@@ -46,6 +50,9 @@ Use a browser profile that is already logged in to Instagram:
    - open a Post, Reel, or sidecar for `mediaByShortcode`
    - open a Story or Highlight for `reelsMedia`
    - open the active Instants feed for `instantsFeed`
+   - open an account's profile for `profilePosts` (the `PolarisProfilePostsQuery` request)
+   - scroll that profile's grid for `profilePostsPage` (the
+     `PolarisProfilePostsTabContentQuery_connection` request)
 3. Select the relevant Instagram GraphQL request.
 4. Choose **Copy** > **Copy as fetch**.
 
@@ -75,6 +82,10 @@ For active Instants, run:
 ```bash
 vp run update:ig-protocol --operation instantsFeed
 ```
+
+For a Watch operation, pass its name the same way, for example
+`vp run update:ig-protocol --operation profilePosts`. After refreshing one, rerun the affected Watch
+live verification rows.
 
 Paste the complete Copy-as-fetch request into the waiting terminal, then press Ctrl-D to end stdin.
 The updater extracts only the allowed public metadata, validates the resulting configuration through

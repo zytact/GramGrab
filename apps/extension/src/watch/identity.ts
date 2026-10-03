@@ -55,7 +55,7 @@ const ProfileResponse = Schema.Struct({
   errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
 
-const readJson = (response: Response, context: string) =>
+export const readJson = (response: Response, context: string) =>
   Effect.gen(function* () {
     if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
     if (!response.ok)
