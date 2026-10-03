@@ -151,16 +151,23 @@ const turn = (
 };
 
 /**
- * Checks one Watch of `viewerId` kind by kind, committing each kind's result before the next
- * starts. A Watch deleted meanwhile is left deleted: its late results are dropped.
+ * Checks one Watch of `viewerId` kind by kind, or only the `only` kinds, committing each kind's
+ * result before the next starts. A Watch deleted meanwhile is left deleted: its late results are
+ * dropped.
  */
-export const checkWatch = (watchId: string, viewerId: string, checkId: string) =>
+export const checkWatch = (
+  watchId: string,
+  viewerId: string,
+  checkId: string,
+  only?: readonly WatchKind[]
+) =>
   Effect.gen(function* () {
     const outcomes: KindCheckOutcome[] = [];
     for (const kind of KIND_ORDER) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
-      if (kind === 'avatar' || !watch.kinds.includes(kind)) continue;
+      if (kind === 'avatar' || !watch.kinds.includes(kind) || (only && !only.includes(kind)))
+        continue;
       const step = yield* turn(watch, kind, checkId);
       if (step.outcome) outcomes.push(step.outcome);
       if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil };

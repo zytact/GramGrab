@@ -93,6 +93,7 @@ import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
 import { previewWatchTarget, runWatchCommand } from './watch/service.ts';
 import { refreshBadge } from './watch/attention.ts';
+import { ALARM_NAME, ensureAlarm, holdForStartup, pump } from './watch/scheduler.ts';
 import type { Rotation } from './rotation/contracts.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
@@ -1188,6 +1189,17 @@ async function executeCommand(
 
 startNativeBridge(executeCommand);
 browser.runtime.onStartup.addListener(() => startNativeBridge(executeCommand));
+
+// Watches: one periodic alarm wakes the worker to run due checks. Each wake, browser start, and
+// installation recreates the alarm if the browser dropped it.
+browser.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name !== ALARM_NAME) return;
+  void ensureAlarm();
+  void pump();
+});
+browser.runtime.onStartup.addListener(() => void holdForStartup().then(ensureAlarm));
+browser.runtime.onInstalled.addListener(() => void ensureAlarm());
+void ensureAlarm();
 void refreshBadge();
 
 // ---------------------------------------------------------------------------

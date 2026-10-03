@@ -1,6 +1,7 @@
 import { Schema } from 'effect';
 import { AccountId } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
+import { requestLedger } from '../instagram/requests.ts';
 import type { Watch, WatchStore } from './contracts.ts';
 import { readStore, storeHealth } from './store.ts';
 
@@ -18,9 +19,16 @@ export function watchAttention(watch: Watch): string[] {
   );
 }
 
-/** Everything that needs the given login, across its Watches. */
-export const loginAttention = (store: WatchStore, viewerId: string): string[] =>
-  store.watches.filter(watch => watch.viewerId === viewerId).flatMap(watchAttention);
+/**
+ * Everything that needs the given login, across its Watches. A rate-limit pause is one item,
+ * `pause.<viewerId>`, however many Watches it holds back.
+ */
+export async function loginAttention(store: WatchStore, viewerId: string): Promise<string[]> {
+  await requestLedger.ready();
+  const paused = requestLedger.pause ? [`pause.${viewerId}`] : [];
+  const watches = store.watches.filter(watch => watch.viewerId === viewerId);
+  return watches.length > 0 ? [...paused, ...watches.flatMap(watchAttention)] : [];
+}
 
 export async function rememberViewer(viewerId: string): Promise<void> {
   await browser.sessionStorage.set({ [VIEWER_KEY]: viewerId }).catch(() => undefined);
@@ -43,7 +51,7 @@ export async function attentionCount(): Promise<number> {
   if (read.kind === 'failed') return 1;
   const viewerId = await rememberedViewer();
   const store = (await storeHealth()) ? 1 : 0;
-  return store + (viewerId ? loginAttention(read.store, viewerId).length : 0);
+  return store + (viewerId ? (await loginAttention(read.store, viewerId)).length : 0);
 }
 
 export async function refreshBadge(): Promise<void> {

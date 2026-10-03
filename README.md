@@ -225,6 +225,7 @@ Shared domain code lives under `apps/extension/src/` (`effect/` for Instagram re
 | `tabs`                      | Read and manage tabs for URL detection and the GramGrab workspace                                  |
 | `contextMenus`              | Add GramGrab actions to page and link context menus                                                |
 | `nativeMessaging`           | Expose GramGrab operations to the local CLI bridge                                                 |
+| `alarms`                    | Wake GramGrab to run your Watch checks while the browser is open                                   |
 | `https://*.instagram.com/*` | Fetch media metadata from Instagram                                                                |
 | `https://*.fbcdn.net/*`     | Load media previews and videos from Instagram’s CDN                                                |
 

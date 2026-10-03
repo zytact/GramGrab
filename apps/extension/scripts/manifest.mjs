@@ -26,6 +26,10 @@ const permissionDocumentation = [
   },
   { permission: 'contextMenus', reason: 'Add GramGrab actions to page and link context menus' },
   { permission: 'nativeMessaging', reason: 'Expose GramGrab operations to the local CLI bridge' },
+  {
+    permission: 'alarms',
+    reason: 'Wake GramGrab to run your Watch checks while the browser is open',
+  },
 ];
 
 const hostPermissionDocumentation = [
