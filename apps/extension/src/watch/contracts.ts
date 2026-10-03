@@ -18,7 +18,7 @@ const EpochSeconds = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
 /** A Post, Story, or Sidecar child ID, or an Instant's `media_owner` composite, kept exactly. */
 export const MediaId = Schema.String.pipe(Schema.pattern(/^\d{1,30}(?:_\d{1,30})?$/));
 /** Instagram's opaque picture/upload identity for an Avatar. */
-const PictureId = Schema.String.pipe(Schema.pattern(/^[0-9A-Za-z_:-]{1,128}$/));
+export const PictureId = Schema.String.pipe(Schema.pattern(/^[0-9A-Za-z_:-]{1,128}$/));
 export const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}$/));
 const MediaType = Schema.Literal('image', 'video');
 

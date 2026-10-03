@@ -23,6 +23,7 @@ import type {
 } from '../effect/errors.ts';
 import type { TimedRef, TimedTracking, Watch } from './contracts.ts';
 import {
+  applyAvatarCheck,
   applyKindProblem,
   applyTimedCheck,
   discoverNew,
@@ -41,16 +42,19 @@ import {
 } from './posts.ts';
 import { readStories, fetchStories } from './stories.ts';
 import { readInstants, sharedInstantsFeed } from './instants.ts';
+import { fetchAvatar, readAvatar } from './avatar.ts';
+import { UsernameUnconfirmed, confirmProfile } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
 import { fetchViewer } from './identity.ts';
 
-/** Kinds run in this order within one Watch's check. */
-const KIND_ORDER = [
-  'stories',
-  'instants',
-  'avatar',
-  'posts',
-] as const satisfies readonly WatchKind[];
+/**
+ * One Watch's check runs these stages in order. `profile` confirms the current username by
+ * account ID, which the Avatar and Posts requests after it look up by.
+ */
+const STAGES = ['stories', 'instants', 'profile', 'avatar', 'posts'] as const;
+
+/** Kinds whose requests need the confirmed current username. */
+const NEEDS_PROFILE = ['avatar', 'posts'] as const satisfies readonly WatchKind[];
 
 type TimedKind = Exclude<WatchKind, 'avatar'>;
 
@@ -64,7 +68,8 @@ type Acquisition =
   | RateLimited
   | ResponseShapeUnknown
   | WatchRequestDeferred
-  | PostsIncomplete;
+  | PostsIncomplete
+  | UsernameUnconfirmed;
 
 type Acquirer = (
   watch: Watch,
@@ -78,7 +83,7 @@ const readPage = (watch: Watch, after: string | undefined, nowSeconds: number) =
   );
 
 /** How each timed kind acquires its baseline, and Stories and Instants every later check too. */
-const ACQUIRERS: Partial<Record<TimedKind, Acquirer>> = {
+const ACQUIRERS: Record<TimedKind, Acquirer> = {
   stories: (watch, nowSeconds) =>
     fetchStories(watch.targetId).pipe(
       Effect.flatMap(raw => readStories(raw, watch.targetId, nowSeconds))
@@ -100,8 +105,11 @@ function deferral(
   return undefined;
 }
 
-const failureCode = (error: Acquisition): FailureCode =>
-  error._tag === 'PostsIncomplete' ? 'WATCH_CHECK_INCOMPLETE' : normalizeSourceFailure(error).code;
+const failureCode = (error: Acquisition): FailureCode => {
+  if (error._tag === 'PostsIncomplete') return 'WATCH_CHECK_INCOMPLETE';
+  if (error._tag === 'UsernameUnconfirmed') return 'WATCH_USERNAME_UNCONFIRMED';
+  return normalizeSourceFailure(error).code;
+};
 
 const findWatch = async (watchId: string, viewerId: string) => {
   const read = await readStore();
@@ -153,7 +161,7 @@ const update = <T>(
 
 /** The step a committed write leads to: storage failure and deletion both end the check. */
 function written<T>(
-  kind: TimedKind,
+  kind: WatchKind,
   write: { readonly kind: 'ok'; readonly value: T | undefined } | { readonly kind: 'failed' },
   step: (value: T) => KindStep
 ): KindStep {
@@ -163,7 +171,7 @@ function written<T>(
 }
 
 /** A kind's failed acquisition: throttling defers the check, anything else is the kind's problem. */
-const failed = (watchId: string, kind: TimedKind, error: Acquisition) =>
+const failed = (watchId: string, kind: WatchKind, error: Acquisition) =>
   Effect.gen(function* () {
     const until = deferral(error);
     if (until !== undefined)
@@ -302,23 +310,87 @@ const traversePosts = (watch: Watch, cutoff: number, checkId: string) =>
     return written('posts', write, outcome => ({ outcome }));
   });
 
+const checkAvatar = (watch: Watch, checkId: string) =>
+  Effect.gen(function* () {
+    const result = yield* Effect.either(
+      fetchAvatar(watch.username).pipe(
+        Effect.flatMap(raw => readAvatar(raw, watch.targetId, watch.username))
+      )
+    );
+    if (Either.isLeft(result)) return yield* failed(watch.id, 'avatar', result.left);
+    const write = yield* update(watch.id, (current, now) => {
+      const applied = applyAvatarCheck(current, result.right, { checkId, now });
+      return { watch: applied.watch, value: applied.outcome };
+    });
+    return written('avatar', write, outcome => ({ outcome }));
+  });
+
 /** A selected kind's turn in a check: skipped while paused, checked otherwise. */
 const turn = (
   watch: Watch,
-  kind: TimedKind,
+  kind: WatchKind,
   scope: CheckScope
 ): Effect.Effect<KindStep, never, InstagramRequests> => {
-  const acquire = ACQUIRERS[kind];
-  if (!acquire) return Effect.succeed({});
   if (!watch.enabled)
     return Effect.succeed({ outcome: KindCheckSkipped.make({ kind, reason: 'paused' }) });
+  if (kind === 'avatar') return checkAvatar(watch, scope.checkId);
   const cutoff = watch.tracking[kind]?.baselineCutoff;
   if (kind === 'posts' && cutoff !== undefined) return traversePosts(watch, cutoff, scope.checkId);
-  return checkKind(watch, kind, acquire, scope);
+  return checkKind(watch, kind, ACQUIRERS[kind], scope);
 };
+
+/** The current username follows a verified rename, keeping the one before it. */
+const renamed = (watch: Watch, username: string): Watch =>
+  watch.username === username ? watch : { ...watch, username, formerUsername: watch.username };
+
+/**
+ * Confirms the current username for the kinds that need it. A failure is each of those kinds'
+ * problem, and they are not checked this time.
+ */
+const profileStage = (watch: Watch, kinds: readonly WatchKind[]) =>
+  Effect.gen(function* () {
+    const result = yield* Effect.either(confirmProfile(watch.targetId));
+    if (Either.isRight(result)) {
+      const write = yield* update(watch.id, current => ({
+        watch: renamed(current, result.right.username),
+        value: true,
+      }));
+      return { steps: [written(kinds[0]!, write, () => ({}))], blocked: false };
+    }
+    const steps: KindStep[] = [];
+    for (const kind of kinds) {
+      const step = yield* failed(watch.id, kind, result.left);
+      steps.push(step);
+      if (step.stop) break;
+    }
+    return { steps, blocked: true };
+  });
 
 const selected = (watch: Watch, kind: WatchKind, only: readonly WatchKind[] | undefined) =>
   watch.kinds.includes(kind) && (!only || only.includes(kind));
+
+/** A stage's steps, and whether it leaves the username-dependent kinds blocked. */
+interface StageResult {
+  readonly steps: readonly KindStep[];
+  readonly blocked: boolean;
+}
+
+const runStage = (
+  watch: Watch,
+  stage: (typeof STAGES)[number],
+  only: readonly WatchKind[] | undefined,
+  context: { readonly scope: CheckScope; readonly blocked: boolean }
+): Effect.Effect<StageResult, never, InstagramRequests> => {
+  const { scope, blocked } = context;
+  if (stage !== 'profile')
+    return selected(watch, stage, only) && !blocked
+      ? turn(watch, stage, scope).pipe(Effect.map(step => ({ steps: [step], blocked })))
+      : Effect.succeed({ steps: [], blocked });
+  const kinds = NEEDS_PROFILE.filter(kind => selected(watch, kind, only));
+  return kinds.length > 0 && watch.enabled
+    ? profileStage(watch, kinds)
+    : Effect.succeed({ steps: [], blocked });
+};
 
 const checkAuthorization = Effect.fn(function* (
   watch: Watch,
@@ -339,8 +411,22 @@ const checkAuthorization = Effect.fn(function* (
   return { kinds, deferredUntil: until };
 });
 
+const authorizeStage = Effect.fn(function* (
+  watch: Watch,
+  stage: (typeof STAGES)[number],
+  only: readonly WatchKind[] | undefined,
+  completed: readonly KindCheckOutcome[]
+) {
+  const chosen =
+    stage === 'profile'
+      ? NEEDS_PROFILE.some(kind => selected(watch, kind, only))
+      : selected(watch, stage, only);
+  if (!chosen) return undefined;
+  return yield* checkAuthorization(watch, only, completed);
+});
+
 /**
- * Checks one Watch of `viewerId` kind by kind, or only the `only` kinds, committing each kind's
+ * Checks one Watch of `viewerId` stage by stage, or only the `only` kinds, committing each kind's
  * result before the next starts. A Watch deleted meanwhile is left deleted: its late results are
  * dropped.
  */
@@ -353,15 +439,18 @@ export const checkWatch = (
   Effect.gen(function* () {
     const shared = { ...scope, feedScope: `${viewerId}:${scope.feedScope}` };
     const outcomes: KindCheckOutcome[] = [];
-    for (const kind of KIND_ORDER) {
+    let blocked = false;
+    for (const stage of STAGES) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
-      if (kind === 'avatar' || !selected(watch, kind, only)) continue;
-      const authorization = yield* checkAuthorization(watch, only, outcomes);
+      const authorization = yield* authorizeStage(watch, stage, only, outcomes);
       if (authorization) return { ...authorization, kinds: [...outcomes, ...authorization.kinds] };
-      const step = yield* turn(watch, kind, shared);
-      if (step.outcome) outcomes.push(step.outcome);
-      if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil };
+      const result: StageResult = yield* runStage(watch, stage, only, { scope: shared, blocked });
+      blocked = result.blocked;
+      for (const step of result.steps) {
+        if (step.outcome) outcomes.push(step.outcome);
+        if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil };
+      }
     }
     return { kinds: outcomes, deferredUntil: undefined };
   });

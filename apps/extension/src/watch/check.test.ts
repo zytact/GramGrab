@@ -7,6 +7,7 @@ import {
   WatchCheck,
   WatchInboxList,
   WatchInboxRemove,
+  WatchLifecycle,
   WatchList,
   WatchShow,
   type WatchAction,
@@ -17,6 +18,7 @@ import {
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
 import {
   TARGET,
+  avatarSearch,
   createWatchInstagram,
   instantsFeed,
   postsPage,
@@ -461,5 +463,111 @@ describe('Instants checks', () => {
       code: 'IG_RESPONSE_SHAPE_UNKNOWN',
       since: expect.any(Number),
     });
+  });
+});
+
+describe('Avatar checks', () => {
+  const setPicture = (pictureId?: string) =>
+    (instagram.state.search = avatarSearch({ ...TARGET, pictureId }));
+
+  const lastPicture = () =>
+    (
+      harness.local.read('watch-store') as {
+        watches: { tracking: { avatar?: { pictureId?: string } } }[];
+      }
+    ).watches[0]!.tracking.avatar?.pictureId;
+
+  it('counts every new picture identity, A to B to A included, and ignores URL changes', async () => {
+    await addWatch(['collect'], 'avatar');
+    expect((await checkLater()).kinds).toEqual([{ _tag: 'KindBaselineRecorded', kind: 'avatar' }]);
+
+    const counts = [];
+    for (const picture of ['PIC_A', 'PIC_B', 'PIC_B', 'PIC_A']) {
+      setPicture(picture);
+      counts.push((await checkLater()).kinds[0]);
+    }
+
+    expect(
+      counts.map(outcome => outcome?._tag === 'KindCheckSucceeded' && outcome.newCount)
+    ).toEqual([0, 1, 0, 1]);
+    expect((await found()).map(entry => entry.mediaType)).toEqual(['avatar', 'avatar']);
+    expect(instagram.state.searches.every(query => query === TARGET.username)).toBe(true);
+  });
+
+  it('compares with the last picture after a pause longer than 30 days', async () => {
+    await addWatch(['collect'], 'avatar');
+    await checkLater();
+    await run(
+      WatchLifecycle.make({ operation: 'pause', watches: [selector] }),
+      'WatchLifecycleResult'
+    );
+    await vi.advanceTimersByTimeAsync(40 * DAY);
+    await run(
+      WatchLifecycle.make({ operation: 'resume', watches: [selector] }),
+      'WatchLifecycleResult'
+    );
+    setPicture('PIC_B');
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ newCount: 1 });
+  });
+
+  it.each([
+    ['no picture identity', avatarSearch({ ...TARGET })],
+    [
+      'only another account',
+      avatarSearch({ id: '9999', username: TARGET.username, pictureId: 'PIC_B' }),
+    ],
+    [
+      'two records for the target',
+      avatarSearch({ ...TARGET, pictureId: 'PIC_B' }, { ...TARGET, pictureId: 'PIC_C' }),
+    ],
+  ])('keeps the last picture when the answer has %s', async (_case, search) => {
+    await addWatch(['collect'], 'avatar');
+    await checkLater();
+    instagram.state.search = search;
+
+    expect((await checkLater()).kinds).toEqual([
+      { _tag: 'KindCheckFailed', kind: 'avatar', code: 'IG_RESPONSE_SHAPE_UNKNOWN' },
+    ]);
+    expect(lastPicture()).toBe('PIC_A');
+  });
+
+  it('follows a verified rename before looking the account up', async () => {
+    await addWatch(['collect'], 'avatar');
+    const renamed = { ...TARGET, username: 'target.renamed' };
+    instagram.state.profile = {
+      data: { user: { id: TARGET.id, pk: TARGET.id, username: renamed.username } },
+    };
+    instagram.state.search = avatarSearch({ ...renamed, pictureId: 'PIC_A' });
+
+    await checkLater();
+
+    expect(instagram.state.searches).toEqual([renamed.username]);
+    expect((await run(WatchShow.make({ watch: selector }), 'WatchShowResult')).watch).toMatchObject(
+      {
+        username: renamed.username,
+        formerUsername: TARGET.username,
+      }
+    );
+  });
+
+  it('checks neither Avatar nor Posts when the username cannot be confirmed', async () => {
+    await run(
+      WatchAdd.make({
+        target: TARGET.username,
+        kinds: ['avatar', 'posts'],
+        actions: ['collect'],
+        acceptUnattended: true,
+      }),
+      'WatchAddResult'
+    );
+    instagram.state.profile = { data: { user: { id: '9999', username: 'someone.else' } } };
+
+    expect((await checkLater()).kinds).toEqual([
+      { _tag: 'KindCheckFailed', kind: 'avatar', code: 'WATCH_USERNAME_UNCONFIRMED' },
+      { _tag: 'KindCheckFailed', kind: 'posts', code: 'WATCH_USERNAME_UNCONFIRMED' },
+    ]);
+    expect(instagram.state.searches).toEqual([]);
+    expect(instagram.state.postRequests).toEqual([]);
   });
 });

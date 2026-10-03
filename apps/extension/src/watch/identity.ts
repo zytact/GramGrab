@@ -18,7 +18,7 @@ import {
 class ViewerMissing extends Data.TaggedError('ViewerMissing') {}
 
 /** An ID-keyed profile response that cannot confirm the stored target's current username. */
-class UsernameUnconfirmed extends Data.TaggedError('UsernameUnconfirmed') {}
+export class UsernameUnconfirmed extends Data.TaggedError('UsernameUnconfirmed') {}
 
 export interface Account {
   readonly accountId: string;

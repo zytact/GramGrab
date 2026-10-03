@@ -142,6 +142,31 @@ export function applyTimedCheck(
   };
 }
 
+/**
+ * Compares the target's current picture identity with the last one observed. The first only
+ * records it; a different one is an Avatar change, even if that identity was seen before.
+ */
+export function applyAvatarCheck(
+  watch: Watch,
+  pictureId: string,
+  context: { readonly checkId: string; readonly now: number }
+): { readonly watch: Watch; readonly outcome: KindCheckOutcome } {
+  const { checkId, now } = context;
+  const last = watch.tracking.avatar?.pictureId;
+  const tracked: Watch = {
+    ...watch,
+    tracking: { ...watch.tracking, avatar: { pictureId, lastSuccessAt: now, lastCheckAt: now } },
+  };
+  if (last === undefined)
+    return { watch: tracked, outcome: KindBaselineRecorded.make({ kind: 'avatar' }) };
+  const changed = last !== pictureId;
+  const found = changed ? [discover({ _tag: 'Avatar', pictureId }, watch, checkId, now)] : [];
+  return {
+    watch: { ...tracked, discoveries: prune([...watch.discoveries, ...found], now) },
+    outcome: KindCheckSucceeded.make({ kind: 'avatar', newCount: found.length, catchUp: false }),
+  };
+}
+
 /** Records a kind's failed check, keeping its baseline, last success, and the problem's start. */
 export function applyKindProblem(
   watch: Watch,

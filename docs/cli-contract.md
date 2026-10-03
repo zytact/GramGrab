@@ -97,6 +97,14 @@ that feed: an Instant that never appeared in it, or left it before a check, is n
 nothing promises 30 days of Instants. One malformed or unknown item in the feed fails the Instants
 check of every Watch that read it.
 
+Avatar and Posts checks first confirm the account's current username by its account ID and follow
+a confirmed rename. An Avatar check then finds the account's exact record in Instagram search and
+compares its opaque picture ID with the last one seen. A new ID is a change even when the picture
+looks the same, and returning to an earlier picture counts again. A rotated picture URL is not a
+change. A missing or ambiguous picture ID fails the check and keeps the last one. How Instagram
+reports a removed or default picture, and whether other endpoints share this ID, has not been
+observed, so those cases fail closed rather than count as changes.
+
 JSON progress is newline-delimited on stderr. Numeric updates are coalesced to 0%, 25%, 50%, 75%,
 and 100% milestones per item and phase. Phase changes are always emitted, and the terminal result
 is emitted once on stdout. Exit 0 means full success, exit 1 means command rejection, at least one

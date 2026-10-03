@@ -38,7 +38,7 @@ import {
 } from './normalize.ts';
 import type { WatchRequestDeferred } from './requests.ts';
 
-const IG_HEADERS = {
+export const IG_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   'X-IG-App-ID': protocolConfig.client.appId,

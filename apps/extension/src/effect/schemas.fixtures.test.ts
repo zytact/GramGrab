@@ -23,6 +23,7 @@ import {
   WebProfileInfoResponseSchema,
 } from './schemas.ts';
 import { PostsResponse } from '../watch/posts.ts';
+import { readAvatar } from '../watch/avatar.ts';
 import type {
   ShortcodeImage,
   ShortcodeSidecar,
@@ -312,5 +313,18 @@ describe('fixtures: Watch Posts page', () => {
       sidecars.every(({ node }) => node.carousel_media?.length === node.carousel_media_count)
     ).toBe(true);
     expect(page_info.has_next_page).toBe(true);
+  });
+});
+
+describe('fixtures: Watch Avatar identity', () => {
+  it('reads the exact search record of topsearch.json for its picture ID', async () => {
+    const json = loadFixture('topsearch.json') as {
+      users: { user: { pk: string; username: string } }[];
+    };
+    const { pk, username } = json.users[0]!.user;
+
+    await expect(Effect.runPromise(readAvatar(json, pk, username))).resolves.toMatch(
+      /^SANITIZED_PROFILE_PICTURE_ID_\d+$/
+    );
   });
 });
