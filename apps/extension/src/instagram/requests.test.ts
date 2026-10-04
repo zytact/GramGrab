@@ -27,7 +27,16 @@ const instagramCalls = () =>
     );
 
 describe('Instagram request accounting', () => {
+  const settled = async <T>(operation: Promise<T>): Promise<T> => {
+    let done = false;
+    void operation.finally(() => (done = true));
+    for (let tick = 0; tick < 60 && !done; tick++) await vi.advanceTimersByTimeAsync(1_000);
+    expect(done).toBe(true);
+    return operation;
+  };
+
   it('counts every helper request and automatic retry of a requested operation', async () => {
+    vi.useFakeTimers();
     harness.setFetch(url =>
       url === 'https://www.instagram.com/'
         ? new Response('<html></html>', { headers: { 'content-type': 'text/html' } })
@@ -35,10 +44,12 @@ describe('Instagram request accounting', () => {
     );
     await harness.loadWorker();
 
-    const response = await harness.send<{ failure?: { code: string } }>({
-      type: 'FETCH_MEDIA',
-      url: 'https://www.instagram.com/stories/highlights/17900000000000000/',
-    });
+    const response = await settled(
+      harness.send<{ failure?: { code: string } }>({
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/stories/highlights/17900000000000000/',
+      })
+    );
 
     expect(response.failure?.code).toBe('SOURCE_SERVER_FAILED');
     const calls = instagramCalls();
@@ -48,13 +59,16 @@ describe('Instagram request accounting', () => {
   });
 
   it('counts failed attempts and leaves CDN transfers out', async () => {
+    vi.useFakeTimers();
     harness.setFetch(url => {
       if (url.includes('fbcdn.net')) return new Response(new Blob(['x']));
       throw new TypeError('Failed to fetch');
     });
     await harness.loadWorker();
 
-    await harness.send({ type: 'FETCH_MEDIA', url: 'https://www.instagram.com/p/DAbcdefghij/' });
+    await settled(
+      harness.send({ type: 'FETCH_MEDIA', url: 'https://www.instagram.com/p/DAbcdefghij/' })
+    );
     const instagramAttempts = instagramCalls().length;
     await harness.send({
       type: 'GET_PREVIEW_URL',
@@ -63,7 +77,7 @@ describe('Instagram request accounting', () => {
 
     expect(instagramAttempts).toBeGreaterThan(0);
     expect((await ledger()).recentAttempts(Date.now())).toBe(instagramAttempts);
-  }, 20_000);
+  });
 
   it('keeps requested results unchanged', async () => {
     const fixture = (await import('../effect/__fixtures__/shortcode-rest-video.json')).default;
