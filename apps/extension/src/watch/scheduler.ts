@@ -149,7 +149,7 @@ async function readyViewer(): Promise<string | undefined> {
   if (read.kind === 'failed' || read.store.watches.length === 0) return undefined;
   const viewer = await verifyViewer();
   if (viewer._tag === 'Right') return viewer.right.accountId;
-  if (viewer.left._tag === 'ViewerMissing')
+  if (viewer.left._tag !== 'WatchRequestDeferred' && viewer.left._tag !== 'RateLimited')
     await updateState(current => ({ ...current, suspended: true }));
   return undefined;
 }

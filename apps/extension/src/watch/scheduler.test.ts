@@ -181,6 +181,23 @@ describe('Watch scheduling', () => {
     expect(storyRequests()).toEqual([]);
   });
 
+  it('suspends unverifiable login work through reload until a person verifies the login', async () => {
+    await add(TARGET.username);
+    harness.setFetch(() => json({ data: {} }));
+    await wake();
+    expect(harness.local.read('watch-scheduler')).toMatchObject({ suspended: true });
+    const attempts = vi.mocked(globalThis.fetch).mock.calls.length;
+    await harness.loadWorker();
+    await wake();
+    expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(attempts);
+    expect(storyRequests()).toEqual([]);
+
+    harness.setFetch(instagram.handle);
+    await run(WatchList.make(), 'WatchListResult');
+    await wake();
+    expect(storyRequests()).toEqual([TARGET.id]);
+  });
+
   it('runs a manual check at once without moving the next round', async () => {
     await add(TARGET.username);
     await wake();
