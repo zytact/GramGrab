@@ -70,6 +70,7 @@ This project vendors external repositories under `.repos/`.
 - Vitest config is `vitest.config.ts` at the repo root: jsdom, globals, v8 coverage, tests matched under `apps/**` and `packages/**`.
 - Setup is `apps/extension/src/test/setup.ts` (polyfills `Blob.arrayBuffer`, installs a mock `globalThis.browser`). Helpers: `resetBrowserMocks()`, `setMockMessageHandler(type, handler)`, `getDownloadCalls()`.
 - Background tests dynamically import `background.ts` to capture the registered listener.
+- Use `instagram`, Instagram's own public account, wherever a test, fixture, or doc needs a username. Keep real people's handles out of the repo.
 
 ## IG Schema Fixtures & Strict-Schema Posture
 
@@ -88,6 +89,10 @@ When `ResponseShapeUnknown` fires in the wild:
 ## Domain language
 
 Ubiquitous language lives in `CONTEXT.md`. Use its terms (Status, Visible Status, Instant, Highlight, Avatar) and honor its _Avoid_ list. Ambiguous decisions are recorded in `docs/adr/`.
+
+## Documentation
+
+Write processes and procedures as docs in `docs/`. AGENTS.md holds only what steers agents, plus pointers to those docs.
 
 ## Operation errors
 
@@ -117,6 +122,6 @@ vp test run
 vp run fallow
 ```
 
-`vp check` formats, lints and type checks in one pass. After a build or manifest change, also run `vp run verify:whatsapp-packages` against the built output.
+`vp check` formats, lints and type checks in one pass. Clear `vp run fallow` findings by refactoring the code. Suppression comments, threshold or config changes, and baselines need the user's approval first. After a build or manifest change, also run `vp run verify:whatsapp-packages` against the built output.
 
 Check `package.json` and `vite.config.ts` for scripts or tasks a change touches, and run them with `vp run <name>`. If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
