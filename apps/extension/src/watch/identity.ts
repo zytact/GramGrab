@@ -39,6 +39,7 @@ const ViewerResponse = Schema.Struct({
   data: Schema.Struct({
     user: Schema.NullOr(Schema.Struct({ id: WireAccountId, username: InstagramUsername })),
   }),
+  errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
 
 const ProfileResponse = Schema.Struct({
@@ -83,7 +84,7 @@ export const fetchViewer = Effect.gen(function* () {
     yield* readJson(response, 'watch_viewer')
   ).pipe(Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' })));
   const user = decoded.data.user;
-  if (!user) return yield* Effect.fail(new ViewerMissing());
+  if (!user || (decoded.errors?.length ?? 0) > 0) return yield* Effect.fail(new ViewerMissing());
   return { accountId: user.id, username: user.username } satisfies Account;
 });
 

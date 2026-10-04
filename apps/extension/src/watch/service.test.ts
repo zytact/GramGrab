@@ -11,7 +11,7 @@ import {
   type CommandFailure,
   type WatchCommand,
 } from '@gramgrab/protocol';
-import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
+import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
 import { TARGET, VIEWER, createWatchInstagram } from '../test/watch-instagram.ts';
 import type { WatchCommandResponse, WatchPreviewResponse } from '../messaging/contracts.ts';
 
@@ -159,6 +159,20 @@ describe('owner-bound access', () => {
       expect(failureOf(response)?.failure.code).toBe('IG_NOT_AUTHENTICATED');
       expect(failureOf(response)?.detail).toEqual({ _tag: 'StoredWatchCount', count: 1 });
     }
+  });
+
+  it('does not authorize a partial viewer response with GraphQL errors', async () => {
+    await addTarget();
+    harness.setFetch(() =>
+      json({
+        data: { user: { id: VIEWER.id, username: VIEWER.username } },
+        errors: [{ message: 'request rejected' }],
+      })
+    );
+    const response = await run(WatchList.make());
+    expect(failureOf(response)?.failure.code).toBe('IG_NOT_AUTHENTICATED');
+    expect(failureOf(response)?.detail).toEqual({ _tag: 'StoredWatchCount', count: 1 });
+    expect(response.result).toBeUndefined();
   });
 });
 
