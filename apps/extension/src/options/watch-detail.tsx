@@ -97,6 +97,13 @@ function OutcomeChips({ entry }: { entry: DiscoverySummary }) {
             ]
           : [];
       })}
+      {(entry.downloadChildren?.length ?? 0) > 1 &&
+        entry.downloadChildren?.map((outcome, child) => (
+          <span key={`download-${child}`} className={`opt-chip opt-${outcome.state}`}>
+            Download item {child + 1}: {STATE_LABEL[outcome.state]}
+            {outcome.code && ` (${FAILURE_PRESENTATION[outcome.code].title})`}
+          </span>
+        ))}
     </span>
   );
 }

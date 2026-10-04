@@ -2,9 +2,8 @@ import { Schema } from 'effect';
 import { AccountId } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { requestLedger } from '../instagram/requests.ts';
-import type { Watch, WatchStore } from './contracts.ts';
+import type { Discovery, Watch, WatchStore } from './contracts.ts';
 import { readStore, storeHealth } from './store.ts';
-import { needsPerson } from './discoveries.ts';
 
 /** The login whose Watches the badge counts, kept only for this browser session. */
 const VIEWER_KEY = 'watch-viewer';
@@ -12,7 +11,7 @@ const VIEWER_KEY = 'watch-viewer';
 /**
  * Stable IDs of what needs the person, for one Watch. A check problem is
  * `check.<watchId>.<kind>` and clears only when that kind checks successfully again; it is held
- * back while the Watch is paused. A failed action is `action.<entryId>` until it is retried or
+ * back while the Watch is paused. A failed action is `action.<action>.<entryId>` with a child index for downloads until it is retried or
  * dismissed.
  */
 export function watchAttention(watch: Watch): string[] {
@@ -21,7 +20,35 @@ export function watchAttention(watch: Watch): string[] {
         watch.tracking[kind]?.problem ? [`check.${watch.id}.${kind}`] : []
       )
     : [];
-  return [...checks, ...watch.discoveries.filter(needsPerson).map(entry => `action.${entry.id}`)];
+  const actions = watch.discoveries.flatMap(entry => [
+    ...notificationAttention(entry),
+    ...collectionAttention(entry),
+    ...downloadAttention(entry),
+  ]);
+  return [...checks, ...actions];
+}
+
+function notificationAttention(entry: Discovery): string[] {
+  return entry.notify?.status === 'failed' && !entry.notify.dismissed
+    ? [`action.notify.${entry.id}`]
+    : [];
+}
+
+function collectionAttention(entry: Discovery): string[] {
+  const collect = entry.collect;
+  return collect && 'status' in collect && collect.status === 'failed' && !collect.dismissed
+    ? [`action.collect.${entry.id}`]
+    : [];
+}
+
+function downloadAttention(entry: Discovery): string[] {
+  if (!entry.download || entry.download.dismissed) return [];
+  return entry.download.children.flatMap((child, index) => {
+    if (child.status === 'uncertain') return [`uncertain.${entry.id}.${index}`];
+    return child.status === 'failed' && !child.dismissed
+      ? [`action.download.${entry.id}.${index}`]
+      : [];
+  });
 }
 
 /**

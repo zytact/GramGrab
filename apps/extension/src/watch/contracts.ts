@@ -111,9 +111,23 @@ type NotifyRecord = Schema.Schema.Type<typeof NotifyRecord>;
 const ChildDownload = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
   /** Written before the browser is asked, so an interruption can be reconciled. */
-  Schema.Struct({ status: Schema.Literal('starting'), at: EpochMillis }),
-  Schema.Struct({ status: Schema.Literal('accepted'), at: EpochMillis }),
-  Schema.Struct({ status: Schema.Literal('failed'), code: FailureCodeSchema, at: EpochMillis }),
+  Schema.Struct({
+    status: Schema.Literal('starting'),
+    at: EpochMillis,
+    filenameDigest: Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/)),
+  }),
+  Schema.Struct({
+    status: Schema.Literal('accepted'),
+    at: EpochMillis,
+    downloadId: Schema.optional(EpochMillis),
+    historySaved: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    status: Schema.Literal('failed'),
+    code: FailureCodeSchema,
+    at: EpochMillis,
+    dismissed: Schema.optional(Schema.Boolean),
+  }),
   Schema.Struct({ status: Schema.Literal('uncertain'), at: EpochMillis }),
   /** The person said they have the file after an uncertain interruption. */
   Schema.Struct({ status: Schema.Literal('confirmed'), at: EpochMillis })
@@ -126,10 +140,16 @@ const DownloadRecord = Schema.Struct({
 });
 type DownloadRecord = Schema.Schema.Type<typeof DownloadRecord>;
 
-const CollectRecord = Schema.Struct({
-  at: EpochMillis,
-  removedAt: Schema.optional(EpochMillis),
-});
+const CollectRecord = Schema.Union(
+  Schema.Struct({ at: EpochMillis, removedAt: Schema.optional(EpochMillis) }),
+  Schema.Struct({ status: Schema.Literal('pending') }),
+  Schema.Struct({
+    status: Schema.Literal('failed'),
+    at: EpochMillis,
+    code: Schema.Literal('WATCH_STORE_FAILED', 'WATCH_STORE_CAPACITY_EXCEEDED'),
+    dismissed: Schema.Boolean,
+  })
+);
 
 const Discovery = Schema.Struct({
   id: Schema.UUID,

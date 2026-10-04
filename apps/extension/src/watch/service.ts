@@ -38,7 +38,9 @@ import { loginAttention, refreshBadge, rememberViewer } from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
 import { attentionEntries, discoveries, inbox, initialized, summarize } from './summary.ts';
 import { retryNotify } from './notify.ts';
-import { inInbox, needsPerson } from './discoveries.ts';
+import { inInbox } from './discoveries.ts';
+import { finishActions } from './auto-download.ts';
+import { recoverable, applyRecovery } from './recovery.ts';
 import { exportEntry, type Learned } from './export.ts';
 import { resumeAfterPerson, runCheck, scheduleOf } from './scheduler.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
@@ -379,7 +381,9 @@ const inboxRemove = (command: Extract<WatchCommand, { _tag: 'WatchInboxRemove' }
       const watches = store.watches.map(watch => ({
         ...watch,
         discoveries: watch.discoveries.map(discovery =>
-          discovery.collect && removedEntryIds.includes(discovery.id)
+          discovery.collect &&
+          !('status' in discovery.collect) &&
+          removedEntryIds.includes(discovery.id)
             ? { ...discovery, collect: { ...discovery.collect, removedAt: now } }
             : discovery
         ),
@@ -444,8 +448,7 @@ const inboxExport = (command: Extract<WatchCommand, { _tag: 'WatchInboxExport' }
   });
 
 /**
- * Retries or dismisses the failed notification of each entry. An entry with no failed
- * notification, or one already dismissed, is refused rather than recovered.
+ * Recovers only the selected failed action or uncertain children, preserving accepted work.
  */
 const recover = (command: Extract<WatchCommand, { _tag: 'WatchRecover' }>) =>
   Effect.gen(function* () {
@@ -457,19 +460,15 @@ const recover = (command: Extract<WatchCommand, { _tag: 'WatchRecover' }>) =>
         )
       );
       const known = command.entryIds.filter(id => entries.has(id));
-      const recovered = known.filter(id => needsPerson(entries.get(id)!.discovery));
+      const recovered = known.filter(id => {
+        const entry = entries.get(id)!;
+        return entry.watch.enabled && recoverable(entry.discovery, command);
+      });
       const watches = store.watches.map(watch => ({
         ...watch,
         discoveries: watch.discoveries.map(discovery => {
-          if (!recovered.includes(discovery.id) || discovery.notify?.status !== 'failed')
-            return discovery;
-          return {
-            ...discovery,
-            notify:
-              command.operation === 'dismiss'
-                ? { ...discovery.notify, dismissed: true }
-                : { status: 'pending' as const },
-          };
+          if (!recovered.includes(discovery.id)) return discovery;
+          return applyRecovery(discovery, command);
         }),
       }));
       return {
@@ -486,7 +485,16 @@ const recover = (command: Extract<WatchCommand, { _tag: 'WatchRecover' }>) =>
         },
       };
     });
-    if (command.operation === 'retry') yield* Effect.promise(() => retryNotify(result.retried));
+    if (command.action === 'notify' && command.operation === 'retry')
+      yield* Effect.promise(() => retryNotify(result.retried));
+    if (
+      command.action !== 'notify' &&
+      (command.operation === 'retry' || command.operation === 'download-again')
+    ) {
+      const read = yield* loadOrReject;
+      const ids = new Set(result.retried.map(entry => entry.watchId));
+      for (const watch of owned(read, viewer)) if (ids.has(watch.id)) yield* finishActions(watch);
+    }
     yield* Effect.promise(refreshBadge);
     return result.result;
   });

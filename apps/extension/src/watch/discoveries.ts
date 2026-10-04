@@ -48,28 +48,42 @@ function discover(ref: MediaRef, watch: Watch, checkId: string, now: number): Di
     ...(watch.actions.includes('download')
       ? { download: { children: Array.from({ length: files }, () => pending), dismissed: false } }
       : {}),
-    ...(watch.actions.includes('collect') ? { collect: { at: now } } : {}),
+    ...(watch.actions.includes('collect') ? { collect: { status: 'pending' } } : {}),
   };
 }
 
 /** Whether a discovery has a failed action the person has not retried or dismissed. */
 export const needsPerson = (discovery: Discovery) =>
-  discovery.notify?.status === 'failed' && !discovery.notify.dismissed;
+  (discovery.notify?.status === 'failed' && !discovery.notify.dismissed) ||
+  (discovery.collect &&
+    'status' in discovery.collect &&
+    discovery.collect.status === 'failed' &&
+    !discovery.collect.dismissed) ||
+  (discovery.download &&
+    !discovery.download.dismissed &&
+    discovery.download.children.some(
+      child => (child.status === 'failed' && !child.dismissed) || child.status === 'uncertain'
+    ));
 
 /** Whether a discovery still has an action someone must finish, retry, confirm, or dismiss. */
-function unresolved(discovery: Discovery): boolean {
-  const notify = discovery.notify;
-  if (notify?.status === 'pending' || (notify?.status === 'failed' && !notify.dismissed))
-    return true;
-  const download = discovery.download;
-  if (!download) return false;
-  return download.children.some(
+const collectUnresolved = (collect: Discovery['collect']) =>
+  collect !== undefined &&
+  'status' in collect &&
+  (collect.status === 'pending' || !collect.dismissed);
+const downloadUnresolved = (download: Discovery['download']) =>
+  download?.children.some(
     child =>
       child.status === 'pending' ||
       child.status === 'starting' ||
       child.status === 'uncertain' ||
-      (child.status === 'failed' && !download.dismissed)
+      (child.status === 'failed' && !child.dismissed && !download.dismissed)
   );
+
+function unresolved(discovery: Discovery): boolean {
+  const notify = discovery.notify;
+  if (notify?.status === 'pending' || (notify?.status === 'failed' && !notify.dismissed))
+    return true;
+  return Boolean(collectUnresolved(discovery.collect) || downloadUnresolved(discovery.download));
 }
 
 /**
@@ -204,8 +218,26 @@ function downloadOutcome(discovery: Discovery): ActionOutcome | undefined {
   });
 }
 
+const childOutcome = (child: ChildDownload) =>
+  ActionOutcome.make({
+    state:
+      child.status === 'accepted' || child.status === 'confirmed'
+        ? 'done'
+        : child.status === 'uncertain'
+          ? 'unconfirmed'
+          : child.status === 'failed'
+            ? 'failed'
+            : 'waiting',
+    ...(child.status === 'failed' ? { code: child.code, dismissed: child.dismissed ?? false } : {}),
+  });
+
 function notifyOutcome(notify: NonNullable<Discovery['notify']>): ActionOutcome {
-  if (notify.status === 'failed') return ActionOutcome.make({ state: 'failed', code: notify.code });
+  if (notify.status === 'failed')
+    return ActionOutcome.make({
+      state: 'failed',
+      code: notify.code,
+      ...(notify.dismissed ? { dismissed: true } : {}),
+    });
   return ActionOutcome.make({ state: notify.status === 'done' ? 'done' : 'waiting' });
 }
 
@@ -213,6 +245,7 @@ function notifyOutcome(notify: NonNullable<Discovery['notify']>): ActionOutcome 
 /** Whether the entry is still in its Watch's inbox: collected, not removed, and not expired. */
 export const inInbox = (discovery: Discovery, now: number) =>
   discovery.collect !== undefined &&
+  !('status' in discovery.collect) &&
   discovery.collect.removedAt === undefined &&
   discovery.discoveredAt + RETENTION_MS > now;
 
@@ -238,6 +271,19 @@ export function summarizeDiscovery(
     ...(discovery.missingChildren ? { missingChildren: discovery.missingChildren.length } : {}),
     ...(discovery.notify ? { notify: notifyOutcome(discovery.notify) } : {}),
     ...(download ? { download } : {}),
-    ...(discovery.collect ? { collect: ActionOutcome.make({ state: 'done' }) } : {}),
+    ...(discovery.download
+      ? { downloadChildren: discovery.download.children.map(childOutcome) }
+      : {}),
+    ...(discovery.collect ? { collect: collectOutcome(discovery.collect) } : {}),
+  });
+}
+
+function collectOutcome(collect: NonNullable<Discovery['collect']>): ActionOutcome {
+  if (!('status' in collect)) return ActionOutcome.make({ state: 'done' });
+  if (collect.status === 'pending') return ActionOutcome.make({ state: 'waiting' });
+  return ActionOutcome.make({
+    state: 'failed',
+    code: collect.code,
+    ...(collect.dismissed ? { dismissed: true } : {}),
   });
 }

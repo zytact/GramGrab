@@ -5,7 +5,8 @@ import { WatchRequests } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
 import { refreshBadge } from './attention.ts';
 import { checkWatch, type CheckScope } from './check.ts';
-import { notifyCheck } from './notify.ts';
+import { notifyCheck, resumeNotifications } from './notify.ts';
+import { runActions } from './auto-download.ts';
 import { fetchViewer } from './identity.ts';
 import { readStore } from './store.ts';
 
@@ -126,6 +127,7 @@ export async function runCheck(
       checkWatch(watchId, viewerId, scope, only).pipe(Effect.provide(WatchRequests))
     )
   );
+  await runActions(watchId, viewerId);
   await notifyCheck(watchId, scope.checkId, startedAt, run.pictureUrl);
   const posts = run.kinds.find(outcome => outcome.kind === 'posts');
   if (posts) {
@@ -267,6 +269,14 @@ async function pumpOnce(deadline: number): Promise<void> {
     return;
   const viewerId = await readyViewer();
   if (!viewerId) return;
+  const read = await readStore();
+  if (read.kind === 'ok') {
+    for (const watch of read.store.watches)
+      if (watch.viewerId === viewerId && watch.enabled) {
+        await runActions(watch.id, viewerId);
+        await resumeNotifications(watch.id);
+      }
+  }
   while (Date.now() < deadline && (await runNextJob(viewerId)));
 }
 

@@ -7,7 +7,6 @@ import {
   WatchAdd,
   WatchLifecycle,
   WatchList,
-  WatchRecover,
   WatchSet,
   type WatchAction,
   type WatchCommand,
@@ -22,6 +21,7 @@ import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser } from '../lib/browser.ts';
 import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';
+import { RecoveryActions } from './recovery-actions.tsx';
 import { AllInbox, WatchDetail, healthText, runCommand } from './watch-detail.tsx';
 
 type View = 'attention' | 'inbox' | 'new' | { readonly watchId: string };
@@ -478,35 +478,22 @@ function AttentionView({
       {problems.length === 0 && attentionEntries.length === 0 && (
         <p className="opt-note">All clear. Nothing needs you right now.</p>
       )}
-      {attentionEntries.length > 0 && <h2 className="opt-h2">Notifications that failed</h2>}
-      {attentionEntries.map(entry => {
-        const recover = (operation: 'retry' | 'dismiss') => {
-          if (operation === 'retry') askToNotify(['notify']);
-          void onRun(WatchRecover.make({ action: 'notify', operation, entryIds: [entry.entryId] }));
-        };
-        const copy = entry.notify?.code ? FAILURE_PRESENTATION[entry.notify.code] : undefined;
-        return (
-          <div key={entry.entryId} className="opt-line opt-row opt-top">
-            <div className="opt-grow">
-              <strong>
-                @{entry.username} · {KIND_LABEL[entry.kind]} · found{' '}
-                {relativeTime(entry.discoveredAt)}
-              </strong>
-              {copy && (
-                <span className="opt-meta">
-                  {copy.title}. {copy.explanation}
-                </span>
-              )}
-            </div>
-            <button className="opt-btn" onClick={() => recover('retry')}>
-              Retry
-            </button>
-            <button className="opt-btn opt-ghost" onClick={() => recover('dismiss')}>
-              Dismiss
-            </button>
-          </div>
-        );
-      })}
+      {attentionEntries.length > 0 && <h2 className="opt-h2">Actions that need you</h2>}
+      {attentionEntries.map(entry => (
+        <RecoveryActions
+          key={entry.entryId}
+          entry={entry}
+          onRun={command => {
+            if (
+              command._tag === 'WatchRecover' &&
+              command.action === 'notify' &&
+              command.operation === 'retry'
+            )
+              askToNotify(['notify']);
+            void onRun(command);
+          }}
+        />
+      ))}
       {problems.length > 0 && <h2 className="opt-h2">Checks that could not run</h2>}
       {problems.map(({ watch, health }) => (
         <div key={watch.watchId + health.kind} className="opt-line opt-row opt-top">

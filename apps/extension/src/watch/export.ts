@@ -25,7 +25,7 @@ import { readStore } from './store.ts';
 export type Unavailable = NonNullable<Discovery['unavailable']>;
 
 /** One file of an entry: found afresh, or shown gone by a supported, valid answer. */
-type Slot =
+export type Slot =
   | { readonly _tag: 'found'; readonly item: MediaItem }
   | { readonly _tag: 'gone'; readonly code: Unavailable };
 
@@ -98,41 +98,36 @@ const avatarSlot = (watch: Watch, pictureId: string) =>
  * Finds the exact recorded media of `ref` afresh, one slot per file: a Sidecar's frozen children
  * in order, or the item itself. A Story already expired fails without a request.
  */
-const reacquire = (watch: Watch, ref: MediaRef, nowSeconds: number) =>
-  Effect.gen(function* () {
-    switch (ref._tag) {
-      case 'Post':
-        return [yield* exact(yield* restItems(watch, ref), ref, 'WATCH_MEDIA_UNAVAILABLE')];
-      case 'Sidecar': {
-        const items = yield* restItems(watch, ref);
-        return yield* Effect.forEach(ref.children, child =>
-          exact(items, child, 'WATCH_MEDIA_UNAVAILABLE')
-        );
-      }
-      case 'Story':
-        if (ref.expiresAt <= nowSeconds) return [gone('WATCH_STORY_EXPIRED')];
-        return [
-          yield* exact(
-            yield* storyItems(watch.targetId, nowSeconds),
-            ref,
-            'WATCH_MEDIA_UNAVAILABLE'
-          ),
-        ];
-      case 'Instant':
-        return [
-          yield* exact(
-            yield* instantItems(watch.targetId, nowSeconds),
-            ref,
-            'WATCH_INSTANT_NOT_IN_FEED'
-          ),
-        ];
-      case 'Avatar':
-        return [yield* avatarSlot(watch, ref.pictureId)];
+export const reacquire = Effect.fn(function* (watch: Watch, ref: MediaRef, nowSeconds: number) {
+  switch (ref._tag) {
+    case 'Post':
+      return [yield* exact(yield* restItems(watch, ref), ref, 'WATCH_MEDIA_UNAVAILABLE')];
+    case 'Sidecar': {
+      const items = yield* restItems(watch, ref);
+      return yield* Effect.forEach(ref.children, child =>
+        exact(items, child, 'WATCH_MEDIA_UNAVAILABLE')
+      );
     }
-  });
+    case 'Story':
+      if (ref.expiresAt <= nowSeconds) return [gone('WATCH_STORY_EXPIRED')];
+      return [
+        yield* exact(yield* storyItems(watch.targetId, nowSeconds), ref, 'WATCH_MEDIA_UNAVAILABLE'),
+      ];
+    case 'Instant':
+      return [
+        yield* exact(
+          yield* instantItems(watch.targetId, nowSeconds),
+          ref,
+          'WATCH_INSTANT_NOT_IN_FEED'
+        ),
+      ];
+    case 'Avatar':
+      return [yield* avatarSlot(watch, ref.pictureId)];
+  }
+});
 
 /** Where a History receipt says the media came from. */
-function historyOrigin(watch: Watch, ref: MediaRef): DownloadHistoryEntry['origin'] {
+export function historyOrigin(watch: Watch, ref: MediaRef): DownloadHistoryEntry['origin'] {
   if (ref._tag === 'Instant') return { kind: 'instants' };
   const url =
     ref._tag === 'Story'
@@ -159,7 +154,7 @@ async function deliver(
   item: MediaItem,
   index: number
 ): Promise<Delivery> {
-  const filename = `${item.filenameHint}_${index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
+  const filename = originalFilename(item, index);
   try {
     await browser.downloads.download({ url: item.url, filename, saveAs: false });
   } catch (cause) {
@@ -180,6 +175,10 @@ async function deliver(
     () => false
   );
   return { _tag: 'accepted', historySaved };
+}
+
+export function originalFilename(item: MediaItem, index: number): string {
+  return `${item.filenameHint}_${index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
 }
 
 /** What exporting an entry newly showed about its availability, kept on the discovery. */

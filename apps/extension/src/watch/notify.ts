@@ -6,6 +6,8 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import type { Discovery, Watch } from './contracts.ts';
 import { KIND_OF_REF } from './discoveries.ts';
 import { mutateStore, readStore } from './store.ts';
+import { fetchViewer } from './identity.ts';
+import { PersonRequests, WatchRequests } from '../instagram/requests.ts';
 
 const PREFIX = 'watch|';
 
@@ -114,7 +116,7 @@ export async function notifyCheck(
   pictureUrl: string | undefined
 ): Promise<void> {
   const watch = await findWatch(watchId);
-  if (!watch?.actions.includes('notify')) return;
+  if (!watch?.enabled || !watch.actions.includes('notify')) return;
   const found = watch.discoveries.filter(
     discovery => discovery.checkId === checkId && discovery.notify?.status === 'pending'
   );
@@ -124,8 +126,22 @@ export async function notifyCheck(
       ? [`${KIND_NAME[kind]}: ${FAILURE_PRESENTATION[problem.code].title}`]
       : [];
   });
-  const message = [foundLine(found), ...problems].filter(Boolean).join('\n');
+  const actionFailures = found.flatMap(entry => [
+    ...(entry.download?.children.flatMap(child =>
+      child.status === 'failed' ? [`Download: ${FAILURE_PRESENTATION[child.code].title}`] : []
+    ) ?? []),
+    ...(entry.collect && 'status' in entry.collect && entry.collect.status === 'failed'
+      ? [`Collect: ${FAILURE_PRESENTATION[entry.collect.code].title}`]
+      : []),
+  ]);
+  const message = [foundLine(found), ...problems, ...new Set(actionFailures)]
+    .filter(Boolean)
+    .join('\n');
   if (!message) return;
+  const viewer = await Effect.runPromise(
+    fetchViewer.pipe(Effect.either, Effect.provide(WatchRequests))
+  );
+  if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) return;
   const code = await show(watch, message, pictureUrl);
   if (found.length > 0)
     await record(
@@ -141,10 +157,26 @@ export async function retryNotify(
 ): Promise<void> {
   for (const watchId of new Set(entries.map(entry => entry.watchId))) {
     const watch = await findWatch(watchId);
-    if (!watch) continue;
+    if (!watch?.enabled) continue;
+    const viewer = await Effect.runPromise(
+      fetchViewer.pipe(Effect.either, Effect.provide(PersonRequests))
+    );
+    if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) continue;
     const ids = entries.filter(entry => entry.watchId === watchId).map(entry => entry.entryId);
     const line = foundLine(watch.discoveries.filter(discovery => ids.includes(discovery.id)));
     if (line) await record(watchId, ids, await show(watch, line, undefined));
+  }
+}
+
+export async function resumeNotifications(watchId: string): Promise<void> {
+  const watch = await findWatch(watchId);
+  if (!watch?.enabled) return;
+  const pending = watch.discoveries.filter(entry => entry.notify?.status === 'pending');
+  for (const checkId of new Set(pending.map(entry => entry.checkId))) {
+    const startedAt = Math.min(
+      ...pending.filter(entry => entry.checkId === checkId).map(entry => entry.discoveredAt)
+    );
+    await notifyCheck(watchId, checkId, startedAt, undefined);
   }
 }
 
