@@ -31,7 +31,7 @@ async function addWatch(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /** A stored Watch whose Stories check failed and which collected one Story. */
-function seedWatchWithProblemAndEntry() {
+function seedWatchWithProblemAndEntry(extra: readonly object[] = []) {
   const now = Date.now();
   harness.local.write('watch-store', {
     version: 1,
@@ -61,6 +61,7 @@ function seedWatchWithProblemAndEntry() {
             discoveredAt: now - 60_000,
             collect: { at: now - 60_000 },
           },
+          ...extra,
         ],
       },
     ],
@@ -78,6 +79,32 @@ describe('Watches options page', () => {
     await user.click(screen.getByText(/^All inbox$/));
     expect(await screen.findByText(`@${TARGET.username} · Video`)).toBeDefined();
     expect(screen.getByText(/leaves the inbox in 30 days/)).toBeDefined();
+  });
+
+  it('downloads selected inbox entries as Original but never selects an unavailable one', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
+        ref: { _tag: 'Instant', mediaId: '41_2002', mediaType: 'image', takenAt: 2 },
+        discoveredAt: Date.now() - 120_000,
+        unavailable: 'WATCH_INSTANT_NOT_IN_FEED',
+        collect: { at: Date.now() - 120_000 },
+      },
+    ]);
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText(/^All inbox$/));
+    const [story, instant] = await screen.findAllByRole('checkbox', {
+      name: 'Select for Download Original',
+    });
+
+    expect(instant).toHaveProperty('disabled', true);
+    await user.click(story!);
+    await user.click(screen.getByRole('button', { name: 'Download Original (1)' }));
+
+    await waitFor(() => expect(screen.getAllByText(/Story expired/)).toHaveLength(2));
+    expect(harness.downloads).toEqual([]);
   });
 
   it('adds a Watch only after the settled disclosure is acknowledged', async () => {

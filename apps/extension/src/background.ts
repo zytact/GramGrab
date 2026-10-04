@@ -101,7 +101,7 @@ import {
   pump,
 } from './watch/scheduler.ts';
 import { notifiedWatch } from './watch/notify.ts';
-import type { Rotation } from './rotation/contracts.ts';
+import { acceptedHistoryEntry, type AcceptedHistoryOperation } from './history/receipt.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
   historyFailure,
@@ -253,10 +253,6 @@ async function handleGetPreviewUrl(
 
 type DownloadAttempt = { operation: DownloadOperation; result: DownloadOperationResult };
 
-function historyFilenameHint(filename: string): string {
-  return filename.replace(/\.[^.]+$/, '');
-}
-
 async function downloadItem(operation: DownloadOperation): Promise<DownloadAttempt> {
   try {
     await browser.downloads.download({
@@ -283,37 +279,6 @@ async function downloadItem(operation: DownloadOperation): Promise<DownloadAttem
       }),
     };
   }
-}
-
-interface AcceptedHistoryOperation {
-  itemIndex: number;
-  mediaId?: string;
-  mediaType: 'image' | 'video';
-  filename: string;
-  exportMode?: 'direct' | 'frame' | 'silent';
-  frameTimestampSeconds?: number;
-  rotation?: Rotation;
-}
-
-function acceptedHistoryEntry(
-  item: AcceptedHistoryOperation,
-  origin: DownloadHistoryEntry['origin']
-): DownloadHistoryEntry {
-  return {
-    id: createHistoryId(),
-    origin,
-    itemIndex: item.itemIndex,
-    ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-    mediaType: item.mediaType,
-    filenameHint: historyFilenameHint(item.filename),
-    ...(item.exportMode ? { exportMode: item.exportMode } : {}),
-    ...(item.frameTimestampSeconds !== undefined
-      ? { frameTimestampSeconds: item.frameTimestampSeconds }
-      : {}),
-    ...(item.rotation ? { rotation: item.rotation } : {}),
-    downloadedAt: Date.now(),
-    outcome: 'accepted',
-  };
 }
 
 async function appendAcceptedHistory(
@@ -377,12 +342,6 @@ async function handleDownloadMedia(
       ? await recordAcceptedHistory(attempts, origin)
       : attempts.map(attempt => attempt.result),
   });
-}
-
-function createHistoryId(): string {
-  return (
-    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  );
 }
 
 async function handleGetDownloadHistory(): Promise<MessageResponse<'GET_DOWNLOAD_HISTORY'>> {

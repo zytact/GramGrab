@@ -210,15 +210,18 @@ function notifyOutcome(notify: NonNullable<Discovery['notify']>): ActionOutcome 
 }
 
 /** Presents a discovery without its media references. */
+/** Whether the entry is still in its Watch's inbox: collected, not removed, and not expired. */
+export const inInbox = (discovery: Discovery, now: number) =>
+  discovery.collect !== undefined &&
+  discovery.collect.removedAt === undefined &&
+  discovery.discoveredAt + RETENTION_MS > now;
+
 export function summarizeDiscovery(
   watch: Watch,
   discovery: Discovery,
   now: number
 ): DiscoverySummary {
   const { ref } = discovery;
-  const inboxUntil = discovery.discoveredAt + RETENTION_MS;
-  const inInbox =
-    discovery.collect && discovery.collect.removedAt === undefined && inboxUntil > now;
   const download = downloadOutcome(discovery);
   return DiscoverySummary.make({
     entryId: discovery.id,
@@ -230,7 +233,7 @@ export function summarizeDiscovery(
       ref._tag === 'Sidecar' ? 'sidecar' : ref._tag === 'Avatar' ? 'avatar' : ref.mediaType,
     ...(ref._tag === 'Sidecar' ? { childCount: ref.children.length } : {}),
     discoveredAt: discovery.discoveredAt,
-    ...(inInbox ? { inboxUntil } : {}),
+    ...(inInbox(discovery, now) ? { inboxUntil: discovery.discoveredAt + RETENTION_MS } : {}),
     ...(discovery.unavailable ? { unavailable: discovery.unavailable } : {}),
     ...(discovery.missingChildren ? { missingChildren: discovery.missingChildren.length } : {}),
     ...(discovery.notify ? { notify: notifyOutcome(discovery.notify) } : {}),

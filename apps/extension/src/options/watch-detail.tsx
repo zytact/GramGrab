@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import {
   AccountIdSelector,
   WatchCheck,
+  WatchInboxExport,
   WatchInboxList,
   WatchInboxRemove,
   WatchShow,
   type ActionOutcome,
   type DiscoverySummary,
+  type InboxExportOutcome,
   type KindCheckOutcome,
   type KindHealth,
   type WatchCommand,
@@ -118,41 +120,162 @@ function EntryMeta({ entry }: { entry: DiscoverySummary }) {
   );
 }
 
+/** What the last Download Original did for one entry. */
+function ExportResult({
+  entry,
+  outcome,
+}: {
+  entry: DiscoverySummary;
+  outcome: InboxExportOutcome;
+}) {
+  const accepted = outcome.accepted === 1 ? '1 file' : `${outcome.accepted} files`;
+  return (
+    <span className="opt-meta">
+      {outcome.accepted > 0 && `Download started for ${accepted}. `}
+      {outcome.failures.map(({ child, code }) => (
+        <span key={`${child}-${code}`} className="opt-error">
+          {child !== undefined && `Item ${child + 1}: `}
+          {FAILURE_PRESENTATION[code].title}.{' '}
+          {code === 'WATCH_MEDIA_UNAVAILABLE' && (
+            <a
+              href={`https://www.instagram.com/${entry.username}/`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open in Instagram
+            </a>
+          )}{' '}
+        </span>
+      ))}
+      {outcome.warning && 'It could not be added to History.'}
+    </span>
+  );
+}
+
+interface Selection {
+  readonly selected: ReadonlySet<string>;
+  readonly onToggle: (entryId: string) => void;
+  readonly outcomes: ReadonlyMap<string, InboxExportOutcome>;
+}
+
 function DiscoveryList({
   entries,
   showAccount,
   onRemove,
+  selection,
 }: {
   entries: readonly DiscoverySummary[];
   showAccount: boolean;
   onRemove?: (entryId: string) => void;
+  selection?: Selection;
 }) {
   if (entries.length === 0) return <p className="opt-meta">Nothing here yet.</p>;
   return (
     <>
-      {entries.map(entry => (
-        <div key={entry.entryId} className="opt-line opt-row opt-top">
-          <div className="opt-grow">
-            <div>
-              {showAccount && `@${entry.username} · `}
-              {MEDIA_LABEL[entry.mediaType]}
-              {entry.childCount ? ` of ${entry.childCount}` : ''}
+      {entries.map(entry => {
+        const outcome = selection?.outcomes.get(entry.entryId);
+        return (
+          <div key={entry.entryId} className="opt-line opt-row opt-top">
+            {selection && (
+              <input
+                type="checkbox"
+                aria-label="Select for Download Original"
+                checked={selection.selected.has(entry.entryId)}
+                disabled={entry.unavailable !== undefined}
+                onChange={() => selection.onToggle(entry.entryId)}
+              />
+            )}
+            <div className="opt-grow">
+              <div>
+                {showAccount && `@${entry.username} · `}
+                {MEDIA_LABEL[entry.mediaType]}
+                {entry.childCount ? ` of ${entry.childCount}` : ''}
+              </div>
+              <EntryMeta entry={entry} />
+              <OutcomeChips entry={entry} />
+              {outcome && <ExportResult entry={entry} outcome={outcome} />}
             </div>
-            <EntryMeta entry={entry} />
-            <OutcomeChips entry={entry} />
+            {onRemove && entry.inboxUntil !== undefined && (
+              <button className="opt-btn opt-ghost" onClick={() => onRemove(entry.entryId)}>
+                Remove
+              </button>
+            )}
           </div>
-          {onRemove && entry.inboxUntil !== undefined && (
-            <button className="opt-btn opt-ghost" onClick={() => onRemove(entry.entryId)}>
-              Remove
-            </button>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }
 
 const removeEntry = (entryId: string) => runCommand(WatchInboxRemove.make({ entryIds: [entryId] }));
+
+/**
+ * Inbox entries a person can select and download as Original. Exporting keeps every entry in the
+ * inbox; an entry already known to be gone cannot be selected.
+ */
+function InboxList({
+  entries,
+  showAccount,
+  onChanged,
+}: {
+  entries: readonly DiscoverySummary[];
+  showAccount: boolean;
+  onChanged: () => void;
+}) {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [outcomes, setOutcomes] = useState<ReadonlyMap<string, InboxExportOutcome>>(new Map());
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<WatchFailure>();
+  const chosen = entries.filter(
+    entry => selected.has(entry.entryId) && entry.unavailable === undefined
+  );
+  const onToggle = (entryId: string) =>
+    setSelected(current => {
+      const next = new Set(current);
+      if (!next.delete(entryId)) next.add(entryId);
+      return next;
+    });
+  const download = async () => {
+    setBusy(true);
+    const response = await runCommand(
+      WatchInboxExport.make({ entryIds: chosen.map(entry => entry.entryId) })
+    );
+    setBusy(false);
+    setFailure(response.failure);
+    if (response.result?._tag === 'WatchInboxExportResult') {
+      setOutcomes(new Map(response.result.outcomes.map(outcome => [outcome.entryId, outcome])));
+      setSelected(new Set());
+    }
+    onChanged();
+  };
+  return (
+    <>
+      {entries.length > 0 && (
+        <div className="opt-row opt-between">
+          <span className="opt-meta">
+            Downloads the exact media as Original. Entries stay in the inbox.
+          </span>
+          <button
+            className="opt-btn"
+            disabled={busy || chosen.length === 0}
+            onClick={() => void download()}
+          >
+            {busy ? 'Starting downloads…' : `Download Original (${chosen.length})`}
+          </button>
+        </div>
+      )}
+      {failure?._tag === 'CommandFailure' && (
+        <p className="opt-meta opt-error">{FAILURE_PRESENTATION[failure.failure.code].title}</p>
+      )}
+      <DiscoveryList
+        entries={entries}
+        showAccount={showAccount}
+        onRemove={entryId => void removeEntry(entryId).then(onChanged)}
+        selection={{ selected, onToggle, outcomes }}
+      />
+    </>
+  );
+}
 
 /** Every collected entry of the verified login, reloaded whenever `version` changes. */
 export function AllInbox({ version, onChanged }: { version: number; onChanged: () => void }) {
@@ -175,11 +298,7 @@ export function AllInbox({ version, onChanged }: { version: number; onChanged: (
         Instagram can remove media sooner.
       </p>
       {entries ? (
-        <DiscoveryList
-          entries={entries}
-          showAccount
-          onRemove={entryId => void removeEntry(entryId).then(onChanged)}
-        />
+        <InboxList entries={entries} showAccount onChanged={onChanged} />
       ) : (
         <p className="opt-meta">Loading…</p>
       )}
@@ -286,13 +405,11 @@ export function WatchDetail({
         </button>
       </div>
       {found && inbox ? (
-        <DiscoveryList
-          entries={tab === 'found' ? found : inbox}
-          showAccount={false}
-          onRemove={
-            tab === 'inbox' ? entryId => void removeEntry(entryId).then(onChanged) : undefined
-          }
-        />
+        tab === 'found' ? (
+          <DiscoveryList entries={found} showAccount={false} />
+        ) : (
+          <InboxList entries={inbox} showAccount={false} onChanged={onChanged} />
+        )
       ) : (
         <p className="opt-meta">Loading…</p>
       )}
