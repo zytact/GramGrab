@@ -106,6 +106,42 @@ async function discoverPost(post: Omit<FakePost, 'takenAt'>) {
 }
 
 describe('Watch inbox Export', () => {
+  it('verifies the creating login again after reacquisition before browser delivery', async () => {
+    const { entryId, post } = await discoverPost({ id: '300', video: false });
+    instagram.state.media.C300 = restMedia(post);
+    harness.setFetch((url, init) => {
+      const response = instagram.handle(url, init);
+      if (new URL(url).pathname.includes('/media/'))
+        instagram.state.viewer = { id: '3003', username: 'instagram' };
+      return response;
+    });
+    const result = await exportEntries(entryId);
+    expect(result.outcomes[0]).toMatchObject({
+      accepted: 0,
+      failures: [{ code: 'IG_NOT_AUTHENTICATED' }],
+    });
+    expect(harness.downloads).toHaveLength(0);
+    expect(await history()).toHaveLength(0);
+  });
+
+  it('rejects wrong owners, parents, and ambiguous parent matches before downloading', async () => {
+    const { entryId, post } = await discoverPost({ id: '400', children: ['401', '402'] });
+    const valid = restMedia(post);
+    const [parent] = valid.items;
+    for (const items of [
+      restMedia({ ...post, owner: '3003' }).items,
+      [{ ...parent, pk: '999' }],
+      [{ ...parent, user: { pk: TARGET.id, id: '3003' } }],
+      [parent, parent],
+    ]) {
+      instagram.state.media.C400 = { ...valid, items };
+      const result = await exportEntries(entryId);
+      expect(result.outcomes[0]?.failures).toEqual([{ code: 'IG_RESPONSE_SHAPE_UNKNOWN' }]);
+      expect((await inbox())[0]).not.toHaveProperty('unavailable');
+      expect(harness.downloads).toHaveLength(0);
+    }
+  });
+
   it('downloads a Post as Original with a History receipt and keeps the inbox entry', async () => {
     const { entryId, post } = await discoverPost({ id: '500', video: false });
     instagram.state.media[`C${post.id}`] = restMedia(post);

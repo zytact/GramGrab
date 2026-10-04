@@ -108,10 +108,16 @@ export function restMedia(post: FakePost) {
             pk: post.id,
             code: `C${post.id}`,
             media_type: 8,
+            user: { pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
             taken_at: post.takenAt,
             carousel_media: post.children.map((id, index) => item(id, index > 0)),
           }
-        : { ...item(post.id, post.video !== false), code: `C${post.id}`, taken_at: post.takenAt },
+        : {
+            ...item(post.id, post.video !== false),
+            code: `C${post.id}`,
+            taken_at: post.takenAt,
+            user: { pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+          },
     ],
   };
 }

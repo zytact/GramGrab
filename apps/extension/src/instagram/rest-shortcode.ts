@@ -68,6 +68,50 @@ export const RestShortcodeResponseSchema = Schema.Struct({
 
 const unknownShape = () => new ResponseShapeUnknown({ context: 'shortcode_media' });
 
+const OwnerIdentity = Schema.Struct({
+  pk: Schema.optional(Schema.String),
+  id: Schema.optional(Schema.String),
+  pk_id: Schema.optional(Schema.String),
+});
+const WatchMediaIdentity = Schema.Struct({
+  items: Schema.Array(
+    Schema.Struct({
+      pk: Schema.String,
+      code: Schema.String,
+      media_type: Schema.Number,
+      user: OwnerIdentity,
+      owner: Schema.optional(OwnerIdentity),
+    })
+  ),
+});
+
+interface ExpectedMedia {
+  readonly parentId: string;
+  readonly ownerId: string;
+  readonly mediaType: 1 | 2 | 8;
+}
+
+const ownerMatches = (owner: Schema.Schema.Type<typeof OwnerIdentity>, expected: string) => {
+  const ids = Object.values(owner);
+  return ids.length > 0 && ids.every(id => id === expected);
+};
+
+const verifyExpectedMedia = (raw: unknown, shortcode: string, expected: ExpectedMedia) =>
+  decode(WatchMediaIdentity, raw).pipe(
+    Effect.filterOrFail(response => {
+      const matches = response.items.filter(item => item.code === shortcode);
+      const [item] = matches;
+      return (
+        matches.length === 1 &&
+        item !== undefined &&
+        item.pk === expected.parentId &&
+        item.media_type === expected.mediaType &&
+        ownerMatches(item.user, expected.ownerId) &&
+        (item.owner === undefined || ownerMatches(item.owner, expected.ownerId))
+      );
+    }, unknownShape)
+  );
+
 const decode = <A, I>(schema: Schema.Schema<A, I>, value: unknown) =>
   Schema.decodeUnknown(schema)(value).pipe(Effect.mapError(unknownShape));
 
@@ -182,9 +226,10 @@ export const fetchRestShortcodeRaw = (shortcode: string) =>
     });
   });
 
-export const fetchRestShortcodeMedia = (shortcode: string) =>
+export const fetchRestShortcodeMedia = (shortcode: string, expected?: ExpectedMedia) =>
   Effect.gen(function* () {
     const raw = yield* fetchRestShortcodeRaw(shortcode);
+    if (expected) yield* verifyExpectedMedia(raw, shortcode, expected);
     const decoded = yield* decode(RestShortcodeResponseSchema, raw);
     if (decoded.status !== 'ok') return yield* Effect.fail(unknownShape());
     if (!decoded.items.length) return [];

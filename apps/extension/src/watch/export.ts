@@ -19,6 +19,8 @@ import type { Discovery, MediaRef, Watch } from './contracts.ts';
 import { fetchAvatar, readAvatar } from './avatar.ts';
 import { readInstants } from './instants.ts';
 import { fetchStories, readStories } from './stories.ts';
+import { fetchViewer } from './identity.ts';
+import { readStore } from './store.ts';
 
 export type Unavailable = NonNullable<Discovery['unavailable']>;
 
@@ -49,10 +51,12 @@ const exact = (
 };
 
 /** A Post or Sidecar by its shortcode, over REST only. An empty answer is not trusted as absence. */
-const restItems = (shortcode: string) =>
-  fetchRestShortcodeMedia(shortcode).pipe(
-    Effect.filterOrFail(items => items.length > 0, untrusted)
-  );
+const restItems = (watch: Watch, ref: Extract<MediaRef, { _tag: 'Post' | 'Sidecar' }>) =>
+  fetchRestShortcodeMedia(ref.shortcode, {
+    parentId: ref.mediaId,
+    ownerId: watch.targetId,
+    mediaType: ref._tag === 'Sidecar' ? 8 : ref.mediaType === 'image' ? 1 : 2,
+  }).pipe(Effect.filterOrFail(items => items.length > 0, untrusted));
 
 const storyItems = (targetId: string, nowSeconds: number) =>
   Effect.gen(function* () {
@@ -97,9 +101,9 @@ const reacquire = (watch: Watch, ref: MediaRef, nowSeconds: number) =>
   Effect.gen(function* () {
     switch (ref._tag) {
       case 'Post':
-        return [yield* exact(yield* restItems(ref.shortcode), ref, 'WATCH_MEDIA_UNAVAILABLE')];
+        return [yield* exact(yield* restItems(watch, ref), ref, 'WATCH_MEDIA_UNAVAILABLE')];
       case 'Sidecar': {
-        const items = yield* restItems(ref.shortcode);
+        const items = yield* restItems(watch, ref);
         return yield* Effect.forEach(ref.children, child =>
           exact(items, child, 'WATCH_MEDIA_UNAVAILABLE')
         );
@@ -186,6 +190,20 @@ export interface Learned {
 const failed = (entryId: string, code: FailureCode) =>
   InboxExportOutcome.make({ entryId, accepted: 0, failures: [{ code }] });
 
+const exportAuthorization = Effect.fn(function* (watch: Watch, discovery: Discovery) {
+  const viewer = yield* Effect.either(fetchViewer);
+  if (Either.isLeft(viewer) || viewer.right.accountId !== watch.viewerId)
+    return 'IG_NOT_AUTHENTICATED' as const;
+  const current = yield* Effect.promise(readStore);
+  if (current.kind === 'failed') return current.code;
+  const owner = current.store.watches.find(
+    candidate => candidate.id === watch.id && candidate.viewerId === watch.viewerId
+  );
+  return owner?.discoveries.some(entry => entry.id === discovery.id)
+    ? undefined
+    : ('WATCH_NOT_FOUND' as const);
+});
+
 /** Settles one slot: a child already known missing or a gone slot fails, a found one downloads. */
 function settle(watch: Watch, discovery: Discovery, slot: Slot, index: number): Promise<Delivery> {
   const { ref } = discovery;
@@ -220,7 +238,13 @@ export const exportEntry = (watch: Watch, discovery: Discovery) =>
         ),
       };
     const settled = yield* Effect.forEach(slots.right, (slot, index) =>
-      Effect.promise(() => settle(watch, discovery, slot, index))
+      Effect.gen(function* () {
+        if (slot._tag === 'found') {
+          const code = yield* exportAuthorization(watch, discovery);
+          if (code) return { _tag: 'failed', code } satisfies Delivery;
+        }
+        return yield* Effect.promise(() => settle(watch, discovery, slot, index));
+      })
     );
     const accepted = settled.filter(delivery => delivery._tag === 'accepted');
     const failures = settled.flatMap((delivery, index) =>
