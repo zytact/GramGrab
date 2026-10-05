@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect';
-import { AccountId, WATCH_KINDS, WatchKind, type FailureCode } from '@gramgrab/protocol';
+import { AccountId, WatchKind, type FailureCode } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { WatchRequests } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
@@ -84,7 +84,7 @@ const nextRoundFrom = (start: number) =>
   start + ROUND_MS * (1 - ROUND_JITTER + Math.random() * 2 * ROUND_JITTER);
 
 const lastSuccess = (watch: Watch) =>
-  Math.min(...WATCH_KINDS.map(kind => watch.tracking[kind]?.lastSuccessAt ?? 0));
+  Math.min(...watch.kinds.map(kind => watch.tracking[kind]?.lastSuccessAt ?? 0));
 
 /** Watches whose last successful check is oldest go first. */
 const roundOrder = (watches: readonly Watch[]) =>
@@ -147,12 +147,18 @@ function finishJob(
 const verifyViewer = () =>
   Effect.runPromise(fetchViewer.pipe(Effect.either, Effect.provide(WatchRequests)));
 
+const hasDueWork = (state: SchedulerState, watches: readonly Watch[]) =>
+  watches.some(
+    watch => nextJob(state.logins[watch.viewerId], [watch], Date.now()).job !== undefined
+  );
+
 /** The verified login whose Watch work may run now, or undefined while nothing may run. */
 async function readyViewer(): Promise<string | undefined> {
   const state = await loadState();
   if (state.suspended || (state.startupHoldUntil ?? 0) > Date.now()) return undefined;
   const read = await readStore();
   if (read.kind === 'failed' || read.store.watches.length === 0) return undefined;
+  if (!hasDueWork(state, read.store.watches)) return undefined;
   const viewer = await verifyViewer();
   if (viewer._tag === 'Right') return viewer.right.accountId;
   if (viewer.left._tag !== 'WatchRequestDeferred' && viewer.left._tag !== 'RateLimited')
@@ -177,6 +183,12 @@ async function runNextJob(viewerId: string): Promise<boolean> {
   const { job, schedule } = nextJob((await loadState()).logins[viewerId], watches, Date.now());
   await setSchedule(viewerId, () => schedule);
   if (!job) return false;
+  const currentViewerId = await readyViewer();
+  if (!currentViewerId) return false;
+  if (currentViewerId !== viewerId) {
+    await updateState(current => ({ ...current, suspended: true }));
+    return false;
+  }
   const only = job._tag === 'retry' ? [job.kind] : undefined;
   const run = await exclusive(() =>
     Effect.runPromise(

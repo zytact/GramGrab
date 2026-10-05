@@ -5,12 +5,14 @@ import {
   WatchAdd,
   WatchCheck,
   WatchList,
+  WatchLifecycle,
   type WatchCommand,
   type WatchResult,
 } from '@gramgrab/protocol';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
 import { TARGET, createWatchInstagram, storyResponse } from '../test/watch-instagram.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
+import { WatchStore } from './contracts.ts';
 
 const START = Date.UTC(2026, 9, 1, 12);
 const MINUTE = 60_000;
@@ -85,6 +87,70 @@ async function wake(minutes = 3) {
 const schedule = async () => (await run(WatchList.make(), 'WatchListResult')).schedule;
 
 describe('Watch scheduling', () => {
+  it('makes no idle requests between rounds or while all Watches are paused', async () => {
+    await add(TARGET.username);
+    await wake();
+    expect(storyRequests()).toEqual([TARGET.id]);
+    vi.mocked(globalThis.fetch).mockClear();
+    for (let minute = 0; minute < 60; minute++) await wake(1);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+
+    await run(
+      WatchLifecycle.make({
+        operation: 'pause',
+        watches: [AccountIdSelector.make({ accountId: TARGET.id })],
+      }),
+      'WatchLifecycleResult'
+    );
+    vi.mocked(globalThis.fetch).mockClear();
+    await vi.advanceTimersByTimeAsync(12 * HOUR);
+    await wake();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('orders single-kind Watches by their selected-kind success time', async () => {
+    await add(TARGET.username);
+    await add(OTHER.username);
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    harness.local.write('watch-store', {
+      ...store,
+      watches: store.watches.map(watch => ({
+        ...watch,
+        tracking: {
+          stories: {
+            baselineCutoff: Math.floor(START / 1000),
+            lastSuccessAt: START - (watch.targetId === TARGET.id ? HOUR : 2 * HOUR),
+          },
+        },
+      })),
+    });
+
+    await wake();
+    expect(storyRequests()).toEqual([OTHER.id, TARGET.id]);
+  });
+
+  it('suspends a round when the login changes between Watches', async () => {
+    await add(TARGET.username);
+    await add(OTHER.username);
+    harness.setFetch((url, init) => {
+      const response = instagram.handle(url, init);
+      if (new URL(url).searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
+        instagram.state.viewer = { id: '4004', username: 'instagram' };
+      return response;
+    });
+
+    await wake();
+    expect(storyRequests()).toEqual([TARGET.id]);
+    expect(harness.local.read('watch-scheduler')).toMatchObject({ suspended: true });
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    expect(
+      store.watches.find(watch => watch.targetId === OTHER.id)?.tracking.stories
+    ).toBeUndefined();
+    await harness.loadWorker();
+    await wake();
+    expect(storyRequests()).toEqual([TARGET.id]);
+  });
+
   it('keeps exactly one periodic alarm and recreates it when the browser dropped it', async () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(harness.alarms.get('watch-pump')).toMatchObject({ periodInMinutes: 1 });
