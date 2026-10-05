@@ -1,3 +1,5 @@
+import { Schema } from 'effect';
+import { WatchStore } from './contracts.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
   AccountIdSelector,
@@ -409,7 +411,10 @@ describe('Instants checks', () => {
     expect((await checkLater()).kinds).toEqual([
       { _tag: 'KindBaselineRecorded', kind: 'instants' },
     ]);
-    return seconds(START + 5 * MINUTE);
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    const cutoff = store.watches[0]?.tracking.instants?.baselineCutoff;
+    if (cutoff === undefined) throw new Error('The Instant baseline was not persisted.');
+    return cutoff;
   }
 
   it("keeps the target's Instants from anywhere in a mixed-order feed", async () => {
