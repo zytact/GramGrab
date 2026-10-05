@@ -183,6 +183,7 @@ export function MediaListSection({
           </span>
           <label className="select-all-label">
             <input
+              className="select-all-checkbox"
               type="checkbox"
               checked={allSelected}
               onChange={onToggleAll}
@@ -309,6 +310,7 @@ function VideoPreview({
   return (
     <>
       <video
+        className="media-preview"
         src={item.url}
         muted
         playsInline
@@ -334,6 +336,7 @@ function ImagePreview({
 }: Pick<MediaItemRowProps, 'item' | 'onError' | 'onIntrinsicDimensions'>) {
   return (
     <img
+      className="media-preview"
       src={item.previewUrl ?? item.url}
       alt="Preview"
       loading="lazy"
