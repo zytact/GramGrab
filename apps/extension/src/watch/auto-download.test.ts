@@ -152,6 +152,42 @@ describe('Watch auto-download and recovery', () => {
     expect(harness.notifications.size).toBe(2);
   });
 
+  it('announces a retried failure that changes during notification delivery', async () => {
+    const find = await discover(['download', 'notify']);
+    harness.failDownloads(new Error('network failed'));
+    harness.browser.notifications.create.mockImplementationOnce(async (id, options) => {
+      harness.failDownloads(new Error('permission denied'));
+      const response = await harness.send<WatchCommandResponse>({
+        type: 'WATCH_COMMAND',
+        command: WatchRecover.make({
+          action: 'download',
+          operation: 'retry',
+          entryIds: [discovery().id],
+          child: 0,
+        }),
+      });
+      expect(response.result?._tag).toBe('WatchRecoverResult');
+      harness.notifications.set(id, options);
+      return id;
+    });
+
+    await find();
+    expect(children()[0]).toMatchObject({ status: 'failed', code: 'BROWSER_DOWNLOAD_BLOCKED' });
+    expect(children()[0]).not.toHaveProperty('notificationAttempted');
+    expect(children()[1]).toMatchObject({ notificationAttempted: true });
+    expect([...harness.notifications.values()][0]?.message).not.toContain('Browser blocked');
+    await harness.loadWorker();
+    harness.fireAlarm('watch-pump');
+    await vi.advanceTimersByTimeAsync(4 * MINUTE);
+    expect(harness.notifications.size).toBe(2);
+    expect([...harness.notifications.values()][1]?.message).toBe(
+      'Download: Browser blocked the download'
+    );
+    harness.fireAlarm('watch-pump');
+    await vi.advanceTimersByTimeAsync(4 * MINUTE);
+    expect(harness.notifications.size).toBe(2);
+  });
+
   it('persists independent actions, accepts each child once, and records History at acceptance', async () => {
     const find = await discover();
     await find();

@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import type { WatchKind } from '@gramgrab/protocol';
+import type { FailureCode, WatchKind } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { fetchBlobAsDataUrl } from '../effect/instagram.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
@@ -93,9 +93,34 @@ async function show(
   }
 }
 
+const sameFailure = (
+  current: { readonly code: FailureCode; readonly at: number },
+  attempted: { readonly code: FailureCode; readonly at: number }
+) => current.code === attempted.code && current.at === attempted.at;
+
+const recordChild = (child: ChildDownload, attempted: ChildDownload | undefined): ChildDownload =>
+  child.status === 'failed' && attempted?.status === 'failed' && sameFailure(child, attempted)
+    ? { ...child, notificationAttempted: true }
+    : child;
+
+const recordCollect = (
+  collect: Discovery['collect'],
+  attempted: Discovery['collect']
+): Discovery['collect'] =>
+  collect &&
+  'status' in collect &&
+  collect.status === 'failed' &&
+  attempted &&
+  'status' in attempted &&
+  attempted.status === 'failed' &&
+  sameFailure(collect, attempted)
+    ? { ...collect, notificationAttempted: true }
+    : collect;
+
 /** Records each entry's notify outcome; a failure stays until someone retries or dismisses it. */
 const recordEntry = (
   discovery: Discovery,
+  attempted: Discovery,
   code: 'WATCH_NOTIFY_PERMISSION_DENIED' | 'WATCH_NOTIFY_FAILED' | undefined,
   at: number
 ): Discovery => ({
@@ -103,20 +128,16 @@ const recordEntry = (
   notify: code ? { status: 'failed', code, at, dismissed: false } : { status: 'done', at },
   download: discovery.download && {
     ...discovery.download,
-    children: discovery.download.children.map(
-      (child): ChildDownload =>
-        child.status === 'failed' ? { ...child, notificationAttempted: true } : child
+    children: discovery.download.children.map((child, index) =>
+      recordChild(child, attempted.download?.children[index])
     ),
   },
-  collect:
-    discovery.collect && 'status' in discovery.collect && discovery.collect.status === 'failed'
-      ? { ...discovery.collect, notificationAttempted: true }
-      : discovery.collect,
+  collect: recordCollect(discovery.collect, attempted.collect),
 });
 
 const record = (
   watchId: string,
-  entryIds: readonly string[],
+  attempted: readonly Discovery[],
   code: 'WATCH_NOTIFY_PERMISSION_DENIED' | 'WATCH_NOTIFY_FAILED' | undefined
 ) =>
   mutateStore(store => {
@@ -126,9 +147,10 @@ const record = (
         ? watch
         : {
             ...watch,
-            discoveries: watch.discoveries.map(discovery =>
-              entryIds.includes(discovery.id) ? recordEntry(discovery, code, at) : discovery
-            ),
+            discoveries: watch.discoveries.map(discovery => {
+              const snapshot = attempted.find(entry => entry.id === discovery.id);
+              return snapshot ? recordEntry(discovery, snapshot, code, at) : discovery;
+            }),
           }
     );
     return { store: { ...store, watches }, value: undefined };
@@ -175,12 +197,7 @@ export async function notifyCheck(
   );
   if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) return;
   const code = await show(watch, message, pictureUrl);
-  if (affected.length > 0)
-    await record(
-      watchId,
-      affected.map(discovery => discovery.id),
-      code
-    );
+  if (affected.length > 0) await record(watchId, affected, code);
 }
 
 /** Sends one summary per Watch for entries whose notification is retried. */
@@ -202,7 +219,7 @@ export async function retryNotify(
     ]
       .filter(Boolean)
       .join('\n');
-    if (message) await record(watchId, ids, await show(watch, message, undefined));
+    if (message) await record(watchId, chosen, await show(watch, message, undefined));
   }
 }
 
