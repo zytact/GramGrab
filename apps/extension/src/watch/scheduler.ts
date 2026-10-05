@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect';
-import { AccountId, WatchKind, type FailureCode } from '@gramgrab/protocol';
+import { AccountId, WatchKind, type KindCheckOutcome, type FailureCode } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { WatchRequests } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
@@ -30,6 +30,13 @@ const SUSPENDING: ReadonlySet<FailureCode> = new Set([
   'IG_REQUEST_REJECTED',
   'IG_NOT_AUTHENTICATED',
 ]);
+
+const suspends = (outcomes: readonly KindCheckOutcome[]) =>
+  outcomes.some(outcome =>
+    outcome._tag === 'KindCheckSkipped'
+      ? outcome.reason === 'login-unverified'
+      : outcome._tag === 'KindCheckFailed' && SUSPENDING.has(outcome.code)
+  );
 
 const EarlyRetry = Schema.Struct({ watchId: Schema.UUID, kind: WatchKind, at: Schema.Number });
 
@@ -175,25 +182,19 @@ const setSchedule = (
     logins: { ...state.logins, [viewerId]: schedule(state.logins[viewerId]) },
   }));
 
-async function authorizedJob(viewerId: string) {
+async function nextDueJob(viewerId: string) {
   const read = await readStore();
   if (read.kind === 'failed') return undefined;
   const watches = read.store.watches.filter(watch => watch.viewerId === viewerId);
   const { job, schedule } = nextJob((await loadState()).logins[viewerId], watches, Date.now());
   await setSchedule(viewerId, () => schedule);
   if (!job) return undefined;
-  const currentViewerId = await readyViewer();
-  if (!currentViewerId) return undefined;
-  if (currentViewerId !== viewerId) {
-    await updateState(current => ({ ...current, suspended: true }));
-    return undefined;
-  }
   return { job, schedule };
 }
 
 /** Runs the login's next due job. False when nothing more should run in this wake. */
 async function runNextJob(viewerId: string): Promise<boolean> {
-  const next = await authorizedJob(viewerId);
+  const next = await nextDueJob(viewerId);
   if (!next) return false;
   const { job, schedule } = next;
   const only = job._tag === 'retry' ? [job.kind] : undefined;
@@ -209,7 +210,7 @@ async function runNextJob(viewerId: string): Promise<boolean> {
   const failures = run.kinds.flatMap(outcome =>
     outcome._tag === 'KindCheckFailed' ? [{ kind: outcome.kind, code: outcome.code }] : []
   );
-  if (failures.some(failure => SUSPENDING.has(failure.code))) {
+  if (suspends(run.kinds)) {
     await updateState(current => ({ ...current, suspended: true }));
     return false;
   }

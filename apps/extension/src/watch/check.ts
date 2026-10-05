@@ -23,6 +23,7 @@ import type { TimedRef, Watch } from './contracts.ts';
 import { applyKindProblem, applyTimedCheck } from './discoveries.ts';
 import { readStories, fetchStories } from './stories.ts';
 import { mutateStore, readStore } from './store.ts';
+import { fetchViewer } from './identity.ts';
 
 /** Kinds run in this order within one Watch's check. */
 const KIND_ORDER = [
@@ -58,7 +59,9 @@ const ACQUIRERS: Partial<Record<TimedKind, Acquirer>> = {
 };
 
 /** The time throttling holds Watch work until, or undefined when the failure is the kind's own. */
-function deferral(error: Acquisition): number | undefined {
+function deferral(
+  error: Acquisition | Effect.Effect.Error<typeof fetchViewer>
+): number | undefined {
   if (error._tag === 'WatchRequestDeferred') return error.until;
   if (error._tag === 'RateLimited') return requestLedger.pause?.until ?? Date.now();
   return undefined;
@@ -150,6 +153,28 @@ const turn = (
   return checkKind(watch, kind, acquire, checkId);
 };
 
+const selected = (watch: Watch, kind: WatchKind, only: readonly WatchKind[] | undefined) =>
+  watch.kinds.includes(kind) && (!only || only.includes(kind));
+
+const checkAuthorization = Effect.fn(function* (
+  watch: Watch,
+  only: readonly WatchKind[] | undefined,
+  completed: readonly KindCheckOutcome[]
+) {
+  if (!watch.enabled) return undefined;
+  const viewer = yield* Effect.either(fetchViewer);
+  if (Either.isRight(viewer) && viewer.right.accountId === watch.viewerId) return undefined;
+  const until = Either.isLeft(viewer) ? deferral(viewer.left) : undefined;
+  const kinds = watch.kinds
+    .filter(
+      kind => selected(watch, kind, only) && !completed.some(outcome => outcome.kind === kind)
+    )
+    .map(kind =>
+      KindCheckSkipped.make({ kind, reason: until === undefined ? 'login-unverified' : 'deferred' })
+    );
+  return { kinds, deferredUntil: until };
+});
+
 /**
  * Checks one Watch of `viewerId` kind by kind, or only the `only` kinds, committing each kind's
  * result before the next starts. A Watch deleted meanwhile is left deleted: its late results are
@@ -166,8 +191,9 @@ export const checkWatch = (
     for (const kind of KIND_ORDER) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
-      if (kind === 'avatar' || !watch.kinds.includes(kind) || (only && !only.includes(kind)))
-        continue;
+      if (kind === 'avatar' || !selected(watch, kind, only)) continue;
+      const authorization = yield* checkAuthorization(watch, only, outcomes);
+      if (authorization) return { ...authorization, kinds: [...outcomes, ...authorization.kinds] };
       const step = yield* turn(watch, kind, checkId);
       if (step.outcome) outcomes.push(step.outcome);
       if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil };
