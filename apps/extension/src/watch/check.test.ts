@@ -714,6 +714,7 @@ describe('Watch notifications', () => {
         iconUrl: 'chrome-extension://test/icons/icon-96.png',
       }),
     ]);
+    expect([...harness.notifications.values()][0]).not.toHaveProperty('buttons');
   });
 
   it("opens the notified Watch's page when the notification is clicked", async () => {

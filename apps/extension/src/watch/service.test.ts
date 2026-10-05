@@ -1,3 +1,5 @@
+import { Schema } from 'effect';
+import { WatchStore } from './contracts.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 import {
   AccountIdSelector,
@@ -259,16 +261,77 @@ describe('Watch storage', () => {
     expect(failureOf(await addTarget())?.failure.code).toBe('WATCH_STORE_VERSION_UNSUPPORTED');
   });
 
-  it('rejects fields outside the allowlist', async () => {
+  it('rejects account, media, and session data at every persisted boundary without resetting it', async () => {
     await addTarget();
-    const stored = harness.local.read('watch-store') as { watches: Record<string, unknown>[] };
-    stored.watches[0]!.caption = 'not allowed';
-    harness.local.write('watch-store', stored);
-
-    const listed = await run(WatchList.make());
-    expect(listed.result?._tag === 'WatchListResult' && listed.result.storage.status).toBe(
-      'unreadable'
-    );
+    const stored = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    const watch = stored.watches[0]!;
+    const discovery = {
+      id: '00000000-0000-4000-8000-000000000001',
+      checkId: '00000000-0000-4000-8000-000000000002',
+      ref: {
+        _tag: 'Sidecar',
+        mediaId: '31',
+        shortcode: 'TEST',
+        takenAt: 2,
+        children: [{ mediaId: '32', mediaType: 'image' }],
+      },
+      discoveredAt: Date.now(),
+      download: { children: [{ status: 'pending' }], dismissed: false },
+      manualExport: {
+        id: '00000000-0000-4000-8000-000000000003',
+        children: [
+          {
+            operationId: '00000000-0000-4000-8000-000000000004',
+            requested: { mode: { _tag: 'DirectExport' } },
+            state: 'pending',
+          },
+        ],
+      },
+    };
+    const valid = Schema.decodeUnknownSync(WatchStore)({
+      ...stored,
+      watches: [
+        {
+          ...watch,
+          tracking: { stories: { baselineCutoff: 1 } },
+          discoveries: [discovery],
+        },
+      ],
+    });
+    const forbidden = {
+      caption: 'caption-secret',
+      url: 'https://example.invalid/media',
+      cookie: 'session-secret',
+      bytes: [1, 2, 3],
+      displayName: 'name-secret',
+    };
+    for (const contaminate of [
+      (value: Schema.Schema.Encoded<typeof WatchStore>) => Object.assign(value, forbidden),
+      (value: Schema.Schema.Encoded<typeof WatchStore>) =>
+        Object.assign(value.watches[0]!, forbidden),
+      (value: Schema.Schema.Encoded<typeof WatchStore>) =>
+        Object.assign(value.watches[0]!.tracking.stories!, forbidden),
+      (value: Schema.Schema.Encoded<typeof WatchStore>) =>
+        Object.assign(value.watches[0]!.discoveries[0]!.ref, forbidden),
+      (value: Schema.Schema.Encoded<typeof WatchStore>) =>
+        Object.assign(value.watches[0]!.discoveries[0]!.download!.children[0]!, forbidden),
+      (value: Schema.Schema.Encoded<typeof WatchStore>) =>
+        Object.assign(
+          value.watches[0]!.discoveries[0]!.manualExport!.children[0]!.requested,
+          forbidden
+        ),
+    ]) {
+      const encoded = Schema.encodeSync(WatchStore)(valid);
+      contaminate(encoded);
+      harness.local.write('watch-store', encoded);
+      const listed = await run(WatchList.make());
+      expect(listed.result?._tag === 'WatchListResult' && listed.result.storage.status).toBe(
+        'unreadable'
+      );
+      expect(harness.local.read('watch-store')).toEqual(encoded);
+      expect(failureOf(await addTarget())?.failure.code).toBe('WATCH_STORE_UNREADABLE');
+      expect(harness.local.read('watch-store')).toEqual(encoded);
+    }
   });
 
   it('reports a browser write rejection below the byte budget as a store failure', async () => {

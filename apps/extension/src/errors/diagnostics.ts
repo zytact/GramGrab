@@ -158,7 +158,9 @@ class WatchDiagnosticsReport extends Schema.Class<WatchDiagnosticsReport>('Watch
     diagnosticsVersion: Schema.Literal(2),
     platform: Schema.Literal('watch'),
     capturedAt: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
-    extensionVersion: Schema.String.pipe(Schema.nonEmptyString()),
+    extensionVersion: Schema.String.pipe(
+      Schema.pattern(/^\d+(?:\.\d+){0,3}(?:[-+][0-9A-Za-z.-]+)?$/u)
+    ),
     browser: DiagnosticsBrowser,
     failure: WatchDiagnosticFailure,
   }

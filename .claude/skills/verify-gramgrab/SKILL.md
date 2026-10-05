@@ -1,12 +1,12 @@
 ---
 name: verify-gramgrab
-description: Launch GramGrab for real and prove a change works. Starts a dedicated Chromium with the unpacked MV3 extension loaded, its own native-messaging registration, and its own IPC socket, then drives the popup/workspace surface over CDP and the gramgrab CLI over the local socket. Use when asked to run the extension, screenshot the popup or workspace, confirm a fix in the real app, or verify the CLI bridge end to end.
+description: Launch GramGrab for real and prove a change works. Starts a dedicated Chromium with the unpacked MV3 extension loaded, its own native-messaging registration, and its own IPC socket, then drives the popup/workspace surface over CDP and the gramgrab CLI over the local socket. Use when asked to run the extension, screenshot the popup, workspace, or Watches options page, confirm a fix in the real app, or verify the CLI bridge end to end.
 ---
 
 # Verify GramGrab
 
 GramGrab has two user-facing surfaces over one shared core: the MV3 extension
-(popup and workspace) and the `gramgrab` CLI, which reaches the extension
+(popup, workspace, and Watches options page) and the `gramgrab` CLI, which reaches the extension
 through a native host over a Unix socket. This skill starts both against a
 dedicated browser profile so a verification run never touches the developer's
 own browser, socket, or `~/Downloads`.
@@ -30,6 +30,12 @@ disagree about how to verify the app are worse than one.
 It builds `extension/chromium`, writes a native-messaging manifest pointing at
 `apps/native-host/bin/gramgrab-native-host.mjs`, and starts the browser with a
 free CDP port and a session-local `GRAMGRAB_IPC_PATH`.
+
+For browser-startup verification after a successful fresh launch, run cleanup
+and then `launch.sh --restart` with the same profile. This keeps the service
+worker registration, skips rebuilding, and refuses changed build bytes. A fresh
+launch clears that registration, so it cannot establish `runtime.onStartup`
+behavior. Use a fresh launch again after source changes.
 
 Three directories, and the differences matter:
 
@@ -303,8 +309,11 @@ All are executable and take no arguments beyond what is shown above.
 
 | Script               | Purpose                                                                |
 | -------------------- | ---------------------------------------------------------------------- |
-| `scripts/launch.sh`  | Build, register the native host, start the browser                     |
+| `scripts/launch.sh`  | Build and start the browser; `--restart` preserves an unchanged build                     |
 | `scripts/signin.sh`  | Launch with Instagram and WhatsApp Web open for a one-time sign-in     |
 | `scripts/doctor.mjs` | Six read-only health checks, non-zero exit on any failure              |
 | `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, reading, and capturing pages |
 | `scripts/cleanup.sh` | Close the browser, remove run state, keep the profile and evidence     |
+
+For Watches, `scripts/watch-smoke.mjs` drives the packaged CLI and options page.
+Its arguments and evidence rules live in [features/watches.md](features/watches.md).

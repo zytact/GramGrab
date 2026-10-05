@@ -226,6 +226,15 @@ describe('Watches options page', () => {
     render(<Watches />);
     await addWatch(user);
 
+    expect(screen.getByRole('checkbox', { name: /^Stories/ })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('checkbox', { name: /^Stories/ })).toHaveProperty('checked', false);
+    expect(screen.getByRole('checkbox', { name: /^Instants/ })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('checkbox', { name: /^Avatar/ })).toHaveProperty('disabled', false);
+    expect(
+      screen.getByText(
+        /Unavailable. Instagram's Stories response format is unsupported. IG_RESPONSE_SHAPE_UNKNOWN/
+      )
+    ).toBeDefined();
     const add = screen.getByRole('button', { name: 'Add Watch' });
     expect(add).toHaveProperty('disabled', true);
     await user.click(screen.getByText(UNATTENDED_DISCLOSURE));
@@ -233,7 +242,9 @@ describe('Watches options page', () => {
 
     await screen.findAllByText(/First check pending/);
     expect(screen.getByText('Pause checks')).toBeDefined();
-    expect(harness.local.read('watch-store')).toMatchObject({ watches: [{ targetId: TARGET.id }] });
+    expect(harness.local.read('watch-store')).toMatchObject({
+      watches: [{ targetId: TARGET.id, kinds: ['posts'] }],
+    });
   });
 
   it('opens the existing Watch instead of adding a duplicate', async () => {
