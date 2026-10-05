@@ -163,6 +163,42 @@ describe('Watch scheduling', () => {
     expect(storyRequests()).toEqual([TARGET.id]);
   });
 
+  it.each(['changed', 'unverifiable'])(
+    'suspends remaining kinds when the login is %s',
+    async mode => {
+      await add(TARGET.username, ['stories', 'posts']);
+      vi.mocked(globalThis.fetch).mockClear();
+      harness.setFetch((url, init) => {
+        const response = instagram.handle(url, init);
+        if (new URL(url).searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
+          instagram.state.viewer =
+            mode === 'changed' ? { id: '4004', username: 'instagram' } : null;
+        return response;
+      });
+
+      await wake();
+      expect(acquisitions()).toEqual([`stories:${TARGET.id}`]);
+      expect(
+        vi
+          .mocked(globalThis.fetch)
+          .mock.calls.some(
+            ([, init]) =>
+              init?.body instanceof URLSearchParams &&
+              init.body.get('doc_id') === '28036671149327607'
+          )
+      ).toBe(false);
+      const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+      expect(store.watches[0]?.tracking.stories?.lastSuccessAt).toBeTypeOf('number');
+      expect(store.watches[0]?.tracking.posts).toBeUndefined();
+      expect(store.watches[0]?.discoveries).toEqual([]);
+      expect(harness.local.read('watch-scheduler')).toMatchObject({ suspended: true });
+      const attempts = vi.mocked(globalThis.fetch).mock.calls.length;
+      await harness.loadWorker();
+      await wake();
+      expect(globalThis.fetch).toHaveBeenCalledTimes(attempts);
+    }
+  );
+
   it('keeps exactly one periodic alarm and recreates it when the browser dropped it', async () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(harness.alarms.get('watch-pump')).toMatchObject({ periodInMinutes: 1 });
