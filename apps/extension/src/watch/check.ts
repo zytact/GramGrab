@@ -447,7 +447,8 @@ export const checkWatch = (
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
       const authorization = yield* authorizeStage(watch, stage, only, outcomes);
-      if (authorization) return { ...authorization, kinds: [...outcomes, ...authorization.kinds] };
+      if (authorization)
+        return { ...authorization, kinds: [...outcomes, ...authorization.kinds], pictureUrl };
       const result: StageResult = yield* runStage(watch, stage, only, { scope: shared, blocked });
       blocked = result.blocked;
       for (const step of result.steps) {
