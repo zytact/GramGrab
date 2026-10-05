@@ -1,4 +1,4 @@
-import { Effect, Either } from 'effect';
+import { Effect, Either, Schema } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
 
@@ -16,8 +16,16 @@ afterEach(() => {
   globalThis.fetch = savedFetch;
 });
 
-/** The ledger instance belonging to the currently loaded worker. */
-const ledger = async () => (await import('./requests.ts')).requestLedger;
+const LedgerSnapshot = Schema.Struct({
+  attempts: Schema.Array(Schema.Number),
+  nextWatchAt: Schema.Number,
+  pause: Schema.optional(Schema.Struct({ until: Schema.Number, level: Schema.Number })),
+});
+
+const ledger = async () =>
+  Schema.decodeUnknownSync(LedgerSnapshot)(
+    (await harness.local.get('instagram-requests'))['instagram-requests']
+  );
 
 const instagramCalls = () =>
   vi
@@ -55,7 +63,7 @@ describe('Instagram request accounting', () => {
     const calls = instagramCalls();
     expect(calls.some(([input]) => input === 'https://www.instagram.com/')).toBe(true);
     expect(calls.length).toBeGreaterThan(4);
-    expect((await ledger()).recentAttempts(Date.now())).toBe(calls.length);
+    expect((await ledger()).attempts).toHaveLength(calls.length);
   });
 
   it('counts failed attempts and leaves CDN transfers out', async () => {
@@ -76,7 +84,7 @@ describe('Instagram request accounting', () => {
     });
 
     expect(instagramAttempts).toBeGreaterThan(0);
-    expect((await ledger()).recentAttempts(Date.now())).toBe(instagramAttempts);
+    expect((await ledger()).attempts).toHaveLength(instagramAttempts);
   });
 
   it('keeps requested results unchanged', async () => {
@@ -201,6 +209,47 @@ describe('Watch request admission', () => {
     expect(Either.isLeft(outcome) && outcome.left._tag).toBe('WatchRequestDeferred');
   });
 
+  it('recovers an expired probe after the worker reloads', async () => {
+    vi.useFakeTimers();
+    harness.local.write('instagram-requests', {
+      version: 1,
+      attempts: [],
+      nextWatchAt: 0,
+      pause: { until: Date.now() - 1, level: 1, probing: true },
+    });
+    harness.setFetch(() => json({}));
+    await harness.loadWorker();
+
+    expect(Either.isRight(await runWatch('https://www.instagram.com/watch'))).toBe(true);
+    expect(instagramCalls()).toHaveLength(1);
+    expect((await ledger()).pause).toBeUndefined();
+  });
+
+  it.each([503, 'network'])('preserves backoff after a failed probe: %s', async failure => {
+    vi.useFakeTimers();
+    harness.local.write('instagram-requests', {
+      version: 1,
+      attempts: [],
+      nextWatchAt: 0,
+      pause: { until: Date.now() - 1, level: 1 },
+    });
+    harness.setFetch(() => {
+      if (typeof failure === 'string') throw new TypeError('Failed to fetch');
+      return new Response('{}', { status: failure });
+    });
+    await harness.loadWorker();
+    await runWatch('https://www.instagram.com/watch');
+    expect((await ledger()).pause?.level).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    harness.setFetch(() => new Response('{}', { status: 429 }));
+    await runWatch('https://www.instagram.com/watch');
+    expect((await ledger()).pause).toMatchObject({
+      level: 2,
+      until: Date.now() + 2 * 60 * 60_000,
+    });
+  });
+
   it('holds Watch work once the rolling hour has 60 attempts, including person requests', async () => {
     vi.useFakeTimers();
     harness.setFetch(() => json({}));
@@ -210,8 +259,8 @@ describe('Watch request admission', () => {
     const deferred = await runWatch('https://www.instagram.com/watch');
 
     expect(Either.isLeft(deferred) && deferred.left._tag).toBe('WatchRequestDeferred');
-    expect((await ledger()).nextWatchAllowedAt(Date.now())).toBeGreaterThan(
-      Date.now() + 59 * 60_000
-    );
+    if (Either.isLeft(deferred) && deferred.left._tag === 'WatchRequestDeferred')
+      expect(deferred.left.until).toBeGreaterThan(Date.now() + 59 * 60_000);
+    expect((await ledger()).attempts).toHaveLength(60);
   });
 });

@@ -36,7 +36,6 @@ const LEDGER_KEY = 'instagram-requests';
 class RequestPause extends Schema.Class<RequestPause>('RequestPause')({
   until: Schema.Number,
   level: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
-  probing: Schema.Boolean,
 }) {}
 
 class LedgerState extends Schema.Class<LedgerState>('LedgerState')({
@@ -111,8 +110,7 @@ class RequestLedger {
   admitWatch(now: number): WatchAdmission {
     if (this.personInFlight > 0)
       return { _tag: 'wait', until: now + BUSY_POLL_MS, reason: 'person' };
-    if (this.watchInFlight || this.currentPause?.probing)
-      return { _tag: 'wait', until: now + BUSY_POLL_MS, reason: 'watch' };
+    if (this.watchInFlight) return { _tag: 'wait', until: now + BUSY_POLL_MS, reason: 'watch' };
     const until = this.nextWatchAllowedAt(now);
     if (until <= now) return { _tag: 'admit', probe: this.currentPause !== undefined };
     const reason =
@@ -124,16 +122,10 @@ class RequestLedger {
     return { _tag: 'wait', until, reason };
   }
 
-  begin(origin: RequestOrigin, now: number, probe = false): void {
+  begin(origin: RequestOrigin, now: number): void {
     if (origin.kind === 'person') this.personInFlight++;
     else this.watchInFlight = true;
     this.attempts = [...this.attempts.filter(at => at > now - HOUR_MS), now];
-    if (probe && this.currentPause)
-      this.currentPause = RequestPause.make({
-        until: this.currentPause.until,
-        level: this.currentPause.level,
-        probing: true,
-      });
     this.persist();
   }
 
@@ -146,10 +138,8 @@ class RequestLedger {
       this.currentPause = RequestPause.make({
         until: now + Math.min(PAUSE_BASE_MS * 2 ** level, PAUSE_CEILING_MS),
         level,
-        probing: false,
       });
-    } else if (probe) {
-      // Any answer other than 429 ends the pause: the probe established that the limit lifted.
+    } else if (probe && typeof status === 'number' && status >= 200 && status < 300) {
       this.currentPause = undefined;
     }
     this.persist();
@@ -170,7 +160,7 @@ class RequestLedger {
   }
 }
 
-export const requestLedger = new RequestLedger();
+const requestLedger = new RequestLedger();
 
 const sleep = (ms: number) =>
   Effect.promise(() => new Promise<void>(resolve => setTimeout(resolve, Math.max(0, ms))));
@@ -205,7 +195,7 @@ const watchFetch = (url: string, init?: RequestInit) =>
       const now = Date.now();
       const admission = requestLedger.admitWatch(now);
       if (admission._tag === 'admit') {
-        requestLedger.begin({ kind: 'watch' }, now, admission.probe);
+        requestLedger.begin({ kind: 'watch' }, now);
         return yield* attempt(url, init, { kind: 'watch' }, admission.probe);
       }
       if (admission.until - now > IN_WORKER_WAIT_MS)
