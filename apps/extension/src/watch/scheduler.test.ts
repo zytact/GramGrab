@@ -324,7 +324,7 @@ describe('Watch scheduling', () => {
   it('continues a long Posts traversal after the rest of the round had its turn', async () => {
     await add(TARGET.username, ['stories', 'posts']);
     await add(OTHER.username);
-    await wake();
+    await wake(5);
     const baselines = acquisitions().length;
     await vi.advanceTimersByTimeAsync(12 * HOUR);
     const now = Math.floor(Date.now() / 1000);
@@ -338,7 +338,7 @@ describe('Watch scheduling', () => {
       ])
     );
 
-    await wake();
+    await wake(5);
     await wake();
 
     expect(acquisitions().slice(baselines)).toEqual([
