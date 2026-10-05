@@ -1,7 +1,7 @@
 import { connect } from 'node:net';
 import { platform, userInfo } from 'node:os';
 import { readFile } from 'node:fs/promises';
-import { Effect, Schema } from 'effect';
+import { Effect, Match, Schema } from 'effect';
 import {
   CancelRequest,
   DebugExport,
@@ -92,7 +92,13 @@ Usage:
   gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
   gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
   gramgrab watch pause|resume|delete WATCH ... [--json]
-  gramgrab watch recover notify retry|dismiss ENTRY_ID ... [--json]
+  gramgrab watch needs [--json]
+  gramgrab watch retry|dismiss|confirm ATTENTION_ID... [--json]
+  gramgrab watch inbox list [WATCH] [--json]
+  gramgrab watch inbox remove ENTRY_ID... [--json]
+  gramgrab watch inbox export ENTRY_ID... [--mode direct|frame|silent] [--at SECONDS]
+    [--reencode forbid|allow|require] [--rotate 90|180|270] [--json]
+  gramgrab watch inbox retry ENTRY_ID PLAN_ID... [--recovery original|reencode] [--json]
 
 Sources:
   SOURCE may be an Instagram post, reel, story, highlight, or profile URL. A bare username (without
@@ -535,25 +541,53 @@ function requestsHelp(arguments_: readonly string[]): boolean {
 
 /** A completed result that still reports an item or Watch it could not handle. */
 function unsuccessful(result: CommandResult): boolean {
-  if (result._tag === 'ExportResult')
-    return result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded');
-  if (result._tag === 'WatchCheckResult')
-    return (
-      result.unknownWatches.length > 0 ||
-      result.outcomes.some(
-        outcome =>
-          outcome.deferredUntil !== undefined ||
-          outcome.kinds.some(
-            kind =>
-              kind._tag === 'KindCheckFailed' ||
-              (kind._tag === 'KindCheckSkipped' && kind.reason !== 'kind-off')
-          )
-      )
-    );
-  if (result._tag === 'WatchLifecycleResult') return result.unknownWatches.length > 0;
-  if (result._tag === 'WatchRecoverResult')
-    return result.refused.length > 0 || result.unknownEntryIds.length > 0;
-  return false;
+  return Match.value(result).pipe(
+    Match.tag('ExportResult', result =>
+      result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded')
+    ),
+    Match.tag(
+      'WatchCheckResult',
+      result =>
+        result.unknownWatches.length > 0 ||
+        result.outcomes.some(
+          outcome =>
+            outcome.deferredUntil !== undefined ||
+            outcome.kinds.some(
+              kind =>
+                kind._tag === 'KindCheckFailed' ||
+                (kind._tag === 'KindCheckSkipped' && kind.reason !== 'kind-off')
+            )
+        )
+    ),
+    Match.tag('WatchLifecycleResult', result => result.unknownWatches.length > 0),
+    Match.tag(
+      'WatchAttentionRecoverResult',
+      result =>
+        result.refused.length > 0 ||
+        result.failures.length > 0 ||
+        result.unknownAttentionIds.length > 0
+    ),
+    Match.tag('WatchInboxRemoveResult', result => result.unknownEntryIds.length > 0),
+    Match.tag(
+      'WatchInboxExportResult',
+      result =>
+        result.unknownEntryIds.length > 0 ||
+        result.outcomes.some(
+          outcome =>
+            outcome.failures.length > 0 ||
+            (outcome.skipped?.length ?? 0) > 0 ||
+            outcome.warning !== undefined
+        )
+    ),
+    Match.tag(
+      'WatchRecoverResult',
+      result =>
+        result.refused.length > 0 ||
+        result.unknownEntryIds.length > 0 ||
+        (result.outcomes?.some(outcome => outcome.state !== 'recovered') ?? false)
+    ),
+    Match.orElse(() => false)
+  );
 }
 
 function printTerminal(event: EventPayload, json: boolean): void {

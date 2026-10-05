@@ -270,7 +270,12 @@ export function summarizeDiscovery(
       ref._tag === 'Sidecar' ? 'sidecar' : ref._tag === 'Avatar' ? 'avatar' : ref.mediaType,
     ...(ref._tag === 'Sidecar' ? { childCount: ref.children.length } : {}),
     discoveredAt: discovery.discoveredAt,
-    ...(inInbox(discovery, now) ? { inboxUntil: discovery.discoveredAt + RETENTION_MS } : {}),
+    ...(inInbox(discovery, now)
+      ? {
+          inboxUntil: discovery.discoveredAt + RETENTION_MS,
+          remainingRetentionMs: discovery.discoveredAt + RETENTION_MS - now,
+        }
+      : {}),
     ...(discovery.unavailable ? { unavailable: discovery.unavailable } : {}),
     ...(discovery.missingChildren ? { missingChildren: discovery.missingChildren.length } : {}),
     ...(discovery.notify ? { notify: notifyOutcome(discovery.notify) } : {}),

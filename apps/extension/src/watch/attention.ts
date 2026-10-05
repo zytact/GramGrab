@@ -1,5 +1,14 @@
 import { Schema } from 'effect';
-import { AccountId } from '@gramgrab/protocol';
+import {
+  AccountId,
+  ActionAttention,
+  CheckAttention,
+  WatchRecover,
+  type WatchAttention,
+  type ActionOutcome,
+} from '@gramgrab/protocol';
+import { summarizeDiscovery } from './discoveries.ts';
+import { recoverable } from './recovery.ts';
 import { browser } from '../lib/browser.ts';
 import { requestLedger } from '../instagram/requests.ts';
 import type { Discovery, Watch, WatchStore } from './contracts.ts';
@@ -15,40 +24,87 @@ const VIEWER_KEY = 'watch-viewer';
  * dismissed.
  */
 export function watchAttention(watch: Watch): string[] {
+  return watchAttentionItems(watch).map(item => item.attentionId);
+}
+
+export function watchAttentionItems(watch: Watch): WatchAttention[] {
   const checks = watch.enabled
-    ? watch.kinds.flatMap(kind =>
-        watch.tracking[kind]?.problem ? [`check.${watch.id}.${kind}`] : []
+    ? watch.kinds.flatMap(kind => {
+        const tracking = watch.tracking[kind];
+        const problem = tracking?.problem;
+        return problem
+          ? [
+              CheckAttention.make({
+                attentionId: `check.${watch.id}.${kind}`,
+                watchId: watch.id,
+                kind,
+                code: problem.code,
+                since: problem.at,
+                ...(tracking.lastSuccessAt === undefined
+                  ? {}
+                  : { lastSuccessAt: tracking.lastSuccessAt }),
+              }),
+            ]
+          : [];
+      })
+    : [];
+  return [...checks, ...watch.discoveries.flatMap(entry => actionAttention(watch, entry))];
+}
+
+function attentionAction(
+  watch: Watch,
+  entry: Discovery,
+  action: ActionAttention['action'],
+  outcome: ActionOutcome | undefined,
+  child?: number
+): ActionAttention[] {
+  if (
+    !outcome ||
+    outcome.dismissed ||
+    (outcome.state !== 'failed' && outcome.state !== 'unconfirmed')
+  )
+    return [];
+  const attentionId =
+    outcome.state === 'unconfirmed'
+      ? `uncertain.${entry.id}.${child}`
+      : `action.${action}.${entry.id}${child === undefined ? '' : `.${child}`}`;
+  const operations = (['retry', 'dismiss', 'confirm'] as const).filter(
+    operation =>
+      watch.enabled &&
+      recoverable(
+        entry,
+        WatchRecover.make({
+          action,
+          operation,
+          entryIds: [entry.id],
+          ...(child === undefined ? {} : { child }),
+        })
       )
-    : [];
-  const actions = watch.discoveries.flatMap(entry => [
-    ...notificationAttention(entry),
-    ...collectionAttention(entry),
-    ...downloadAttention(entry),
-  ]);
-  return [...checks, ...actions];
+  );
+  return [
+    ActionAttention.make({
+      attentionId,
+      entryId: entry.id,
+      action,
+      state: outcome.state,
+      operations,
+      ...(outcome.code ? { code: outcome.code } : {}),
+      ...(child === undefined ? {} : { child }),
+    }),
+  ];
 }
 
-function notificationAttention(entry: Discovery): string[] {
-  return entry.notify?.status === 'failed' && !entry.notify.dismissed
-    ? [`action.notify.${entry.id}`]
-    : [];
-}
-
-function collectionAttention(entry: Discovery): string[] {
-  const collect = entry.collect;
-  return collect && 'status' in collect && collect.status === 'failed' && !collect.dismissed
-    ? [`action.collect.${entry.id}`]
-    : [];
-}
-
-function downloadAttention(entry: Discovery): string[] {
-  if (!entry.download || entry.download.dismissed) return [];
-  return entry.download.children.flatMap((child, index) => {
-    if (child.status === 'uncertain') return [`uncertain.${entry.id}.${index}`];
-    return child.status === 'failed' && !child.dismissed
-      ? [`action.download.${entry.id}.${index}`]
-      : [];
-  });
+function actionAttention(watch: Watch, entry: Discovery): ActionAttention[] {
+  const summary = summarizeDiscovery(watch, entry, Date.now());
+  return [
+    ...attentionAction(watch, entry, 'notify', summary.notify),
+    ...attentionAction(watch, entry, 'collect', summary.collect),
+    ...(entry.download?.dismissed
+      ? []
+      : (summary.downloadChildren?.flatMap((outcome, index) =>
+          attentionAction(watch, entry, 'download', outcome, index)
+        ) ?? [])),
+  ];
 }
 
 /**

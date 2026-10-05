@@ -19,6 +19,7 @@ import {
   WatchCheckProgress,
   KindCheckFailed,
   KindBaselineRecorded,
+  CommandResult,
   type EventPayload,
   decodeClientMessage,
   decodeJsonFrame,
@@ -780,5 +781,163 @@ describe('version skew hint', () => {
 
   it('points at gramgrab update when they differ', () => {
     expect(versionSkewHint(status('1.3.0', '1.2.0'))).toContain('gramgrab update');
+  });
+});
+
+describe('CLI Watch attention and inbox grammar', () => {
+  const command = (...args: string[]) => parseCliArguments(['watch', ...args]).command;
+  it('parses attention IDs and optional local inbox selectors', () => {
+    expect(command('needs', '--json')).toMatchObject({ _tag: 'WatchNeeds' });
+    expect(command('retry', 'action.notify.entry-1', 'missing')).toMatchObject({
+      _tag: 'WatchAttentionRecover',
+      operation: 'retry',
+      attentionIds: ['action.notify.entry-1', 'missing'],
+    });
+    expect(command('confirm', 'uncertain.entry-1.0')).toMatchObject({ operation: 'confirm' });
+    expect(command('inbox', 'list', '123', '--username')).toMatchObject({
+      _tag: 'WatchInboxList',
+      watch: { _tag: 'UsernameSelector', username: '123' },
+    });
+    expect(command('inbox', 'remove', 'entry-1', 'missing')).toMatchObject({
+      _tag: 'WatchInboxRemove',
+      entryIds: ['entry-1', 'missing'],
+    });
+  });
+  it.each([
+    ['direct', [], { _tag: 'DirectExport' }],
+    ['frame', ['--at', '8.5'], { _tag: 'FrameExport', timestampSeconds: 8.5 }],
+    ['silent', ['--reencode', 'require'], { _tag: 'SilentExport', reencode: 'require' }],
+  ] as const)('parses %s inbox Export with rotation', (mode, options, expected) => {
+    expect(
+      command('inbox', 'export', 'entry-1', '--mode', mode, ...options, '--rotate', '270', '--json')
+    ).toMatchObject({
+      _tag: 'WatchInboxExport',
+      entryIds: ['entry-1'],
+      settings: { mode: expected, rotation: 270 },
+    });
+  });
+  it('parses frozen retries with explicit recovery', () => {
+    const planId = 'ad7a60ff-5e9f-470f-b036-f116e32fda41';
+    expect(command('inbox', 'retry', 'entry-1', planId, '--recovery', 'original')).toMatchObject({
+      _tag: 'WatchInboxRetry',
+      plans: [{ entryId: 'entry-1', planId }],
+      recovery: 'original',
+    });
+  });
+  it.each([
+    ['needs', 'extra'],
+    ['dismiss'],
+    ['retry', 'id', '--all'],
+    ['inbox', 'list', '--username'],
+    ['inbox', 'list', 'instagram', '--at', '5'],
+    ['inbox', 'remove', 'id', '--mode', 'frame'],
+    ['inbox', 'export', 'id', '--at', '5'],
+    ['inbox', 'export', 'id', '--mode', 'frame', '--at', 'Infinity'],
+    ['inbox', 'export', 'id', '--mode', 'silent'],
+    ['inbox', 'export', 'id', '--rotate', '45'],
+    ['inbox', 'retry', 'id'],
+    ['inbox', 'retry', 'id', 'bad-plan'],
+  ])('rejects invalid grammar %j', (...args) => expect(() => command(...args)).toThrow());
+});
+
+describe('CLI Watch partial terminal results', () => {
+  it.each([
+    {
+      args: ['needs'],
+      code: 0,
+      result: { _tag: 'WatchNeedsResult', items: [], watches: [], entries: [] },
+    },
+    {
+      args: ['dismiss', 'attention-1'],
+      code: 0,
+      result: {
+        _tag: 'WatchAttentionRecoverResult',
+        recoveredAttentionIds: ['attention-1'],
+        refused: [],
+        failures: [],
+        unknownAttentionIds: [],
+      },
+    },
+    {
+      args: ['retry', 'attention-1', 'attention-2'],
+      code: 1,
+      result: {
+        _tag: 'WatchAttentionRecoverResult',
+        recoveredAttentionIds: ['attention-1'],
+        refused: [],
+        failures: [
+          {
+            attentionId: 'attention-2',
+            outcome: { entryId: 'entry-2', state: 'failed', code: 'WATCH_NOTIFY_FAILED' },
+          },
+        ],
+        unknownAttentionIds: [],
+      },
+    },
+    {
+      args: ['confirm', 'missing'],
+      code: 1,
+      result: {
+        _tag: 'WatchAttentionRecoverResult',
+        recoveredAttentionIds: [],
+        refused: [],
+        failures: [],
+        unknownAttentionIds: ['missing'],
+      },
+    },
+    {
+      args: ['inbox', 'export', 'entry-1'],
+      code: 0,
+      result: {
+        _tag: 'WatchInboxExportResult',
+        outcomes: [{ entryId: 'entry-1', accepted: 1, failures: [] }],
+        unknownEntryIds: [],
+      },
+    },
+    {
+      args: ['inbox', 'export', 'entry-1', 'missing'],
+      code: 1,
+      result: {
+        _tag: 'WatchInboxExportResult',
+        outcomes: [
+          {
+            entryId: 'entry-1',
+            accepted: 1,
+            failures: [{ child: 1, code: 'BROWSER_DOWNLOAD_NETWORK_FAILED' }],
+          },
+        ],
+        unknownEntryIds: ['missing'],
+      },
+    },
+    {
+      args: ['inbox', 'remove', 'entry-1', 'missing'],
+      code: 1,
+      result: {
+        _tag: 'WatchInboxRemoveResult',
+        removedEntryIds: ['entry-1'],
+        unknownEntryIds: ['missing'],
+      },
+    },
+  ])('keeps one stdout result and exit $code for $args', async ({ args, code, result }) => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () => [
+      Progress.make({ phase: 'resolving' }),
+      Completed.make({ result: Schema.decodeUnknownSync(CommandResult)(result) }),
+    ]);
+    try {
+      const output = await runCliProcess(['watch', ...args, '--json'], endpoint);
+      expect(output.code).toBe(code);
+      expect(output.stdout.trim().split('\n')).toHaveLength(1);
+      expect(JSON.parse(output.stdout)).toEqual(result);
+      expect(
+        output.stderr
+          .trim()
+          .split('\n')
+          .map(line => JSON.parse(line))
+      ).toEqual([{ type: 'progress', phase: 'resolving' }]);
+      expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
   });
 });

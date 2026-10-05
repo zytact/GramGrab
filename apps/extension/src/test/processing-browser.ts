@@ -47,6 +47,7 @@ export async function processingBrowser(
       setTimeout(() => this.dispatchEvent(new Event('seeked')), 1);
     });
   const context = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() };
+  vi.stubGlobal('createImageBitmap', async () => ({ width: 640, height: 480, close: vi.fn() }));
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
     context as unknown as CanvasRenderingContext2D
   );
