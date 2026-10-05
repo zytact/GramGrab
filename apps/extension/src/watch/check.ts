@@ -45,7 +45,6 @@ import { readInstants, sharedInstantsFeed } from './instants.ts';
 import { fetchAvatar, readAvatar } from './avatar.ts';
 import { UsernameUnconfirmed, confirmProfile, fetchViewer } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
-import { fetchViewer } from './identity.ts';
 
 /**
  * One Watch's check runs these stages in order. `profile` confirms the current username by
