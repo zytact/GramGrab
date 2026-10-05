@@ -13,6 +13,7 @@ const SearchResponse = Schema.Struct({
       user: Schema.Struct({
         pk: SearchId,
         pk_id: SearchId,
+        id: SearchId,
         username: Schema.String,
         profile_pic_id: Schema.optional(Schema.NullOr(Schema.String)),
       }),
@@ -35,14 +36,17 @@ export const readAvatar = (raw: unknown, targetId: string, username: string) =>
     const { users } = yield* Schema.decodeUnknown(SearchResponse)(raw).pipe(
       Effect.mapError(untrusted)
     );
-    const matches = users.filter(
-      ({ user }) => names(user.pk, targetId) || names(user.pk_id, targetId)
+    const matches = users.filter(({ user }) =>
+      [user.pk, user.pk_id, user.id].some(id => names(id, targetId))
     );
     const [match] = matches;
+    const ids = [match?.user.pk, match?.user.pk_id, match?.user.id].filter(id => id !== undefined);
     const pictureId = match?.user.profile_pic_id;
     if (
       matches.length !== 1 ||
-      match!.user.username.toLowerCase() !== username.toLowerCase() ||
+      !match ||
+      !ids.every(id => names(id, targetId)) ||
+      match.user.username.toLowerCase() !== username.toLowerCase() ||
       !Schema.is(PictureId)(pictureId)
     )
       return yield* Effect.fail(untrusted());

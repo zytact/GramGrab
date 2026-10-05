@@ -513,6 +513,23 @@ describe('Avatar checks', () => {
 
   it.each([
     ['no picture identity', avatarSearch({ ...TARGET })],
+    ...['pk', 'pk_id', 'id'].map((field): [string, unknown] => [
+      `conflicting ${field}`,
+      {
+        users: [
+          {
+            user: {
+              pk: TARGET.id,
+              pk_id: TARGET.id,
+              id: TARGET.id,
+              username: TARGET.username,
+              profile_pic_id: 'PIC_B',
+              [field]: '9999',
+            },
+          },
+        ],
+      },
+    ]),
     [
       'only another account',
       avatarSearch({ id: '9999', username: TARGET.username, pictureId: 'PIC_B' }),
