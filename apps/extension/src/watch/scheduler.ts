@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect';
-import { AccountId, WatchKind, type KindCheckOutcome, type FailureCode } from '@gramgrab/protocol';
+import { AccountId, WatchKind, KindCheckOutcome, type FailureCode } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { WatchRequests } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
@@ -9,6 +9,8 @@ import { notifyCheck, resumeNotifications, notificationsNeedWork } from './notif
 import { runActions, actionsNeedWork } from './auto-download.ts';
 import { fetchViewer } from './identity.ts';
 import { readStore } from './store.ts';
+
+const liveManual = new Set<string>();
 
 export const ALARM_NAME = 'watch-pump';
 const STATE_KEY = 'watch-scheduler';
@@ -51,6 +53,16 @@ const LoginSchedule = Schema.Struct({
   /** Watches whose Posts traversal continues this round once the remaining Watches had a turn. */
   catchUp: Schema.optional(Schema.Array(Schema.UUID)),
   earlyRetries: Schema.Array(EarlyRetry),
+  manual: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        watchId: Schema.UUID,
+        checkId: Schema.UUID,
+        remainingKinds: Schema.Array(WatchKind),
+        outcomes: Schema.optional(Schema.Array(KindCheckOutcome)),
+      })
+    )
+  ),
 });
 type LoginSchedule = Schema.Schema.Type<typeof LoginSchedule>;
 
@@ -142,6 +154,13 @@ export async function runCheck(
 }
 
 type Job =
+  | {
+      readonly _tag: 'manual';
+      readonly watchId: string;
+      readonly checkId: string;
+      readonly remainingKinds: readonly WatchKind[];
+      readonly outcomes?: readonly KindCheckOutcome[];
+    }
   | { readonly _tag: 'round'; readonly watchId: string }
   | { readonly _tag: 'catchUp'; readonly watchId: string }
   | { readonly _tag: 'retry'; readonly watchId: string; readonly kind: WatchKind };
@@ -153,7 +172,12 @@ function nextJob(
   now: number
 ): { readonly job?: Job; readonly schedule: LoginSchedule } {
   const enabled = new Set(watches.filter(watch => watch.enabled).map(watch => watch.id));
-  const current: LoginSchedule = schedule ?? { nextRoundAt: now, remaining: [], earlyRetries: [] };
+  const current: LoginSchedule = {
+    ...(schedule ?? { nextRoundAt: now, remaining: [], earlyRetries: [] }),
+    manual: schedule?.manual?.filter(job => watches.some(watch => watch.id === job.watchId)),
+  };
+  const manual = current.manual?.find(job => watches.some(watch => watch.id === job.watchId));
+  if (manual) return { job: { _tag: 'manual', ...manual }, schedule: current };
   const retry = current.earlyRetries.find(item => item.at <= now && enabled.has(item.watchId));
   if (retry) return { job: { _tag: 'retry', ...retry }, schedule: current };
   const remaining = current.remaining.filter(id => enabled.has(id));
@@ -225,6 +249,30 @@ const setSchedule = (
     logins: { ...state.logins, [viewerId]: schedule(state.logins[viewerId]) },
   }));
 
+async function recoverManualJob(viewerId: string, job: Extract<Job, { _tag: 'manual' }>) {
+  if (liveManual.has(job.checkId)) return false;
+  const run = await runCheck(
+    job.watchId,
+    viewerId,
+    {
+      checkId: job.checkId,
+      feedScope: job.checkId,
+      onKind: outcome => checkpointManual(viewerId, job.watchId, job.checkId, outcome),
+    },
+    job.remainingKinds
+  );
+  if (run.deferredUntil === undefined)
+    await finishManual(viewerId, job.watchId, job.checkId, [...(job.outcomes ?? []), ...run.kinds]);
+  await refreshBadge();
+  return run.deferredUntil === undefined;
+}
+
+function jobKinds(job: Exclude<Job, { _tag: 'manual' }>): readonly WatchKind[] | undefined {
+  if (job._tag === 'retry') return [job.kind];
+  if (job._tag === 'catchUp') return ['posts'];
+  return undefined;
+}
+
 async function nextDueJob(viewerId: string) {
   const read = await readStore();
   if (read.kind === 'failed') return undefined;
@@ -240,11 +288,12 @@ async function runNextJob(viewerId: string): Promise<boolean> {
   const next = await nextDueJob(viewerId);
   if (!next) return false;
   const { job, schedule } = next;
-  const only =
-    job._tag === 'retry' ? [job.kind] : job._tag === 'catchUp' ? ['posts' as const] : undefined;
+  if (job._tag === 'manual') return await recoverManualJob(viewerId, job);
+  const only = jobKinds(job);
   const checkId = crypto.randomUUID();
   const feedScope = job._tag === 'round' ? `round:${schedule.roundId ?? checkId}` : checkId;
   const run = await runCheck(job.watchId, viewerId, { checkId, feedScope }, only);
+
   await refreshBadge();
   if (run.deferredUntil !== undefined) return false;
   const failures = run.kinds.flatMap(outcome =>
@@ -331,4 +380,112 @@ export async function scheduleOf(viewerId: string) {
     roundRemaining: schedule?.remaining.length ?? 0,
     suspended: state.suspended ?? false,
   };
+}
+
+export async function queueManual(viewerId: string, checkId: string, watches: readonly Watch[]) {
+  const watchIds = new Set<string>();
+  if (watches.length === 0) return { watchIds, release: () => {} };
+  liveManual.add(checkId);
+  try {
+    await updateState(state => {
+      const current = state.logins[viewerId] ?? {
+        nextRoundAt: nextRoundFrom(Date.now()),
+        remaining: [],
+        earlyRetries: [],
+      };
+      return {
+        ...state,
+        logins: {
+          ...state.logins,
+          [viewerId]: {
+            ...current,
+            manual: [
+              ...(current.manual ?? []),
+              ...watches
+                .filter(watch => !current.manual?.some(job => job.watchId === watch.id))
+                .map(watch => {
+                  watchIds.add(watch.id);
+                  return {
+                    watchId: watch.id,
+                    checkId,
+                    remainingKinds: watch.kinds,
+                    outcomes: [],
+                  };
+                }),
+            ],
+          },
+        },
+      };
+    }, true);
+  } catch (cause) {
+    liveManual.delete(checkId);
+    throw cause;
+  }
+  return {
+    watchIds,
+    release: () => {
+      liveManual.delete(checkId);
+    },
+  };
+}
+
+export async function checkpointManual(
+  viewerId: string,
+  watchId: string,
+  checkId: string,
+  outcome: import('@gramgrab/protocol').KindCheckOutcome
+) {
+  if (outcome._tag === 'KindCheckSkipped' && outcome.reason === 'deferred') return;
+  await updateState(state => {
+    const current = state.logins[viewerId];
+    if (!current) return state;
+    return {
+      ...state,
+      logins: {
+        ...state.logins,
+        [viewerId]: {
+          ...current,
+          manual: current.manual?.map(job =>
+            job.watchId === watchId && job.checkId === checkId
+              ? {
+                  ...job,
+                  remainingKinds: job.remainingKinds.filter(kind => kind !== outcome.kind),
+                  outcomes: [
+                    ...(job.outcomes ?? []).filter(previous => previous.kind !== outcome.kind),
+                    outcome,
+                  ],
+                }
+              : job
+          ),
+        },
+      },
+    };
+  }, true);
+}
+
+export async function finishManual(
+  viewerId: string,
+  watchId: string,
+  checkId: string,
+  outcomes: readonly import('@gramgrab/protocol').KindCheckOutcome[] = []
+) {
+  const completed = new Set(
+    outcomes.filter(outcome => outcome._tag !== 'KindCheckSkipped').map(outcome => outcome.kind)
+  );
+  const failures = outcomes.flatMap(outcome =>
+    outcome._tag === 'KindCheckFailed' && RETRYABLE.has(outcome.code)
+      ? [{ watchId, kind: outcome.kind, at: Date.now() + EARLY_RETRY_MS }]
+      : []
+  );
+  if (suspends(outcomes)) await updateState(state => ({ ...state, suspended: true }));
+  await setSchedule(viewerId, current => ({
+    ...(current ?? { nextRoundAt: Date.now(), remaining: [], earlyRetries: [] }),
+    manual: current?.manual?.filter(job => job.watchId !== watchId || job.checkId !== checkId),
+    earlyRetries: [
+      ...(current?.earlyRetries ?? []).filter(
+        retry => retry.watchId !== watchId || !completed.has(retry.kind)
+      ),
+      ...failures,
+    ],
+  }));
 }

@@ -6,6 +6,7 @@ import {
   UsernameSelector,
   WatchActions,
   WatchAdd,
+  WatchCheck,
   WatchKinds,
   WatchLifecycle,
   WatchList,
@@ -16,7 +17,7 @@ import {
   type WatchSelector,
 } from '@gramgrab/protocol';
 
-const FLAGS = new Set(['--json', '--accept-unattended', '--account-id', '--username']);
+const FLAGS = new Set(['--json', '--accept-unattended', '--account-id', '--username', '--all']);
 const VALUE_FLAGS = new Set(['--kinds', '--actions']);
 
 interface WatchArguments {
@@ -114,6 +115,18 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
       ...(actions ? { actions } : {}),
     });
   },
+  check: ({ positionals, flags, values }) => {
+    if (values.size || flags.has('--accept-unattended'))
+      throw new Error('Invalid options for watch check.');
+    if (flags.has('--all')) {
+      if (positionals.length || flags.has('--account-id') || flags.has('--username'))
+        throw new Error('Use WATCH selectors or --all, not both.');
+      return WatchCheck.make({});
+    }
+    const watches = positionals.map(value => selector(value, flags));
+    if (!watches.length) throw new Error('gramgrab watch check needs WATCH selectors or --all.');
+    return WatchCheck.make({ watches });
+  },
   recover: ({ positionals }) => {
     const [action, operation, ...entryIds] = positionals;
     if (action !== 'notify' || (operation !== 'retry' && operation !== 'dismiss'))
@@ -134,11 +147,28 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
   ),
 };
 
+const ALLOWED: Readonly<Record<string, readonly string[]>> = {
+  list: ['--json'],
+  show: ['--json', '--account-id', '--username'],
+  add: ['--json', '--accept-unattended', '--kinds', '--actions'],
+  set: ['--json', '--account-id', '--username', '--kinds', '--actions'],
+  pause: ['--json', '--account-id', '--username'],
+  resume: ['--json', '--account-id', '--username'],
+  delete: ['--json', '--account-id', '--username'],
+  check: ['--json', '--all', '--account-id', '--username'],
+  recover: ['--json'],
+};
+
 /** Parses `gramgrab watch ACTION ...` after the `watch` word. */
 export function parseWatchArguments(arguments_: readonly string[]): WatchCommand {
   const action = arguments_[0] ?? '';
   const parse = Object.hasOwn(parsers, action) ? parsers[action] : undefined;
   if (!parse)
-    throw new Error('Usage: gramgrab watch list|show|add|set|pause|resume|delete|recover');
-  return parse(split(arguments_.slice(1)));
+    throw new Error('Usage: gramgrab watch list|show|add|set|pause|resume|delete|check|recover');
+  const parsed = split(arguments_.slice(1));
+  const unknown = [...parsed.flags, ...parsed.values.keys()].find(
+    option => !ALLOWED[action]?.includes(option)
+  );
+  if (unknown) throw new Error(`Unknown option for watch ${action}: ${unknown}`);
+  return parse(parsed);
 }

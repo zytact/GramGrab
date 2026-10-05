@@ -1151,9 +1151,15 @@ async function executeCommand(
       case 'WatchShow':
       case 'WatchAdd':
       case 'WatchSet':
-      case 'WatchLifecycle': {
+      case 'WatchLifecycle':
+      case 'WatchCheck': {
         emit(Progress.make({ phase: 'resolving' }));
-        const outcome = await abortable(runWatchCommand(command, runPreparedInDocument), signal);
+        const outcome = await abortable(
+          runWatchCommand(command, runPreparedInDocument, watchCheck =>
+            emit(Progress.make({ phase: 'watch-check', watchCheck }))
+          ),
+          signal
+        );
         if (outcome.failure) {
           emit(Rejected.make({ failure: outcome.failure }));
           return;
