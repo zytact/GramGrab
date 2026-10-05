@@ -131,6 +131,27 @@ async function interrupted(keepBrowserRecord: boolean) {
 }
 
 describe('Watch auto-download and recovery', () => {
+  it('announces a delayed action failure once, including after worker reload', async () => {
+    const find = await discover();
+    for (let index = 0; index < 3; index++)
+      await harness.browser.downloads.download({ url: 'https://cdn.invalid/person.mp4' });
+    await find();
+    expect(children().map(child => child.status)).toEqual(['pending', 'pending']);
+    expect(harness.notifications.size).toBe(1);
+    for (const download of harness.downloads) download.state = 'complete';
+    harness.failDownloads(new Error('network failed'));
+    await resume();
+    await vi.advanceTimersByTimeAsync(4 * MINUTE);
+    expect(children().every(child => child.status === 'failed')).toBe(true);
+    expect(harness.notifications.size).toBe(2);
+    expect([...harness.notifications.values()].at(-1)?.message).toContain('Download:');
+
+    await harness.loadWorker();
+    harness.fireAlarm('watch-pump');
+    await vi.advanceTimersByTimeAsync(4 * MINUTE);
+    expect(harness.notifications.size).toBe(2);
+  });
+
   it('persists independent actions, accepts each child once, and records History at acceptance', async () => {
     const find = await discover();
     await find();

@@ -127,6 +127,7 @@ const ChildDownload = Schema.Union(
     code: FailureCodeSchema,
     at: EpochMillis,
     dismissed: Schema.optional(Schema.Boolean),
+    notificationAttempted: Schema.optional(Schema.Literal(true)),
   }),
   Schema.Struct({ status: Schema.Literal('uncertain'), at: EpochMillis }),
   /** The person said they have the file after an uncertain interruption. */
@@ -148,6 +149,7 @@ const CollectRecord = Schema.Union(
     at: EpochMillis,
     code: Schema.Literal('WATCH_STORE_FAILED', 'WATCH_STORE_CAPACITY_EXCEEDED'),
     dismissed: Schema.Boolean,
+    notificationAttempted: Schema.optional(Schema.Literal(true)),
   })
 );
 

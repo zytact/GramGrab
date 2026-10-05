@@ -313,6 +313,9 @@ async function collect(watch: Watch, entry: Discovery): Promise<void> {
   }
 }
 
+const collectNeedsWork = (entry: Discovery) =>
+  entry.collect !== undefined && 'status' in entry.collect && entry.collect.status === 'pending';
+
 const downloadNeedsWork = (entry: Discovery) =>
   entry.download !== undefined &&
   !entry.download.dismissed &&
@@ -322,6 +325,10 @@ const downloadNeedsWork = (entry: Discovery) =>
       child.status === 'starting' ||
       (child.status === 'accepted' && child.historySaved === false)
   );
+
+export const actionsNeedWork = (watch: Watch) =>
+  watch.enabled &&
+  watch.discoveries.some(entry => collectNeedsWork(entry) || downloadNeedsWork(entry));
 
 async function resumeChild(watch: Watch, entry: Discovery, index: number, child: ChildDownload) {
   if (inFlight.has(childKey(entry.id, index))) return;
@@ -397,10 +404,11 @@ const exportPending = Effect.fn(function* (watch: Watch, entry: Discovery) {
 
 export const finishActions = Effect.fn(function* (watch: Watch) {
   for (const entry of watch.discoveries) {
+    if (!collectNeedsWork(entry) && !downloadNeedsWork(entry)) continue;
+    if (!(yield* authorized(watch))) return;
     yield* Effect.promise(() => collect(watch, entry));
     const download = entry.download;
     if (!download || !downloadNeedsWork(entry)) continue;
-    if (!(yield* authorized(watch))) return;
     for (const [index, child] of download.children.entries())
       yield* Effect.promise(() => resumeChild(watch, entry, index, child));
     if (!(yield* exportPending(watch, entry))) return;

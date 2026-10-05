@@ -5,8 +5,8 @@ import { WatchRequests } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
 import { refreshBadge } from './attention.ts';
 import { checkWatch, type CheckScope } from './check.ts';
-import { notifyCheck, resumeNotifications } from './notify.ts';
-import { runActions } from './auto-download.ts';
+import { notifyCheck, resumeNotifications, notificationsNeedWork } from './notify.ts';
+import { runActions, actionsNeedWork } from './auto-download.ts';
 import { fetchViewer } from './identity.ts';
 import { readStore } from './store.ts';
 
@@ -196,7 +196,10 @@ const verifyViewer = () =>
 
 const hasDueWork = (state: SchedulerState, watches: readonly Watch[]) =>
   watches.some(
-    watch => nextJob(state.logins[watch.viewerId], [watch], Date.now()).job !== undefined
+    watch =>
+      nextJob(state.logins[watch.viewerId], [watch], Date.now()).job !== undefined ||
+      actionsNeedWork(watch) ||
+      notificationsNeedWork(watch)
   );
 
 /** The verified login whose Watch work may run now, or undefined while nothing may run. */

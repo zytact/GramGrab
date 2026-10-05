@@ -3,7 +3,7 @@ import type { WatchKind } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { fetchBlobAsDataUrl } from '../effect/instagram.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
-import type { Discovery, Watch } from './contracts.ts';
+import type { ChildDownload, Discovery, Watch } from './contracts.ts';
 import { KIND_OF_REF } from './discoveries.ts';
 import { mutateStore, readStore } from './store.ts';
 import { fetchViewer } from './identity.ts';
@@ -24,6 +24,27 @@ const KIND_NAME: Record<WatchKind, string> = {
   instants: 'Instants',
   avatar: 'Avatar',
 };
+
+const failureLines = (entry: Discovery, includeAttempted = false) => [
+  ...(entry.download?.children.flatMap(child =>
+    child.status === 'failed' && (includeAttempted || !child.notificationAttempted)
+      ? [`Download: ${FAILURE_PRESENTATION[child.code].title}`]
+      : []
+  ) ?? []),
+  ...(entry.collect &&
+  'status' in entry.collect &&
+  entry.collect.status === 'failed' &&
+  (includeAttempted || !entry.collect.notificationAttempted)
+    ? [`Collect: ${FAILURE_PRESENTATION[entry.collect.code].title}`]
+    : []),
+];
+
+const notificationNeedsWork = (entry: Discovery) =>
+  entry.notify?.status === 'pending' ||
+  (entry.notify?.status === 'done' && failureLines(entry).length > 0);
+
+export const notificationsNeedWork = (watch: Watch) =>
+  watch.enabled && watch.discoveries.some(notificationNeedsWork);
 
 /** "2 new Posts, 1 Avatar change", in the order the kinds are checked. */
 function foundLine(discoveries: readonly Discovery[]): string | undefined {
@@ -73,6 +94,26 @@ async function show(
 }
 
 /** Records each entry's notify outcome; a failure stays until someone retries or dismisses it. */
+const recordEntry = (
+  discovery: Discovery,
+  code: 'WATCH_NOTIFY_PERMISSION_DENIED' | 'WATCH_NOTIFY_FAILED' | undefined,
+  at: number
+): Discovery => ({
+  ...discovery,
+  notify: code ? { status: 'failed', code, at, dismissed: false } : { status: 'done', at },
+  download: discovery.download && {
+    ...discovery.download,
+    children: discovery.download.children.map(
+      (child): ChildDownload =>
+        child.status === 'failed' ? { ...child, notificationAttempted: true } : child
+    ),
+  },
+  collect:
+    discovery.collect && 'status' in discovery.collect && discovery.collect.status === 'failed'
+      ? { ...discovery.collect, notificationAttempted: true }
+      : discovery.collect,
+});
+
 const record = (
   watchId: string,
   entryIds: readonly string[],
@@ -86,14 +127,7 @@ const record = (
         : {
             ...watch,
             discoveries: watch.discoveries.map(discovery =>
-              entryIds.includes(discovery.id)
-                ? {
-                    ...discovery,
-                    notify: code
-                      ? { status: 'failed' as const, code, at, dismissed: false }
-                      : { status: 'done' as const, at },
-                  }
-                : discovery
+              entryIds.includes(discovery.id) ? recordEntry(discovery, code, at) : discovery
             ),
           }
     );
@@ -116,24 +150,22 @@ export async function notifyCheck(
   pictureUrl: string | undefined
 ): Promise<void> {
   const watch = await findWatch(watchId);
-  if (!watch?.enabled || !watch.actions.includes('notify')) return;
+  if (!watch?.enabled) return;
   const found = watch.discoveries.filter(
     discovery => discovery.checkId === checkId && discovery.notify?.status === 'pending'
   );
-  const problems = watch.kinds.flatMap(kind => {
+  const failedActions = watch.discoveries.filter(
+    entry =>
+      entry.checkId === checkId && entry.notify?.status === 'done' && failureLines(entry).length > 0
+  );
+  const affected = [...found, ...failedActions];
+  const problems = (watch.actions.includes('notify') ? watch.kinds : []).flatMap(kind => {
     const problem = watch.tracking[kind]?.problem;
     return problem && problem.at >= startedAt
       ? [`${KIND_NAME[kind]}: ${FAILURE_PRESENTATION[problem.code].title}`]
       : [];
   });
-  const actionFailures = found.flatMap(entry => [
-    ...(entry.download?.children.flatMap(child =>
-      child.status === 'failed' ? [`Download: ${FAILURE_PRESENTATION[child.code].title}`] : []
-    ) ?? []),
-    ...(entry.collect && 'status' in entry.collect && entry.collect.status === 'failed'
-      ? [`Collect: ${FAILURE_PRESENTATION[entry.collect.code].title}`]
-      : []),
-  ]);
+  const actionFailures = affected.flatMap(entry => failureLines(entry));
   const message = [foundLine(found), ...problems, ...new Set(actionFailures)]
     .filter(Boolean)
     .join('\n');
@@ -143,10 +175,10 @@ export async function notifyCheck(
   );
   if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) return;
   const code = await show(watch, message, pictureUrl);
-  if (found.length > 0)
+  if (affected.length > 0)
     await record(
       watchId,
-      found.map(discovery => discovery.id),
+      affected.map(discovery => discovery.id),
       code
     );
 }
@@ -163,19 +195,29 @@ export async function retryNotify(
     );
     if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) continue;
     const ids = entries.filter(entry => entry.watchId === watchId).map(entry => entry.entryId);
-    const line = foundLine(watch.discoveries.filter(discovery => ids.includes(discovery.id)));
-    if (line) await record(watchId, ids, await show(watch, line, undefined));
+    const chosen = watch.discoveries.filter(discovery => ids.includes(discovery.id));
+    const message = [
+      foundLine(chosen),
+      ...new Set(chosen.flatMap(entry => failureLines(entry, true))),
+    ]
+      .filter(Boolean)
+      .join('\n');
+    if (message) await record(watchId, ids, await show(watch, message, undefined));
   }
 }
 
 export async function resumeNotifications(watchId: string): Promise<void> {
   const watch = await findWatch(watchId);
   if (!watch?.enabled) return;
-  const pending = watch.discoveries.filter(entry => entry.notify?.status === 'pending');
+  const pending = watch.discoveries.filter(notificationNeedsWork);
   for (const checkId of new Set(pending.map(entry => entry.checkId))) {
-    const startedAt = Math.min(
-      ...pending.filter(entry => entry.checkId === checkId).map(entry => entry.discoveredAt)
+    const firstNotification = pending.filter(
+      entry => entry.checkId === checkId && entry.notify?.status === 'pending'
     );
+    const startedAt =
+      firstNotification.length > 0
+        ? Math.min(...firstNotification.map(entry => entry.discoveredAt))
+        : Date.now();
     await notifyCheck(watchId, checkId, startedAt, undefined);
   }
 }
