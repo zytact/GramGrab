@@ -175,20 +175,27 @@ const setSchedule = (
     logins: { ...state.logins, [viewerId]: schedule(state.logins[viewerId]) },
   }));
 
-/** Runs the login's next due job. False when nothing more should run in this wake. */
-async function runNextJob(viewerId: string): Promise<boolean> {
+async function authorizedJob(viewerId: string) {
   const read = await readStore();
-  if (read.kind === 'failed') return false;
+  if (read.kind === 'failed') return undefined;
   const watches = read.store.watches.filter(watch => watch.viewerId === viewerId);
   const { job, schedule } = nextJob((await loadState()).logins[viewerId], watches, Date.now());
   await setSchedule(viewerId, () => schedule);
-  if (!job) return false;
+  if (!job) return undefined;
   const currentViewerId = await readyViewer();
-  if (!currentViewerId) return false;
+  if (!currentViewerId) return undefined;
   if (currentViewerId !== viewerId) {
     await updateState(current => ({ ...current, suspended: true }));
-    return false;
+    return undefined;
   }
+  return { job, schedule };
+}
+
+/** Runs the login's next due job. False when nothing more should run in this wake. */
+async function runNextJob(viewerId: string): Promise<boolean> {
+  const next = await authorizedJob(viewerId);
+  if (!next) return false;
+  const { job, schedule } = next;
   const only = job._tag === 'retry' ? [job.kind] : undefined;
   const run = await exclusive(() =>
     Effect.runPromise(
