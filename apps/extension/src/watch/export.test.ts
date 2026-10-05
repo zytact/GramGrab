@@ -190,6 +190,41 @@ describe('Watch inbox Export', () => {
     });
   });
 
+  it('keeps an unsupported recorded Sidecar child retryable rather than marking it absent', async () => {
+    const { entryId, post } = await discoverPost({ id: '610', children: ['611', '612'] });
+    const valid = restMedia(post);
+    const parents = valid.items.map(item => ({
+      ...item,
+      carousel_media:
+        'carousel_media' in item && Array.isArray(item.carousel_media) ? item.carousel_media : [],
+    }));
+    instagram.state.media.C610 = {
+      ...valid,
+      items: parents.map(parent => ({
+        ...parent,
+        carousel_media: parent.carousel_media.map(child => ({
+          ...child,
+          media_type: child.pk === '612' ? 99 : child.media_type,
+        })),
+      })),
+    };
+    const failed = await exportEntries(entryId);
+    expect(failed.outcomes[0]?.failures).toEqual([{ code: 'IG_RESPONSE_SHAPE_UNKNOWN' }]);
+    expect((await inbox())[0]).not.toHaveProperty('unavailable');
+    expect((await inbox())[0]).not.toHaveProperty('missingChildren');
+    expect(harness.downloads).toHaveLength(0);
+
+    instagram.state.media.C610 = {
+      ...valid,
+      items: parents.map(parent => ({
+        ...parent,
+        carousel_media: [...parent.carousel_media, { pk: '613', media_type: 99 }],
+      })),
+    };
+    expect((await exportEntries(entryId)).outcomes[0]).toMatchObject({ accepted: 2, failures: [] });
+    expect(harness.downloads).toHaveLength(2);
+  });
+
   it('fails an expired Story without a request and keeps it unavailable', async () => {
     const cutoff = await watching('stories');
     instagram.state.stories[TARGET.id] = storyResponse(TARGET.id, [

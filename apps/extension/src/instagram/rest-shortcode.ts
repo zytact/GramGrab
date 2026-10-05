@@ -73,6 +73,7 @@ const OwnerIdentity = Schema.Struct({
   id: Schema.optional(Schema.String),
   pk_id: Schema.optional(Schema.String),
 });
+const ChildIdentity = Schema.Struct({ pk: Schema.String, media_type: Schema.Number });
 const WatchMediaIdentity = Schema.Struct({
   items: Schema.Array(
     Schema.Struct({
@@ -81,6 +82,7 @@ const WatchMediaIdentity = Schema.Struct({
       media_type: Schema.Number,
       user: OwnerIdentity,
       owner: Schema.optional(OwnerIdentity),
+      carousel_media: Schema.optional(Schema.NullOr(Schema.Array(ChildIdentity))),
     })
   ),
 });
@@ -89,6 +91,10 @@ interface ExpectedMedia {
   readonly parentId: string;
   readonly ownerId: string;
   readonly mediaType: 1 | 2 | 8;
+  readonly children?: readonly {
+    readonly mediaId: string;
+    readonly mediaType: 'image' | 'video';
+  }[];
 }
 
 const ownerMatches = (owner: Schema.Schema.Type<typeof OwnerIdentity>, expected: string) => {
@@ -96,19 +102,38 @@ const ownerMatches = (owner: Schema.Schema.Type<typeof OwnerIdentity>, expected:
   return ids.length > 0 && ids.every(id => id === expected);
 };
 
+const childrenMatch = (
+  children: readonly Schema.Schema.Type<typeof ChildIdentity>[] | undefined | null,
+  expected: ExpectedMedia['children']
+) =>
+  expected === undefined ||
+  (children !== undefined &&
+    children !== null &&
+    expected.every(ref => {
+      const matches = children.filter(child => child.pk === ref.mediaId);
+      const [child] = matches;
+      return (
+        matches.length === 0 ||
+        (matches.length === 1 && child?.media_type === (ref.mediaType === 'image' ? 1 : 2))
+      );
+    }));
+
+const mediaMatches = (
+  item: Schema.Schema.Type<typeof WatchMediaIdentity>['items'][number],
+  expected: ExpectedMedia
+) =>
+  item.pk === expected.parentId &&
+  item.media_type === expected.mediaType &&
+  ownerMatches(item.user, expected.ownerId) &&
+  (item.owner === undefined || ownerMatches(item.owner, expected.ownerId)) &&
+  childrenMatch(item.carousel_media, expected.children);
+
 const verifyExpectedMedia = (raw: unknown, shortcode: string, expected: ExpectedMedia) =>
   decode(WatchMediaIdentity, raw).pipe(
     Effect.filterOrFail(response => {
       const matches = response.items.filter(item => item.code === shortcode);
       const [item] = matches;
-      return (
-        matches.length === 1 &&
-        item !== undefined &&
-        item.pk === expected.parentId &&
-        item.media_type === expected.mediaType &&
-        ownerMatches(item.user, expected.ownerId) &&
-        (item.owner === undefined || ownerMatches(item.owner, expected.ownerId))
-      );
+      return matches.length === 1 && item !== undefined && mediaMatches(item, expected);
     }, unknownShape)
   );
 
