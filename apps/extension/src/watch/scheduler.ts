@@ -157,7 +157,7 @@ async function readyViewer(): Promise<string | undefined> {
   const state = await loadState();
   if (state.suspended || (state.startupHoldUntil ?? 0) > Date.now()) return undefined;
   const read = await readStore();
-  if (read.kind === 'failed' || read.store.watches.length === 0) return undefined;
+  if (read.kind === 'failed') return undefined;
   if (!hasDueWork(state, read.store.watches)) return undefined;
   const viewer = await verifyViewer();
   if (viewer._tag === 'Right') return viewer.right.accountId;
