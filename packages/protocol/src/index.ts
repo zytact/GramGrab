@@ -1,4 +1,13 @@
 import { Schema } from 'effect';
+import { ExportMode, ExportSettings, Rotation } from './export-modes.ts';
+export {
+  DirectExport,
+  FrameExport,
+  SilentExport,
+  ExportMode,
+  Rotation,
+  ExportSettings,
+} from './export-modes.ts';
 import { FailureCodeSchema } from './failures.ts';
 import { WatchCommand, WatchFailureDetail, WatchResult } from './watch.ts';
 
@@ -31,23 +40,6 @@ export class MediaIdentity extends Schema.Class<MediaIdentity>('MediaIdentity')(
   itemIndex: InternalItemIndex,
   mediaId: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
 }) {}
-
-export class DirectExport extends Schema.TaggedClass<DirectExport>()('DirectExport', {}) {}
-
-export class FrameExport extends Schema.TaggedClass<FrameExport>()('FrameExport', {
-  timestampSeconds: Schema.Number.pipe(Schema.nonNegative()),
-}) {}
-
-export class SilentExport extends Schema.TaggedClass<SilentExport>()('SilentExport', {
-  reencode: Schema.Literal('forbid', 'allow', 'require'),
-}) {}
-
-export const ExportMode = Schema.Union(DirectExport, FrameExport, SilentExport);
-export type ExportMode = Schema.Schema.Type<typeof ExportMode>;
-
-/** The clockwise turn applied to an export's output. Absent means unrotated. */
-export const Rotation = Schema.Literal(90, 180, 270);
-export type Rotation = Schema.Schema.Type<typeof Rotation>;
 
 export class ExportOperation extends Schema.Class<ExportOperation>('ExportOperation')({
   operationId: OperationId,
@@ -170,6 +162,7 @@ export const RequestFailure = Schema.Union(
 export type RequestFailure = Schema.Schema.Type<typeof RequestFailure>;
 
 export class ItemSucceeded extends Schema.TaggedClass<ItemSucceeded>()('ItemSucceeded', {
+  warning: Schema.optional(Schema.Literal('HISTORY_SAVE_FAILED')),
   operationId: OperationId,
   itemNumber: HumanItemNumber,
   mediaIdentity: MediaIdentity,
@@ -258,6 +251,9 @@ export class HistoryEntry extends Schema.Class<HistoryEntry>('HistoryEntry')({
   filenameHint: Schema.String.pipe(Schema.nonEmptyString()),
   exportMode: Schema.optional(Schema.Literal('direct', 'frame', 'silent')),
   frameTimestampSeconds: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  rotation: Schema.optional(Rotation),
+  requestedExport: Schema.optional(ExportSettings),
+  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
   downloadedAt: Schema.Number.pipe(Schema.nonNegative()),
 }) {}
 

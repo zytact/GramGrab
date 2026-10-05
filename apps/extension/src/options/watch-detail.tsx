@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   AccountIdSelector,
   WatchCheck,
-  WatchInboxExport,
   WatchInboxList,
   WatchInboxRemove,
   WatchShow,
@@ -18,6 +17,7 @@ import { sendMessage } from '../messaging/send.ts';
 import type { WatchCommandResponse, WatchFailure } from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { KIND_LABEL, relativeTime } from './copy.ts';
+import { useInboxSelection } from './inbox-export.tsx';
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -138,7 +138,7 @@ function ExportResult({
   const accepted = outcome.accepted === 1 ? '1 file' : `${outcome.accepted} files`;
   return (
     <span className="opt-meta">
-      {outcome.accepted > 0 && `Download started for ${accepted}. `}
+      {outcome.accepted > 0 && `Browser accepted ${accepted} for this plan. `}
       {outcome.failures.map(({ child, code }) => (
         <span key={`${child}-${code}`} className="opt-error">
           {child !== undefined && `Item ${child + 1}: `}
@@ -152,6 +152,11 @@ function ExportResult({
               Open in Instagram
             </a>
           )}{' '}
+        </span>
+      ))}
+      {outcome.skipped?.map(({ child }) => (
+        <span key={child ?? 'item'} className="opt-error">
+          {child !== undefined && `Item ${child + 1}: `}Re-encoding needs your approval.{' '}
         </span>
       ))}
       {outcome.warning && 'It could not be added to History.'}
@@ -180,13 +185,13 @@ function DiscoveryList({
   return (
     <>
       {entries.map(entry => {
-        const outcome = selection?.outcomes.get(entry.entryId);
+        const outcome = selection?.outcomes.get(entry.entryId) ?? entry.manualExport;
         return (
           <div key={entry.entryId} className="opt-line opt-row opt-top">
             {selection && (
               <input
                 type="checkbox"
-                aria-label="Select for Download Original"
+                aria-label="Select for download"
                 checked={selection.selected.has(entry.entryId)}
                 disabled={entry.unavailable !== undefined}
                 onChange={() => selection.onToggle(entry.entryId)}
@@ -217,7 +222,7 @@ function DiscoveryList({
 const removeEntry = (entryId: string) => runCommand(WatchInboxRemove.make({ entryIds: [entryId] }));
 
 /**
- * Inbox entries a person can select and download as Original. Exporting keeps every entry in the
+ * Inbox entries a person can select and download. Exporting keeps every entry in the
  * inbox; an entry already known to be gone cannot be selected.
  */
 function InboxList({
@@ -229,56 +234,21 @@ function InboxList({
   showAccount: boolean;
   onChanged: () => void;
 }) {
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [outcomes, setOutcomes] = useState<ReadonlyMap<string, InboxExportOutcome>>(new Map());
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<WatchFailure>();
-  const chosen = entries.filter(
-    entry => selected.has(entry.entryId) && entry.unavailable === undefined
-  );
-  const onToggle = (entryId: string) =>
-    setSelected(current => {
-      const next = new Set(current);
-      if (!next.delete(entryId)) next.add(entryId);
-      return next;
-    });
-  const download = async () => {
-    setBusy(true);
-    const response = await runCommand(
-      WatchInboxExport.make({ entryIds: chosen.map(entry => entry.entryId) })
-    );
-    setBusy(false);
-    setFailure(response.failure);
-    if (response.result?._tag === 'WatchInboxExportResult') {
-      setOutcomes(new Map(response.result.outcomes.map(outcome => [outcome.entryId, outcome])));
-      setSelected(new Set());
-    }
-    onChanged();
-  };
+  const exporter = useInboxSelection();
   return (
     <>
-      {entries.length > 0 && (
-        <div className="opt-row opt-between">
-          <span className="opt-meta">
-            Downloads the exact media as Original. Entries stay in the inbox.
-          </span>
-          <button
-            className="opt-btn"
-            disabled={busy || chosen.length === 0}
-            onClick={() => void download()}
-          >
-            {busy ? 'Starting downloads…' : `Download Original (${chosen.length})`}
-          </button>
-        </div>
-      )}
-      {failure?._tag === 'CommandFailure' && (
-        <p className="opt-meta opt-error">{FAILURE_PRESENTATION[failure.failure.code].title}</p>
-      )}
       <DiscoveryList
         entries={entries}
         showAccount={showAccount}
         onRemove={entryId => void removeEntry(entryId).then(onChanged)}
-        selection={{ selected, onToggle, outcomes }}
+        selection={{
+          selected: new Set(exporter.selected.keys()),
+          outcomes: exporter.outcomes,
+          onToggle: entryId => {
+            const entry = entries.find(candidate => candidate.entryId === entryId);
+            if (entry) exporter.toggle(entry);
+          },
+        }}
       />
     </>
   );

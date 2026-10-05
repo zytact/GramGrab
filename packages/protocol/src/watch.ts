@@ -1,5 +1,6 @@
 import { Schema } from 'effect';
 import { FailureCodeSchema } from './failures.ts';
+import { ExportSettings } from './export-modes.ts';
 
 const NonEmptyString = Schema.String.pipe(Schema.nonEmptyString());
 const EpochMillis = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
@@ -79,9 +80,17 @@ export class WatchInboxRemove extends Schema.TaggedClass<WatchInboxRemove>()('Wa
   entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
 }) {}
 
-/** Downloads the exact recorded media of each inbox entry, as Original. */
+/** Downloads the exact recorded media of each inbox entry with a frozen Export plan. */
 export class WatchInboxExport extends Schema.TaggedClass<WatchInboxExport>()('WatchInboxExport', {
   entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
+  settings: Schema.optional(ExportSettings),
+}) {}
+
+export class WatchInboxRetry extends Schema.TaggedClass<WatchInboxRetry>()('WatchInboxRetry', {
+  plans: Schema.Array(Schema.Struct({ entryId: NonEmptyString, planId: Schema.UUID })).pipe(
+    Schema.minItems(1)
+  ),
+  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
 }) {}
 
 /** Retries or dismisses a failed action of each entry; other entries cannot be recovered so. */
@@ -102,6 +111,7 @@ export const WatchCommand = Schema.Union(
   WatchInboxList,
   WatchInboxRemove,
   WatchInboxExport,
+  WatchInboxRetry,
   WatchRecover
 );
 export type WatchCommand = Schema.Schema.Type<typeof WatchCommand>;
@@ -178,8 +188,30 @@ export class ActionOutcome extends Schema.Class<ActionOutcome>('ActionOutcome')(
 }) {}
 
 /** One discovery as the page and CLI show it: no media bytes, URLs, or captions. */
+/**
+ * One entry's Export: how many files the browser accepted, and each failure, with the 0-based
+ * Sidecar child it concerns when it concerns one.
+ */
+export class InboxExportOutcome extends Schema.Class<InboxExportOutcome>('InboxExportOutcome')({
+  entryId: NonEmptyString,
+  planId: Schema.optional(Schema.UUID),
+  accepted: Count,
+  skipped: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        child: Schema.optional(Count),
+        code: Schema.Literal('SILENT_REENCODE_DECLINED'),
+      })
+    )
+  ),
+  failures: Schema.Array(Schema.Struct({ child: Schema.optional(Count), code: FailureCodeSchema })),
+  /** An accepted file's History receipt could not be saved. */
+  warning: Schema.optional(Schema.Literal('HISTORY_SAVE_FAILED')),
+}) {}
+
 export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoverySummary')({
   entryId: NonEmptyString,
+  manualExport: Schema.optional(InboxExportOutcome),
   watchId: NonEmptyString,
   accountId: AccountId,
   username: InstagramUsername,
@@ -292,18 +324,6 @@ export class WatchLifecycleResult extends Schema.TaggedClass<WatchLifecycleResul
     unknownWatches: Schema.Array(NonEmptyString),
   }
 ) {}
-
-/**
- * One entry's Export: how many files the browser accepted, and each failure, with the 0-based
- * Sidecar child it concerns when it concerns one.
- */
-export class InboxExportOutcome extends Schema.Class<InboxExportOutcome>('InboxExportOutcome')({
-  entryId: NonEmptyString,
-  accepted: Count,
-  failures: Schema.Array(Schema.Struct({ child: Schema.optional(Count), code: FailureCodeSchema })),
-  /** An accepted file's History receipt could not be saved. */
-  warning: Schema.optional(Schema.Literal('HISTORY_SAVE_FAILED')),
-}) {}
 
 export class WatchInboxExportResult extends Schema.TaggedClass<WatchInboxExportResult>()(
   'WatchInboxExportResult',

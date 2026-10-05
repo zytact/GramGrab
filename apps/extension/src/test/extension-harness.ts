@@ -70,6 +70,7 @@ interface FakeDownload {
   state: 'in_progress' | 'complete' | 'interrupted';
   startTime: string;
   byExtensionId: string;
+  fileSize?: number;
 }
 
 type EventHook<T extends (...args: never[]) => unknown> = {
@@ -111,6 +112,8 @@ export function createExtensionHarness() {
   >();
   const grantedPermissions = new Set<string>();
   let messageListener: Listener | undefined;
+  let runnerListener: Listener | undefined;
+  let loadingRunner = false;
   let nativeListener: ((message: unknown) => void) | undefined;
   let badge = '';
   let downloadFailure: Error | undefined;
@@ -129,7 +132,12 @@ export function createExtensionHarness() {
       getManifest: vi.fn(() => ({ version: 'test' })),
       sendMessage: vi.fn((message: unknown) => send(message)),
       openOptionsPage: vi.fn(async () => undefined),
-      onMessage: { addListener: vi.fn((listener: Listener) => (messageListener = listener)) },
+      onMessage: {
+        addListener: vi.fn((listener: Listener) => {
+          if (loadingRunner) runnerListener = listener;
+          else messageListener = listener;
+        }),
+      },
       onStartup,
       onInstalled,
       connectNative: vi.fn(() => ({
@@ -148,7 +156,12 @@ export function createExtensionHarness() {
       query: vi.fn(async () => []),
       create: vi.fn(async () => ({ id: 1 })),
       update: vi.fn(async () => undefined),
-      sendMessage: vi.fn(async () => undefined),
+      sendMessage: vi.fn(
+        (_tabId: number, message: unknown): Promise<unknown> =>
+          new Promise(resolve => {
+            if (!runnerListener || !runnerListener(message, {}, resolve)) resolve(undefined);
+          })
+      ),
       remove: vi.fn(async () => undefined),
     },
     windows: {
@@ -252,6 +265,7 @@ export function createExtensionHarness() {
   async function loadWorker() {
     vi.resetModules();
     messageListener = undefined;
+    runnerListener = undefined;
     nativeListener = undefined;
     onStartup.listeners.length = 0;
     onInstalled.listeners.length = 0;
@@ -261,11 +275,23 @@ export function createExtensionHarness() {
     await import('../background.ts');
   }
 
-  function send<T = unknown>(message: unknown): Promise<T> {
+  async function loadRunner() {
+    if (!runnerListener) {
+      loadingRunner = true;
+      try {
+        await import('../runner.ts');
+      } finally {
+        loadingRunner = false;
+      }
+    }
+    await send({ type: 'RUNNER_READY' }, { tab: { id: 1 } });
+  }
+
+  function send<T = unknown>(message: unknown, sender: { tab?: { id: number } } = {}): Promise<T> {
     if (!messageListener) throw new Error('Background worker is not loaded');
     const listener = messageListener;
     return new Promise(resolve => {
-      if (!listener(message, {}, response => resolve(response as T))) resolve(undefined as T);
+      if (!listener(message, sender, response => resolve(response as T))) resolve(undefined as T);
     });
   }
 
@@ -318,6 +344,7 @@ export function createExtensionHarness() {
     },
     setFetch,
     loadWorker,
+    loadRunner,
     send,
     command,
     fireStartup: () => onStartup.listeners.forEach(listener => listener()),

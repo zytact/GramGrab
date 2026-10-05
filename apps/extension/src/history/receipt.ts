@@ -1,4 +1,5 @@
 import type { Rotation } from '../rotation/contracts.ts';
+import type { ExportSettings } from '@gramgrab/protocol';
 import type { DownloadHistoryEntry } from './contracts.ts';
 
 export interface AcceptedHistoryOperation {
@@ -9,6 +10,8 @@ export interface AcceptedHistoryOperation {
   exportMode?: 'direct' | 'frame' | 'silent';
   frameTimestampSeconds?: number;
   rotation?: Rotation;
+  requestedExport?: ExportSettings;
+  recovery?: 'original' | 'reencode';
 }
 
 function createHistoryId(): string {
@@ -34,6 +37,8 @@ export function acceptedHistoryEntry(
       ? { frameTimestampSeconds: item.frameTimestampSeconds }
       : {}),
     ...(item.rotation ? { rotation: item.rotation } : {}),
+    ...(item.requestedExport ? { requestedExport: item.requestedExport } : {}),
+    ...(item.recovery ? { recovery: item.recovery } : {}),
     downloadedAt: Date.now(),
     outcome: 'accepted',
   };

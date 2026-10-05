@@ -1,5 +1,6 @@
 import { Schema } from 'effect';
 import {
+  ExportSettings,
   AccountId,
   FailureCodeSchema,
   InstagramUsername,
@@ -153,6 +154,23 @@ const CollectRecord = Schema.Union(
   })
 );
 
+const ManualExportPlan = Schema.Struct({
+  id: Schema.UUID,
+  children: Schema.Array(
+    Schema.Struct({
+      operationId: Schema.UUID,
+      requested: ExportSettings,
+      recovery: Schema.optional(Schema.Literal('original', 'reencode')),
+      state: Schema.Literal('pending', 'starting', 'accepted', 'failed', 'skipped'),
+      code: Schema.optional(
+        Schema.Union(FailureCodeSchema, Schema.Literal('SILENT_REENCODE_DECLINED'))
+      ),
+      historySaved: Schema.optional(Schema.Boolean),
+    })
+  ),
+});
+export type ManualExportPlan = Schema.Schema.Type<typeof ManualExportPlan>;
+
 const Discovery = Schema.Struct({
   id: Schema.UUID,
   /** The Watch check that found it, so one notification can summarize a check. */
@@ -173,6 +191,7 @@ const Discovery = Schema.Struct({
   notify: Schema.optional(NotifyRecord),
   download: Schema.optional(DownloadRecord),
   collect: Schema.optional(CollectRecord),
+  manualExport: Schema.optional(ManualExportPlan),
 });
 export type Discovery = Schema.Schema.Type<typeof Discovery>;
 

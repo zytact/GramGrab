@@ -734,6 +734,27 @@ async function runInDocument(command: ProtocolExportCommand) {
   });
 }
 
+async function runPreparedInDocument(
+  request: Omit<MessageOf<'RUN_EXPORT'>, 'type'>
+): Promise<ProtocolExportResult> {
+  let release = () => {};
+  const turn = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const previous = exportQueue;
+  exportQueue = previous.then(() => turn);
+  await previous;
+  try {
+    const tabId = await getRunner();
+    return Schema.decodeUnknownSync(ProtocolExportResult)(
+      await sendTabMessage(tabId, { type: 'RUN_EXPORT', ...request })
+    );
+  } finally {
+    release();
+    discardRunner();
+  }
+}
+
 function protocolFailure(failure: OperationFailure): ProtocolOperationFailure {
   return ProtocolOperationFailure.make({ code: failure.code, scope: failure.scope });
 }
@@ -801,6 +822,9 @@ function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
     mediaType: entry.mediaType,
     filenameHint: entry.filenameHint,
     ...(entry.exportMode ? { exportMode: entry.exportMode } : {}),
+    ...(entry.rotation ? { rotation: entry.rotation } : {}),
+    ...(entry.requestedExport ? { requestedExport: entry.requestedExport } : {}),
+    ...(entry.recovery ? { recovery: entry.recovery } : {}),
     ...(entry.frameTimestampSeconds === undefined
       ? {}
       : { frameTimestampSeconds: entry.frameTimestampSeconds }),
@@ -1129,7 +1153,7 @@ async function executeCommand(
       case 'WatchSet':
       case 'WatchLifecycle': {
         emit(Progress.make({ phase: 'resolving' }));
-        const outcome = await abortable(runWatchCommand(command), signal);
+        const outcome = await abortable(runWatchCommand(command, runPreparedInDocument), signal);
         if (outcome.failure) {
           emit(Rejected.make({ failure: outcome.failure }));
           return;
@@ -1222,7 +1246,7 @@ const messageHandlers: MessageHandlers = {
   FETCH_VIDEO_BLOB: handleFetchVideoBlob,
   DEBUG_SHAPE: handleDebugShape,
   DOWNLOAD_DEBUG_JSON: handleDownloadDebugJson,
-  WATCH_COMMAND: message => runWatchCommand(message.command),
+  WATCH_COMMAND: message => runWatchCommand(message.command, runPreparedInDocument),
   WATCH_PREVIEW: message => previewWatchTarget(message.target),
 };
 

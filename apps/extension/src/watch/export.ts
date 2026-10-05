@@ -1,11 +1,6 @@
 import { Effect, Either, Schema } from 'effect';
-import { InboxExportOutcome, type FailureCode } from '@gramgrab/protocol';
-import { browser } from '../lib/browser.ts';
 import { ResponseShapeUnknown } from '../effect/errors.ts';
 import { ReelsMediaResponseSchema } from '../effect/schemas.ts';
-import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from '../errors/normalize.ts';
-import { acceptedHistoryEntry } from '../history/receipt.ts';
-import { appendHistory } from '../history/repository.ts';
 import { historySource } from '../history/source.ts';
 import type { DownloadHistoryEntry } from '../history/contracts.ts';
 import { fetchInstantItems } from '../instagram/acquisition.ts';
@@ -139,44 +134,6 @@ export function historyOrigin(watch: Watch, ref: MediaRef): DownloadHistoryEntry
   return { kind: 'source', sourceUrl: source.url, sourceKind: source.kind };
 }
 
-/** What one file came to. A failure may show a Sidecar child is `missing`. */
-type Delivery =
-  | { readonly _tag: 'accepted'; readonly historySaved: boolean }
-  | { readonly _tag: 'failed'; readonly code: FailureCode; readonly missing?: string };
-
-/**
- * Asks the browser to download one Original file and records its History receipt. Acceptance is
- * all the browser promises; it never means the file finished.
- */
-async function deliver(
-  watch: Watch,
-  ref: MediaRef,
-  item: MediaItem,
-  index: number
-): Promise<Delivery> {
-  const filename = originalFilename(item, index);
-  try {
-    await browser.downloads.download({ url: item.url, filename, saveAs: false });
-  } catch (cause) {
-    return { _tag: 'failed', code: normalizeBrowserDownloadFailure(cause).code };
-  }
-  const receipt = acceptedHistoryEntry(
-    {
-      itemIndex: index,
-      ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-      mediaType: item.type,
-      filename,
-      exportMode: 'direct',
-    },
-    historyOrigin(watch, ref)
-  );
-  const historySaved = await appendHistory(receipt).then(
-    () => true,
-    () => false
-  );
-  return { _tag: 'accepted', historySaved };
-}
-
 export function originalFilename(item: MediaItem, index: number): string {
   return `${item.filenameHint}_${index + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
 }
@@ -187,10 +144,7 @@ export interface Learned {
   readonly missingChildren?: readonly string[];
 }
 
-const failed = (entryId: string, code: FailureCode) =>
-  InboxExportOutcome.make({ entryId, accepted: 0, failures: [{ code }] });
-
-const exportAuthorization = Effect.fn(function* (watch: Watch, discovery: Discovery) {
+export const exportAuthorization = Effect.fn(function* (watch: Watch, discovery: Discovery) {
   const viewer = yield* Effect.either(fetchViewer);
   if (Either.isLeft(viewer) || viewer.right.accountId !== watch.viewerId)
     return 'IG_NOT_AUTHENTICATED' as const;
@@ -204,73 +158,8 @@ const exportAuthorization = Effect.fn(function* (watch: Watch, discovery: Discov
     : ('WATCH_NOT_FOUND' as const);
 });
 
-/** Settles one slot: a child already known missing or a gone slot fails, a found one downloads. */
-function settle(watch: Watch, discovery: Discovery, slot: Slot, index: number): Promise<Delivery> {
-  const { ref } = discovery;
-  const child = ref._tag === 'Sidecar' ? ref.children[index] : undefined;
-  if (child && discovery.missingChildren?.includes(child.mediaId))
-    return Promise.resolve({ _tag: 'failed', code: 'WATCH_MEDIA_UNAVAILABLE' });
-  if (slot._tag === 'gone')
-    return Promise.resolve({
-      _tag: 'failed',
-      code: slot.code,
-      ...(child ? { missing: child.mediaId } : {}),
-    });
-  return deliver(watch, ref, slot.item, index);
-}
-
-/**
- * Exports one inbox entry's exact media as Original. An entry already known to be gone fails with
- * its reason and no request, and so does a recorded missing Sidecar child.
- */
-export const exportEntry = (watch: Watch, discovery: Discovery) =>
-  Effect.gen(function* () {
-    const { id: entryId, ref } = discovery;
-    if (discovery.unavailable) return { outcome: failed(entryId, discovery.unavailable) };
-    const slots = yield* Effect.either(reacquire(watch, ref, Math.floor(Date.now() / 1000)));
-    if (Either.isLeft(slots))
-      return {
-        outcome: failed(
-          entryId,
-          slots.left._tag === 'WatchRequestDeferred'
-            ? 'SOURCE_UNEXPECTED_FAILURE'
-            : normalizeSourceFailure(slots.left).code
-        ),
-      };
-    const settled = yield* Effect.forEach(slots.right, (slot, index) =>
-      Effect.gen(function* () {
-        if (slot._tag === 'found') {
-          const code = yield* exportAuthorization(watch, discovery);
-          if (code) return { _tag: 'failed', code } satisfies Delivery;
-        }
-        return yield* Effect.promise(() => settle(watch, discovery, slot, index));
-      })
-    );
-    const accepted = settled.filter(delivery => delivery._tag === 'accepted');
-    const failures = settled.flatMap((delivery, index) =>
-      delivery._tag === 'failed' ? [{ index, ...delivery }] : []
-    );
-    return {
-      outcome: InboxExportOutcome.make({
-        entryId,
-        accepted: accepted.length,
-        failures: failures.map(({ index, code }) =>
-          ref._tag === 'Sidecar' ? { child: index, code } : { code }
-        ),
-        ...(accepted.every(delivery => delivery.historySaved)
-          ? {}
-          : { warning: 'HISTORY_SAVE_FAILED' as const }),
-      }),
-      learned: learned(
-        discovery,
-        failures.flatMap(({ missing }) => (missing ? [missing] : [])),
-        slots.right
-      ),
-    };
-  });
-
 /** The availability to keep: a gone item, or a Sidecar's missing children, gone when all are. */
-function learned(
+export function learnedAvailability(
   { ref, missingChildren: known = [] }: Discovery,
   missing: readonly string[],
   slots: readonly Slot[]

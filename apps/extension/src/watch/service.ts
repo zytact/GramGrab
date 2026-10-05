@@ -41,7 +41,9 @@ import { retryNotify } from './notify.ts';
 import { inInbox } from './discoveries.ts';
 import { finishActions } from './auto-download.ts';
 import { recoverable, applyRecovery } from './recovery.ts';
-import { exportEntry, type Learned } from './export.ts';
+import type { Learned } from './export.ts';
+import { exportPlannedEntry } from './manual-export-run.ts';
+import { InboxExportExecution } from './manual-export.ts';
 import { resumeAfterPerson, runCheck, scheduleOf } from './scheduler.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
 import {
@@ -399,11 +401,13 @@ const inboxRemove = (command: Extract<WatchCommand, { _tag: 'WatchInboxRemove' }
   });
 
 /**
- * Exports each selected inbox entry's exact media as Original, in the order given. One entry's
+ * Exports each selected inbox entry's exact media with its frozen settings, in the order given. One entry's
  * failure never stops the others, and every entry stays in the inbox. What an Export shows to be
  * gone is kept, so the entry cannot be selected again.
  */
-const inboxExport = (command: Extract<WatchCommand, { _tag: 'WatchInboxExport' }>) =>
+const inboxExport = (
+  command: Extract<WatchCommand, { _tag: 'WatchInboxExport' | 'WatchInboxRetry' }>
+) =>
   Effect.gen(function* () {
     const store = yield* loadOrReject;
     const viewer = yield* verifyViewer(store);
@@ -415,13 +419,19 @@ const inboxExport = (command: Extract<WatchCommand, { _tag: 'WatchInboxExport' }
           .map(discovery => [discovery.id, { watch, discovery }] as const)
       )
     );
-    const selected = [...new Set(command.entryIds)];
+    const selected = [
+      ...new Set(
+        command._tag === 'WatchInboxExport'
+          ? command.entryIds
+          : command.plans.map(plan => plan.entryId)
+      ),
+    ];
     const outcomes: InboxExportOutcome[] = [];
     const learned = new Map<string, Learned>();
     for (const id of selected) {
       const entry = entries.get(id);
       if (!entry) continue;
-      const result = yield* exportEntry(entry.watch, entry.discovery);
+      const result = yield* exportPlannedEntry(entry.watch, entry.discovery, command);
       outcomes.push(result.outcome);
       if (result.learned) learned.set(id, result.learned);
     }
@@ -509,7 +519,7 @@ const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>) =>
 
 const program = (
   command: WatchCommand
-): Effect.Effect<WatchResult, WatchRejection, InstagramRequests> =>
+): Effect.Effect<WatchResult, WatchRejection, InstagramRequests | InboxExportExecution> =>
   Match.valueTags(command, {
     WatchList: () => list,
     WatchShow: show,
@@ -520,6 +530,7 @@ const program = (
     WatchInboxList: inboxList,
     WatchInboxRemove: inboxRemove,
     WatchInboxExport: inboxExport,
+    WatchInboxRetry: inboxExport,
     WatchRecover: recover,
   });
 
@@ -543,8 +554,15 @@ const runForPerson = <A>(
   );
 
 /** Runs one Watch command, as the options page and CLI both do. */
-export const runWatchCommand = (command: WatchCommand): Promise<WatchCommandResponse> =>
-  runForPerson(Effect.map(program(command), result => ({ result })));
+export const runWatchCommand = (
+  command: WatchCommand,
+  run: InboxExportExecution['Type']['run']
+): Promise<WatchCommandResponse> =>
+  runForPerson(
+    Effect.map(program(command), result => ({ result })).pipe(
+      Effect.provideService(InboxExportExecution, { run })
+    )
+  );
 
 /** Resolves an add target for the person to inspect before adding it. */
 export const previewWatchTarget = (target: string): Promise<WatchPreviewResponse> =>
