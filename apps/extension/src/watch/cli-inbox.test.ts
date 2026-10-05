@@ -1,3 +1,4 @@
+import { createHash, webcrypto } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { Schema } from 'effect';
 import {
@@ -33,6 +34,13 @@ let instagram: ReturnType<typeof createWatchInstagram>;
 beforeEach(async () => {
   vi.useFakeTimers({ now: Date.UTC(2026, 9, 1, 12) });
   vi.spyOn(Math, 'random').mockReturnValue(0);
+  vi.stubGlobal('crypto', webcrypto);
+  vi.spyOn(webcrypto.subtle, 'digest').mockImplementation(async (_algorithm, input) => {
+    const bytes = ArrayBuffer.isView(input)
+      ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
+      : new Uint8Array(input);
+    return Uint8Array.from(createHash('sha256').update(bytes).digest()).buffer;
+  });
   harness = createExtensionHarness();
   instagram = createWatchInstagram();
   instagram.state.accounts.instagram = { id: TARGET.id };
