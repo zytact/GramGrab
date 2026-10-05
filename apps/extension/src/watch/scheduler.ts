@@ -10,6 +10,7 @@ import { readStore } from './store.ts';
 
 export const ALARM_NAME = 'watch-pump';
 const STATE_KEY = 'watch-scheduler';
+const SESSION_KEY = 'watch-browser-session';
 const HOUR_MS = 60 * 60_000;
 const ROUND_MS = 12 * HOUR_MS;
 const ROUND_JITTER = 0.1;
@@ -60,12 +61,17 @@ async function loadState(): Promise<SchedulerState> {
 let writes: Promise<unknown> = Promise.resolve();
 
 /** Applies `change` to the latest scheduler state, one change at a time. */
-function updateState(change: (state: SchedulerState) => SchedulerState): Promise<SchedulerState> {
+function updateState(
+  change: (state: SchedulerState) => SchedulerState,
+  required = false
+): Promise<SchedulerState> {
   const run = async () => {
     const next = change(await loadState());
     await browser.storage
       .set({ [STATE_KEY]: Schema.encodeSync(SchedulerState)(next) })
-      .catch(() => undefined);
+      .catch(cause => {
+        if (required) throw cause;
+      });
     return next;
   };
   const result = writes.then(run, run);
@@ -197,6 +203,13 @@ async function runNextJob(viewerId: string): Promise<boolean> {
  * suspended worker resumes where it stopped. Throttling ends the run until the next wake.
  */
 async function pumpOnce(deadline: number): Promise<void> {
+  if (
+    !(await initializeScheduler().then(
+      () => true,
+      () => false
+    ))
+  )
+    return;
   const viewerId = await readyViewer();
   if (!viewerId) return;
   while (Date.now() < deadline && (await runNextJob(viewerId)));
@@ -210,6 +223,20 @@ export function pump(): Promise<void> {
   return pumping;
 }
 
+let initializing: Promise<void> | undefined;
+
+export function initializeScheduler(): Promise<void> {
+  initializing ??= (async () => {
+    const session = await browser.sessionStorage.get(SESSION_KEY);
+    if (session[SESSION_KEY] !== true) {
+      await holdForStartup();
+      await browser.sessionStorage.set({ [SESSION_KEY]: true });
+    }
+    await ensureAlarm();
+  })();
+  return initializing;
+}
+
 /** Creates the single periodic alarm if the browser does not already have it. */
 export async function ensureAlarm(): Promise<void> {
   const existing = await browser.alarms.get(ALARM_NAME).catch(() => undefined);
@@ -218,7 +245,7 @@ export async function ensureAlarm(): Promise<void> {
 
 /** Browser start: overdue work waits two minutes, then runs through the same queue. */
 export async function holdForStartup(): Promise<void> {
-  await updateState(state => ({ ...state, startupHoldUntil: Date.now() + STARTUP_HOLD_MS }));
+  await updateState(state => ({ ...state, startupHoldUntil: Date.now() + STARTUP_HOLD_MS }), true);
 }
 
 /** A person verified their login again, so suspended Watches may run. */

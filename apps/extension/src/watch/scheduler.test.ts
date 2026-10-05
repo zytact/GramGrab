@@ -1,3 +1,4 @@
+import { Schema } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
   AccountIdSelector,
@@ -35,6 +36,7 @@ beforeEach(async () => {
     }
     return instagram.handle(url, init);
   });
+  await harness.session.set({ 'watch-browser-session': true });
   await harness.loadWorker();
 });
 
@@ -96,6 +98,33 @@ describe('Watch scheduling', () => {
     harness.fireStartup();
     await vi.advanceTimersByTimeAsync(0);
     expect(harness.alarms.get('watch-pump')).toMatchObject({ periodInMinutes: 1 });
+  });
+
+  it('holds a new browser session without a startup event and preserves the deadline across worker restarts', async () => {
+    const hold = () =>
+      Schema.decodeUnknownSync(Schema.Struct({ startupHoldUntil: Schema.Number }))(
+        harness.local.read('watch-scheduler')
+      ).startupHoldUntil;
+    await harness.session.remove('watch-browser-session');
+    await harness.loadWorker();
+    await vi.advanceTimersByTimeAsync(0);
+    await add(TARGET.username);
+    const original = hold();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await harness.loadWorker();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hold()).toBe(original);
+    await wake(1);
+    expect(storyRequests()).toEqual([]);
+    await harness.session.remove('watch-browser-session');
+    await harness.loadWorker();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hold()).toBe(Date.now() + 2 * MINUTE);
+    await wake(1);
+    expect(storyRequests()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    await wake(2);
+    expect(storyRequests()).toEqual([TARGET.id]);
   });
 
   it('runs a round oldest-first, then waits 12 hours less jitter for the next', async () => {

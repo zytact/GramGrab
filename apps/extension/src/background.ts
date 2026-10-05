@@ -93,7 +93,13 @@ import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
 import { previewWatchTarget, runWatchCommand } from './watch/service.ts';
 import { refreshBadge } from './watch/attention.ts';
-import { ALARM_NAME, ensureAlarm, holdForStartup, pump } from './watch/scheduler.ts';
+import {
+  ALARM_NAME,
+  ensureAlarm,
+  holdForStartup,
+  initializeScheduler,
+  pump,
+} from './watch/scheduler.ts';
 import type { Rotation } from './rotation/contracts.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
@@ -1199,7 +1205,7 @@ browser.alarms.onAlarm.addListener(alarm => {
 });
 browser.runtime.onStartup.addListener(() => void holdForStartup().then(ensureAlarm));
 browser.runtime.onInstalled.addListener(() => void ensureAlarm());
-void ensureAlarm();
+void initializeScheduler().catch(() => undefined);
 void refreshBadge();
 
 // ---------------------------------------------------------------------------
