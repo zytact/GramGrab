@@ -268,13 +268,21 @@ describe('Watches options page', () => {
   it('shows the check the worker is running across navigation, then the outcome it recorded', async () => {
     seedWatchWithProblemAndEntry();
     const schedule = { nextRoundAt: Date.now() + 60 * 60_000, remaining: [], earlyRetries: [] };
+    const resumeAt = Date.now() + 10 * 60_000;
     harness.local.write('watch-scheduler', {
       version: 1,
       logins: {
         [VIEWER.id]: {
           ...schedule,
           manual: [
-            { watchId: WATCH_ID, checkId: CHECK_ID, remainingKinds: ['stories'], outcomes: [] },
+            {
+              watchId: WATCH_ID,
+              checkId: CHECK_ID,
+              remainingKinds: ['stories'],
+              outcomes: [],
+              deferredUntil: resumeAt,
+              deferredReason: 'paced',
+            },
           ],
         },
       },
@@ -289,7 +297,11 @@ describe('Watches options page', () => {
       'disabled',
       true
     );
-    expect(screen.getByText('Still to check: Stories.')).toBeDefined();
+    expect(
+      screen.getByText(
+        `Still to check: Stories. Watch requests are spaced out. This check can run at ${new Date(resumeAt).toLocaleTimeString()}.`
+      )
+    ).toBeDefined();
     await user.click(screen.getByText(/^All inbox$/));
     await openWatch();
     expect(await screen.findByRole('button', { name: 'Checking…' })).toBeDefined();

@@ -1,7 +1,12 @@
 import { Effect, Schema } from 'effect';
-import { WatchKind, KindCheckOutcome, type FailureCode } from '@gramgrab/protocol';
+import {
+  WatchKind,
+  KindCheckOutcome,
+  type DeferredReason,
+  type FailureCode,
+} from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
-import { WatchRequests } from '../instagram/requests.ts';
+import { WatchRequests, requestLedger } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
 import {
   SCHEDULER_KEY,
@@ -238,6 +243,7 @@ async function recoverManualJob(viewerId: string, job: Extract<Job, { _tag: 'man
   );
   if (run.deferredUntil === undefined)
     await finishManual(viewerId, job.watchId, job.checkId, [...(job.outcomes ?? []), ...run.kinds]);
+  else await deferManual(viewerId, job.watchId, job.checkId, run.deferredUntil);
   await refreshBadge();
   return run.deferredUntil === undefined;
 }
@@ -408,14 +414,16 @@ export async function queueManual(viewerId: string, checkId: string, watches: re
   };
 }
 
-export async function checkpointManual(
+type ManualJob = NonNullable<LoginSchedule['manual']>[number];
+
+/** Replaces one manual job of the login through `change`. */
+const updateManual = (
   viewerId: string,
   watchId: string,
   checkId: string,
-  outcome: import('@gramgrab/protocol').KindCheckOutcome
-) {
-  if (outcome._tag === 'KindCheckSkipped' && outcome.reason === 'deferred') return;
-  await updateState(state => {
+  change: (job: ManualJob) => ManualJob
+) =>
+  updateState(state => {
     const current = state.logins[viewerId];
     if (!current) return state;
     return {
@@ -425,21 +433,44 @@ export async function checkpointManual(
         [viewerId]: {
           ...current,
           manual: current.manual?.map(job =>
-            job.watchId === watchId && job.checkId === checkId
-              ? {
-                  ...job,
-                  remainingKinds: job.remainingKinds.filter(kind => kind !== outcome.kind),
-                  outcomes: [
-                    ...(job.outcomes ?? []).filter(previous => previous.kind !== outcome.kind),
-                    outcome,
-                  ],
-                }
-              : job
+            job.watchId === watchId && job.checkId === checkId ? change(job) : job
           ),
         },
       },
     };
   }, true);
+
+export async function checkpointManual(
+  viewerId: string,
+  watchId: string,
+  checkId: string,
+  outcome: import('@gramgrab/protocol').KindCheckOutcome
+) {
+  if (outcome._tag === 'KindCheckSkipped' && outcome.reason === 'deferred') return;
+  await updateManual(viewerId, watchId, checkId, job => ({
+    watchId: job.watchId,
+    checkId: job.checkId,
+    remainingKinds: job.remainingKinds.filter(kind => kind !== outcome.kind),
+    outcomes: [...(job.outcomes ?? []).filter(previous => previous.kind !== outcome.kind), outcome],
+  }));
+}
+
+/** Why pacing holds Watch work back right now: a rate-limit pause, or ordinary spacing. */
+export const pacingReason = (now: number): DeferredReason =>
+  requestLedger.pausedUntil(now) === undefined ? 'paced' : 'rate-limited';
+
+/** Records that pacing stopped a manual check part way, and until when. */
+export async function deferManual(
+  viewerId: string,
+  watchId: string,
+  checkId: string,
+  until: number
+) {
+  await updateManual(viewerId, watchId, checkId, job => ({
+    ...job,
+    deferredUntil: until,
+    deferredReason: pacingReason(Date.now()),
+  }));
 }
 
 export async function finishManual(

@@ -197,10 +197,23 @@ export const KindCheckOutcome = Schema.Union(
 );
 export type KindCheckOutcome = Schema.Schema.Type<typeof KindCheckOutcome>;
 
+/**
+ * Why a check was held back: the Watch was checked in the last 5 minutes, Watch requests are
+ * spaced out, Instagram rate limited a Watch request, or a check of it is already queued.
+ */
+export const DeferredReason = Schema.Literal('checked-recently', 'paced', 'rate-limited', 'queued');
+export type DeferredReason = Schema.Schema.Type<typeof DeferredReason>;
+
 /** A Check now the worker has queued or is running, with each kind it has finished so far. */
 export class ManualCheckPending extends Schema.TaggedClass<ManualCheckPending>()(
   'ManualCheckPending',
-  { remainingKinds: Schema.Array(WatchKind), outcomes: Schema.Array(KindCheckOutcome) }
+  {
+    remainingKinds: Schema.Array(WatchKind),
+    outcomes: Schema.Array(KindCheckOutcome),
+    /** Set when pacing held the check back part way: when and why it continues. */
+    deferredUntil: Schema.optional(EpochMillis),
+    deferredReason: Schema.optional(DeferredReason),
+  }
 ) {}
 
 /** The Watch's last finished Check now and what each kind found. */
@@ -387,13 +400,6 @@ export class WatchCheckProgress extends Schema.Class<WatchCheckProgress>('WatchC
   kind: WatchKind,
   outcome: KindCheckOutcome,
 }) {}
-
-/**
- * Why a check was held back: the Watch was checked in the last 5 minutes, Watch requests are
- * spaced out, Instagram rate limited a Watch request, or a check of it is already queued.
- */
-export const DeferredReason = Schema.Literal('checked-recently', 'paced', 'rate-limited', 'queued');
-export type DeferredReason = Schema.Schema.Type<typeof DeferredReason>;
 
 export class WatchCheckOutcome extends Schema.Class<WatchCheckOutcome>('WatchCheckOutcome')({
   watchId: NonEmptyString,

@@ -306,6 +306,9 @@ const DEFERRED_TEXT: Record<DeferredReason, (at: string) => string> = {
   queued: () => 'A check of this Watch is already queued.',
 };
 
+const deferredText = (reason: DeferredReason, until: number) =>
+  DEFERRED_TEXT[reason](new Date(until).toLocaleTimeString());
+
 /** Where the Watch's manual check stands, as the worker records it. */
 function ManualCheckStatus({ check }: { check: ManualCheck }) {
   const done = check.outcomes.map(outcomeText).join(' · ');
@@ -316,10 +319,15 @@ function ManualCheckStatus({ check }: { check: ManualCheck }) {
       </p>
     );
   const remaining = check.remainingKinds.map(kind => KIND_LABEL[kind]).join(', ');
+  const waiting =
+    check.deferredUntil !== undefined && check.deferredReason && check.deferredUntil > Date.now()
+      ? deferredText(check.deferredReason, check.deferredUntil)
+      : undefined;
   return (
     <p className="opt-meta">
       {done && `${done}. `}
-      {remaining && `Still to check: ${remaining}.`}
+      {remaining && `Still to check: ${remaining}. `}
+      {waiting}
     </p>
   );
 }
@@ -352,11 +360,7 @@ function CheckNow({
     const outcome =
       response.result?._tag === 'WatchCheckResult' ? response.result.outcomes[0] : undefined;
     if (outcome?.deferredUntil !== undefined)
-      setNotice(
-        DEFERRED_TEXT[outcome.deferredReason ?? 'paced'](
-          new Date(outcome.deferredUntil).toLocaleTimeString()
-        )
-      );
+      setNotice(deferredText(outcome.deferredReason ?? 'paced', outcome.deferredUntil));
     else if (
       outcome?.kinds.some(kind => kind._tag === 'KindCheckSkipped' && kind.reason === 'storage')
     )

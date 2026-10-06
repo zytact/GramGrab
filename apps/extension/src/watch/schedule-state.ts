@@ -1,6 +1,7 @@
 import { Schema } from 'effect';
 import {
   AccountId,
+  DeferredReason,
   KindCheckOutcome,
   ManualCheckFinished,
   ManualCheckPending,
@@ -29,6 +30,8 @@ const LoginSchedule = Schema.Struct({
         checkId: Schema.UUID,
         remainingKinds: Schema.Array(WatchKind),
         outcomes: Schema.optional(Schema.Array(KindCheckOutcome)),
+        deferredUntil: Schema.optional(Schema.Number),
+        deferredReason: Schema.optional(DeferredReason),
       })
     )
   ),
@@ -75,7 +78,13 @@ export function manualChecks(
   for (const job of schedule?.manual ?? [])
     checks.set(
       job.watchId,
-      ManualCheckPending.make({ remainingKinds: job.remainingKinds, outcomes: job.outcomes ?? [] })
+      ManualCheckPending.make({
+        remainingKinds: job.remainingKinds,
+        outcomes: job.outcomes ?? [],
+        ...(job.deferredUntil === undefined || job.deferredReason === undefined
+          ? {}
+          : { deferredUntil: job.deferredUntil, deferredReason: job.deferredReason }),
+      })
     );
   return checks;
 }

@@ -28,7 +28,6 @@ import {
   RecoveryOutcome,
   type WatchAttention,
   type AttentionOperation,
-  type DeferredReason,
   WatchSchedule,
   WatchSetResult,
   WatchShowResult,
@@ -63,6 +62,8 @@ import {
   queueManual,
   checkpointManual,
   finishManual,
+  deferManual,
+  pacingReason,
 } from './scheduler.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
 import {
@@ -334,9 +335,6 @@ const lifecycle = (command: Extract<WatchCommand, { _tag: 'WatchLifecycle' }>) =
     });
   });
 
-const pacingReason = (now: number): DeferredReason =>
-  requestLedger.pausedUntil(now) === undefined ? 'paced' : 'rate-limited';
-
 /** When and why a Check now of `watch` must wait, or undefined when it may run now. */
 function deferral(watch: Watch, now: number) {
   const last = lastCheckAt(watch);
@@ -373,16 +371,20 @@ const checkOne = Effect.fn(function* (
       }),
     catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
   });
-  if (run.deferredUntil === undefined)
-    yield* Effect.promise(() => finishManual(viewer.accountId, watch.id, checkId, run.kinds));
+  const until = run.deferredUntil;
+  yield* Effect.promise(() =>
+    until === undefined
+      ? finishManual(viewer.accountId, watch.id, checkId, run.kinds)
+      : deferManual(viewer.accountId, watch.id, checkId, until)
+  );
   return WatchCheckOutcome.make({
     watchId: watch.id,
     accountId: watch.targetId,
     username: watch.username,
     kinds: [...off, ...run.kinds],
-    ...(run.deferredUntil === undefined
+    ...(until === undefined
       ? {}
-      : { deferredUntil: run.deferredUntil, deferredReason: pacingReason(Date.now()) }),
+      : { deferredUntil: until, deferredReason: pacingReason(Date.now()) }),
   });
 });
 
