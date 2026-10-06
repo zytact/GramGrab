@@ -10,7 +10,9 @@ import {
   WatchAddResult,
   WatchCheckOutcome,
   WatchCheckResult,
+  WatchInboxExportResult,
   WatchInboxListResult,
+  type InboxExportOutcome,
   WatchInboxRemoveResult,
   WatchRecoverResult,
   WatchLifecycleResult,
@@ -36,7 +38,8 @@ import { loginAttention, refreshBadge, rememberViewer } from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
 import { attentionEntries, discoveries, inbox, initialized, summarize } from './summary.ts';
 import { retryNotify } from './notify.ts';
-import { needsPerson } from './discoveries.ts';
+import { inInbox, needsPerson } from './discoveries.ts';
+import { exportEntry, type Learned } from './export.ts';
 import { resumeAfterPerson, runCheck, scheduleOf } from './scheduler.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
 import {
@@ -392,6 +395,55 @@ const inboxRemove = (command: Extract<WatchCommand, { _tag: 'WatchInboxRemove' }
   });
 
 /**
+ * Exports each selected inbox entry's exact media as Original, in the order given. One entry's
+ * failure never stops the others, and every entry stays in the inbox. What an Export shows to be
+ * gone is kept, so the entry cannot be selected again.
+ */
+const inboxExport = (command: Extract<WatchCommand, { _tag: 'WatchInboxExport' }>) =>
+  Effect.gen(function* () {
+    const store = yield* loadOrReject;
+    const viewer = yield* verifyViewer(store);
+    const now = Date.now();
+    const entries = new Map(
+      owned(store, viewer).flatMap(watch =>
+        watch.discoveries
+          .filter(discovery => inInbox(discovery, now))
+          .map(discovery => [discovery.id, { watch, discovery }] as const)
+      )
+    );
+    const selected = [...new Set(command.entryIds)];
+    const outcomes: InboxExportOutcome[] = [];
+    const learned = new Map<string, Learned>();
+    for (const id of selected) {
+      const entry = entries.get(id);
+      if (!entry) continue;
+      const result = yield* exportEntry(entry.watch, entry.discovery);
+      outcomes.push(result.outcome);
+      if (result.learned) learned.set(id, result.learned);
+    }
+    if (learned.size > 0)
+      yield* Effect.promise(() =>
+        mutateStore(current => ({
+          store: {
+            ...current,
+            watches: current.watches.map(watch => ({
+              ...watch,
+              discoveries: watch.discoveries.map(discovery => ({
+                ...discovery,
+                ...learned.get(discovery.id),
+              })),
+            })),
+          },
+          value: undefined,
+        }))
+      );
+    return WatchInboxExportResult.make({
+      outcomes,
+      unknownEntryIds: selected.filter(id => !entries.has(id)),
+    });
+  });
+
+/**
  * Retries or dismisses the failed notification of each entry. An entry with no failed
  * notification, or one already dismissed, is refused rather than recovered.
  */
@@ -459,6 +511,7 @@ const program = (
     WatchCheck: check,
     WatchInboxList: inboxList,
     WatchInboxRemove: inboxRemove,
+    WatchInboxExport: inboxExport,
     WatchRecover: recover,
   });
 

@@ -79,6 +79,11 @@ export class WatchInboxRemove extends Schema.TaggedClass<WatchInboxRemove>()('Wa
   entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
 }) {}
 
+/** Downloads the exact recorded media of each inbox entry, as Original. */
+export class WatchInboxExport extends Schema.TaggedClass<WatchInboxExport>()('WatchInboxExport', {
+  entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
+}) {}
+
 /** Retries or dismisses a failed action of each entry; other entries cannot be recovered so. */
 export class WatchRecover extends Schema.TaggedClass<WatchRecover>()('WatchRecover', {
   action: Schema.Literal('notify'),
@@ -95,6 +100,7 @@ export const WatchCommand = Schema.Union(
   WatchCheck,
   WatchInboxList,
   WatchInboxRemove,
+  WatchInboxExport,
   WatchRecover
 );
 export type WatchCommand = Schema.Schema.Type<typeof WatchCommand>;
@@ -284,6 +290,26 @@ export class WatchLifecycleResult extends Schema.TaggedClass<WatchLifecycleResul
   }
 ) {}
 
+/**
+ * One entry's Export: how many files the browser accepted, and each failure, with the 0-based
+ * Sidecar child it concerns when it concerns one.
+ */
+export class InboxExportOutcome extends Schema.Class<InboxExportOutcome>('InboxExportOutcome')({
+  entryId: NonEmptyString,
+  accepted: Count,
+  failures: Schema.Array(Schema.Struct({ child: Schema.optional(Count), code: FailureCodeSchema })),
+  /** An accepted file's History receipt could not be saved. */
+  warning: Schema.optional(Schema.Literal('HISTORY_SAVE_FAILED')),
+}) {}
+
+export class WatchInboxExportResult extends Schema.TaggedClass<WatchInboxExportResult>()(
+  'WatchInboxExportResult',
+  {
+    outcomes: Schema.Array(InboxExportOutcome),
+    unknownEntryIds: Schema.Array(NonEmptyString),
+  }
+) {}
+
 export class WatchRecoverResult extends Schema.TaggedClass<WatchRecoverResult>()(
   'WatchRecoverResult',
   {
@@ -307,6 +333,7 @@ export const WatchResult = Schema.Union(
   WatchCheckResult,
   WatchInboxListResult,
   WatchInboxRemoveResult,
+  WatchInboxExportResult,
   WatchRecoverResult
 );
 export type WatchResult = Schema.Schema.Type<typeof WatchResult>;

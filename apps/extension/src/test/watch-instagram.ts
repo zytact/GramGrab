@@ -1,8 +1,10 @@
 import instantPhoto from '../effect/__fixtures__/instants-photo.json';
 import instantVideo from '../effect/__fixtures__/instants-video.json';
 import postsFixture from '../effect/__fixtures__/profile-posts.json';
+import restVideoFixture from '../effect/__fixtures__/shortcode-rest-video.json';
 import storyFixture from '../effect/__fixtures__/story.json';
 import searchFixture from '../effect/__fixtures__/topsearch.json';
+import { shortcodeMediaId } from '../instagram/rest-shortcode.ts';
 import { json } from './extension-harness.ts';
 
 export const VIEWER = { id: '1001', username: 'viewer.one' };
@@ -85,6 +87,38 @@ export function postsPage(posts: readonly FakePost[], next?: string) {
         page_info: { ...connection.page_info, end_cursor: next ?? null, has_next_page: !!next },
       },
     },
+  };
+}
+
+/**
+ * A REST media answer in the shape of the sanitized `shortcode-rest-video.json` capture for a Post
+ * as `postsPage` lists it: the same shortcode, and Sidecar children image first, then videos.
+ */
+export function restMedia(post: FakePost) {
+  const [video] = restVideoFixture.items;
+  const item = (pk: string, isVideo: boolean) =>
+    isVideo
+      ? { ...video!, pk, carousel_media: null }
+      : { pk, media_type: 1, image_versions2: video!.image_versions2 };
+  return {
+    status: 'ok',
+    items: [
+      post.children
+        ? {
+            pk: post.id,
+            code: `C${post.id}`,
+            media_type: 8,
+            user: { pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+            taken_at: post.takenAt,
+            carousel_media: post.children.map((id, index) => item(id, index > 0)),
+          }
+        : {
+            ...item(post.id, post.video !== false),
+            code: `C${post.id}`,
+            taken_at: post.takenAt,
+            user: { pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+          },
+    ],
   };
 }
 
@@ -175,6 +209,9 @@ export function createWatchInstagram() {
     /** The query of every search request. */
     searches: [] as string[],
     instantsRequests: 0,
+    /** REST media answers by shortcode; any other media is a 404. */
+    media: {} as Record<string, unknown>,
+    mediaRequests: 0,
   };
 
   const variable = (query: URLSearchParams) =>
@@ -211,6 +248,13 @@ export function createWatchInstagram() {
       if (pathname !== '/web/search/topsearch/') return undefined;
       state.searches.push(searchParams.get('query') ?? '');
       return json(state.search);
+    },
+    ({ pathname }) => {
+      const id = /^\/api\/v1\/media\/(\d+)\/info\/$/.exec(pathname)?.[1];
+      if (!id) return undefined;
+      state.mediaRequests += 1;
+      const code = Object.keys(state.media).find(shortcode => shortcodeMediaId(shortcode) === id);
+      return code ? json(state.media[code]) : json({}, 404);
     },
     ({ pathname, searchParams }) =>
       pathname === '/api/v1/users/web_profile_info/'
