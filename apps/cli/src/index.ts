@@ -123,7 +123,8 @@ Watches (Beta):
   open, using your signed-in Instagram session. Watches belong to the Instagram login that created
   them, and their state stays in the extension.
   Kinds are posts, stories, instants, and avatar. Actions are notify, download, and collect. Each
-  kind's first check only records a baseline. set replaces the kinds or actions you give it.
+  kind's first check only records a baseline. Stories is unavailable in add with
+  IG_RESPONSE_SHAPE_UNKNOWN. set replaces the kinds or actions you give it.
   TARGET is a username or profile URL. WATCH is a username or account ID; all digits mean an
   account ID. --account-id or --username forces one reading.
   add needs --accept-unattended every time; without it, the rejection includes the disclosure to

@@ -16,6 +16,13 @@ cd "$repo"
 
 session_dir="$repo/.local/verify"
 ext_dir="$repo/extension/chromium"
+restart=no
+case "${1:-}" in
+  "") ;;
+  --restart) restart=yes ;;
+  *) echo "Usage: $0 [--restart]" >&2; exit 2 ;;
+esac
+[ "$#" -le 1 ] || { echo "Usage: $0 [--restart]" >&2; exit 2; }
 
 if [ -f "$session_dir/session.env" ]; then
   echo "A session already exists at $session_dir/session.env." >&2
@@ -42,7 +49,8 @@ case "$("$browser" --version 2>/dev/null)" in
     ;;
 esac
 
-vp run build:chromium >/dev/null
+if [ "$restart" = no ]; then vp run build:chromium >/dev/null; fi
+build_fingerprint="$(rg --files "$ext_dir" -0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
 
 mkdir -p "$session_dir"
 profile="${GRAMGRAB_PROFILE:-$repo/.local/verify-profile}"
@@ -73,7 +81,15 @@ node -e '
 # WhatsApp Web link lives in Default/IndexedDB. Only Database and ScriptCache
 # live here, and both are rebuilt on demand. Removing ScriptCache alone leaves
 # a registration pointing at a script that is gone, which fails to start at all.
-rm -rf "$profile/Default/Service Worker"
+if [ "$restart" = yes ]; then
+  [ -f "$profile/.gramgrab-verification-build" ] &&
+    [ "$(cat "$profile/.gramgrab-verification-build")" = "$build_fingerprint" ] || {
+      echo "Restart requires the unchanged build from a successful fresh launch." >&2
+      exit 2
+    }
+else
+  rm -rf "$profile/Default/Service Worker"
+fi
 
 # The manifest `key` pins the extension ID, so unpacked builds share the release ID.
 ext_id="$(node --input-type=module -e '
@@ -134,4 +150,5 @@ done
   exit 1
 }
 
+printf '%s\n' "$build_fingerprint" > "$profile/.gramgrab-verification-build"
 cat "$session_dir/session.env"

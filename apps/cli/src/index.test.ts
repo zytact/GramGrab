@@ -395,11 +395,19 @@ describe('CLI watch grammar', () => {
 
   it('builds add, set, and multi-Watch lifecycle commands', () => {
     expect(
-      command('add', 'someone', '--kinds', 'posts,stories', '--actions', 'collect', '--json')
+      command(
+        'add',
+        'someone',
+        '--kinds',
+        'posts,instants,avatar',
+        '--actions',
+        'collect',
+        '--json'
+      )
     ).toMatchObject({
       _tag: 'WatchAdd',
       target: 'someone',
-      kinds: ['posts', 'stories'],
+      kinds: ['posts', 'instants', 'avatar'],
       actions: ['collect'],
       acceptUnattended: false,
     });
@@ -445,6 +453,10 @@ describe('CLI watch grammar', () => {
   it.each([
     [['add', 'someone', '--actions', 'collect'], 'needs --kinds and --actions'],
     [['add', 'someone', '--kinds', 'posts,posts', '--actions', 'collect'], 'Invalid --kinds'],
+    [
+      ['add', 'instagram', '--kinds', 'stories', '--actions', 'collect'],
+      'IG_RESPONSE_SHAPE_UNKNOWN',
+    ],
     [['set', 'someone'], 'needs --kinds or --actions'],
     [['pause'], 'needs at least one WATCH'],
     [['list', 'extra'], 'takes no WATCH'],

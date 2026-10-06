@@ -168,7 +168,13 @@ and prove the same entries appear in the popup and CLI. Then:
 Storage mutation is allowed only in the dedicated verification profile. Never
 run these two corruption checks against the developer's regular browser.
 
-## 6. Build and delivery
+## 6. Watches
+
+Run [Watches](./watches.md) against the built options page and packaged CLI.
+Its evidence rules override the general command/output recording above for
+Watch rows. Report natural-event gaps using the linked live matrix.
+
+## 7. Build and delivery
 
 Follow [Release artifacts](./release-artifacts.md). This phase builds both
 browser targets, enforces the WhatsApp manifest policy, packages CRX, XPI, CLI,

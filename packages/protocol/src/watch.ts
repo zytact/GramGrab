@@ -11,6 +11,10 @@ export const WATCH_KINDS = ['posts', 'stories', 'instants', 'avatar'] as const;
 export const WatchKind = Schema.Literal(...WATCH_KINDS);
 export type WatchKind = Schema.Schema.Type<typeof WatchKind>;
 
+export const WATCH_ADD_UNAVAILABLE: Readonly<
+  Partial<Record<WatchKind, 'IG_RESPONSE_SHAPE_UNKNOWN'>>
+> = { stories: 'IG_RESPONSE_SHAPE_UNKNOWN' };
+
 export const WATCH_ACTIONS = ['notify', 'download', 'collect'] as const;
 export const WatchAction = Schema.Literal(...WATCH_ACTIONS);
 export type WatchAction = Schema.Schema.Type<typeof WatchAction>;
