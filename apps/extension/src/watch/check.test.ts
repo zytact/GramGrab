@@ -8,6 +8,7 @@ import {
   WatchInboxList,
   WatchInboxRemove,
   WatchLifecycle,
+  WatchRecover,
   WatchList,
   WatchShow,
   type WatchAction,
@@ -143,7 +144,7 @@ describe('Story checks', () => {
     expect(inbox.entries).toHaveLength(1);
     expect(inbox.entries[0]).toMatchObject({
       collect: { state: 'done' },
-      notify: { state: 'waiting' },
+      notify: { state: 'failed', code: 'WATCH_NOTIFY_PERMISSION_DENIED' },
       inboxUntil: inbox.entries[0]!.discoveredAt + 30 * DAY,
     });
 
@@ -586,5 +587,141 @@ describe('Avatar checks', () => {
     ]);
     expect(instagram.state.searches).toEqual([]);
     expect(instagram.state.postRequests).toEqual([]);
+  });
+});
+
+describe('Watch notifications', () => {
+  const allowNotifications = () => harness.grantedPermissions.add('notifications');
+
+  /** A Watch of Stories that notifies and collects, past its baseline. */
+  async function notifying(kinds: readonly WatchKind[] = ['stories']) {
+    await run(
+      WatchAdd.make({
+        target: TARGET.username,
+        kinds: [kinds[0]!, ...kinds.slice(1)],
+        actions: ['notify', 'collect'],
+        acceptUnattended: true,
+      }),
+      'WatchAddResult'
+    );
+    await checkLater();
+  }
+
+  const newStories = (...ids: readonly string[]) =>
+    setStories(ids.map(id => ({ id, takenAt: seconds(Date.now()) + 60 })));
+
+  const list = () => run(WatchList.make(), 'WatchListResult');
+
+  it('sends one summary per check, with notify and collect recorded independently', async () => {
+    allowNotifications();
+    await notifying();
+    newStories('101', '102');
+
+    await checkLater();
+
+    expect([...harness.notifications.values()]).toEqual([
+      expect.objectContaining({ title: `@${TARGET.username}`, message: '2 new Stories' }),
+    ]);
+    expect(await found()).toEqual([
+      expect.objectContaining({ notify: { state: 'done' }, collect: { state: 'done' } }),
+      expect.objectContaining({ notify: { state: 'done' }, collect: { state: 'done' } }),
+    ]);
+  });
+
+  it('keeps a refused notification in Needs you until it is retried', async () => {
+    await notifying();
+    newStories('201');
+    await checkLater();
+    const [entry] = (await list()).attentionEntries;
+
+    expect(entry?.notify).toEqual({ state: 'failed', code: 'WATCH_NOTIFY_PERMISSION_DENIED' });
+    await checkLater();
+    expect(harness.notifications.size).toBe(0);
+
+    allowNotifications();
+    const retried = await run(
+      WatchRecover.make({ action: 'notify', operation: 'retry', entryIds: [entry!.entryId] }),
+      'WatchRecoverResult'
+    );
+
+    expect(retried.recoveredEntryIds).toEqual([entry!.entryId]);
+    expect(harness.notifications.size).toBe(1);
+    expect((await list()).attentionEntries).toEqual([]);
+  });
+
+  it('dismisses a failed delivery once, and refuses or reports anything else', async () => {
+    allowNotifications();
+    harness.failNotifications(new Error('not shown'));
+    await notifying();
+    newStories('301');
+    await checkLater();
+    const [entry] = (await list()).attentionEntries;
+    expect(entry?.notify?.code).toBe('WATCH_NOTIFY_FAILED');
+
+    const dismiss = () =>
+      run(
+        WatchRecover.make({
+          action: 'notify',
+          operation: 'dismiss',
+          entryIds: [entry!.entryId, 'missing'],
+        }),
+        'WatchRecoverResult'
+      );
+
+    expect(await dismiss()).toMatchObject({
+      recoveredEntryIds: [entry!.entryId],
+      unknownEntryIds: ['missing'],
+    });
+    expect((await dismiss()).refused).toEqual([
+      { entryId: entry!.entryId, code: 'WATCH_RECOVERY_NOT_APPLICABLE' },
+    ]);
+    expect((await list()).attentionCount).toBe(0);
+  });
+
+  it('announces a kind that starts failing once, not on every failed check', async () => {
+    allowNotifications();
+    await notifying();
+    instagram.state.storyStatus = 500;
+
+    await checkLater();
+    await checkLater();
+
+    expect([...harness.notifications.values()].map(shown => shown.message)).toEqual([
+      'Stories: Connection problem',
+    ]);
+  });
+
+  it('uses the Avatar as the icon, and GramGrab’s icon when the browser refuses it', async () => {
+    allowNotifications();
+    harness.failNotificationIcons(true);
+    await notifying(['avatar']);
+    instagram.state.search = avatarSearch({ ...TARGET, pictureId: 'PIC_B' });
+
+    await checkLater();
+
+    expect(harness.browser.notifications.create).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ iconUrl: expect.stringMatching(/^data:/) })
+    );
+    expect([...harness.notifications.values()]).toEqual([
+      expect.objectContaining({
+        message: '1 Avatar change',
+        iconUrl: 'chrome-extension://test/icons/icon-96.png',
+      }),
+    ]);
+  });
+
+  it("opens the notified Watch's page when the notification is clicked", async () => {
+    allowNotifications();
+    await notifying();
+    newStories('401');
+    await checkLater();
+    const watchId = (await list()).watches[0]!.watchId;
+
+    harness.clickNotification([...harness.notifications.keys()][0]!);
+
+    expect(harness.browser.tabs.create).toHaveBeenCalledWith({
+      url: `chrome-extension://test/options.html#watch=${watchId}`,
+    });
   });
 });

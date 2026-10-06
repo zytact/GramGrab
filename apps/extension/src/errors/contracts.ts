@@ -224,7 +224,9 @@ const WatchFailureCodeSchema = Schema.Literal(
   'WATCH_NOT_FOUND',
   'WATCH_CONFIG_CONFLICT',
   'WATCH_UNATTENDED_NOT_ACCEPTED',
-  'WATCH_RECOVERY_NOT_APPLICABLE'
+  'WATCH_RECOVERY_NOT_APPLICABLE',
+  'WATCH_NOTIFY_PERMISSION_DENIED',
+  'WATCH_NOTIFY_FAILED'
 );
 export type WatchFailureCode = Schema.Schema.Type<typeof WatchFailureCodeSchema>;
 
@@ -302,6 +304,8 @@ const WATCH_FAILURE_SHAPE: Readonly<
   WATCH_CONFIG_CONFLICT: { phase: 'watch', scope: 'batch' },
   WATCH_UNATTENDED_NOT_ACCEPTED: { phase: 'watch', scope: 'batch' },
   WATCH_RECOVERY_NOT_APPLICABLE: { phase: 'watch', scope: 'item' },
+  WATCH_NOTIFY_PERMISSION_DENIED: { phase: 'watch', scope: 'item' },
+  WATCH_NOTIFY_FAILED: { phase: 'watch', scope: 'item' },
 };
 
 /** Builds a Watch failure; its phase and scope follow from the code. */

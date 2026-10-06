@@ -5,6 +5,7 @@ import { WatchRequests } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
 import { refreshBadge } from './attention.ts';
 import { checkWatch, type CheckScope } from './check.ts';
+import { notifyCheck } from './notify.ts';
 import { fetchViewer } from './identity.ts';
 import { readStore } from './store.ts';
 
@@ -119,11 +120,13 @@ export async function runCheck(
   scope: CheckScope,
   only?: readonly WatchKind[]
 ) {
+  const startedAt = Date.now();
   const run = await exclusive(() =>
     Effect.runPromise(
       checkWatch(watchId, viewerId, scope, only).pipe(Effect.provide(WatchRequests))
     )
   );
+  await notifyCheck(watchId, scope.checkId, startedAt, run.pictureUrl);
   const posts = run.kinds.find(outcome => outcome.kind === 'posts');
   if (posts) {
     const catchingUp = posts._tag === 'KindCheckSucceeded' && posts.catchUp;

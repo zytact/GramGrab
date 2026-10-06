@@ -1,4 +1,4 @@
-import { Data, Effect, Schema } from 'effect';
+import { Data, Effect, Match, Schema } from 'effect';
 import {
   AccountId,
   CommandFailure,
@@ -12,6 +12,7 @@ import {
   WatchCheckResult,
   WatchInboxListResult,
   WatchInboxRemoveResult,
+  WatchRecoverResult,
   WatchLifecycleResult,
   WatchListResult,
   WatchSchedule,
@@ -33,7 +34,9 @@ import type { WatchCommandResponse, WatchPreviewResponse } from '../messaging/co
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
 import { loginAttention, refreshBadge, rememberViewer } from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
-import { discoveries, inbox, initialized, summarize } from './summary.ts';
+import { attentionEntries, discoveries, inbox, initialized, summarize } from './summary.ts';
+import { retryNotify } from './notify.ts';
+import { needsPerson } from './discoveries.ts';
 import { resumeAfterPerson, runCheck, scheduleOf } from './scheduler.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
 import {
@@ -138,6 +141,7 @@ const list = Effect.gen(function* () {
       (store ? (yield* Effect.promise(() => loginAttention(store, viewer.accountId))).length : 0) +
       (storage.status === 'ok' ? 0 : 1),
     watches,
+    attentionEntries: store ? owned(store, viewer).flatMap(watch => attentionEntries(watch)) : [],
   });
 });
 
@@ -387,36 +391,76 @@ const inboxRemove = (command: Extract<WatchCommand, { _tag: 'WatchInboxRemove' }
     });
   });
 
+/**
+ * Retries or dismisses the failed notification of each entry. An entry with no failed
+ * notification, or one already dismissed, is refused rather than recovered.
+ */
+const recover = (command: Extract<WatchCommand, { _tag: 'WatchRecover' }>) =>
+  Effect.gen(function* () {
+    const viewer = yield* verifyViewer(yield* loadOrReject);
+    const result = yield* save(store => {
+      const entries = new Map(
+        owned(store, viewer).flatMap(watch =>
+          watch.discoveries.map(discovery => [discovery.id, { watch, discovery }] as const)
+        )
+      );
+      const known = command.entryIds.filter(id => entries.has(id));
+      const recovered = known.filter(id => needsPerson(entries.get(id)!.discovery));
+      const watches = store.watches.map(watch => ({
+        ...watch,
+        discoveries: watch.discoveries.map(discovery => {
+          if (!recovered.includes(discovery.id) || discovery.notify?.status !== 'failed')
+            return discovery;
+          return {
+            ...discovery,
+            notify:
+              command.operation === 'dismiss'
+                ? { ...discovery.notify, dismissed: true }
+                : { status: 'pending' as const },
+          };
+        }),
+      }));
+      return {
+        store: recovered.length > 0 ? { ...store, watches } : store,
+        value: {
+          retried: recovered.map(id => ({ watchId: entries.get(id)!.watch.id, entryId: id })),
+          result: WatchRecoverResult.make({
+            recoveredEntryIds: recovered,
+            refused: known
+              .filter(id => !recovered.includes(id))
+              .map(entryId => ({ entryId, code: 'WATCH_RECOVERY_NOT_APPLICABLE' as const })),
+            unknownEntryIds: command.entryIds.filter(id => !entries.has(id)),
+          }),
+        },
+      };
+    });
+    if (command.operation === 'retry') yield* Effect.promise(() => retryNotify(result.retried));
+    yield* Effect.promise(refreshBadge);
+    return result.result;
+  });
+
+const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>) =>
+  Effect.gen(function* () {
+    const store = yield* loadOrReject;
+    const viewer = yield* verifyViewer(store);
+    const watch = yield* findOwned(store, viewer, command.watch);
+    return WatchShowResult.make({ watch: summarize(watch), discoveries: discoveries(watch) });
+  });
+
 const program = (
   command: WatchCommand
-): Effect.Effect<WatchResult, WatchRejection, InstagramRequests> => {
-  switch (command._tag) {
-    case 'WatchList':
-      return list;
-    case 'WatchShow':
-      return Effect.gen(function* () {
-        const store = yield* loadOrReject;
-        const viewer = yield* verifyViewer(store);
-        const watch = yield* findOwned(store, viewer, command.watch);
-        return WatchShowResult.make({
-          watch: summarize(watch),
-          discoveries: discoveries(watch),
-        });
-      });
-    case 'WatchAdd':
-      return add(command);
-    case 'WatchSet':
-      return set(command);
-    case 'WatchLifecycle':
-      return lifecycle(command);
-    case 'WatchCheck':
-      return check(command);
-    case 'WatchInboxList':
-      return inboxList(command);
-    case 'WatchInboxRemove':
-      return inboxRemove(command);
-  }
-};
+): Effect.Effect<WatchResult, WatchRejection, InstagramRequests> =>
+  Match.valueTags(command, {
+    WatchList: () => list,
+    WatchShow: show,
+    WatchAdd: add,
+    WatchSet: set,
+    WatchLifecycle: lifecycle,
+    WatchCheck: check,
+    WatchInboxList: inboxList,
+    WatchInboxRemove: inboxRemove,
+    WatchRecover: recover,
+  });
 
 /** Runs person-initiated Watch work, answering a rejection as its protocol failure. */
 const runForPerson = <A>(

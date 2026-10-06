@@ -79,6 +79,13 @@ export class WatchInboxRemove extends Schema.TaggedClass<WatchInboxRemove>()('Wa
   entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
 }) {}
 
+/** Retries or dismisses a failed action of each entry; other entries cannot be recovered so. */
+export class WatchRecover extends Schema.TaggedClass<WatchRecover>()('WatchRecover', {
+  action: Schema.Literal('notify'),
+  operation: Schema.Literal('retry', 'dismiss'),
+  entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
+}) {}
+
 export const WatchCommand = Schema.Union(
   WatchList,
   WatchShow,
@@ -87,7 +94,8 @@ export const WatchCommand = Schema.Union(
   WatchLifecycle,
   WatchCheck,
   WatchInboxList,
-  WatchInboxRemove
+  WatchInboxRemove,
+  WatchRecover
 );
 export type WatchCommand = Schema.Schema.Type<typeof WatchCommand>;
 
@@ -155,15 +163,6 @@ export class WatchSchedule extends Schema.Class<WatchSchedule>('WatchSchedule')(
   suspended: Schema.Boolean,
 }) {}
 
-export class WatchListResult extends Schema.TaggedClass<WatchListResult>()('WatchListResult', {
-  viewer: WatchViewer,
-  schedule: WatchSchedule,
-  otherLoginWatchCount: Count,
-  storage: WatchStorage,
-  attentionCount: Count,
-  watches: Schema.Array(WatchSummary),
-}) {}
-
 /** Where one selected action stands for a discovery. */
 export class ActionOutcome extends Schema.Class<ActionOutcome>('ActionOutcome')({
   state: Schema.Literal('waiting', 'done', 'failed', 'unconfirmed'),
@@ -187,6 +186,17 @@ export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoveryS
   notify: Schema.optional(ActionOutcome),
   download: Schema.optional(ActionOutcome),
   collect: Schema.optional(ActionOutcome),
+}) {}
+
+export class WatchListResult extends Schema.TaggedClass<WatchListResult>()('WatchListResult', {
+  viewer: WatchViewer,
+  schedule: WatchSchedule,
+  otherLoginWatchCount: Count,
+  storage: WatchStorage,
+  attentionCount: Count,
+  watches: Schema.Array(WatchSummary),
+  /** Discoveries with an action that needs the person: failed and not dismissed. */
+  attentionEntries: Schema.Array(DiscoverySummary),
 }) {}
 
 export class WatchShowResult extends Schema.TaggedClass<WatchShowResult>()('WatchShowResult', {
@@ -274,6 +284,20 @@ export class WatchLifecycleResult extends Schema.TaggedClass<WatchLifecycleResul
   }
 ) {}
 
+export class WatchRecoverResult extends Schema.TaggedClass<WatchRecoverResult>()(
+  'WatchRecoverResult',
+  {
+    recoveredEntryIds: Schema.Array(NonEmptyString),
+    refused: Schema.Array(
+      Schema.Struct({
+        entryId: NonEmptyString,
+        code: Schema.Literal('WATCH_RECOVERY_NOT_APPLICABLE'),
+      })
+    ),
+    unknownEntryIds: Schema.Array(NonEmptyString),
+  }
+) {}
+
 export const WatchResult = Schema.Union(
   WatchListResult,
   WatchShowResult,
@@ -282,7 +306,8 @@ export const WatchResult = Schema.Union(
   WatchLifecycleResult,
   WatchCheckResult,
   WatchInboxListResult,
-  WatchInboxRemoveResult
+  WatchInboxRemoveResult,
+  WatchRecoverResult
 );
 export type WatchResult = Schema.Schema.Type<typeof WatchResult>;
 

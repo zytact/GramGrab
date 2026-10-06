@@ -100,7 +100,7 @@ const NotifyRecord = Schema.Union(
   Schema.Struct({ status: Schema.Literal('done'), at: EpochMillis }),
   Schema.Struct({
     status: Schema.Literal('failed'),
-    reason: Schema.Literal('permission-denied', 'delivery-failed'),
+    code: Schema.Literal('WATCH_NOTIFY_PERMISSION_DENIED', 'WATCH_NOTIFY_FAILED'),
     at: EpochMillis,
     dismissed: Schema.Boolean,
   })

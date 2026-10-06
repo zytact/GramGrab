@@ -16,6 +16,7 @@ const SearchResponse = Schema.Struct({
         id: SearchId,
         username: Schema.String,
         profile_pic_id: Schema.optional(Schema.NullOr(Schema.String)),
+        profile_pic_url: Schema.optional(Schema.NullOr(Schema.String)),
       }),
     })
   ),
@@ -28,8 +29,9 @@ const names = (id: string | number | undefined, targetId: string) =>
   typeof id === 'number' ? Number.isSafeInteger(id) && String(id) === targetId : id === targetId;
 
 /**
- * Reads the target's current picture identity from a search answer. Exactly one result must be
- * the target by account ID and current username, and its picture ID must be present and opaque.
+ * Reads the target's current picture identity from a search answer, with that same record's
+ * picture URL for transient use. Exactly one result must be the target by account ID and current
+ * username, and its picture ID must be present and opaque.
  */
 export const readAvatar = (raw: unknown, targetId: string, username: string) =>
   Effect.gen(function* () {
@@ -50,7 +52,7 @@ export const readAvatar = (raw: unknown, targetId: string, username: string) =>
       !Schema.is(PictureId)(pictureId)
     )
       return yield* Effect.fail(untrusted());
-    return pictureId;
+    return { pictureId, pictureUrl: match!.user.profile_pic_url ?? undefined };
   });
 
 /** Searches the target's verified current username for its exact search record. */

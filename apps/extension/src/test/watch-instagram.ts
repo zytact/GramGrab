@@ -191,6 +191,11 @@ export function createWatchInstagram() {
 
   /** Each route answers one endpoint the Watch code calls; the first match wins. */
   const routes: readonly ((url: URL, init?: RequestInit) => Response | undefined)[] = [
+    // Search answers carry picture URLs on this host; the notification icon loads from it.
+    ({ hostname }) =>
+      hostname === 'sanitized.invalid'
+        ? new Response(new Blob(['picture'], { type: 'image/jpeg' }))
+        : undefined,
     ({ searchParams }) =>
       searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3'
         ? state.viewer

@@ -116,6 +116,6 @@ describe('protocol version 2', () => {
     expect(FAILURE_CODES).toContain('SILENT_MEMORY_CAPACITY_EXCEEDED');
     expect(FAILURE_CODES).toContain('HISTORY_VERSION_UNSUPPORTED');
     expect(FAILURE_CODES).toContain('WATCH_STORE_UNREADABLE');
-    expect(FAILURE_CODES).toHaveLength(70);
+    expect(FAILURE_CODES).toHaveLength(72);
   });
 });

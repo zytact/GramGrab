@@ -406,6 +406,14 @@ describe('CLI watch grammar', () => {
       operation: 'delete',
       watches: [{ username: 'one' }, { accountId: '222' }],
     });
+    expect(command('recover', 'notify', 'retry', 'entry-1', 'entry-2')).toEqual(
+      expect.objectContaining({
+        _tag: 'WatchRecover',
+        action: 'notify',
+        operation: 'retry',
+        entryIds: ['entry-1', 'entry-2'],
+      })
+    );
   });
 
   it.each([
@@ -415,6 +423,8 @@ describe('CLI watch grammar', () => {
     [['pause'], 'needs at least one WATCH'],
     [['list', 'extra'], 'takes no WATCH'],
     [['show', 'someone', '--color'], 'Unknown option'],
+    [['recover', 'notify', 'retry'], 'needs at least one ENTRY_ID'],
+    [['recover', 'download', 'retry', 'entry-1'], 'Usage: gramgrab watch recover'],
   ])('rejects %j', (arguments_, message) => {
     expect(() => command(...arguments_)).toThrow(message);
   });

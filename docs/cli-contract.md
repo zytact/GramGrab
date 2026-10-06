@@ -37,6 +37,7 @@ gramgrab watch show WATCH [--json]
 gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
 gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
 gramgrab watch pause|resume|delete WATCH... [--json]
+gramgrab watch recover notify retry|dismiss ENTRY_ID... [--json]
 ```
 
 `SOURCE` may be a supported Instagram URL or a bare username. A bare username targets that
@@ -78,6 +79,16 @@ existing Watch with `created: false`, and a different configuration is `WATCH_CO
 naming the existing Watch. `set` replaces the kinds or actions it is given, and each newly selected
 kind's first check only records a baseline. Lifecycle commands report unknown selectors in
 `unknownWatches` and still apply to the others.
+
+With notify selected, each Watch check that found something, or whose kind just started failing,
+sends one notification. A problem that continues is not announced again. Clicking it opens the
+Watch's Found tab in the options page, only for the verified login that owns it. Notifications are
+an optional browser permission the options page asks for. When it is missing, or the browser does
+not show a notification, that entry's notify outcome fails with `WATCH_NOTIFY_PERMISSION_DENIED`
+or `WATCH_NOTIFY_FAILED` and appears in Needs you. Later checks never resend it.
+`watch recover notify retry` sends it again and `dismiss` clears it. An entry without a failed,
+undismissed notification is refused with `WATCH_RECOVERY_NOT_APPLICABLE`, unknown entries are
+reported in `unknownEntryIds`, and either makes the exit code 1.
 
 A Posts check pages newest first, 12 Posts per page, and reads at most three pages per turn. It
 stops at the last page or at the first page that reaches media too old to be new: Instagram is

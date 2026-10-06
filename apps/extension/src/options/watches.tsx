@@ -7,6 +7,7 @@ import {
   WatchAdd,
   WatchLifecycle,
   WatchList,
+  WatchRecover,
   WatchSet,
   type WatchAction,
   type WatchCommand,
@@ -24,6 +25,21 @@ import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from '
 import { AllInbox, WatchDetail, healthText, runCommand } from './watch-detail.tsx';
 
 type View = 'attention' | 'inbox' | 'new' | { readonly watchId: string };
+
+/** A notification opens `#watch=<id>`; the Watch shows only if this login owns it. */
+const linkedView = (): View | undefined => {
+  const watchId = new URLSearchParams(location.hash.slice(1)).get('watch');
+  return watchId ? { watchId } : undefined;
+};
+
+/**
+ * Asks for notification permission when notify is chosen. It must run inside the click, before
+ * any other await. A refusal is not an error here: delivery records it on the entries it affects.
+ */
+const askToNotify = (actions: readonly WatchAction[]) => {
+  if (actions.includes('notify'))
+    void browser.permissions.request({ permissions: ['notifications'] }).catch(() => false);
+};
 
 type Loaded =
   | { readonly kind: 'loading' }
@@ -259,6 +275,7 @@ function NewWatchForm({
       className="opt-add"
       onSubmit={event => {
         event.preventDefault();
+        askToNotify(actions);
         setBusy(true);
         void onRun(
           WatchAdd.make({
@@ -384,14 +401,11 @@ function WatchSettings({
         chosen={watch.actions}
         label={ACTION_LABEL}
         note={actionNote(watch.actions)}
-        onToggle={action =>
-          void onRun(
-            WatchSet.make({
-              watch: selector,
-              actions: ordered(WATCH_ACTIONS, toggled(watch.actions, action)),
-            })
-          )
-        }
+        onToggle={action => {
+          const next = ordered(WATCH_ACTIONS, toggled(watch.actions, action));
+          if (!watch.actions.includes('notify')) askToNotify(next);
+          void onRun(WatchSet.make({ watch: selector, actions: next }));
+        }}
       />
       <span className="opt-label">Watch</span>
       <div className="opt-col">
@@ -444,12 +458,15 @@ function WatchSettings({
 }
 
 function AttentionView({
-  watches,
+  list,
   onOpen,
+  onRun,
 }: {
-  watches: readonly WatchSummary[];
+  list: WatchListResult;
   onOpen: (watchId: string) => void;
+  onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
 }) {
+  const { watches, attentionEntries } = list;
   const problems = watches.flatMap(watch =>
     watch.kinds.flatMap(health =>
       health._tag === 'KindProblem' && watch.enabled ? [{ watch, health }] : []
@@ -458,7 +475,38 @@ function AttentionView({
   return (
     <>
       <h1 className="opt-h1">Needs you</h1>
-      {problems.length === 0 && <p className="opt-note">All clear. Nothing needs you right now.</p>}
+      {problems.length === 0 && attentionEntries.length === 0 && (
+        <p className="opt-note">All clear. Nothing needs you right now.</p>
+      )}
+      {attentionEntries.length > 0 && <h2 className="opt-h2">Notifications that failed</h2>}
+      {attentionEntries.map(entry => {
+        const recover = (operation: 'retry' | 'dismiss') => {
+          if (operation === 'retry') askToNotify(['notify']);
+          void onRun(WatchRecover.make({ action: 'notify', operation, entryIds: [entry.entryId] }));
+        };
+        const copy = entry.notify?.code ? FAILURE_PRESENTATION[entry.notify.code] : undefined;
+        return (
+          <div key={entry.entryId} className="opt-line opt-row opt-top">
+            <div className="opt-grow">
+              <strong>
+                @{entry.username} · {KIND_LABEL[entry.kind]} · found{' '}
+                {relativeTime(entry.discoveredAt)}
+              </strong>
+              {copy && (
+                <span className="opt-meta">
+                  {copy.title}. {copy.explanation}
+                </span>
+              )}
+            </div>
+            <button className="opt-btn" onClick={() => recover('retry')}>
+              Retry
+            </button>
+            <button className="opt-btn opt-ghost" onClick={() => recover('dismiss')}>
+              Dismiss
+            </button>
+          </div>
+        );
+      })}
       {problems.length > 0 && <h2 className="opt-h2">Checks that could not run</h2>}
       {problems.map(({ watch, health }) => (
         <div key={watch.watchId + health.kind} className="opt-line opt-row opt-top">
@@ -658,7 +706,7 @@ function Feed({
       <ScheduleNotice schedule={list.schedule} />
       {actionFailure && <FailureNotice failure={actionFailure} />}
       {current === 'attention' && (
-        <AttentionView watches={list.watches} onOpen={id => onGo({ watchId: id })} />
+        <AttentionView list={list} onRun={onRun} onOpen={id => onGo({ watchId: id })} />
       )}
       {current === 'inbox' && <AllInbox version={version} onChanged={onChanged} />}
       {current === 'new' && (
@@ -681,10 +729,14 @@ function Console({
   version: number;
   refresh: () => Promise<void>;
 }) {
-  const [view, setView] = useState<View>();
+  const [view, setView] = useState<View | undefined>(linkedView);
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
   const attention = list.attentionCount;
-  const current = view ?? (attention > 0 ? 'attention' : 'inbox');
+  const known =
+    typeof view === 'object' && !list.watches.some(watch => watch.watchId === view.watchId)
+      ? undefined
+      : view;
+  const current = known ?? (attention > 0 ? 'attention' : 'inbox');
   const watch =
     typeof current === 'object'
       ? list.watches.find(candidate => candidate.watchId === current.watchId)

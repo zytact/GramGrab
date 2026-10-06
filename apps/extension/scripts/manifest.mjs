@@ -32,6 +32,11 @@ const permissionDocumentation = [
   },
 ];
 
+/** Asked for only when a person first chooses to be notified by a Watch. */
+const optionalPermissionDocumentation = [
+  { permission: 'notifications', reason: 'Tell you what a Watch check found, if you ask it to' },
+];
+
 const hostPermissionDocumentation = [
   { permission: 'https://*.instagram.com/*', reason: 'Fetch media metadata from Instagram' },
   {
@@ -42,6 +47,7 @@ const hostPermissionDocumentation = [
 
 export const manifestPermissionDocumentation = [
   ...permissionDocumentation,
+  ...optionalPermissionDocumentation,
   ...hostPermissionDocumentation,
 ];
 
@@ -100,6 +106,7 @@ export function createManifest(browser) {
     },
     options_ui: { page: 'options.html', open_in_tab: true },
     permissions: permissionDocumentation.map(({ permission }) => permission),
+    optional_permissions: optionalPermissionDocumentation.map(({ permission }) => permission),
     host_permissions: hostPermissionDocumentation.map(({ permission }) => permission),
     background,
     ...browserSettings,
