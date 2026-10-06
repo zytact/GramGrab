@@ -28,6 +28,40 @@ own simulated failures and interruptions.
    confirm only where that operation is offered. Check problems are not action
    recovery targets. Removal affects inbox metadata only.
 
+## Check now
+
+The Watch detail's Check now state comes from the worker's `watch-scheduler`
+record, not from the page. A queued or running manual check is a `manual` job
+there, and its last finished one is in `lastManual`. `watch list --json` and
+`watch show instagram --json` expose both as `manualCheck` on the Watch summary
+(`.watches[]` and `.watch` respectively):
+`ManualCheckPending` with `remainingKinds` and `outcomes`, or
+`ManualCheckFinished` with `finishedAt` and `outcomes`. The page follows the
+storage record without calling Instagram, then refreshes once when the check
+ends.
+
+1. Clear `instagram-requests` and relaunch, as in Rate-limit pause step 1, so
+   the click is not deferred. Open the `instagram` Watch and click Check now.
+   The button reads `Checking…` and is disabled, and the line under it lists
+   finished kinds and `Still to check: ...`. When pacing stops the check part
+   way, the same line adds the reason and time it continues, and that survives
+   navigation too.
+2. Switch to All inbox and back, then reload `options.html`. Both times the
+   button still reads `Checking…` with the same or later progress. A second
+   click is impossible while it is disabled. `watch check instagram --json`
+   during the check returns `deferredReason: "queued"` and the `manual` array
+   in `watch-scheduler` still holds one job for the Watch.
+3. Stay on All inbox until `watch show instagram --json` reports
+   `ManualCheckFinished`. Poll every 30 seconds at most, since each call makes
+   an Instagram request that also delays Watch pacing. A check took 2 to 11
+   minutes in live runs, longer while an unattended round shares the queue.
+   Return to the Watch: the button reads `Check now` and the line reads
+   `Last check ...:` with one outcome per kind. It survives a reload.
+4. Click Check now again within five minutes. It returns at once with `Checked
+   in the last 5 minutes. Check again at HH:MM.` With a rate-limit pause active
+   it says `Instagram rate limited a Watch request. Checks wait until HH:MM.`
+   instead, and other spacing reads `Watch requests are spaced out.`
+
 ## Posts on a real grid
 
 Instagram's Posts grid is not newest first, and a collab Post can belong to another account. Unit
