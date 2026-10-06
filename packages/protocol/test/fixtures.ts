@@ -81,6 +81,13 @@ export const requestFixtures: readonly unknown[] = [
       actions: ['download'],
     },
   },
+  { version: 2, requestId, command: { _tag: 'WatchCheck' } },
+  {
+    version: 2,
+    requestId,
+    command: { _tag: 'WatchInboxList', watch: { _tag: 'AccountIdSelector', accountId: '2002' } },
+  },
+  { version: 2, requestId, command: { _tag: 'WatchInboxRemove', entryIds: ['entry-1'] } },
   {
     version: 2,
     requestId,
@@ -213,7 +220,47 @@ const resultFixtures: readonly unknown[] = [
     attentionCount: 1,
     watches: [watchSummary],
   },
-  { _tag: 'WatchShowResult', watch: watchSummary },
+  {
+    _tag: 'WatchShowResult',
+    watch: watchSummary,
+    discoveries: [
+      {
+        entryId: 'c3a1e2d4-5b6f-4a7c-8d9e-0f1a2b3c4d5e',
+        watchId: watchSummary.watchId,
+        accountId: '2002',
+        username: 'example',
+        kind: 'posts',
+        mediaType: 'sidecar',
+        childCount: 3,
+        discoveredAt: 1_700_000_000_000,
+        inboxUntil: 1_702_592_000_000,
+        missingChildren: 1,
+        notify: { state: 'done' },
+        download: { state: 'failed', code: 'BROWSER_DOWNLOAD_NETWORK_FAILED' },
+        collect: { state: 'done' },
+      },
+    ],
+  },
+  {
+    _tag: 'WatchCheckResult',
+    outcomes: [
+      {
+        watchId: watchSummary.watchId,
+        accountId: '2002',
+        username: 'example',
+        kinds: [
+          { _tag: 'KindBaselineRecorded', kind: 'stories' },
+          { _tag: 'KindCheckSucceeded', kind: 'posts', newCount: 2, catchUp: true },
+          { _tag: 'KindCheckFailed', kind: 'avatar', code: 'WATCH_USERNAME_UNCONFIRMED' },
+          { _tag: 'KindCheckSkipped', kind: 'instants', reason: 'deferred' },
+        ],
+        deferredUntil: 1_700_000_100_000,
+      },
+    ],
+    unknownWatches: ['missing'],
+  },
+  { _tag: 'WatchInboxListResult', entries: [] },
+  { _tag: 'WatchInboxRemoveResult', removedEntryIds: ['a'], unknownEntryIds: ['b'] },
   { _tag: 'WatchAddResult', created: false, watch: watchSummary },
   { _tag: 'WatchSetResult', watch: watchSummary, baselineKinds: ['stories'] },
   {

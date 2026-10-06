@@ -16,7 +16,7 @@ const EpochMillis = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
 const EpochSeconds = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
 
 /** A Post, Story, or Sidecar child ID, or an Instant's `media_owner` composite, kept exactly. */
-const MediaId = Schema.String.pipe(Schema.pattern(/^\d{1,30}(?:_\d{1,30})?$/));
+export const MediaId = Schema.String.pipe(Schema.pattern(/^\d{1,30}(?:_\d{1,30})?$/));
 /** Instagram's opaque picture/upload identity for an Avatar. */
 const PictureId = Schema.String.pipe(Schema.pattern(/^[0-9A-Za-z_:-]{1,128}$/));
 const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}$/));
@@ -37,7 +37,7 @@ const TimedTracking = Schema.Struct({
   lastCheckAt: Schema.optional(EpochMillis),
   problem: Schema.optional(KindProblemRecord),
 });
-type TimedTracking = Schema.Schema.Type<typeof TimedTracking>;
+export type TimedTracking = Schema.Schema.Type<typeof TimedTracking>;
 
 const AvatarTracking = Schema.Struct({
   /** The last valid picture identity observed for the target. Absent means pending. */
@@ -89,7 +89,9 @@ const InstantRef = Schema.TaggedStruct('Instant', {
 const AvatarRef = Schema.TaggedStruct('Avatar', { pictureId: PictureId });
 
 const MediaRef = Schema.Union(PostRef, SidecarRef, StoryRef, InstantRef, AvatarRef);
-type MediaRef = Schema.Schema.Type<typeof MediaRef>;
+export type MediaRef = Schema.Schema.Type<typeof MediaRef>;
+/** A reference to media with a publication time, which every kind but Avatar records. */
+export type TimedRef = Exclude<MediaRef, { readonly _tag: 'Avatar' }>;
 
 const NotifyRecord = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
@@ -114,7 +116,7 @@ const ChildDownload = Schema.Union(
   /** The person said they have the file after an uncertain interruption. */
   Schema.Struct({ status: Schema.Literal('confirmed'), at: EpochMillis })
 );
-type ChildDownload = Schema.Schema.Type<typeof ChildDownload>;
+export type ChildDownload = Schema.Schema.Type<typeof ChildDownload>;
 
 const DownloadRecord = Schema.Struct({
   children: Schema.Array(ChildDownload).pipe(Schema.minItems(1)),
@@ -148,7 +150,7 @@ const Discovery = Schema.Struct({
   download: Schema.optional(DownloadRecord),
   collect: Schema.optional(CollectRecord),
 });
-type Discovery = Schema.Schema.Type<typeof Discovery>;
+export type Discovery = Schema.Schema.Type<typeof Discovery>;
 
 const Watch = Schema.Struct({
   /** Lifecycle identity. Re-adding a deleted Watch creates a new one. */

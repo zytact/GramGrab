@@ -66,7 +66,29 @@ export class WatchLifecycle extends Schema.TaggedClass<WatchLifecycle>()('WatchL
   watches: Schema.Array(WatchSelector).pipe(Schema.minItems(1)),
 }) {}
 
-export const WatchCommand = Schema.Union(WatchList, WatchShow, WatchAdd, WatchSet, WatchLifecycle);
+/** Checks the selected Watches now, or every enabled Watch of the login when none are given. */
+export class WatchCheck extends Schema.TaggedClass<WatchCheck>()('WatchCheck', {
+  watches: Schema.optional(Schema.Array(WatchSelector).pipe(Schema.minItems(1))),
+}) {}
+
+export class WatchInboxList extends Schema.TaggedClass<WatchInboxList>()('WatchInboxList', {
+  watch: Schema.optional(WatchSelector),
+}) {}
+
+export class WatchInboxRemove extends Schema.TaggedClass<WatchInboxRemove>()('WatchInboxRemove', {
+  entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
+}) {}
+
+export const WatchCommand = Schema.Union(
+  WatchList,
+  WatchShow,
+  WatchAdd,
+  WatchSet,
+  WatchLifecycle,
+  WatchCheck,
+  WatchInboxList,
+  WatchInboxRemove
+);
 export type WatchCommand = Schema.Schema.Type<typeof WatchCommand>;
 
 export class WatchViewer extends Schema.Class<WatchViewer>('WatchViewer')({
@@ -128,9 +150,95 @@ export class WatchListResult extends Schema.TaggedClass<WatchListResult>()('Watc
   watches: Schema.Array(WatchSummary),
 }) {}
 
+/** Where one selected action stands for a discovery. */
+export class ActionOutcome extends Schema.Class<ActionOutcome>('ActionOutcome')({
+  state: Schema.Literal('waiting', 'done', 'failed', 'unconfirmed'),
+  code: Schema.optional(FailureCodeSchema),
+}) {}
+
+/** One discovery as the page and CLI show it: no media bytes, URLs, or captions. */
+export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoverySummary')({
+  entryId: NonEmptyString,
+  watchId: NonEmptyString,
+  accountId: AccountId,
+  username: InstagramUsername,
+  kind: WatchKind,
+  mediaType: Schema.Literal('image', 'video', 'sidecar', 'avatar'),
+  childCount: Schema.optional(Count),
+  discoveredAt: EpochMillis,
+  /** When the entry leaves the inbox; absent when it was never collected or was removed. */
+  inboxUntil: Schema.optional(EpochMillis),
+  unavailable: Schema.optional(FailureCodeSchema),
+  missingChildren: Schema.optional(Count),
+  notify: Schema.optional(ActionOutcome),
+  download: Schema.optional(ActionOutcome),
+  collect: Schema.optional(ActionOutcome),
+}) {}
+
 export class WatchShowResult extends Schema.TaggedClass<WatchShowResult>()('WatchShowResult', {
   watch: WatchSummary,
+  discoveries: Schema.Array(DiscoverySummary),
 }) {}
+
+export class KindBaselineRecorded extends Schema.TaggedClass<KindBaselineRecorded>()(
+  'KindBaselineRecorded',
+  { kind: WatchKind }
+) {}
+
+export class KindCheckSucceeded extends Schema.TaggedClass<KindCheckSucceeded>()(
+  'KindCheckSucceeded',
+  {
+    kind: WatchKind,
+    newCount: Count,
+    /** A longer traversal continues on a later turn of the same round. */
+    catchUp: Schema.Boolean,
+  }
+) {}
+
+export class KindCheckFailed extends Schema.TaggedClass<KindCheckFailed>()('KindCheckFailed', {
+  kind: WatchKind,
+  code: FailureCodeSchema,
+}) {}
+
+export class KindCheckSkipped extends Schema.TaggedClass<KindCheckSkipped>()('KindCheckSkipped', {
+  kind: WatchKind,
+  reason: Schema.Literal('paused', 'kind-off', 'login-unverified', 'storage', 'deferred'),
+}) {}
+
+export const KindCheckOutcome = Schema.Union(
+  KindBaselineRecorded,
+  KindCheckSucceeded,
+  KindCheckFailed,
+  KindCheckSkipped
+);
+export type KindCheckOutcome = Schema.Schema.Type<typeof KindCheckOutcome>;
+
+export class WatchCheckOutcome extends Schema.Class<WatchCheckOutcome>('WatchCheckOutcome')({
+  watchId: NonEmptyString,
+  accountId: AccountId,
+  username: InstagramUsername,
+  kinds: Schema.Array(KindCheckOutcome),
+  /** Set when pacing held the check back: the earliest time it can run. */
+  deferredUntil: Schema.optional(EpochMillis),
+}) {}
+
+export class WatchCheckResult extends Schema.TaggedClass<WatchCheckResult>()('WatchCheckResult', {
+  outcomes: Schema.Array(WatchCheckOutcome),
+  unknownWatches: Schema.Array(NonEmptyString),
+}) {}
+
+export class WatchInboxListResult extends Schema.TaggedClass<WatchInboxListResult>()(
+  'WatchInboxListResult',
+  { entries: Schema.Array(DiscoverySummary) }
+) {}
+
+export class WatchInboxRemoveResult extends Schema.TaggedClass<WatchInboxRemoveResult>()(
+  'WatchInboxRemoveResult',
+  {
+    removedEntryIds: Schema.Array(NonEmptyString),
+    unknownEntryIds: Schema.Array(NonEmptyString),
+  }
+) {}
 
 export class WatchAddResult extends Schema.TaggedClass<WatchAddResult>()('WatchAddResult', {
   created: Schema.Boolean,
@@ -157,7 +265,10 @@ export const WatchResult = Schema.Union(
   WatchShowResult,
   WatchAddResult,
   WatchSetResult,
-  WatchLifecycleResult
+  WatchLifecycleResult,
+  WatchCheckResult,
+  WatchInboxListResult,
+  WatchInboxRemoveResult
 );
 export type WatchResult = Schema.Schema.Type<typeof WatchResult>;
 

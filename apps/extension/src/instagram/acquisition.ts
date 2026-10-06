@@ -90,13 +90,13 @@ export const IG_API_GRAPHQL_HEADERS = {
   'X-ASBD-ID': protocolConfig.client.asbdId,
 } as const;
 
-function configuredGraphqlHeaders(request: ProtocolRequest): Record<string, string> {
+export function configuredGraphqlHeaders(request: ProtocolRequest): Record<string, string> {
   return {
     ...(request.transport === 'form' ? IG_API_GRAPHQL_HEADERS : IG_GRAPHQL_HEADERS),
   };
 }
 
-function configuredRequests(operation: ProtocolOperation) {
+export function configuredRequests(operation: ProtocolOperation) {
   return operation.candidates.flatMap(candidate =>
     candidate.requests.map(request => ({ candidate, request }))
   );

@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UNATTENDED_DISCLOSURE } from '@gramgrab/protocol';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
-import { TARGET, createWatchInstagram } from '../test/watch-instagram.ts';
+import { TARGET, VIEWER, createWatchInstagram } from '../test/watch-instagram.ts';
 import { Watches } from './watches.tsx';
 
 let harness: ExtensionHarness;
@@ -30,7 +30,56 @@ async function addWatch(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText(/Followed by account ID|You already watch this account/);
 }
 
+/** A stored Watch whose Stories check failed and which collected one Story. */
+function seedWatchWithProblemAndEntry() {
+  const now = Date.now();
+  harness.local.write('watch-store', {
+    version: 1,
+    watches: [
+      {
+        id: '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f',
+        viewerId: VIEWER.id,
+        targetId: TARGET.id,
+        username: TARGET.username,
+        createdAt: now - 60_000,
+        enabled: true,
+        kinds: ['stories'],
+        actions: ['collect'],
+        tracking: {
+          stories: {
+            baselineCutoff: 1,
+            lastSuccessAt: now - 60_000,
+            lastCheckAt: now,
+            problem: { code: 'IG_RESPONSE_SHAPE_UNKNOWN', at: now },
+          },
+        },
+        discoveries: [
+          {
+            id: '0b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e',
+            checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
+            ref: { _tag: 'Story', mediaId: '31', mediaType: 'video', takenAt: 2, expiresAt: 3 },
+            discoveredAt: now - 60_000,
+            collect: { at: now - 60_000 },
+          },
+        ],
+      },
+    ],
+  });
+}
+
 describe('Watches options page', () => {
+  it('opens on Needs you while a check problem needs attention, and lists collected entries', async () => {
+    seedWatchWithProblemAndEntry();
+    const user = userEvent.setup();
+    render(<Watches />);
+
+    expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeDefined();
+    expect(screen.getByText(/Instagram's format has changed/)).toBeDefined();
+    await user.click(screen.getByText(/^All inbox$/));
+    expect(await screen.findByText(`@${TARGET.username} · Video`)).toBeDefined();
+    expect(screen.getByText(/leaves the inbox in 30 days/)).toBeDefined();
+  });
+
   it('adds a Watch only after the settled disclosure is acknowledged', async () => {
     const user = userEvent.setup();
     render(<Watches />);

@@ -3,38 +3,44 @@ import {
   AccountId,
   CommandFailure,
   ExistingWatch,
-  KindBaselinePending,
-  KindChecked,
-  KindOff,
-  KindProblem,
   OperationFailure,
   StoredWatchCount,
   UNATTENDED_DISCLOSURE,
   UnattendedDisclosure,
-  WATCH_KINDS,
   WatchAddResult,
+  WatchCheckOutcome,
+  WatchCheckResult,
+  WatchInboxListResult,
+  WatchInboxRemoveResult,
   WatchLifecycleResult,
   WatchListResult,
   WatchSetResult,
   WatchShowResult,
   WatchStorage,
-  WatchSummary,
   WatchViewer,
   type FailureCode,
   type WatchCommand,
   type WatchFailureDetail,
-  type WatchKind,
   type WatchResult,
   type WatchSelector,
 } from '@gramgrab/protocol';
 import { canonicalizeInstagramUrl } from '../workspace/contracts.ts';
 import { resolveUsernameToId } from '../instagram/acquisition.ts';
-import { PersonRequests, type InstagramRequests } from '../instagram/requests.ts';
+import { PersonRequests, WatchRequests, type InstagramRequests } from '../instagram/requests.ts';
 import { normalizeSourceFailure } from '../errors/normalize.ts';
 import type { WatchCommandResponse, WatchPreviewResponse } from '../messaging/contracts.ts';
-import { STORE_BUDGET_BYTES, RETENTION_MS, type Watch, type WatchStore } from './contracts.ts';
+import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
+import { loginAttention, refreshBadge, rememberViewer } from './attention.ts';
+import { MANUAL_CHECK_INTERVAL_MS, checkWatch, lastCheckAt } from './check.ts';
+import { discoveries, inbox, initialized, summarize } from './summary.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
-import { mutateStore, readStore, storeHealth, type StoreFailureCode } from './store.ts';
+import {
+  mutateStore,
+  readStore,
+  storeHealth,
+  type StoreFailureCode,
+  type StoreRead,
+} from './store.ts';
 
 /** A Watch command the background refuses, with the context that makes it actionable. */
 class WatchRejection extends Data.TaggedError('WatchRejection')<{
@@ -65,6 +71,7 @@ const save = <T>(change: (store: WatchStore) => { store: WatchStore; value: T })
  */
 const verifyViewer = (store: WatchStore | undefined) =>
   fetchViewer.pipe(
+    Effect.tap(viewer => Effect.promise(() => rememberViewer(viewer.accountId))),
     Effect.catchAll(() =>
       reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
     )
@@ -81,53 +88,6 @@ const matches = (watch: Watch, selector: WatchSelector) =>
 const selectorText = (selector: WatchSelector) =>
   selector._tag === 'AccountIdSelector' ? selector.accountId : selector.username;
 
-/** Whether `kind` has a committed baseline, which pausing or deselecting it keeps. */
-function initialized(watch: Watch, kind: WatchKind): boolean {
-  return (
-    (kind === 'avatar'
-      ? watch.tracking.avatar?.pictureId
-      : watch.tracking[kind]?.baselineCutoff) !== undefined
-  );
-}
-
-function kindHealth(watch: Watch, kind: WatchKind) {
-  const tracking = watch.tracking[kind];
-  if (!watch.kinds.includes(kind))
-    return KindOff.make({ kind, baselineKept: initialized(watch, kind) });
-  if (tracking?.problem)
-    return KindProblem.make({
-      kind,
-      code: tracking.problem.code,
-      since: tracking.problem.at,
-      ...(tracking.lastSuccessAt === undefined ? {} : { lastSuccessAt: tracking.lastSuccessAt }),
-    });
-  if (initialized(watch, kind) && tracking?.lastSuccessAt !== undefined)
-    return KindChecked.make({ kind, lastSuccessAt: tracking.lastSuccessAt });
-  return KindBaselinePending.make({ kind });
-}
-
-function summarize(watch: Watch, now = Date.now()): WatchSummary {
-  const lastChecks = WATCH_KINDS.flatMap(kind => watch.tracking[kind]?.lastCheckAt ?? []);
-  return WatchSummary.make({
-    watchId: watch.id,
-    accountId: watch.targetId,
-    username: watch.username,
-    ...(watch.formerUsername ? { formerUsername: watch.formerUsername } : {}),
-    enabled: watch.enabled,
-    kinds: WATCH_KINDS.map(kind => kindHealth(watch, kind)),
-    actions: watch.actions,
-    attentionCount: 0,
-    inboxCount: watch.discoveries.filter(
-      discovery =>
-        discovery.collect &&
-        discovery.collect.removedAt === undefined &&
-        now - discovery.discoveredAt < RETENTION_MS
-    ).length,
-    createdAt: watch.createdAt,
-    ...(lastChecks.length > 0 ? { lastCheckAt: Math.max(...lastChecks) } : {}),
-  });
-}
-
 const STORAGE_STATUS = {
   WATCH_STORE_CAPACITY_EXCEEDED: 'full',
   WATCH_STORE_FAILED: 'write-failed',
@@ -135,26 +95,35 @@ const STORAGE_STATUS = {
   WATCH_STORE_VERSION_UNSUPPORTED: 'unsupported',
 } as const satisfies Record<StoreFailureCode, WatchStorage['status']>;
 
+/** How full the store is, and the problem that stopped Watches if one did. */
+async function storageState(read: StoreRead): Promise<WatchStorage> {
+  if (read.kind === 'failed')
+    return WatchStorage.make({
+      usedBytes: 0,
+      budgetBytes: STORE_BUDGET_BYTES,
+      status: STORAGE_STATUS[read.code],
+    });
+  const health = await storeHealth();
+  return WatchStorage.make({
+    usedBytes: read.bytes,
+    budgetBytes: STORE_BUDGET_BYTES,
+    status: health ? STORAGE_STATUS[health.code] : 'ok',
+  });
+}
+
 const list = Effect.gen(function* () {
   const read = yield* load;
   const store = read.kind === 'ok' ? read.store : undefined;
   const viewer = yield* verifyViewer(store);
-  const health = read.kind === 'ok' ? yield* Effect.promise(storeHealth) : undefined;
+  const storage = yield* Effect.promise(() => storageState(read));
   const watches = store ? owned(store, viewer).map(watch => summarize(watch)) : [];
   return WatchListResult.make({
     viewer: WatchViewer.make(viewer),
     otherLoginWatchCount: (store?.watches.length ?? 0) - watches.length,
-    storage: WatchStorage.make({
-      usedBytes: read.kind === 'ok' ? read.bytes : 0,
-      budgetBytes: STORE_BUDGET_BYTES,
-      status:
-        read.kind === 'failed'
-          ? STORAGE_STATUS[read.code]
-          : health
-            ? STORAGE_STATUS[health.code]
-            : 'ok',
-    }),
-    attentionCount: 0,
+    storage,
+    attentionCount:
+      (store ? loginAttention(store, viewer.accountId).length : 0) +
+      (storage.status === 'ok' ? 0 : 1),
     watches,
   });
 });
@@ -320,6 +289,91 @@ const lifecycle = (command: Extract<WatchCommand, { _tag: 'WatchLifecycle' }>) =
     });
   });
 
+/** Runs one manual check, unless the Watch was checked moments ago. */
+const checkOne = (watch: Watch, viewer: Account, checkId: string) =>
+  Effect.gen(function* () {
+    const last = lastCheckAt(watch);
+    const earliest = last === undefined ? 0 : last + MANUAL_CHECK_INTERVAL_MS;
+    const run =
+      earliest > Date.now()
+        ? { kinds: [], deferredUntil: earliest }
+        : yield* checkWatch(watch.id, viewer.accountId, checkId).pipe(
+            Effect.provide(WatchRequests)
+          );
+    return WatchCheckOutcome.make({
+      watchId: watch.id,
+      accountId: watch.targetId,
+      username: watch.username,
+      kinds: run.kinds,
+      ...(run.deferredUntil === undefined ? {} : { deferredUntil: run.deferredUntil }),
+    });
+  });
+
+const check = (command: Extract<WatchCommand, { _tag: 'WatchCheck' }>) =>
+  Effect.gen(function* () {
+    const store = yield* loadOrReject;
+    const viewer = yield* verifyViewer(store);
+    const mine = owned(store, viewer);
+    const selected = command.watches
+      ? command.watches.map(selector => ({
+          selector,
+          watch: mine.find(watch => matches(watch, selector)),
+        }))
+      : mine.filter(watch => watch.enabled).map(watch => ({ selector: undefined, watch }));
+    const outcomes: WatchCheckOutcome[] = [];
+    const checkId = decodeUuid(crypto.randomUUID());
+    for (const { watch } of selected)
+      if (watch) outcomes.push(yield* checkOne(watch, viewer, checkId));
+    return WatchCheckResult.make({
+      outcomes,
+      unknownWatches: selected.flatMap(({ selector, watch }) =>
+        !watch && selector ? [selectorText(selector)] : []
+      ),
+    });
+  });
+
+const inboxList = (command: Extract<WatchCommand, { _tag: 'WatchInboxList' }>) =>
+  Effect.gen(function* () {
+    const store = yield* loadOrReject;
+    const viewer = yield* verifyViewer(store);
+    const watches = command.watch
+      ? [yield* findOwned(store, viewer, command.watch)]
+      : owned(store, viewer);
+    return WatchInboxListResult.make({
+      entries: watches
+        .flatMap(watch => inbox(watch))
+        .sort((left, right) => right.discoveredAt - left.discoveredAt),
+    });
+  });
+
+/** Takes entries out of the inbox. The discovery stays, so its media is never found again. */
+const inboxRemove = (command: Extract<WatchCommand, { _tag: 'WatchInboxRemove' }>) =>
+  Effect.gen(function* () {
+    const viewer = yield* verifyViewer(yield* loadOrReject);
+    return yield* save(store => {
+      const now = Date.now();
+      const removable = new Set(
+        owned(store, viewer).flatMap(watch => inbox(watch, now).map(entry => entry.entryId))
+      );
+      const removedEntryIds = command.entryIds.filter(id => removable.has(id));
+      const watches = store.watches.map(watch => ({
+        ...watch,
+        discoveries: watch.discoveries.map(discovery =>
+          discovery.collect && removedEntryIds.includes(discovery.id)
+            ? { ...discovery, collect: { ...discovery.collect, removedAt: now } }
+            : discovery
+        ),
+      }));
+      return {
+        store: removedEntryIds.length > 0 ? { ...store, watches } : store,
+        value: WatchInboxRemoveResult.make({
+          removedEntryIds,
+          unknownEntryIds: command.entryIds.filter(id => !removable.has(id)),
+        }),
+      };
+    });
+  });
+
 const program = (
   command: WatchCommand
 ): Effect.Effect<WatchResult, WatchRejection, InstagramRequests> => {
@@ -331,7 +385,10 @@ const program = (
         const store = yield* loadOrReject;
         const viewer = yield* verifyViewer(store);
         const watch = yield* findOwned(store, viewer, command.watch);
-        return WatchShowResult.make({ watch: summarize(watch) });
+        return WatchShowResult.make({
+          watch: summarize(watch),
+          discoveries: discoveries(watch),
+        });
       });
     case 'WatchAdd':
       return add(command);
@@ -339,6 +396,12 @@ const program = (
       return set(command);
     case 'WatchLifecycle':
       return lifecycle(command);
+    case 'WatchCheck':
+      return check(command);
+    case 'WatchInboxList':
+      return inboxList(command);
+    case 'WatchInboxRemove':
+      return inboxRemove(command);
   }
 };
 
@@ -356,7 +419,8 @@ const runForPerson = <A>(
           }),
         })
       ),
-      Effect.provide(PersonRequests)
+      Effect.provide(PersonRequests),
+      Effect.ensuring(Effect.promise(refreshBadge))
     )
   );
 

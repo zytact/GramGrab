@@ -160,7 +160,7 @@ class RequestLedger {
   }
 }
 
-const requestLedger = new RequestLedger();
+export const requestLedger = new RequestLedger();
 
 const sleep = (ms: number) =>
   Effect.promise(() => new Promise<void>(resolve => setTimeout(resolve, Math.max(0, ms))));
