@@ -14,6 +14,7 @@ import {
   WatchInboxRemoveResult,
   WatchLifecycleResult,
   WatchListResult,
+  WatchSchedule,
   WatchSetResult,
   WatchShowResult,
   WatchStorage,
@@ -26,13 +27,19 @@ import {
 } from '@gramgrab/protocol';
 import { canonicalizeInstagramUrl } from '../workspace/contracts.ts';
 import { resolveUsernameToId } from '../instagram/acquisition.ts';
-import { PersonRequests, WatchRequests, type InstagramRequests } from '../instagram/requests.ts';
+import {
+  PersonRequests,
+  WatchRequests,
+  requestLedger,
+  type InstagramRequests,
+} from '../instagram/requests.ts';
 import { normalizeSourceFailure } from '../errors/normalize.ts';
 import type { WatchCommandResponse, WatchPreviewResponse } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
 import { loginAttention, refreshBadge, rememberViewer } from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, checkWatch, lastCheckAt } from './check.ts';
 import { discoveries, inbox, initialized, summarize } from './summary.ts';
+import { exclusive, resumeAfterPerson, scheduleOf } from './scheduler.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
 import {
   mutateStore,
@@ -71,7 +78,9 @@ const save = <T>(change: (store: WatchStore) => { store: WatchStore; value: T })
  */
 const verifyViewer = (store: WatchStore | undefined) =>
   fetchViewer.pipe(
-    Effect.tap(viewer => Effect.promise(() => rememberViewer(viewer.accountId))),
+    Effect.tap(viewer =>
+      Effect.promise(() => Promise.all([rememberViewer(viewer.accountId), resumeAfterPerson()]))
+    ),
     Effect.catchAll(() =>
       reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
     )
@@ -117,12 +126,21 @@ const list = Effect.gen(function* () {
   const viewer = yield* verifyViewer(store);
   const storage = yield* Effect.promise(() => storageState(read));
   const watches = store ? owned(store, viewer).map(watch => summarize(watch)) : [];
+  const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
+  yield* Effect.promise(() => requestLedger.ready());
+  const pause = requestLedger.pause;
   return WatchListResult.make({
     viewer: WatchViewer.make(viewer),
+    schedule: WatchSchedule.make({
+      ...(schedule.nextRoundAt === undefined ? {} : { nextRoundAt: schedule.nextRoundAt }),
+      roundRemaining: schedule.roundRemaining,
+      ...(pause ? { pausedUntil: pause.until } : {}),
+      suspended: schedule.suspended,
+    }),
     otherLoginWatchCount: (store?.watches.length ?? 0) - watches.length,
     storage,
     attentionCount:
-      (store ? loginAttention(store, viewer.accountId).length : 0) +
+      (store ? (yield* Effect.promise(() => loginAttention(store, viewer.accountId))).length : 0) +
       (storage.status === 'ok' ? 0 : 1),
     watches,
   });
@@ -297,8 +315,12 @@ const checkOne = (watch: Watch, viewer: Account, checkId: string) =>
     const run =
       earliest > Date.now()
         ? { kinds: [], deferredUntil: earliest }
-        : yield* checkWatch(watch.id, viewer.accountId, checkId).pipe(
-            Effect.provide(WatchRequests)
+        : yield* Effect.promise(() =>
+            exclusive(() =>
+              Effect.runPromise(
+                checkWatch(watch.id, viewer.accountId, checkId).pipe(Effect.provide(WatchRequests))
+              )
+            )
           );
     return WatchCheckOutcome.make({
       watchId: watch.id,

@@ -509,6 +509,30 @@ function WatchRow({
   );
 }
 
+/** Other logins' Watches, when checks run next, and how full the store is. */
+function NavigationFoot({ list }: { list: WatchListResult }) {
+  const others = list.otherLoginWatchCount;
+  const { nextRoundAt, roundRemaining } = list.schedule;
+  return (
+    <div className="opt-list-foot">
+      {others > 0 && (
+        <p className="opt-banner">
+          {others} {others === 1 ? 'Watch belongs' : 'Watches belong'} to another Instagram login.{' '}
+          {others === 1 ? 'It is' : 'They are'} paused and hidden until that login signs in again.
+        </p>
+      )}
+      {nextRoundAt && (
+        <p className="opt-meta">
+          {roundRemaining > 0
+            ? `Checking: ${roundRemaining} left this round`
+            : `Next checks around ${new Date(nextRoundAt).toLocaleString()}`}
+        </p>
+      )}
+      <StorageMeter storage={list.storage} />
+    </div>
+  );
+}
+
 function Navigation({
   list,
   current,
@@ -523,7 +547,6 @@ function Navigation({
   onGo: (view: View) => void;
 }) {
   const inboxCount = list.watches.reduce((total, item) => total + item.inboxCount, 0);
-  const others = list.otherLoginWatchCount;
   return (
     <nav className="opt-list">
       <div className="opt-head">
@@ -563,17 +586,7 @@ function Navigation({
       >
         + Add Watch
       </button>
-      <div className="opt-list-foot">
-        {others > 0 && (
-          <p className="opt-banner">
-            {list.otherLoginWatchCount}{' '}
-            {list.otherLoginWatchCount === 1 ? 'Watch belongs' : 'Watches belong'} to another
-            Instagram login. {list.otherLoginWatchCount === 1 ? 'It is' : 'They are'} paused and
-            hidden until that login signs in again.
-          </p>
-        )}
-        <StorageMeter storage={list.storage} />
-      </div>
+      <NavigationFoot list={list} />
     </nav>
   );
 }
@@ -600,6 +613,26 @@ export function Watches() {
   return <Console list={loaded.list} version={version} refresh={refresh} />;
 }
 
+/** Why unattended checks are not running right now, if something holds them back. */
+function ScheduleNotice({ schedule }: { schedule: WatchListResult['schedule'] }) {
+  if (schedule.suspended)
+    return (
+      <p className="opt-banner opt-banner-error">
+        <strong>Watches stopped.</strong> Instagram refused the signed-in session. Sign in to
+        Instagram again, then reopen this page to resume checks.
+      </p>
+    );
+  if (schedule.pausedUntil)
+    return (
+      <p className="opt-banner opt-banner-error">
+        <strong>Watches paused.</strong> Instagram rate limited a request, so Watch checks wait
+        until {new Date(schedule.pausedUntil).toLocaleTimeString()}. Your own downloads still go
+        first.
+      </p>
+    );
+  return null;
+}
+
 function Feed({
   list,
   current,
@@ -622,6 +655,7 @@ function Feed({
   return (
     <section className="opt-feed">
       <StorageNotice storage={list.storage} />
+      <ScheduleNotice schedule={list.schedule} />
       {actionFailure && <FailureNotice failure={actionFailure} />}
       {current === 'attention' && (
         <AttentionView watches={list.watches} onOpen={id => onGo({ watchId: id })} />

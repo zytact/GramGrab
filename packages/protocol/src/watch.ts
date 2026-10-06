@@ -142,8 +142,20 @@ export class WatchStorage extends Schema.Class<WatchStorage>('WatchStorage')({
   status: Schema.Literal('ok', 'full', 'write-failed', 'unreadable', 'unsupported'),
 }) {}
 
+/** When unattended checks run next for the verified login, and what holds them back. */
+export class WatchSchedule extends Schema.Class<WatchSchedule>('WatchSchedule')({
+  nextRoundAt: Schema.optional(EpochMillis),
+  /** Watches still waiting for their turn in the current round. */
+  roundRemaining: Count,
+  /** Instagram rate limited a request; no Watch request starts before this time. */
+  pausedUntil: Schema.optional(EpochMillis),
+  /** Instagram rejected the session; checks wait until the person acts. */
+  suspended: Schema.Boolean,
+}) {}
+
 export class WatchListResult extends Schema.TaggedClass<WatchListResult>()('WatchListResult', {
   viewer: WatchViewer,
+  schedule: WatchSchedule,
   otherLoginWatchCount: Count,
   storage: WatchStorage,
   attentionCount: Count,

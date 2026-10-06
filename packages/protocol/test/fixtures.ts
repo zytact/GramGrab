@@ -215,6 +215,12 @@ const resultFixtures: readonly unknown[] = [
   {
     _tag: 'WatchListResult',
     viewer: { accountId: '1001', username: 'viewer' },
+    schedule: {
+      nextRoundAt: 1_700_043_200_000,
+      roundRemaining: 2,
+      pausedUntil: 1_700_001_800_000,
+      suspended: false,
+    },
     otherLoginWatchCount: 1,
     storage: { usedBytes: 2048, budgetBytes: 2_097_152, status: 'ok' },
     attentionCount: 1,
