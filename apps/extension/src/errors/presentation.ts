@@ -11,7 +11,7 @@ export interface FailurePresentation {
   readonly title: string;
   readonly explanation: string;
   readonly actions: readonly RecoveryAction[];
-  readonly retry: 'never' | 'once' | 'after-user-action' | 'after-refetch';
+  readonly retry: 'never' | 'once' | 'after-user-action' | 'after-refetch' | 'after-next-check';
   readonly retainSilentInput: boolean;
 }
 
@@ -330,6 +330,92 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'Keep the intended WhatsApp Web tab active, then try one more capture.',
     ['retry-operation', 'copy-diagnostics'],
     'once'
+  ),
+  WATCH_STORY_EXPIRED: policy(
+    'Story expired',
+    'This Story expired, so GramGrab can no longer download it.',
+    []
+  ),
+  WATCH_AVATAR_CHANGED: policy(
+    'Avatar changed again since',
+    'The account has a newer Avatar now, so this recorded one is no longer available.',
+    []
+  ),
+  WATCH_INSTANT_NOT_IN_FEED: policy(
+    'No longer in your Instants feed',
+    'This Instant is no longer in your Instants feed.',
+    []
+  ),
+  WATCH_MEDIA_UNAVAILABLE: policy(
+    'No longer returned by Instagram',
+    'Instagram no longer returns this exact item. Open the account in Instagram to check it.',
+    ['open-in-instagram']
+  ),
+  WATCH_USERNAME_UNCONFIRMED: policy(
+    "Could not confirm the account's username",
+    'GramGrab could not confirm the current username for this account ID, so it checks nothing that needs one. The baseline is kept.',
+    [],
+    'after-next-check'
+  ),
+  WATCH_CHECK_INCOMPLETE: policy(
+    'Check stopped before it finished',
+    "Instagram's answer was not complete or consistent enough to trust. The baseline is kept and the next check starts again.",
+    [],
+    'after-next-check'
+  ),
+  WATCH_STORE_CAPACITY_EXCEEDED: policy(
+    'Watch storage is full',
+    'Checks that found something new stopped and nothing was dropped. Remove inbox entries or delete a Watch to free space.',
+    ['free-watch-storage'],
+    'after-user-action'
+  ),
+  WATCH_STORE_FAILED: policy(
+    'The browser refused to save Watch data',
+    'Checks that needed to save stopped. Nothing was lost.',
+    ['retry-operation'],
+    'after-user-action'
+  ),
+  WATCH_STORE_VERSION_UNSUPPORTED: policy(
+    'Watch data is from a newer GramGrab',
+    'Update GramGrab to use these Watches. Nothing was changed.',
+    []
+  ),
+  WATCH_STORE_UNREADABLE: policy(
+    'Saved Watch data could not be read',
+    'GramGrab did not reset anything and stopped all Watch checks. Copy diagnostics to report it.',
+    ['copy-diagnostics']
+  ),
+  WATCH_NOT_FOUND: policy(
+    'No such Watch',
+    'No Watch of your Instagram login matches that account.',
+    []
+  ),
+  WATCH_CONFIG_CONFLICT: policy(
+    'This account already has a Watch',
+    'It uses different kinds or actions. Change it with watch set instead.',
+    []
+  ),
+  WATCH_UNATTENDED_NOT_ACCEPTED: policy(
+    'Accept unattended checks first',
+    'A Watch needs your acknowledgement that it checks Instagram for you.',
+    []
+  ),
+  WATCH_RECOVERY_NOT_APPLICABLE: policy(
+    'That does not apply here',
+    'This item has no failed action, uncertain download, or recovery of that kind.',
+    []
+  ),
+  WATCH_NOTIFY_PERMISSION_DENIED: policy(
+    'Notifications are not allowed',
+    'GramGrab may not show notifications. Allow them, then retry this notification.',
+    ['retry-operation'],
+    'after-user-action'
+  ),
+  WATCH_NOTIFY_FAILED: policy(
+    'Notification could not be shown',
+    'The browser did not show this notification. Retry it, or dismiss it once you have seen what was found.',
+    ['retry-operation'],
+    'after-user-action'
   ),
 };
 

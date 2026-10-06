@@ -179,7 +179,8 @@ body::before {
   transform: translateY(50%);
 }
 
-.ext-logo {
+.ext-logo,
+.logo-glitch {
   font-family: var(--font-display);
   font-size: 30px;
   font-weight: 400;
@@ -218,6 +219,9 @@ body::before {
 .workspace-launch:hover:not(:disabled) {
   background: var(--brand-dim);
   border-color: var(--brand);
+}
+.workspace-launch.watches-attention {
+  color: var(--error);
 }
 .workspace-launch:disabled {
   color: var(--muted);
@@ -405,7 +409,8 @@ input:focus-visible {
 }
 
 /* ── URL Input ── */
-.url-input {
+.url-input,
+.neo-input {
   width: 100%;
   background: var(--panel);
   border: 1px solid var(--rule-strong);
@@ -488,7 +493,8 @@ input:focus-visible {
   box-shadow: 0 1px 8px var(--brand-glow);
 }
 
-.btn:disabled {
+.btn:disabled,
+.action-btn:disabled {
   border-color: var(--muted);
   color: var(--muted);
   background: transparent;
@@ -598,7 +604,7 @@ input:focus-visible {
   color: var(--brand);
 }
 
-.select-all-label input[type='checkbox'] {
+.select-all-checkbox {
   appearance: none;
   -webkit-appearance: none;
   width: 14px;
@@ -611,12 +617,12 @@ input:focus-visible {
   flex-shrink: 0;
 }
 
-.select-all-label input[type='checkbox']:checked {
+.select-all-checkbox:checked {
   background: var(--brand);
   border-color: var(--brand);
 }
 
-.select-all-label input[type='checkbox']:checked::after {
+.select-all-checkbox:checked::after {
   content: '';
   position: absolute;
   left: 3.5px;
@@ -705,8 +711,7 @@ input:focus-visible {
   aspect-ratio: var(--media-ratio, 4 / 3);
 }
 
-.whatsapp-result-hero .media-thumb img,
-.whatsapp-result-hero .media-thumb video {
+.whatsapp-result-hero .media-preview {
   object-fit: contain;
 }
 
@@ -1206,7 +1211,7 @@ input:focus-visible {
   padding: 10px;
 }
 
-.quality-dialog li video {
+.quality-dialog video {
   width: 72px;
   max-height: 72px;
   object-fit: cover;
@@ -1297,8 +1302,7 @@ body:has(.workspace-container) {
   overflow: hidden;
   transition: aspect-ratio 180ms ease;
 }
-.workspace-container .media-thumb img,
-.workspace-container .media-thumb video {
+.workspace-container .media-preview {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -1368,7 +1372,7 @@ body:has(.workspace-container) {
   color: var(--text-mid);
   font-size: 10px;
 }
-.workspace-replace [role='alertdialog'] span {
+.workspace-replace span {
   flex: 1 0 100%;
 }
 .workspace-replace button {
@@ -1392,7 +1396,7 @@ body:has(.workspace-container) {
   .workspace-container .media-list {
     display: block;
   }
-  .workspace-container .workspace-masonry-column + .workspace-masonry-column {
+  .workspace-masonry-column + .workspace-masonry-column {
     margin-top: 12px;
   }
 }
@@ -1499,15 +1503,6 @@ body:has(.workspace-container) {
   border-bottom: 2px solid var(--rule-strong);
 }
 
-.logo-glitch {
-  font-family: var(--font-display);
-  font-size: 30px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  line-height: 1;
-}
-
 .badge {
   font-size: 9px;
   letter-spacing: 0.14em;
@@ -1537,23 +1532,6 @@ body:has(.workspace-container) {
 
 .input-wrapper {
   position: relative;
-}
-
-.neo-input {
-  width: 100%;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  border-left: 3px solid var(--muted);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 11px 14px;
-  outline: none;
-  transition:
-    border-color var(--transition),
-    box-shadow var(--transition),
-    background var(--transition);
-  caret-color: var(--brand);
 }
 
 .neo-input::placeholder {
@@ -1598,14 +1576,6 @@ body:has(.workspace-container) {
   background: var(--brand);
   color: #fff;
   box-shadow: 0 4px 20px var(--brand-glow);
-}
-
-.action-btn:disabled {
-  border-color: var(--muted);
-  color: var(--muted);
-  background: transparent;
-  cursor: not-allowed;
-  opacity: 0.4;
 }
 
 .btn-text {
@@ -1671,23 +1641,23 @@ body:has(.workspace-container) {
 .media-thumb[data-rotation] {
   container-type: size;
 }
-.media-thumb[data-rotation] :is(img, video) {
+.media-thumb[data-rotation] .media-preview {
   position: absolute;
   top: 50%;
   left: 50%;
   translate: -50% -50%;
 }
-.media-thumb[data-rotation='90'] :is(img, video),
-.media-thumb[data-rotation='270'] :is(img, video) {
+.media-thumb[data-rotation='90'] .media-preview,
+.media-thumb[data-rotation='270'] .media-preview {
   width: 100cqh;
   height: 100cqw;
 }
-.media-thumb[data-rotation='90'] :is(img, video) {
+.media-thumb[data-rotation='90'] .media-preview {
   rotate: 90deg;
 }
-.media-thumb[data-rotation='180'] :is(img, video) {
+.media-thumb[data-rotation='180'] .media-preview {
   rotate: 180deg;
 }
-.media-thumb[data-rotation='270'] :is(img, video) {
+.media-thumb[data-rotation='270'] .media-preview {
   rotate: 270deg;
 }

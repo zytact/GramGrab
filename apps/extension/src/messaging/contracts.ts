@@ -4,7 +4,14 @@ import {
   InstantsExport as ProtocolInstantsExport,
   HumanItemNumber,
   OperationId as ProtocolOperationId,
+  WatchCommand,
+  ExportSettings,
+  MediaItem as ProtocolMediaItem,
+  type CommandFailure,
   type ExportResult,
+  type ValidationFailure,
+  type WatchResult,
+  type WatchSummary,
   type MediaItem,
 } from '@gramgrab/protocol';
 import { DownloadMediaRequest, type DownloadMediaResponse } from '../download/contracts.ts';
@@ -28,6 +35,8 @@ const HistoryItem = Schema.Struct({
   filename: Schema.String.pipe(Schema.nonEmptyString()),
   mediaType: Schema.Literal('image', 'video'),
   rotation: Schema.optional(RotationSchema),
+  requestedExport: Schema.optional(ExportSettings),
+  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
 });
 
 const FrameHistoryItem = Schema.Struct({
@@ -125,11 +134,24 @@ const DownloadDebugJson = Schema.Struct({
   json: Schema.optional(Schema.Unknown),
 });
 
+const WatchCommandMessage = Schema.Struct({
+  type: Schema.Literal('WATCH_COMMAND'),
+  command: WatchCommand,
+});
+
+const WatchPreview = Schema.Struct({
+  type: Schema.Literal('WATCH_PREVIEW'),
+  target: Schema.String.pipe(Schema.nonEmptyString()),
+});
+
 const RunExport = Schema.Struct({
   type: Schema.Literal('RUN_EXPORT'),
   sourceUrl: Schema.String,
   originKind: OriginKind,
   command: Schema.Union(ProtocolExport, ProtocolInstantsExport),
+  preparedMedia: Schema.optional(Schema.Array(ProtocolMediaItem)),
+  requestedExport: Schema.optional(ExportSettings),
+  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
 });
 
 const RunnerReady = Schema.Struct({ type: Schema.Literal('RUNNER_READY') });
@@ -163,6 +185,8 @@ const MessageSchema = Schema.Union(
   RecordDirectExport,
   DebugShape,
   DownloadDebugJson,
+  WatchCommandMessage,
+  WatchPreview,
   RunExport,
   RunnerReady,
   RunnerProgress
@@ -237,6 +261,22 @@ type RedownloadHistoryEntryResponse =
   | { rotated: RedownloadRotated; failure: undefined }
   | DownloadMediaResponse;
 
+/** A Watch rejection, or a request the background could not read. */
+export type WatchFailure = CommandFailure | ValidationFailure;
+
+export type WatchCommandResponse =
+  | { readonly result: WatchResult; readonly failure?: undefined }
+  | { readonly result?: undefined; readonly failure: WatchFailure };
+
+export type WatchPreviewResponse =
+  | {
+      readonly account: { readonly accountId: string; readonly username: string };
+      /** The verified login's Watch of this account, which adding would open instead. */
+      readonly existing?: WatchSummary;
+      readonly failure?: undefined;
+    }
+  | { readonly account?: undefined; readonly failure: WatchFailure };
+
 interface MessageResponses extends Record<MessageType, unknown> {
   FETCH_MEDIA: SourceMediaResponse;
   FETCH_INSTANTS: InstantsMediaResponse;
@@ -258,6 +298,8 @@ interface MessageResponses extends Record<MessageType, unknown> {
   // so neither belongs in the failure registry.
   DEBUG_SHAPE: { raw?: unknown; error?: string };
   DOWNLOAD_DEBUG_JSON: FailureOnlyResponse;
+  WATCH_COMMAND: WatchCommandResponse;
+  WATCH_PREVIEW: WatchPreviewResponse;
   RUN_EXPORT: ExportResult;
   RUNNER_READY: void;
   RUNNER_PROGRESS: void;

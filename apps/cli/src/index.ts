@@ -1,7 +1,7 @@
 import { connect } from 'node:net';
 import { platform, userInfo } from 'node:os';
 import { readFile } from 'node:fs/promises';
-import { Effect, Schema } from 'effect';
+import { Effect, Match, Schema } from 'effect';
 import {
   CancelRequest,
   DebugExport,
@@ -29,6 +29,7 @@ import {
   PROTOCOL_VERSION,
   Request,
   type Command,
+  type CommandResult,
   type EventPayload,
   type ExportMode,
   type InspectResult,
@@ -37,6 +38,7 @@ import {
 import { version } from '../../../package.json';
 import { update, versionSkewHint } from './update.ts';
 import { updateNotice } from './update-notice.ts';
+import { parseWatchArguments } from './watch.ts';
 
 export { decodeEvent, decodeRequest, PROTOCOL_VERSION } from '@gramgrab/protocol';
 
@@ -84,6 +86,19 @@ Usage:
   gramgrab export SOURCE --plan FILE|- [--json]
   gramgrab history list|remove|clear|redownload [ENTRY_ID ...] [--json]
   gramgrab debug get|export [--json]
+  gramgrab watch list [--json]
+  gramgrab watch show WATCH [--json]
+  gramgrab watch check WATCH...|--all [--json]
+  gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
+  gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
+  gramgrab watch pause|resume|delete WATCH ... [--json]
+  gramgrab watch needs [--json]
+  gramgrab watch retry|dismiss|confirm ATTENTION_ID... [--json]
+  gramgrab watch inbox list [WATCH] [--json]
+  gramgrab watch inbox remove ENTRY_ID... [--json]
+  gramgrab watch inbox export ENTRY_ID... [--mode direct|frame|silent] [--at SECONDS]
+    [--reencode forbid|allow|require] [--rotate 90|180|270] [--json]
+  gramgrab watch inbox retry ENTRY_ID PLAN_ID... [--recovery original|reencode] [--json]
 
 Sources:
   SOURCE may be an Instagram post, reel, story, highlight, or profile URL. A bare username (without
@@ -102,6 +117,17 @@ Export modes:
   frame   Export a video frame. --at defaults to 5 seconds and clamps to the video duration.
   silent  Remove audio. forbid permits stream copy only, allow permits re-encoding when needed,
           and require always permits re-encoding. JSON mode never prompts.
+
+Watches (Beta):
+  A Watch follows one Instagram account and checks it about twice a day while your browser is
+  open, using your signed-in Instagram session. Watches belong to the Instagram login that created
+  them, and their state stays in the extension.
+  Kinds are posts, stories, instants, and avatar. Actions are notify, download, and collect. Each
+  kind's first check only records a baseline. set replaces the kinds or actions you give it.
+  TARGET is a username or profile URL. WATCH is a username or account ID; all digits mean an
+  account ID. --account-id or --username forces one reading.
+  add needs --accept-unattended every time; without it, the rejection includes the disclosure to
+  read first.
 
 Plans:
   --plan reads an array of protocol ExportOperation objects from a file or stdin (-). Plans retain
@@ -304,6 +330,7 @@ export function parseCliArguments(arguments_: readonly string[]): ParsedCli {
       };
     throw new Error('Usage: gramgrab history list|remove|clear|redownload');
   }
+  if (command === 'watch') return { command: parseWatchArguments(arguments_.slice(1)), json };
   if (command === 'debug') {
     if (arguments_[1] === 'get') return { command: DebugGet.make({}), json };
     if (arguments_[1] === 'export') return { command: DebugExport.make({}), json };
@@ -442,6 +469,14 @@ export function createProgressPrinter(
   const states = new Map<string, { phase: string; milestone: number }>();
   return event => {
     if (event._tag !== 'Progress') return;
+    if (event.watchCheck) {
+      write(
+        json
+          ? `${JSON.stringify({ type: 'progress', phase: event.phase, watchCheck: event.watchCheck })}\n`
+          : `watch ${event.watchCheck.watchId} ${event.watchCheck.kind}: ${event.watchCheck.outcome._tag}\n`
+      );
+      return;
+    }
     const key = progressKey(event);
     const previous = states.get(key);
     const milestone = progressMilestone(event.progress);
@@ -504,6 +539,57 @@ function requestsHelp(arguments_: readonly string[]): boolean {
   );
 }
 
+/** A completed result that still reports an item or Watch it could not handle. */
+function unsuccessful(result: CommandResult): boolean {
+  return Match.value(result).pipe(
+    Match.tag('ExportResult', result =>
+      result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded')
+    ),
+    Match.tag(
+      'WatchCheckResult',
+      result =>
+        result.unknownWatches.length > 0 ||
+        result.outcomes.some(
+          outcome =>
+            outcome.deferredUntil !== undefined ||
+            outcome.kinds.some(
+              kind =>
+                kind._tag === 'KindCheckFailed' ||
+                (kind._tag === 'KindCheckSkipped' && kind.reason !== 'kind-off')
+            )
+        )
+    ),
+    Match.tag('WatchLifecycleResult', result => result.unknownWatches.length > 0),
+    Match.tag(
+      'WatchAttentionRecoverResult',
+      result =>
+        result.refused.length > 0 ||
+        result.failures.length > 0 ||
+        result.unknownAttentionIds.length > 0
+    ),
+    Match.tag('WatchInboxRemoveResult', result => result.unknownEntryIds.length > 0),
+    Match.tag(
+      'WatchInboxExportResult',
+      result =>
+        result.unknownEntryIds.length > 0 ||
+        result.outcomes.some(
+          outcome =>
+            outcome.failures.length > 0 ||
+            (outcome.skipped?.length ?? 0) > 0 ||
+            outcome.warning !== undefined
+        )
+    ),
+    Match.tag(
+      'WatchRecoverResult',
+      result =>
+        result.refused.length > 0 ||
+        result.unknownEntryIds.length > 0 ||
+        (result.outcomes?.some(outcome => outcome.state !== 'recovered') ?? false)
+    ),
+    Match.orElse(() => false)
+  );
+}
+
 function printTerminal(event: EventPayload, json: boolean): void {
   if (event._tag === 'Rejected') {
     process.stderr.write(`${JSON.stringify(event.failure)}\n`);
@@ -514,11 +600,7 @@ function printTerminal(event: EventPayload, json: boolean): void {
   process.stdout.write(`${JSON.stringify(event.result, undefined, json ? undefined : 2)}\n`);
   if (!json && event.result._tag === 'StatusResult')
     process.stderr.write(versionSkewHint(event.result) ?? '');
-  if (
-    event.result._tag === 'ExportResult' &&
-    event.result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded')
-  )
-    process.exitCode = 1;
+  if (unsuccessful(event.result)) process.exitCode = 1;
 }
 
 export function formatCliError(error: unknown, json: boolean): string {

@@ -14,6 +14,10 @@ import {
   RateLimited,
   ResponseShapeUnknown,
 } from './errors.ts';
+import { PersonRequests, type InstagramRequests } from '../instagram/requests.ts';
+
+const run = <A, E>(effect: Effect.Effect<A, E, InstagramRequests>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(PersonRequests)));
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -38,7 +42,7 @@ describe('graphqlFetch', () => {
         })
       )
     );
-    const result = await Effect.runPromise(
+    const result = await run(
       graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
     );
     expect(result._tag).toBe('Left');
@@ -57,9 +61,7 @@ describe('graphqlFetch', () => {
       })
     );
     vi.useFakeTimers();
-    const pending = Effect.runPromise(
-      graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
-    );
+    const pending = run(graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either));
     await vi.runAllTimersAsync();
     const result = await pending;
     expect(result._tag).toBe('Left');
@@ -74,7 +76,7 @@ describe('graphqlFetch', () => {
       json: async () => mockData,
     }) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}));
+    const result = await run(graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}));
     expect(result).toEqual(mockData);
   });
 
@@ -85,7 +87,7 @@ describe('graphqlFetch', () => {
       status: 500,
     }) as unknown as typeof fetch;
 
-    const resultPromise = Effect.runPromise(
+    const resultPromise = run(
       graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
     );
     await vi.runAllTimersAsync();
@@ -104,7 +106,7 @@ describe('graphqlFetch', () => {
       status: 429,
     }) as unknown as typeof fetch;
 
-    const resultPromise = Effect.runPromise(
+    const resultPromise = run(
       graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
     );
     await vi.runAllTimersAsync();
@@ -125,7 +127,7 @@ describe('graphqlFetch', () => {
       return Promise.resolve({ ok: true, status: 200, json: async () => mockData });
     }) as unknown as typeof fetch;
 
-    const resultPromise = Effect.runPromise(
+    const resultPromise = run(
       graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
     );
     await vi.runAllTimersAsync();
@@ -144,7 +146,7 @@ describe('graphqlFetch', () => {
       return Promise.resolve({ ok: true, status: 200, json: async () => mockData });
     }) as unknown as typeof fetch;
 
-    const resultPromise = Effect.runPromise(
+    const resultPromise = run(
       graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
     );
     await vi.runAllTimersAsync();
@@ -162,7 +164,7 @@ describe('graphqlFetch', () => {
         return Promise.resolve({ ok: false, status });
       }) as unknown as typeof fetch;
 
-      const result = await Effect.runPromise(
+      const result = await run(
         graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
       );
       expect(result._tag).toBe('Left');
@@ -178,7 +180,7 @@ describe('graphqlFetch', () => {
       .fn()
       .mockRejectedValue(new TypeError('Failed to fetch')) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(
+    const result = await run(
       graphqlFetch(TEST_URL, 'doc_id', '12345', vars, {}).pipe(Effect.either)
     );
     expect(result._tag).toBe('Left');
@@ -202,9 +204,7 @@ describe('graphqlPost', () => {
         })
       )
     );
-    const result = await Effect.runPromise(
-      graphqlPost(TEST_URL, '12345', vars, {}).pipe(Effect.either)
-    );
+    const result = await run(graphqlPost(TEST_URL, '12345', vars, {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') expect(result.left).toBeInstanceOf(ResponseShapeUnknown);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
@@ -220,7 +220,7 @@ describe('graphqlPost', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     document.body.innerHTML = '<input name="lsd" value="token123" />';
 
-    const result = await Effect.runPromise(
+    const result = await run(
       graphqlPost(TEST_URL, '12345', vars, { 'X-IG-App-ID': 'test-app-id' })
     );
 
@@ -252,7 +252,7 @@ describe('graphqlPost', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     document.body.innerHTML = '<input name="lsd" value="token123" />';
 
-    const result = await Effect.runPromise(graphqlPost(TEST_URL, '12345', vars, {}));
+    const result = await run(graphqlPost(TEST_URL, '12345', vars, {}));
 
     expect(result).toEqual(mockData);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual(
@@ -279,7 +279,7 @@ describe('graphqlPost', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     vi.stubGlobal('document', undefined);
 
-    const result = await Effect.runPromise(graphqlPost(TEST_URL, '12345', vars, {}));
+    const result = await run(graphqlPost(TEST_URL, '12345', vars, {}));
 
     expect(result).toEqual(mockData);
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -311,7 +311,7 @@ describe('graphqlPost', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     document.body.innerHTML = '<main></main>';
 
-    const result = await Effect.runPromise(graphqlPost(TEST_URL, '12345', vars, {}));
+    const result = await run(graphqlPost(TEST_URL, '12345', vars, {}));
 
     expect(result).toEqual(mockData);
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -343,7 +343,7 @@ describe('graphqlPost', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     vi.stubGlobal('document', undefined);
 
-    const result = await Effect.runPromise(graphqlPost(TEST_URL, '12345', vars, {}));
+    const result = await run(graphqlPost(TEST_URL, '12345', vars, {}));
 
     expect(result).toEqual(mockData);
     expect(fetchMock.mock.calls[1]?.[1]?.headers).not.toHaveProperty('X-FB-LSD');
@@ -358,9 +358,7 @@ describe('graphqlPost', () => {
       status: 403,
     }) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(
-      graphqlPost(TEST_URL, '12345', vars, {}).pipe(Effect.either)
-    );
+    const result = await run(graphqlPost(TEST_URL, '12345', vars, {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(GraphQLRequestFailed);
@@ -378,7 +376,7 @@ describe('fetchBlobAsDataUrl', () => {
       blob: async () => fakeBlob,
     }) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(fetchBlobAsDataUrl('https://cdn.instagram.com/img.png'));
+    const result = await run(fetchBlobAsDataUrl('https://cdn.instagram.com/img.png'));
     expect(result).toMatch(/^data:image\/png;base64,/);
   });
 
@@ -390,7 +388,7 @@ describe('fetchBlobAsDataUrl', () => {
       blob: async () => new Blob(),
     }) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(
+    const result = await run(
       fetchBlobAsDataUrl('https://cdn.instagram.com/img.png').pipe(Effect.either)
     );
     expect(result._tag).toBe('Left');
@@ -404,7 +402,7 @@ describe('fetchBlobAsDataUrl', () => {
     const cause = new TypeError('Failed to fetch');
     globalThis.fetch = vi.fn().mockRejectedValue(cause) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(
+    const result = await run(
       fetchBlobAsDataUrl('https://cdn.instagram.com/img.png').pipe(Effect.either)
     );
     expect(result._tag).toBe('Left');
@@ -424,7 +422,7 @@ describe('fetchBlobAsDataUrl', () => {
       blob: async () => fakeBlob,
     }) as unknown as typeof fetch;
 
-    await Effect.runPromise(fetchBlobAsDataUrl('https://cdn.instagram.com/img.jpg'));
+    await run(fetchBlobAsDataUrl('https://cdn.instagram.com/img.jpg'));
     expect(FileReaderSpy).not.toHaveBeenCalled();
   });
 });
@@ -441,7 +439,7 @@ describe('fetchWebProfileInfoUser', () => {
       }),
     }) as unknown as typeof fetch;
 
-    const user = await Effect.runPromise(fetchWebProfileInfoUser(TEST_URL, 'include', {}));
+    const user = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}));
     expect(user?.id).toBe('42');
     expect(user?.profile_pic_url_hd).toBe('https://cdn.example.com/hd.jpg');
   });
@@ -453,7 +451,7 @@ describe('fetchWebProfileInfoUser', () => {
       json: async () => ({}),
     }) as unknown as typeof fetch;
 
-    const user = await Effect.runPromise(fetchWebProfileInfoUser(TEST_URL, 'include', {}));
+    const user = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}));
     expect(user).toBeUndefined();
   });
 
@@ -464,9 +462,7 @@ describe('fetchWebProfileInfoUser', () => {
       statusText: 'Not Found',
     }) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(
-      fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either)
-    );
+    const result = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(HttpError);
@@ -479,9 +475,7 @@ describe('fetchWebProfileInfoUser', () => {
       .fn()
       .mockRejectedValue(new TypeError('Failed to fetch')) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(
-      fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either)
-    );
+    const result = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(NetworkError);
@@ -495,9 +489,7 @@ describe('fetchWebProfileInfoUser', () => {
       json: async () => ({ data: { user: { id: { nested: 'bad' } } } }),
     }) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(
-      fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either)
-    );
+    const result = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(ResponseShapeUnknown);
@@ -524,7 +516,7 @@ describe('fetchTopSearchUserId', () => {
         topSearchResponse(['personabc', 'PersonA', 'persona'])
       ) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(fetchTopSearchUserId('persona', {}));
+    const result = await run(fetchTopSearchUserId('persona', {}));
     expect(result).toBe('2');
   });
 
@@ -533,7 +525,7 @@ describe('fetchTopSearchUserId', () => {
       .fn()
       .mockResolvedValue(topSearchResponse(['someoneelse'])) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(fetchTopSearchUserId('persona', {}));
+    const result = await run(fetchTopSearchUserId('persona', {}));
     expect(result).toBeUndefined();
   });
 
@@ -543,7 +535,7 @@ describe('fetchTopSearchUserId', () => {
       status: 429,
     }) as unknown as typeof fetch;
 
-    const result = await Effect.runPromise(fetchTopSearchUserId('persona', {}).pipe(Effect.either));
+    const result = await run(fetchTopSearchUserId('persona', {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') expect(result.left).toBeInstanceOf(RateLimited);
   });

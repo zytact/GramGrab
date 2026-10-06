@@ -4,7 +4,7 @@
 
 GramGrab resolves Instagram and WhatsApp media into items a person can inspect and download. It ships as a Chrome/Firefox MV3 extension plus a local CLI bridge.
 
-- `apps/extension` - popup, background worker, runner document, WhatsApp page controller
+- `apps/extension` - popup, Watches options page, background worker, runner document, WhatsApp page controller
 - `apps/cli` and `apps/native-host` - terminal access to the same operations, bundled by `vp pack` into `artifacts/`
 - `packages/protocol` - wire contracts shared by extension, CLI, and native host
 

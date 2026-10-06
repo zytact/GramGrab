@@ -3,8 +3,15 @@ import { CHROMIUM_PUBLIC_KEY, FIREFOX_EXTENSION_ID, latestReleaseAssetUrl } from
 
 const permissionDocumentation = [
   { permission: 'downloads', reason: 'Save media files and debug exports to disk' },
-  { permission: 'storage', reason: 'Persist download history and workspace handoff state' },
-  { permission: 'cookies', reason: 'Read the current Instagram CSRF token for Instants requests' },
+  {
+    permission: 'storage',
+    reason: 'Persist download history, workspace handoff state, and your Watches on this device',
+  },
+  {
+    permission: 'cookies',
+    reason:
+      'Read the current Instagram CSRF token right before an Instants or Watch request that sends it back',
+  },
   {
     permission: 'activeTab',
     reason: 'Temporarily access the current tab when GramGrab is invoked',
@@ -19,6 +26,15 @@ const permissionDocumentation = [
   },
   { permission: 'contextMenus', reason: 'Add GramGrab actions to page and link context menus' },
   { permission: 'nativeMessaging', reason: 'Expose GramGrab operations to the local CLI bridge' },
+  {
+    permission: 'alarms',
+    reason: 'Wake GramGrab to run your Watch checks while the browser is open',
+  },
+];
+
+/** Asked for only when a person first chooses to be notified by a Watch. */
+const optionalPermissionDocumentation = [
+  { permission: 'notifications', reason: 'Tell you what a Watch check found, if you ask it to' },
 ];
 
 const hostPermissionDocumentation = [
@@ -31,6 +47,7 @@ const hostPermissionDocumentation = [
 
 export const manifestPermissionDocumentation = [
   ...permissionDocumentation,
+  ...optionalPermissionDocumentation,
   ...hostPermissionDocumentation,
 ];
 
@@ -87,7 +104,9 @@ export function createManifest(browser) {
       },
       default_title: 'GramGrab',
     },
+    options_ui: { page: 'options.html', open_in_tab: true },
     permissions: permissionDocumentation.map(({ permission }) => permission),
+    optional_permissions: optionalPermissionDocumentation.map(({ permission }) => permission),
     host_permissions: hostPermissionDocumentation.map(({ permission }) => permission),
     background,
     ...browserSettings,

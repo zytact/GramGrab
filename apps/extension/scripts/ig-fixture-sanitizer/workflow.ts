@@ -12,6 +12,7 @@ import {
 } from '../../src/effect/schemas.ts';
 import { isJsonValue, sanitizeBatch, type SanitizerViolation } from './sanitize.ts';
 import { RestShortcodeResponseSchema } from '../../src/instagram/rest-shortcode.ts';
+import { PostsResponse } from '../../src/watch/posts.ts';
 import { FIXTURE_FILENAMES, isFixtureFilename, type FixtureFilename } from './policy.ts';
 import type { JsonValue } from './entities.ts';
 
@@ -235,6 +236,7 @@ const endpointDecoders = {
   'shortcode-rest-video.json': endpointDecoder(RestShortcodeResponseSchema),
   'topsearch.json': endpointDecoder(TopSearchResponseSchema),
   'web-profile-info.json': endpointDecoder(WebProfileInfoResponseSchema),
+  'profile-posts.json': endpointDecoder(PostsResponse),
 };
 
 const validateEndpoint = (

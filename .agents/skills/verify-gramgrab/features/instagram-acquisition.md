@@ -36,7 +36,7 @@ The toolbar popup closes on focus loss, so open the same document as a tab. Use
 the popup one; both need driving when a change touches shared UI.
 
 ```bash
-cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 D=.agents/skills/verify-gramgrab/scripts/drive.mjs
 
 node $D open "chrome-extension://$GRAMGRAB_EXT_ID/popup.html?surface=workspace"
@@ -84,7 +84,8 @@ node apps/cli/bin/gramgrab.mjs instants inspect --json
   what to do when the request shape itself stopped working.
 - Instagram answers `web_profile_info` with 429 for an ordinary signed-in
   session, so a story or profile username is resolved through `topsearch`
-  instead (#164). A story run that fails at `SOURCE_USERNAME_UNRESOLVED` for an
+  instead (#164). That 429 is the person's own and never pauses Watches; see
+  [Watches](./watches.md#rate-limit-pause). A story run that fails at `SOURCE_USERNAME_UNRESOLVED` for an
   account that plainly exists means both lookups are refusing; check them by
   hand from the service worker before treating it as a code bug.
 - `ResponseShapeUnknown` means Instagram changed a payload. That is a fixture

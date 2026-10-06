@@ -1,12 +1,12 @@
 ---
 name: verify-gramgrab
-description: Launch GramGrab for real and prove a change works. Starts a dedicated Chromium with the unpacked MV3 extension loaded, its own native-messaging registration, and its own IPC socket, then drives the popup/workspace surface over CDP and the gramgrab CLI over the local socket. Use when asked to run the extension, screenshot the popup or workspace, confirm a fix in the real app, or verify the CLI bridge end to end.
+description: Launch GramGrab for real and prove a change works. Starts a dedicated Chromium with the unpacked MV3 extension loaded, its own native-messaging registration, and its own IPC socket, then drives the popup/workspace surface over CDP and the gramgrab CLI over the local socket. Use when asked to run the extension, screenshot the popup, workspace, or Watches options page, confirm a fix in the real app, or verify the CLI bridge end to end.
 ---
 
 # Verify GramGrab
 
 GramGrab has two user-facing surfaces over one shared core: the MV3 extension
-(popup and workspace) and the `gramgrab` CLI, which reaches the extension
+(popup, workspace, and Watches options page) and the `gramgrab` CLI, which reaches the extension
 through a native host over a Unix socket. This skill starts both against a
 dedicated browser profile so a verification run never touches the developer's
 own browser, socket, or `~/Downloads`.
@@ -30,6 +30,12 @@ disagree about how to verify the app are worse than one.
 It builds `extension/chromium`, writes a native-messaging manifest pointing at
 `apps/native-host/bin/gramgrab-native-host.mjs`, and starts the browser with a
 free CDP port and a session-local `GRAMGRAB_IPC_PATH`.
+
+For browser-startup verification after a successful fresh launch, run cleanup
+and then `launch.sh --restart` with the same profile. This keeps the service
+worker registration, skips rebuilding, and refuses changed build bytes. A fresh
+launch clears that registration, so it cannot establish `runtime.onStartup`
+behavior. Use a fresh launch again after source changes.
 
 Three directories, and the differences matter:
 
@@ -83,7 +89,7 @@ node $D eval "background.js" \
 Every later command needs the session variables:
 
 ```bash
-cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 ```
 
 That exports `GRAMGRAB_CDP_PORT`, `GRAMGRAB_EXT_ID`, `GRAMGRAB_IPC_PATH`,
@@ -119,9 +125,22 @@ Verified: a cookie written seconds before teardown is on disk after
 `cleanup.sh` and readable by the page after the next `launch.sh`.
 
 `GRAMGRAB_PROFILE=<dir>` points at a different profile, which is how you keep a
-second account. Never point it at the developer's real browser profile:
-Chromium refuses to open a profile a running browser already holds, and a second
-instance driving a live session is worse than not verifying.
+second account. Never point it at the developer's real browser profile: a
+running browser that already holds a profile takes the launch over instead of
+starting a second instance, so `launch.sh` refuses a profile whose
+`SingletonLock` names a live process.
+
+A git worktree starts with no `.local/verify-profile/`. To reuse another
+checkout's sign-ins, copy that profile into this worktree while no browser holds
+it, leaving out its lock files:
+
+```bash
+rsync -a --exclude 'Singleton*' --exclude 'Default/Service Worker' \
+  "$OTHER_CHECKOUT/.local/verify-profile/" .local/verify-profile/
+```
+
+The copy carries that profile's extension storage, Watches and request ledger
+included, so read the state you inherited before treating it as this run's.
 
 ## Doctor
 
@@ -167,9 +186,9 @@ node $D shot  "popup.html" .local/verify-evidence/run/workspace.png
 The toolbar popup itself closes as soon as focus moves, so drive `popup.html`
 as an ordinary tab instead. Opened plain it is the popup surface; opened with
 `?surface=workspace` the same React root turns on workspace behaviour, which
-`src/workspace/use-workspace-surface.ts` reads from that parameter. Match the
-target on `popup.html?surface` when both tabs are open, since `popup.html` alone
-matches whichever came first.
+`src/workspace/use-workspace-surface.ts` reads from that parameter. A target whose
+URL ends with the match wins, so `popup.html` selects the plain popup and
+`popup.html?surface` the workspace even when both tabs are open.
 
 CSS uppercases much of the chrome. `drive.mjs text` and `wait` read `innerText`,
 so they see `HISTORY` and `FETCH MEDIA`, while `textContent` in an `eval`
@@ -303,8 +322,12 @@ All are executable and take no arguments beyond what is shown above.
 
 | Script               | Purpose                                                                |
 | -------------------- | ---------------------------------------------------------------------- |
-| `scripts/launch.sh`  | Build, register the native host, start the browser                     |
+| `scripts/launch.sh`  | Build and start the browser; `--restart` preserves an unchanged build                     |
 | `scripts/signin.sh`  | Launch with Instagram and WhatsApp Web open for a one-time sign-in     |
 | `scripts/doctor.mjs` | Six read-only health checks, non-zero exit on any failure              |
 | `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, reading, and capturing pages |
+| `scripts/throttle.mjs` | Answer the worker's matching Instagram requests with a status such as 429 |
 | `scripts/cleanup.sh` | Close the browser, remove run state, keep the profile and evidence     |
+
+For Watches, `scripts/watch-smoke.mjs` drives the packaged CLI and options page.
+Its arguments and evidence rules live in [features/watches.md](features/watches.md).

@@ -92,7 +92,7 @@ function makeFakeBrowser() {
       remove: vi.fn().mockResolvedValue(undefined),
     },
     sessionStorage: {
-      get: vi.fn().mockResolvedValue({}),
+      get: vi.fn().mockResolvedValue({ 'watch-browser-session': true }),
       set: vi.fn().mockResolvedValue(undefined),
       remove: vi.fn().mockResolvedValue(undefined),
     },

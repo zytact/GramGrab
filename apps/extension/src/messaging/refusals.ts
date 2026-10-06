@@ -1,3 +1,4 @@
+import { ValidationFailure } from '@gramgrab/protocol';
 import { DownloadMediaResponse } from '../download/contracts.ts';
 import { OperationFailure } from '../errors/contracts.ts';
 import { historyFailure } from '../errors/normalize.ts';
@@ -43,6 +44,8 @@ export const MESSAGE_REFUSALS: {
   RECORD_DIRECT_EXPORT: () => ({ warning: 'HISTORY_SAVE_FAILED' }),
   DEBUG_SHAPE: () => ({ error: UNREADABLE_REQUEST }),
   DOWNLOAD_DEBUG_JSON: () => ({ failure: downloadRefusal() }),
+  WATCH_COMMAND: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
+  WATCH_PREVIEW: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
 };
 
 function sourceRefusal() {

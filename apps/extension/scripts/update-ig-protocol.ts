@@ -18,7 +18,15 @@ const defaultConfigPath = resolve(
   'apps/extension/src/instagram-protocol/config.json'
 );
 
-const OperationName = Schema.Literal('mediaByShortcode', 'reelsMedia', 'instantsFeed');
+const OperationName = Schema.Literal(
+  'mediaByShortcode',
+  'reelsMedia',
+  'instantsFeed',
+  'viewer',
+  'profileById',
+  'profilePosts',
+  'profilePostsPage'
+);
 export type OperationName = Schema.Schema.Type<typeof OperationName>;
 
 export class ProtocolObservation extends Schema.Class<ProtocolObservation>('ProtocolObservation')({
@@ -207,20 +215,12 @@ function mergedOperations(
   observation: ProtocolObservation,
   candidates: ReturnType<typeof mergeCandidates>
 ) {
-  const operations = {
-    mediaByShortcode:
-      operation === 'mediaByShortcode' ? { candidates } : config.operations.mediaByShortcode,
-    reelsMedia: operation === 'reelsMedia' ? { candidates } : config.operations.reelsMedia,
-    ...(config.operations.instantsFeed ? { instantsFeed: config.operations.instantsFeed } : {}),
-  };
-  if (operation !== 'instantsFeed') return operations;
   return {
-    ...operations,
-    instantsFeed: {
-      appId: observation.appId,
-      friendlyName: observation.friendlyName,
-      candidates,
-    },
+    ...config.operations,
+    [operation]:
+      operation === 'instantsFeed'
+        ? { appId: observation.appId, friendlyName: observation.friendlyName, candidates }
+        : { candidates },
   };
 }
 
@@ -275,7 +275,7 @@ export function parseOperation(arguments_: readonly string[]): OperationName {
   const normalizedArguments = arguments_[0] === '--' ? arguments_.slice(1) : arguments_;
   if (normalizedArguments.length !== 2 || normalizedArguments[0] !== '--operation') {
     throw new Error(
-      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|instantsFeed>'
+      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|instantsFeed|viewer|profileById|profilePosts|profilePostsPage>'
     );
   }
   return Schema.decodeUnknownSync(OperationName)(normalizedArguments[1]);

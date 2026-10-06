@@ -61,6 +61,42 @@ const initialConfig = {
         },
       ],
     },
+    viewer: {
+      candidates: [
+        {
+          kind: 'query_hash',
+          id: 'viewer-query-hash',
+          requests: [{ endpoint: 'https://www.instagram.com/graphql/query/', transport: 'query' }],
+        },
+      ],
+    },
+    profileById: {
+      candidates: [
+        {
+          kind: 'doc_id',
+          id: 'profile-doc-id',
+          requests: [{ endpoint: 'https://www.instagram.com/graphql/query/', transport: 'form' }],
+        },
+      ],
+    },
+    profilePosts: {
+      candidates: [
+        {
+          kind: 'doc_id',
+          id: 'posts-doc-id',
+          requests: [{ endpoint: 'https://www.instagram.com/graphql/query', transport: 'form' }],
+        },
+      ],
+    },
+    profilePostsPage: {
+      candidates: [
+        {
+          kind: 'doc_id',
+          id: 'posts-page-doc-id',
+          requests: [{ endpoint: 'https://www.instagram.com/graphql/query', transport: 'form' }],
+        },
+      ],
+    },
   },
 };
 

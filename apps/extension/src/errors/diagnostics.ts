@@ -7,9 +7,13 @@ import {
   WarningCodeSchema,
 } from './contracts.ts';
 import {
+  WatchKindSchema,
   WhatsAppStructuralEvidence,
+  type FailureCode,
+  type FailurePhase,
   type OperationFailure,
   type OperationWarning,
+  type WatchKind,
 } from './contracts.ts';
 
 const BrowserFamilySchema = Schema.Literal('chromium', 'firefox', 'safari', 'unknown');
@@ -139,9 +143,33 @@ class WhatsAppDiagnosticsReport extends Schema.Class<WhatsAppDiagnosticsReport>(
   evidence: WhatsAppStructuralEvidence,
 }) {}
 
+class WatchDiagnosticFailure extends Schema.Class<WatchDiagnosticFailure>('WatchDiagnosticFailure')(
+  {
+    code: FailureCodeSchema,
+    phase: FailurePhaseSchema,
+    scope: Schema.Literal('batch', 'item'),
+    mediaKind: Schema.optionalWith(WatchKindSchema, { exact: true }),
+  }
+) {}
+
+/** A Watch report holds the failure's code, phase, scope, and media kind, and nothing else. */
+class WatchDiagnosticsReport extends Schema.Class<WatchDiagnosticsReport>('WatchDiagnosticsReport')(
+  {
+    diagnosticsVersion: Schema.Literal(2),
+    platform: Schema.Literal('watch'),
+    capturedAt: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+    extensionVersion: Schema.String.pipe(
+      Schema.pattern(/^\d+(?:\.\d+){0,3}(?:[-+][0-9A-Za-z.-]+)?$/u)
+    ),
+    browser: DiagnosticsBrowser,
+    failure: WatchDiagnosticFailure,
+  }
+) {}
+
 export const DiagnosticsReport = Schema.Union(
   InstagramDiagnosticsReport,
-  WhatsAppDiagnosticsReport
+  WhatsAppDiagnosticsReport,
+  WatchDiagnosticsReport
 );
 
 const EXPIRY_PARAMETERS = ['oe', 'se', 'expires', 'expires_at', 'exp'] as const;
@@ -394,6 +422,40 @@ export function buildWhatsAppDiagnostics(
   capturedAt = new Date()
 ): string {
   return encodeDiagnostics(makeWhatsAppDiagnostics(input, capturedAt));
+}
+
+export interface WatchDiagnosticsInput {
+  readonly extensionVersion: string;
+  readonly userAgent: string;
+  readonly failure: {
+    readonly code: FailureCode;
+    readonly phase: FailurePhase;
+    readonly scope: 'batch' | 'item';
+    readonly mediaKind?: WatchKind;
+  };
+}
+
+/** Copies only the structural fields, so nothing else a caller holds can reach the report. */
+export function buildWatchDiagnostics(
+  input: WatchDiagnosticsInput,
+  capturedAt = new Date()
+): string {
+  const { code, phase, scope, mediaKind } = input.failure;
+  return encodeDiagnostics(
+    WatchDiagnosticsReport.make({
+      diagnosticsVersion: 2,
+      platform: 'watch',
+      capturedAt: capturedAt.getTime(),
+      extensionVersion: input.extensionVersion,
+      browser: describeUserAgent(input.userAgent),
+      failure: WatchDiagnosticFailure.make({
+        code,
+        phase,
+        scope,
+        ...(mediaKind ? { mediaKind } : {}),
+      }),
+    })
+  );
 }
 
 export const decodeDiagnostics = (value: unknown) =>

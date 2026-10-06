@@ -6,14 +6,43 @@ const mediaIdentity = { itemIndex: 0, mediaId: 'stable-media-id' };
 const itemFailure = { code: 'MEDIA_NETWORK_FAILED', scope: 'item' };
 
 export const requestFixtures: readonly unknown[] = [
+  { version: 2, requestId, command: { _tag: 'WatchNeeds' } },
   {
-    version: 1,
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchAttentionRecover',
+      operation: 'retry',
+      attentionIds: ['action.download.entry-1.1', 'missing'],
+    },
+  },
+  ...[
+    { mode: { _tag: 'DirectExport' } },
+    { mode: { _tag: 'FrameExport', timestampSeconds: 8.5 }, rotation: 90 },
+    { mode: { _tag: 'SilentExport', reencode: 'require' }, rotation: 270 },
+  ].map(settings => ({
+    version: 2,
+    requestId,
+    command: { _tag: 'WatchInboxExport', entryIds: ['entry-1'], settings },
+  })),
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchInboxRetry',
+      plans: [{ entryId: 'entry-1', planId: operationId }],
+      recovery: 'original',
+    },
+  },
+
+  {
+    version: 2,
     requestId,
     command: { _tag: 'Inspect', sourceUrl: 'https://www.instagram.com/p/example/' },
   },
-  { version: 1, requestId, command: { _tag: 'InstantsInspect' } },
+  { version: 2, requestId, command: { _tag: 'InstantsInspect' } },
   {
-    version: 1,
+    version: 2,
     requestId,
     command: {
       _tag: 'Export',
@@ -34,30 +63,150 @@ export const requestFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 1,
+    version: 2,
     requestId,
     command: {
       _tag: 'InstantsExport',
       operations: [{ operationId, itemNumber: 1, mediaIdentity, mode: { _tag: 'DirectExport' } }],
     },
   },
-  { version: 1, requestId, command: { _tag: 'HistoryList' } },
+  { version: 2, requestId, command: { _tag: 'HistoryList' } },
   {
-    version: 1,
+    version: 2,
     requestId,
     command: { _tag: 'HistoryRemove', entryIds: ['history-1'] },
   },
-  { version: 1, requestId, command: { _tag: 'HistoryClear' } },
+  { version: 2, requestId, command: { _tag: 'HistoryClear' } },
   {
-    version: 1,
+    version: 2,
     requestId,
     command: { _tag: 'HistoryRedownload', entryIds: ['history-1'] },
   },
-  { version: 1, requestId, command: { _tag: 'DebugGet' } },
-  { version: 1, requestId, command: { _tag: 'DebugExport' } },
+  { version: 2, requestId, command: { _tag: 'DebugGet' } },
+  { version: 2, requestId, command: { _tag: 'DebugExport' } },
+  { version: 2, requestId, command: { _tag: 'WatchList' } },
+  {
+    version: 2,
+    requestId,
+    command: { _tag: 'WatchShow', watch: { _tag: 'AccountIdSelector', accountId: '2002' } },
+  },
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchAdd',
+      target: 'https://www.instagram.com/example/',
+      kinds: ['posts', 'stories'],
+      actions: ['notify', 'collect'],
+      acceptUnattended: true,
+    },
+  },
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchSet',
+      watch: { _tag: 'UsernameSelector', username: 'example' },
+      actions: ['download'],
+    },
+  },
+  { version: 2, requestId, command: { _tag: 'WatchCheck' } },
+  {
+    version: 2,
+    requestId,
+    command: { _tag: 'WatchInboxList', watch: { _tag: 'AccountIdSelector', accountId: '2002' } },
+  },
+  { version: 2, requestId, command: { _tag: 'WatchInboxRemove', entryIds: ['entry-1'] } },
+  {
+    version: 2,
+    requestId,
+    command: { _tag: 'WatchRecover', action: 'notify', operation: 'retry', entryIds: ['entry-1'] },
+  },
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchLifecycle',
+      operation: 'pause',
+      watches: [{ _tag: 'UsernameSelector', username: 'example' }],
+    },
+  },
 ];
 
+const watchSummary = {
+  watchId: '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f',
+  accountId: '2002',
+  username: 'example',
+  formerUsername: 'old.example',
+  enabled: true,
+  kinds: [
+    { _tag: 'KindChecked', kind: 'posts', lastSuccessAt: 1_700_000_000_000 },
+    { _tag: 'KindBaselinePending', kind: 'stories' },
+    { _tag: 'KindOff', kind: 'instants', baselineKept: true },
+    {
+      _tag: 'KindProblem',
+      kind: 'avatar',
+      code: 'WATCH_USERNAME_UNCONFIRMED',
+      since: 1_700_000_000_000,
+    },
+  ],
+  actions: ['notify', 'collect'],
+  attentionCount: 1,
+  inboxCount: 2,
+  createdAt: 1_690_000_000_000,
+  lastCheckAt: 1_700_000_000_000,
+};
+
 const resultFixtures: readonly unknown[] = [
+  {
+    _tag: 'WatchNeedsResult',
+    watches: [],
+    entries: [],
+    items: [
+      {
+        _tag: 'CheckAttention',
+        attentionId: 'check.watch-1.posts',
+        watchId: 'watch-1',
+        kind: 'posts',
+        code: 'WATCH_CHECK_INCOMPLETE',
+        since: 1000,
+      },
+      {
+        _tag: 'ActionAttention',
+        attentionId: 'action.download.entry-1.1',
+        entryId: 'entry-1',
+        action: 'download',
+        child: 1,
+        state: 'failed',
+        code: 'BROWSER_DOWNLOAD_NETWORK_FAILED',
+        operations: ['retry', 'dismiss'],
+      },
+      {
+        _tag: 'ActionAttention',
+        attentionId: 'uncertain.entry-2.0',
+        entryId: 'entry-2',
+        action: 'download',
+        child: 0,
+        state: 'unconfirmed',
+        operations: ['confirm'],
+      },
+      { _tag: 'PauseAttention', attentionId: 'pause.1001', until: 2000, code: 'IG_RATE_LIMITED' },
+      { _tag: 'StorageAttention', attentionId: 'storage', code: 'WATCH_STORE_FAILED' },
+    ],
+  },
+  {
+    _tag: 'WatchAttentionRecoverResult',
+    recoveredAttentionIds: ['action.download.entry-1.1'],
+    refused: [{ attentionId: 'check.watch-1.posts', code: 'WATCH_RECOVERY_NOT_APPLICABLE' }],
+    failures: [
+      {
+        attentionId: 'action.notify.entry-1',
+        outcome: { entryId: 'entry-1', state: 'failed', code: 'WATCH_NOTIFY_PERMISSION_DENIED' },
+      },
+    ],
+    unknownAttentionIds: ['missing'],
+  },
+
   {
     _tag: 'InspectResult',
     sourceUrl: 'https://www.instagram.com/p/example/',
@@ -146,12 +295,106 @@ const resultFixtures: readonly unknown[] = [
     filename: 'gramgrab-diagnostics.json',
     status: 'started',
   },
+  {
+    _tag: 'WatchListResult',
+    viewer: { accountId: '1001', username: 'viewer' },
+    schedule: {
+      nextRoundAt: 1_700_043_200_000,
+      roundRemaining: 2,
+      pausedUntil: 1_700_001_800_000,
+      suspended: false,
+    },
+    otherLoginWatchCount: 1,
+    storage: { usedBytes: 2048, budgetBytes: 2_097_152, status: 'ok' },
+    attentionCount: 2,
+    watches: [watchSummary],
+    attentionEntries: [
+      {
+        entryId: 'd4b2f3e5-6c7a-4b8d-9eaf-1a2b3c4d5e6f',
+        watchId: watchSummary.watchId,
+        accountId: '2002',
+        username: 'example',
+        kind: 'avatar',
+        mediaType: 'avatar',
+        discoveredAt: 1_700_000_000_000,
+        notify: { state: 'failed', code: 'WATCH_NOTIFY_PERMISSION_DENIED' },
+      },
+    ],
+  },
+  {
+    _tag: 'WatchShowResult',
+    watch: watchSummary,
+    discoveries: [
+      {
+        entryId: 'c3a1e2d4-5b6f-4a7c-8d9e-0f1a2b3c4d5e',
+        watchId: watchSummary.watchId,
+        accountId: '2002',
+        username: 'example',
+        kind: 'posts',
+        mediaType: 'sidecar',
+        childCount: 3,
+        discoveredAt: 1_700_000_000_000,
+        inboxUntil: 1_702_592_000_000,
+        missingChildren: 1,
+        notify: { state: 'done' },
+        download: { state: 'failed', code: 'BROWSER_DOWNLOAD_NETWORK_FAILED' },
+        collect: { state: 'done' },
+      },
+    ],
+  },
+  {
+    _tag: 'WatchCheckResult',
+    outcomes: [
+      {
+        watchId: watchSummary.watchId,
+        accountId: '2002',
+        username: 'example',
+        kinds: [
+          { _tag: 'KindBaselineRecorded', kind: 'stories' },
+          { _tag: 'KindCheckSucceeded', kind: 'posts', newCount: 2, catchUp: true },
+          { _tag: 'KindCheckFailed', kind: 'avatar', code: 'WATCH_USERNAME_UNCONFIRMED' },
+          { _tag: 'KindCheckSkipped', kind: 'instants', reason: 'deferred' },
+        ],
+        deferredUntil: 1_700_000_100_000,
+      },
+    ],
+    unknownWatches: ['missing'],
+  },
+  { _tag: 'WatchInboxListResult', entries: [] },
+  { _tag: 'WatchInboxRemoveResult', removedEntryIds: ['a'], unknownEntryIds: ['b'] },
+  {
+    _tag: 'WatchRecoverResult',
+    recoveredEntryIds: ['a'],
+    refused: [{ entryId: 'b', code: 'WATCH_RECOVERY_NOT_APPLICABLE' }],
+    unknownEntryIds: ['c'],
+  },
+  { _tag: 'WatchAddResult', created: false, watch: watchSummary },
+  { _tag: 'WatchSetResult', watch: watchSummary, baselineKinds: ['stories'] },
+  {
+    _tag: 'WatchLifecycleResult',
+    operation: 'pause',
+    watches: [watchSummary],
+    unknownWatches: ['missing'],
+  },
 ];
 
 export const eventFixtures: readonly unknown[] = [
-  { version: 1, requestId, event: { _tag: 'Accepted' } },
+  { version: 2, requestId, event: { _tag: 'Accepted' } },
   {
-    version: 1,
+    version: 2,
+    requestId,
+    event: {
+      _tag: 'Progress',
+      phase: 'watch-check',
+      watchCheck: {
+        watchId: operationId,
+        kind: 'stories',
+        outcome: { _tag: 'KindBaselineRecorded', kind: 'stories' },
+      },
+    },
+  },
+  {
+    version: 2,
     requestId,
     event: {
       _tag: 'Progress',
@@ -162,12 +405,12 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   ...resultFixtures.map(result => ({
-    version: 1,
+    version: 2,
     requestId,
     event: { _tag: 'Completed', result },
   })),
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -175,7 +418,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -183,7 +426,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -191,7 +434,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -201,4 +444,20 @@ export const eventFixtures: readonly unknown[] = [
       },
     },
   },
+  ...[
+    { _tag: 'StoredWatchCount', count: 3 },
+    { _tag: 'UnattendedDisclosure', text: 'Watches check Instagram for you.' },
+    { _tag: 'ExistingWatch', accountId: '2002', username: 'example' },
+  ].map(detail => ({
+    version: 2,
+    requestId,
+    event: {
+      _tag: 'Rejected',
+      failure: {
+        _tag: 'CommandFailure',
+        failure: { code: 'WATCH_CONFIG_CONFLICT', scope: 'batch' },
+        detail,
+      },
+    },
+  })),
 ];

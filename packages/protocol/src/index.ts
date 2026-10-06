@@ -1,9 +1,20 @@
 import { Schema } from 'effect';
+import { ExportMode, ExportSettings, Rotation } from './export-modes.ts';
+export {
+  DirectExport,
+  FrameExport,
+  SilentExport,
+  ExportMode,
+  Rotation,
+  ExportSettings,
+} from './export-modes.ts';
+import { FailureCodeSchema } from './failures.ts';
+import { WatchCommand, WatchFailureDetail, WatchResult, WatchCheckProgress } from './watch.ts';
 
 export { decodeJsonFrame, encodeFrame, encodeJsonFrame, FrameDecoder } from './framing.ts';
 export { localIpcEndpoint, type IpcEnvironment } from './ipc.ts';
 
-export const PROTOCOL_VERSION = 1 as const;
+export const PROTOCOL_VERSION = 2 as const;
 
 export const RequestId = Schema.UUID.pipe(Schema.brand('RequestId'));
 export type RequestId = Schema.Schema.Type<typeof RequestId>;
@@ -29,23 +40,6 @@ export class MediaIdentity extends Schema.Class<MediaIdentity>('MediaIdentity')(
   itemIndex: InternalItemIndex,
   mediaId: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
 }) {}
-
-export class DirectExport extends Schema.TaggedClass<DirectExport>()('DirectExport', {}) {}
-
-export class FrameExport extends Schema.TaggedClass<FrameExport>()('FrameExport', {
-  timestampSeconds: Schema.Number.pipe(Schema.nonNegative()),
-}) {}
-
-export class SilentExport extends Schema.TaggedClass<SilentExport>()('SilentExport', {
-  reencode: Schema.Literal('forbid', 'allow', 'require'),
-}) {}
-
-export const ExportMode = Schema.Union(DirectExport, FrameExport, SilentExport);
-export type ExportMode = Schema.Schema.Type<typeof ExportMode>;
-
-/** The clockwise turn applied to an export's output. Absent means unrotated. */
-export const Rotation = Schema.Literal(90, 180, 270);
-export type Rotation = Schema.Schema.Type<typeof Rotation>;
 
 export class ExportOperation extends Schema.Class<ExportOperation>('ExportOperation')({
   operationId: OperationId,
@@ -105,7 +99,8 @@ export const Command = Schema.Union(
   HistoryClear,
   HistoryRedownload,
   DebugGet,
-  DebugExport
+  DebugExport,
+  ...WatchCommand.members
 );
 export type Command = Schema.Schema.Type<typeof Command>;
 
@@ -123,67 +118,8 @@ export class CancelRequest extends Schema.TaggedClass<CancelRequest>()('CancelRe
 export const ClientMessage = Schema.Union(Request, CancelRequest);
 export type ClientMessage = Schema.Schema.Type<typeof ClientMessage>;
 
-export const FAILURE_CODES = [
-  'INPUT_INVALID_SOURCE_URL',
-  'SOURCE_USERNAME_UNRESOLVED',
-  'SOURCE_MEDIA_NOT_FOUND',
-  'IG_NOT_AUTHENTICATED',
-  'IG_ACCESS_FORBIDDEN',
-  'IG_RATE_LIMITED',
-  'IG_RESPONSE_SHAPE_UNKNOWN',
-  'IG_REQUEST_REJECTED',
-  'SOURCE_NETWORK_FAILED',
-  'SOURCE_SERVER_FAILED',
-  'SOURCE_UNEXPECTED_FAILURE',
-  'MEDIA_URL_EXPIRED',
-  'MEDIA_NOT_FOUND',
-  'MEDIA_DASH_ONLY_UNSUPPORTED',
-  'INSTANT_NOT_ACTIVE',
-  'MEDIA_NETWORK_FAILED',
-  'MEDIA_RESPONSE_EMPTY',
-  'MEDIA_UNEXPECTED_FAILURE',
-  'BROWSER_DOWNLOAD_BLOCKED',
-  'BROWSER_DOWNLOAD_NETWORK_FAILED',
-  'BROWSER_DOWNLOAD_FILE_FAILED',
-  'DOWNLOAD_UNEXPECTED_FAILURE',
-  'FRAME_METADATA_UNAVAILABLE',
-  'FRAME_TIMEOUT',
-  'FRAME_NO_DECODABLE_FRAME',
-  'FRAME_CANVAS_UNAVAILABLE',
-  'FRAME_IMAGE_ENCODING_FAILED',
-  'FRAME_UNEXPECTED_FAILURE',
-  'ROTATION_FAILED',
-  'SILENT_STORAGE_UNAVAILABLE',
-  'SILENT_STORAGE_CAPACITY_EXCEEDED',
-  'SILENT_MEMORY_CAPACITY_EXCEEDED',
-  'SILENT_STORAGE_READ_FAILED',
-  'SILENT_STORAGE_WRITE_FAILED',
-  'SILENT_SOURCE_NO_VIDEO',
-  'SILENT_INPUT_INSPECTION_FAILED',
-  'SILENT_COPY_FAILED',
-  'SILENT_H264_ENCODER_UNAVAILABLE',
-  'SILENT_SOURCE_CONVERSION_UNSUPPORTED',
-  'SILENT_REENCODE_FAILED',
-  'SILENT_UNEXPECTED_FAILURE',
-  'SILENT_OUTPUT_NO_VIDEO',
-  'SILENT_OUTPUT_HAS_AUDIO',
-  'SILENT_WORKER_UNAVAILABLE',
-  'SILENT_WORKER_PROTOCOL_FAILURE',
-  'HISTORY_VERSION_UNSUPPORTED',
-  'HISTORY_ENTRY_NOT_FOUND',
-  'HISTORY_ITEM_UNRESOLVED',
-  'HISTORY_STORE_FAILED',
-  'WHATSAPP_PAGE_ACCESS_FAILED',
-  'WHATSAPP_STATUS_NOT_VISIBLE',
-  'WHATSAPP_STATUS_UNSUPPORTED',
-  'WHATSAPP_STATUS_NOT_READY',
-  'WHATSAPP_STATUS_CHANGED',
-  'WHATSAPP_FORMAT_CHANGED',
-  'WHATSAPP_ACQUISITION_FAILED',
-] as const;
-
-export const FailureCodeSchema = Schema.Literal(...FAILURE_CODES);
-export type FailureCode = Schema.Schema.Type<typeof FailureCodeSchema>;
+export { FAILURE_CODES, FailureCodeSchema, type FailureCode } from './failures.ts';
+export * from './watch.ts';
 
 export class OperationFailure extends Schema.Class<OperationFailure>('ProtocolOperationFailure')({
   code: FailureCodeSchema,
@@ -214,6 +150,7 @@ export const validationFailureFrom = (cause: unknown): ValidationFailure =>
 
 export class CommandFailure extends Schema.TaggedClass<CommandFailure>()('CommandFailure', {
   failure: OperationFailure,
+  detail: Schema.optional(WatchFailureDetail),
 }) {}
 
 export const RequestFailure = Schema.Union(
@@ -225,6 +162,7 @@ export const RequestFailure = Schema.Union(
 export type RequestFailure = Schema.Schema.Type<typeof RequestFailure>;
 
 export class ItemSucceeded extends Schema.TaggedClass<ItemSucceeded>()('ItemSucceeded', {
+  warning: Schema.optional(Schema.Literal('HISTORY_SAVE_FAILED')),
   operationId: OperationId,
   itemNumber: HumanItemNumber,
   mediaIdentity: MediaIdentity,
@@ -313,6 +251,9 @@ export class HistoryEntry extends Schema.Class<HistoryEntry>('HistoryEntry')({
   filenameHint: Schema.String.pipe(Schema.nonEmptyString()),
   exportMode: Schema.optional(Schema.Literal('direct', 'frame', 'silent')),
   frameTimestampSeconds: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  rotation: Schema.optional(Rotation),
+  requestedExport: Schema.optional(ExportSettings),
+  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
   downloadedAt: Schema.Number.pipe(Schema.nonNegative()),
 }) {}
 
@@ -400,7 +341,8 @@ export const CommandResult = Schema.Union(
   HistoryRedownloadResult,
   DebugGetResult,
   DebugExportResult,
-  InstantsInspectResult
+  InstantsInspectResult,
+  ...WatchResult.members
 );
 export type CommandResult = Schema.Schema.Type<typeof CommandResult>;
 
@@ -409,7 +351,9 @@ export class Accepted extends Schema.TaggedClass<Accepted>()('Accepted', {}) {}
 export class Progress extends Schema.TaggedClass<Progress>()('Progress', {
   operationId: Schema.optional(OperationId),
   itemNumber: Schema.optional(HumanItemNumber),
+  watchCheck: Schema.optional(WatchCheckProgress),
   phase: Schema.Literal(
+    'watch-check',
     'resolving',
     'direct-download',
     'frame-metadata',

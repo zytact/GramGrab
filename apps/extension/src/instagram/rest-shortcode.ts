@@ -1,6 +1,7 @@
 import { Effect, Schema } from 'effect';
 import { HttpError, NetworkError, RateLimited, ResponseShapeUnknown } from '../effect/errors.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
+import { InstagramRequests } from './requests.ts';
 import type { MediaItem } from './normalize.ts';
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -66,6 +67,75 @@ export const RestShortcodeResponseSchema = Schema.Struct({
 });
 
 const unknownShape = () => new ResponseShapeUnknown({ context: 'shortcode_media' });
+
+const OwnerIdentity = Schema.Struct({
+  pk: Schema.optional(Schema.String),
+  id: Schema.optional(Schema.String),
+  pk_id: Schema.optional(Schema.String),
+});
+const ChildIdentity = Schema.Struct({ pk: Schema.String, media_type: Schema.Number });
+const WatchMediaIdentity = Schema.Struct({
+  items: Schema.Array(
+    Schema.Struct({
+      pk: Schema.String,
+      code: Schema.String,
+      media_type: Schema.Number,
+      user: OwnerIdentity,
+      owner: Schema.optional(OwnerIdentity),
+      carousel_media: Schema.optional(Schema.NullOr(Schema.Array(ChildIdentity))),
+    })
+  ),
+});
+
+interface ExpectedMedia {
+  readonly parentId: string;
+  readonly ownerId: string;
+  readonly mediaType: 1 | 2 | 8;
+  readonly children?: readonly {
+    readonly mediaId: string;
+    readonly mediaType: 'image' | 'video';
+  }[];
+}
+
+const ownerMatches = (owner: Schema.Schema.Type<typeof OwnerIdentity>, expected: string) => {
+  const ids = Object.values(owner);
+  return ids.length > 0 && ids.every(id => id === expected);
+};
+
+const childrenMatch = (
+  children: readonly Schema.Schema.Type<typeof ChildIdentity>[] | undefined | null,
+  expected: ExpectedMedia['children']
+) =>
+  expected === undefined ||
+  (children !== undefined &&
+    children !== null &&
+    expected.every(ref => {
+      const matches = children.filter(child => child.pk === ref.mediaId);
+      const [child] = matches;
+      return (
+        matches.length === 0 ||
+        (matches.length === 1 && child?.media_type === (ref.mediaType === 'image' ? 1 : 2))
+      );
+    }));
+
+const mediaMatches = (
+  item: Schema.Schema.Type<typeof WatchMediaIdentity>['items'][number],
+  expected: ExpectedMedia
+) =>
+  item.pk === expected.parentId &&
+  item.media_type === expected.mediaType &&
+  ownerMatches(item.user, expected.ownerId) &&
+  (item.owner === undefined || ownerMatches(item.owner, expected.ownerId)) &&
+  childrenMatch(item.carousel_media, expected.children);
+
+const verifyExpectedMedia = (raw: unknown, shortcode: string, expected: ExpectedMedia) =>
+  decode(WatchMediaIdentity, raw).pipe(
+    Effect.filterOrFail(response => {
+      const matches = response.items.filter(item => item.code === shortcode);
+      const [item] = matches;
+      return matches.length === 1 && item !== undefined && mediaMatches(item, expected);
+    }, unknownShape)
+  );
 
 const decode = <A, I>(schema: Schema.Schema<A, I>, value: unknown) =>
   Schema.decodeUnknown(schema)(value).pipe(Effect.mapError(unknownShape));
@@ -156,24 +226,19 @@ function decodeRestItem(
   });
 }
 
-export const fetchRestShortcodeRaw = (
-  shortcode: string
-): Effect.Effect<unknown, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> =>
+export const fetchRestShortcodeRaw = (shortcode: string) =>
   Effect.gen(function* () {
     const id = shortcodeMediaId(shortcode);
     if (!id) return yield* Effect.fail(unknownShape());
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetch(`https://www.instagram.com/api/v1/media/${id}/info/`, {
-          credentials: 'include',
-          headers: {
-            'X-IG-App-ID': protocolConfig.client.appId,
-            'X-ASBD-ID': protocolConfig.client.asbdId,
-            'X-Requested-With': 'XMLHttpRequest',
-            Accept: 'application/json',
-          },
-        }),
-      catch: cause => new NetworkError({ cause }),
+    const requests = yield* InstagramRequests;
+    const response = yield* requests.fetch(`https://www.instagram.com/api/v1/media/${id}/info/`, {
+      credentials: 'include',
+      headers: {
+        'X-IG-App-ID': protocolConfig.client.appId,
+        'X-ASBD-ID': protocolConfig.client.asbdId,
+        'X-Requested-With': 'XMLHttpRequest',
+        Accept: 'application/json',
+      },
     });
     if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
     if (!response.ok)
@@ -186,11 +251,10 @@ export const fetchRestShortcodeRaw = (
     });
   });
 
-export const fetchRestShortcodeMedia = (
-  shortcode: string
-): Effect.Effect<MediaItem[], HttpError | NetworkError | RateLimited | ResponseShapeUnknown> =>
+export const fetchRestShortcodeMedia = (shortcode: string, expected?: ExpectedMedia) =>
   Effect.gen(function* () {
     const raw = yield* fetchRestShortcodeRaw(shortcode);
+    if (expected) yield* verifyExpectedMedia(raw, shortcode, expected);
     const decoded = yield* decode(RestShortcodeResponseSchema, raw);
     if (decoded.status !== 'ok') return yield* Effect.fail(unknownShape());
     if (!decoded.items.length) return [];

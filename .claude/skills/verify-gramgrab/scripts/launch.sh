@@ -16,6 +16,13 @@ cd "$repo"
 
 session_dir="$repo/.local/verify"
 ext_dir="$repo/extension/chromium"
+restart=no
+case "${1:-}" in
+  "") ;;
+  --restart) restart=yes ;;
+  *) echo "Usage: $0 [--restart]" >&2; exit 2 ;;
+esac
+[ "$#" -le 1 ] || { echo "Usage: $0 [--restart]" >&2; exit 2; }
 
 if [ -f "$session_dir/session.env" ]; then
   echo "A session already exists at $session_dir/session.env." >&2
@@ -42,11 +49,22 @@ case "$("$browser" --version 2>/dev/null)" in
     ;;
 esac
 
-vp run build:chromium >/dev/null
+if [ "$restart" = no ]; then vp run build:chromium >/dev/null; fi
+build_fingerprint="$(rg --files "$ext_dir" -0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
 
 mkdir -p "$session_dir"
 profile="${GRAMGRAB_PROFILE:-$repo/.local/verify-profile}"
 downloads="$session_dir/downloads"
+
+# A running browser that holds the profile takes the launch over and never opens
+# this run's CDP port, so fail with the owner instead of a port timeout.
+lock_pid="$(readlink "$profile/SingletonLock" 2>/dev/null | sed 's/.*-//' || true)"
+if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+  echo "Profile $profile is in use by browser pid $lock_pid." >&2
+  echo "Copy it and set GRAMGRAB_PROFILE to the copy, or wait for that run to end." >&2
+  exit 2
+fi
+
 mkdir -p "$profile/NativeMessagingHosts" "$profile/Default" "$downloads"
 
 # Force the download directory on every launch, not only the first. Chromium
@@ -73,7 +91,15 @@ node -e '
 # WhatsApp Web link lives in Default/IndexedDB. Only Database and ScriptCache
 # live here, and both are rebuilt on demand. Removing ScriptCache alone leaves
 # a registration pointing at a script that is gone, which fails to start at all.
-rm -rf "$profile/Default/Service Worker"
+if [ "$restart" = yes ]; then
+  [ -f "$profile/.gramgrab-verification-build" ] &&
+    [ "$(cat "$profile/.gramgrab-verification-build")" = "$build_fingerprint" ] || {
+      echo "Restart requires the unchanged build from a successful fresh launch." >&2
+      exit 2
+    }
+else
+  rm -rf "$profile/Default/Service Worker"
+fi
 
 # The manifest `key` pins the extension ID, so unpacked builds share the release ID.
 ext_id="$(node --input-type=module -e '
@@ -87,6 +113,10 @@ port="$(node -e '
 ')"
 
 ipc_path="$session_dir/gramgrab.sock"
+if [ "${#ipc_path}" -gt 107 ]; then
+  echo "Socket path $ipc_path exceeds the 107-byte Unix socket limit. Launch from a shorter checkout path or a symlink to it." >&2
+  exit 1
+fi
 
 sed -e "s#__GRAMGRAB_NATIVE_HOST_PATH__#$repo/apps/native-host/bin/gramgrab-native-host.mjs#" \
     "$repo/apps/native-host/manifests/chromium.json" \
@@ -134,4 +164,5 @@ done
   exit 1
 }
 
+printf '%s\n' "$build_fingerprint" > "$profile/.gramgrab-verification-build"
 cat "$session_dir/session.env"

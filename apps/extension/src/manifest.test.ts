@@ -17,6 +17,7 @@ const expectedPermissions = [
   'tabs',
   'contextMenus',
   'nativeMessaging',
+  'alarms',
 ];
 const expectedHostPermissions = ['https://*.instagram.com/*', 'https://*.fbcdn.net/*'];
 
@@ -61,7 +62,9 @@ describe('manifest generation', () => {
           96: 'icons/icon-96.png',
         },
         permissions: expectedPermissions,
+        optional_permissions: ['notifications'],
         host_permissions: expectedHostPermissions,
+        options_ui: { page: 'options.html', open_in_tab: true },
       });
       expect(createManifest(browser)).not.toHaveProperty('content_scripts');
       expect(createManifest(browser)).not.toHaveProperty('optional_host_permissions');

@@ -35,6 +35,23 @@ export interface NativePort {
   onDisconnect: PortEvent<() => void>;
 }
 
+export interface DownloadQuery {
+  id?: number;
+  state?: 'in_progress' | 'complete' | 'interrupted';
+  startedAfter?: string;
+  limit?: number;
+  orderBy?: string[];
+}
+
+export interface BrowserDownload {
+  id: number;
+  state?: string;
+  fileSize?: number;
+  filename?: string;
+  startTime?: string;
+  byExtensionId?: string;
+}
+
 export interface ExecuteScriptDetails {
   target: { tabId: number; frameIds: number[] };
   files: string[];
@@ -47,11 +64,15 @@ export interface BrowserShim {
     getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
     connectNative: (application: string) => NativePort;
+    openOptionsPage: () => Promise<void>;
     onMessage: {
       addListener: (callback: OnMessageCallback) => void;
     };
     onStartup: {
       addListener: (callback: () => void) => void;
+    };
+    onInstalled: {
+      addListener: (callback: (details: { reason: string }) => void) => void;
     };
   };
   tabs: {
@@ -74,9 +95,7 @@ export interface BrowserShim {
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
     cancel: (downloadId: number) => Promise<void>;
-    search: (query: {
-      id?: number;
-    }) => Promise<{ id: number; state?: string; fileSize?: number }[]>;
+    search: (query: DownloadQuery) => Promise<BrowserDownload[]>;
     onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {
@@ -110,6 +129,47 @@ export interface BrowserShim {
     onClicked: { addListener: (callback: ContextMenuClickedCallback) => void };
     onShown: { addListener: (callback: ContextMenuShownCallback) => void };
   };
+  action: PromisedApis['action'];
+  alarms: PromisedApis['alarms'];
+  notifications: PromisedApis['notifications'];
+  permissions: PromisedApis['permissions'];
+}
+
+interface AlarmInfo {
+  name: string;
+  scheduledTime: number;
+  periodInMinutes?: number;
+}
+
+/**
+ * APIs that are promise-based in both Chromium MV3 and Firefox, so every shim passes them through
+ * unchanged and only the stub needs its own version.
+ */
+interface PromisedApis {
+  action: {
+    setBadgeText: (details: { text: string }) => Promise<void>;
+    setBadgeBackgroundColor: (details: { color: string }) => Promise<void>;
+  };
+  alarms: {
+    create: (
+      name: string,
+      info: { delayInMinutes?: number; periodInMinutes?: number }
+    ) => Promise<void>;
+    get: (name: string) => Promise<AlarmInfo | undefined>;
+    onAlarm: { addListener: (callback: (alarm: AlarmInfo) => void) => void };
+  };
+  notifications: {
+    create: (
+      id: string,
+      options: { type: 'basic'; title: string; message: string; iconUrl: string }
+    ) => Promise<string>;
+    clear: (id: string) => Promise<boolean>;
+    onClicked: { addListener: (callback: (id: string) => void) => void };
+  };
+  permissions: {
+    contains: (query: { permissions: string[] }) => Promise<boolean>;
+    request: (query: { permissions: string[] }) => Promise<boolean>;
+  };
 }
 
 export interface DownloadDelta {
@@ -141,11 +201,13 @@ interface ChromeRuntime {
   lastError?: { message?: string };
   sendMessage: (msg: unknown, callback: (response: unknown) => void) => void;
   connectNative?: (application: string) => NativePort;
+  openOptionsPage: (callback: () => void) => void;
   onMessage: { addListener: (callback: OnMessageCallback) => void };
   onStartup?: { addListener: (callback: () => void) => void };
+  onInstalled?: BrowserShim['runtime']['onInstalled'];
 }
 
-interface ChromeGlobal {
+interface ChromeGlobal extends Partial<PromisedApis> {
   runtime: ChromeRuntime;
   tabs: {
     query: (q: unknown, cb: (tabs: unknown[]) => void) => void;
@@ -171,10 +233,7 @@ interface ChromeGlobal {
       cb?: (id: number) => void
     ) => void;
     cancel?: (downloadId: number, callback?: () => void) => void;
-    search: (
-      query: { id?: number },
-      callback: (items: { id: number; state?: string; fileSize?: number }[]) => void
-    ) => void;
+    search: (query: DownloadQuery, callback: (items: BrowserDownload[]) => void) => void;
     onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {
@@ -205,14 +264,16 @@ interface ChromeGlobal {
   };
 }
 
-interface NativeBrowserGlobal {
+interface NativeBrowserGlobal extends Partial<PromisedApis> {
   runtime: {
     getURL: (path: string) => string;
     getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
     connectNative?: (application: string) => NativePort;
+    openOptionsPage: () => Promise<void>;
     onMessage: { addListener: (callback: OnMessageCallback) => void };
     onStartup?: { addListener: (callback: () => void) => void };
+    onInstalled?: BrowserShim['runtime']['onInstalled'];
   };
   tabs: {
     query: (queryInfo: unknown) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
@@ -233,9 +294,7 @@ interface NativeBrowserGlobal {
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
     cancel?: (downloadId: number) => Promise<void>;
-    search: (query: {
-      id?: number;
-    }) => Promise<{ id: number; state?: string; fileSize?: number }[]>;
+    search: (query: DownloadQuery) => Promise<BrowserDownload[]>;
     onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {
@@ -292,12 +351,15 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
           });
         }),
       connectNative: application => chrome.runtime.connectNative?.(application) ?? noopNativePort,
+      openOptionsPage: () =>
+        callbackPromise(chrome, callback => chrome.runtime.openOptionsPage(callback)),
       onMessage: {
         addListener: callback => chrome.runtime.onMessage.addListener(callback),
       },
       onStartup: {
         addListener: callback => chrome.runtime.onStartup?.addListener(callback),
       },
+      onInstalled: chrome.runtime.onInstalled ?? noopRuntimeStartup,
     },
     tabs: {
       query: queryInfo =>
@@ -474,6 +536,17 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
       onClicked: contextMenus.onClicked ?? noopContextMenus.onClicked,
       onShown: contextMenus.onShown ?? noopContextMenus.onShown,
     },
+    ...promisedApis(chrome),
+  };
+}
+
+/** The promise-based APIs a browser global provides, with stubs for any it lacks. */
+function promisedApis(global: Partial<PromisedApis>): PromisedApis {
+  return {
+    action: global.action ?? noopPromisedApis.action,
+    alarms: global.alarms ?? noopPromisedApis.alarms,
+    notifications: global.notifications ?? noopPromisedApis.notifications,
+    permissions: global.permissions ?? noopPromisedApis.permissions,
   };
 }
 
@@ -500,6 +573,7 @@ function nativeRuntime(native: NativeBrowserGlobal): BrowserShim['runtime'] {
     ...native.runtime,
     connectNative: application => native.runtime.connectNative?.(application) ?? noopNativePort,
     onStartup: native.runtime.onStartup ?? noopRuntimeStartup,
+    onInstalled: native.runtime.onInstalled ?? noopRuntimeStartup,
   };
 }
 
@@ -553,6 +627,7 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
       remove: windowId => native.windows.remove(windowId),
     },
     contextMenus: nativeContextMenus(native),
+    ...promisedApis(native),
   };
 }
 
@@ -590,8 +665,27 @@ const noopNativePort: NativePort = {
   onDisconnect: { addListener: () => {}, removeListener: () => {} },
 };
 
-const noopRuntimeStartup: BrowserShim['runtime']['onStartup'] = {
-  addListener: () => {},
+const noopRuntimeStartup = { addListener: () => {} };
+
+const noopPromisedApis: PromisedApis = {
+  action: {
+    setBadgeText: () => Promise.resolve(),
+    setBadgeBackgroundColor: () => Promise.resolve(),
+  },
+  alarms: {
+    create: () => Promise.resolve(),
+    get: () => Promise.resolve(undefined),
+    onAlarm: { addListener: () => {} },
+  },
+  notifications: {
+    create: () => Promise.reject(new Error('Notifications are unavailable.')),
+    clear: () => Promise.resolve(false),
+    onClicked: { addListener: () => {} },
+  },
+  permissions: {
+    contains: () => Promise.resolve(false),
+    request: () => Promise.resolve(false),
+  },
 };
 
 const noopCookies: BrowserShim['cookies'] = {
@@ -616,8 +710,10 @@ const noopShim: BrowserShim = {
     getManifest: () => ({}),
     sendMessage: () => Promise.resolve(undefined),
     connectNative: () => noopNativePort,
+    openOptionsPage: () => Promise.resolve(),
     onMessage: { addListener: () => {} },
     onStartup: noopRuntimeStartup,
+    onInstalled: noopRuntimeStartup,
   },
   tabs: {
     query: () => Promise.resolve([]),
@@ -647,6 +743,7 @@ const noopShim: BrowserShim = {
     remove: () => Promise.resolve(),
   },
   contextMenus: noopContextMenus,
+  ...noopPromisedApis,
 };
 
 // ---------------------------------------------------------------------------

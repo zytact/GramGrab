@@ -16,96 +16,11 @@ import {
   SilentWorkerError,
 } from './contracts.ts';
 
-const NativeURL = globalThis.URL;
-
-type WorkerRequest = {
-  readonly _tag?: string;
-  readonly requestId?: RequestId;
-  readonly operationId?: OperationId;
-  readonly useCachedInput?: boolean;
-  readonly transcode?: boolean;
-};
+import { createMemoryDirectory, workerAdapter } from '../test/silent-browser.ts';
 
 type DownloadListener = (delta: { id: number; state?: { current?: string } }) => void;
 
-class MemoryFileHandle {
-  constructor(
-    readonly name: string,
-    private readonly files: Map<string, BlobPart[]>
-  ) {}
-
-  getFile(): Promise<File> {
-    return Promise.resolve(new File(this.files.get(this.name) ?? [], this.name));
-  }
-
-  createWritable() {
-    return Promise.resolve({
-      write: (chunk: BlobPart) => {
-        this.files.set(this.name, [chunk]);
-        return Promise.resolve();
-      },
-      close: () => Promise.resolve(),
-    });
-  }
-}
-
-class MemoryDirectory {
-  readonly files = new Map<string, BlobPart[]>();
-
-  getDirectoryHandle(): Promise<MemoryDirectory> {
-    return Promise.resolve(this);
-  }
-
-  getFileHandle(name: string, options?: { create?: boolean }): Promise<MemoryFileHandle> {
-    if (!this.files.has(name) && !options?.create)
-      return Promise.reject(new DOMException('Missing file', 'NotFoundError'));
-    if (!this.files.has(name)) this.files.set(name, []);
-    return Promise.resolve(new MemoryFileHandle(name, this.files));
-  }
-
-  removeEntry(name: string): Promise<void> {
-    if (!this.files.delete(name))
-      return Promise.reject(new DOMException('Missing file', 'NotFoundError'));
-    return Promise.resolve();
-  }
-
-  async *entries(): AsyncIterableIterator<[string, MemoryFileHandle]> {
-    for (const name of this.files.keys()) yield [name, new MemoryFileHandle(name, this.files)];
-  }
-}
-
-class FakeWorker {
-  static instance: FakeWorker | undefined;
-
-  readonly requests: WorkerRequest[] = [];
-  terminated = false;
-  onRequest: (request: WorkerRequest) => void = () => {};
-  #messageListeners: ((event: MessageEvent) => void)[] = [];
-
-  constructor() {
-    FakeWorker.instance = this;
-  }
-
-  addEventListener(type: string, listener: EventListener): void {
-    if (type === 'message') this.#messageListeners.push(listener);
-  }
-
-  postMessage(request: WorkerRequest): void {
-    this.requests.push(request);
-    this.onRequest(request);
-  }
-
-  terminate(): void {
-    this.terminated = true;
-  }
-
-  respond(response: unknown): void {
-    queueMicrotask(() => {
-      const event = new MessageEvent('message', { data: response });
-      for (const listener of this.#messageListeners) listener(event);
-    });
-  }
-}
+const NativeURL = globalThis.URL;
 
 function operation(index: number): AttemptOperation {
   return {
@@ -150,16 +65,16 @@ async function drainMicrotasks(): Promise<void> {
 }
 
 describe('silent video batch', () => {
-  let directory: MemoryDirectory;
+  let directory: ReturnType<typeof createMemoryDirectory>;
   let downloadListeners: ((delta: { id: number; state?: { current?: string } }) => void)[];
   let nextDownloadId: number;
 
   beforeEach(() => {
-    directory = new MemoryDirectory();
+    directory = createMemoryDirectory();
     downloadListeners = [];
     nextDownloadId = 1;
-    FakeWorker.instance = undefined;
-    vi.stubGlobal('Worker', FakeWorker);
+    workerAdapter.instance = undefined;
+    vi.stubGlobal('Worker', workerAdapter.Worker);
     vi.stubGlobal('navigator', {
       storage: { getDirectory: () => Promise.resolve(directory) },
     });
@@ -231,7 +146,7 @@ describe('silent video batch', () => {
       () => {},
       new Set()
     );
-    const worker = FakeWorker.instance;
+    const worker = workerAdapter.instance;
     expect(worker).toBeDefined();
     if (!worker) throw new Error('Expected the batch worker to be created.');
     worker.onRequest = request => {
@@ -285,7 +200,7 @@ describe('silent video batch', () => {
       () => {},
       new Set()
     );
-    const worker = FakeWorker.instance;
+    const worker = workerAdapter.instance;
     if (!worker) throw new Error('Expected the batch worker to be created.');
     worker.onRequest = request => {
       if (!request.requestId || !request.operationId) return;
@@ -343,7 +258,7 @@ describe('silent video batch', () => {
       () => {},
       new Set()
     );
-    const worker = FakeWorker.instance;
+    const worker = workerAdapter.instance;
     if (!worker) throw new Error('Expected the batch worker to be created.');
     worker.onRequest = request => {
       if (!request.requestId || !request.operationId) return;
@@ -389,7 +304,7 @@ describe('silent video batch', () => {
       () => {},
       new Set()
     );
-    const worker = FakeWorker.instance;
+    const worker = workerAdapter.instance;
     if (!worker) throw new Error('Expected the batch worker to be created.');
     worker.onRequest = request => {
       if (!request.requestId || !request.operationId) return;
@@ -424,7 +339,7 @@ describe('silent video batch', () => {
       () => {},
       new Set()
     );
-    const worker = FakeWorker.instance;
+    const worker = workerAdapter.instance;
     if (!worker) throw new Error('Expected the batch worker to be created.');
     worker.onRequest = request => {
       if (!request.requestId || !request.operationId) return;
@@ -464,7 +379,7 @@ describe('silent video batch', () => {
       () => {},
       new Set()
     );
-    const worker = FakeWorker.instance;
+    const worker = workerAdapter.instance;
     if (!worker) throw new Error('Expected the batch worker to be created.');
     worker.onRequest = request => {
       if (!request.requestId || !request.operationId) return;
@@ -507,7 +422,7 @@ describe('silent video batch', () => {
       () => {},
       approved
     );
-    const firstWorker = FakeWorker.instance;
+    const firstWorker = workerAdapter.instance;
     if (!firstWorker) throw new Error('Expected the first worker to be created.');
     firstWorker.onRequest = request => {
       if (!request.requestId || !request.operationId) return;
@@ -541,7 +456,7 @@ describe('silent video batch', () => {
       () => {},
       approved
     );
-    const secondWorker = FakeWorker.instance;
+    const secondWorker = workerAdapter.instance;
     if (!secondWorker) throw new Error('Expected the second worker to be created.');
     secondWorker.onRequest = request => {
       if (!request.requestId || !request.operationId) return;

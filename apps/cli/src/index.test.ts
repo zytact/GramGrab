@@ -7,6 +7,20 @@ import { Effect, Schema } from 'effect';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 import {
   Accepted,
+  CommandFailure,
+  Completed,
+  OperationFailure,
+  Rejected,
+  TransportFailure,
+  UNATTENDED_DISCLOSURE,
+  UnattendedDisclosure,
+  WatchLifecycleResult,
+  WatchCheckResult,
+  WatchCheckProgress,
+  KindCheckFailed,
+  KindBaselineRecorded,
+  CommandResult,
+  type EventPayload,
   decodeClientMessage,
   decodeJsonFrame,
   encodeJsonFrame,
@@ -30,10 +44,14 @@ interface CliProcessResult {
   readonly stderr: string;
 }
 
-function runCliProcess(arguments_: readonly string[]): Promise<CliProcessResult> {
+function runCliProcess(
+  arguments_: readonly string[],
+  endpoint?: string
+): Promise<CliProcessResult> {
   return new Promise((resolveResult, reject) => {
     const child = spawn(process.execPath, [resolve('apps/cli/bin/gramgrab.mjs'), ...arguments_], {
       cwd: process.cwd(),
+      env: endpoint ? { ...process.env, GRAMGRAB_IPC_PATH: endpoint } : process.env,
     });
     const stdout = child.stdout;
     const stderr = child.stderr;
@@ -321,6 +339,272 @@ describe('CLI capability grammar', () => {
   });
 });
 
+/** An extension stand-in that answers each request with `answer`'s terminal event. */
+async function answeringServer(
+  endpoint: string,
+  answer: (request: Request) => EventPayload | readonly EventPayload[]
+): Promise<{ readonly requests: Request[]; readonly close: () => Promise<void> }> {
+  const requests: Request[] = [];
+  const server = createServer(socket => {
+    const decoder = new FrameDecoder();
+    socket.on('data', chunk => {
+      if (typeof chunk === 'string') return;
+      for (const frame of decoder.push(chunk)) {
+        const incoming = Schema.decodeUnknownSync(Request)(decodeJsonFrame(frame));
+        requests.push(incoming);
+        const events = answer(incoming);
+        for (const event of [Accepted.make({}), ...(Array.isArray(events) ? events : [events])])
+          socket.write(
+            encodeJsonFrame(
+              Schema.encodeSync(Event)(
+                Event.make({ version: PROTOCOL_VERSION, requestId: incoming.requestId, event })
+              )
+            )
+          );
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(endpoint, resolve);
+  });
+  return {
+    requests,
+    close: () =>
+      new Promise<void>((resolve, reject) =>
+        server.close(error => (error ? reject(error) : resolve()))
+      ),
+  };
+}
+
+describe('CLI watch grammar', () => {
+  const command = (...arguments_: string[]) => parseCliArguments(['watch', ...arguments_]).command;
+
+  it('reads all-digit selectors as account IDs unless a flag forces the reading', () => {
+    expect(command('show', '12345')).toMatchObject({
+      watch: { _tag: 'AccountIdSelector', accountId: '12345' },
+    });
+    expect(command('show', '12345', '--username')).toMatchObject({
+      watch: { _tag: 'UsernameSelector', username: '12345' },
+    });
+    expect(command('show', '@someone')).toMatchObject({
+      watch: { _tag: 'UsernameSelector', username: 'someone' },
+    });
+    expect(() => command('show', 'someone', '--account-id')).toThrow('Invalid WATCH');
+  });
+
+  it('builds add, set, and multi-Watch lifecycle commands', () => {
+    expect(
+      command('add', 'someone', '--kinds', 'posts,stories', '--actions', 'collect', '--json')
+    ).toMatchObject({
+      _tag: 'WatchAdd',
+      target: 'someone',
+      kinds: ['posts', 'stories'],
+      actions: ['collect'],
+      acceptUnattended: false,
+    });
+    expect(command('set', 'someone', '--actions', 'notify,download')).toMatchObject({
+      _tag: 'WatchSet',
+      actions: ['notify', 'download'],
+    });
+    expect(command('delete', 'one', '222')).toMatchObject({
+      _tag: 'WatchLifecycle',
+      operation: 'delete',
+      watches: [{ username: 'one' }, { accountId: '222' }],
+    });
+    expect(command('recover', 'notify', 'retry', 'entry-1', 'entry-2')).toEqual(
+      expect.objectContaining({
+        _tag: 'WatchRecover',
+        action: 'notify',
+        operation: 'retry',
+        entryIds: ['entry-1', 'entry-2'],
+      })
+    );
+  });
+
+  it('parses selected and all Watch checks with local selectors', () => {
+    expect(command('check', 'instagram', '12345', '--json')).toMatchObject({
+      _tag: 'WatchCheck',
+      watches: [{ username: 'instagram' }, { accountId: '12345' }],
+    });
+    expect(command('check', '--all')).toMatchObject({ _tag: 'WatchCheck' });
+    expect(command('check', '12345', '--username')).toMatchObject({
+      watches: [{ username: '12345' }],
+    });
+  });
+  it.each([
+    [['check'], 'needs WATCH selectors or --all'],
+    [['check', 'instagram', '--all'], 'selectors or --all, not both'],
+    [['check', '--all', '--username'], 'selectors or --all, not both'],
+    [['check', 'instagram', '--kinds', 'posts'], 'Unknown option'],
+    [['check', 'instagram', '--username', '--account-id'], 'either --account-id or --username'],
+  ])('rejects invalid check grammar %j', (arguments_, message) =>
+    expect(() => command(...arguments_)).toThrow(message)
+  );
+
+  it.each([
+    [['add', 'someone', '--actions', 'collect'], 'needs --kinds and --actions'],
+    [['add', 'someone', '--kinds', 'posts,posts', '--actions', 'collect'], 'Invalid --kinds'],
+    [['set', 'someone'], 'needs --kinds or --actions'],
+    [['pause'], 'needs at least one WATCH'],
+    [['list', 'extra'], 'takes no WATCH'],
+    [['show', 'someone', '--color'], 'Unknown option'],
+    [['recover', 'notify', 'retry'], 'needs at least one ENTRY_ID'],
+    [['recover', 'download', 'retry', 'entry-1'], 'Usage: gramgrab watch recover'],
+  ])('rejects %j', (arguments_, message) => {
+    expect(() => command(...arguments_)).toThrow(message);
+  });
+});
+
+describe('CLI watch process', () => {
+  it('prints every kind progress on stderr and a single unsuccessful terminal result on stdout', async () => {
+    const endpoint = await testEndpoint();
+    const watchId = 'ad7a60ff-5e9f-470f-b036-f116e32fda41';
+    const outcomes = [
+      KindBaselineRecorded.make({ kind: 'stories' }),
+      KindCheckFailed.make({ kind: 'posts', code: 'IG_RESPONSE_SHAPE_UNKNOWN' }),
+    ];
+    const server = await answeringServer(endpoint, () => [
+      ...outcomes.map(outcome =>
+        Progress.make({
+          phase: 'watch-check',
+          watchCheck: WatchCheckProgress.make({ watchId, kind: outcome.kind, outcome }),
+        })
+      ),
+      Completed.make({
+        result: Schema.decodeUnknownSync(WatchCheckResult)({
+          _tag: 'WatchCheckResult',
+          outcomes: [{ watchId, accountId: '2002', username: 'instagram', kinds: outcomes }],
+          unknownWatches: ['missing'],
+        }),
+      }),
+    ]);
+    const result = await runCliProcess(
+      ['watch', 'check', 'instagram', 'missing', '--json'],
+      endpoint
+    );
+    expect(result.code).toBe(1);
+    expect(result.stdout.trim().split('\n')).toHaveLength(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      _tag: 'WatchCheckResult',
+      unknownWatches: ['missing'],
+    });
+    const progress = result.stderr
+      .trim()
+      .split('\n')
+      .map(line => JSON.parse(line));
+    expect(progress).toMatchObject([
+      { watchCheck: { kind: 'stories' } },
+      { watchCheck: { kind: 'posts' } },
+    ]);
+    await server.close();
+  });
+  it('returns unsuccessful status and the next allowed time for a deferred check', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Completed.make({
+        result: Schema.decodeUnknownSync(WatchCheckResult)({
+          _tag: 'WatchCheckResult',
+          outcomes: [
+            {
+              watchId: 'watch',
+              accountId: '2002',
+              username: 'instagram',
+              kinds: [],
+              deferredUntil: 1790859000000,
+            },
+          ],
+          unknownWatches: [],
+        }),
+      })
+    );
+    const result = await runCliProcess(['watch', 'check', '--all', '--json'], endpoint);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      outcomes: [{ deferredUntil: 1790859000000 }],
+    });
+    await server.close();
+  });
+  it('returns success when every configured kind succeeds', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Completed.make({
+        result: Schema.decodeUnknownSync(WatchCheckResult)({
+          _tag: 'WatchCheckResult',
+          outcomes: [
+            {
+              watchId: 'watch',
+              accountId: '2002',
+              username: 'instagram',
+              kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
+            },
+          ],
+          unknownWatches: [],
+        }),
+      })
+    );
+    const result = await runCliProcess(['watch', 'check', '--all', '--json'], endpoint);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim().split('\n')).toHaveLength(1);
+    await server.close();
+  });
+
+  it('exits 1 with the disclosure when add is not acknowledged', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Rejected.make({
+        failure: CommandFailure.make({
+          failure: OperationFailure.make({ code: 'WATCH_UNATTENDED_NOT_ACCEPTED', scope: 'batch' }),
+          detail: UnattendedDisclosure.make({ text: UNATTENDED_DISCLOSURE }),
+        }),
+      })
+    );
+
+    const result = await runCliProcess(
+      ['watch', 'add', 'someone', '--kinds', 'posts', '--actions', 'collect', '--json'],
+      endpoint
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(UNATTENDED_DISCLOSURE);
+    expect(server.requests[0]?.command).toMatchObject({ acceptUnattended: false });
+    await server.close();
+  });
+
+  it('exits 1 when a lifecycle command names an unknown Watch, keeping other outcomes', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Completed.make({
+        result: WatchLifecycleResult.make({
+          operation: 'pause',
+          watches: [],
+          unknownWatches: ['missing'],
+        }),
+      })
+    );
+
+    const result = await runCliProcess(['watch', 'pause', 'missing', '--json'], endpoint);
+
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({ unknownWatches: ['missing'] });
+    await server.close();
+  });
+
+  it('exits 1 on a protocol version rejection', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Rejected.make({ failure: TransportFailure.make({ code: 'PROTOCOL_VERSION_UNSUPPORTED' }) })
+    );
+
+    const result = await runCliProcess(['watch', 'list', '--json'], endpoint);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('PROTOCOL_VERSION_UNSUPPORTED');
+    await server.close();
+  });
+});
+
 describe('CLI output', () => {
   it('documents help, all-item export, policies, plans, and exit semantics', () => {
     expect(HELP).toContain('gramgrab inspect SOURCE');
@@ -336,6 +620,8 @@ describe('CLI output', () => {
     expect(HELP).toContain('forbid');
     expect(HELP).toContain('--plan');
     expect(HELP).toContain('Exit 0');
+    expect(HELP).toContain('Watches (Beta)');
+    expect(HELP).toContain('--accept-unattended');
   });
 
   it.each([false, true])('rejects invalid source input with exit code 2 (%s JSON)', async json => {
@@ -495,5 +781,163 @@ describe('version skew hint', () => {
 
   it('points at gramgrab update when they differ', () => {
     expect(versionSkewHint(status('1.3.0', '1.2.0'))).toContain('gramgrab update');
+  });
+});
+
+describe('CLI Watch attention and inbox grammar', () => {
+  const command = (...args: string[]) => parseCliArguments(['watch', ...args]).command;
+  it('parses attention IDs and optional local inbox selectors', () => {
+    expect(command('needs', '--json')).toMatchObject({ _tag: 'WatchNeeds' });
+    expect(command('retry', 'action.notify.entry-1', 'missing')).toMatchObject({
+      _tag: 'WatchAttentionRecover',
+      operation: 'retry',
+      attentionIds: ['action.notify.entry-1', 'missing'],
+    });
+    expect(command('confirm', 'uncertain.entry-1.0')).toMatchObject({ operation: 'confirm' });
+    expect(command('inbox', 'list', '123', '--username')).toMatchObject({
+      _tag: 'WatchInboxList',
+      watch: { _tag: 'UsernameSelector', username: '123' },
+    });
+    expect(command('inbox', 'remove', 'entry-1', 'missing')).toMatchObject({
+      _tag: 'WatchInboxRemove',
+      entryIds: ['entry-1', 'missing'],
+    });
+  });
+  it.each([
+    ['direct', [], { _tag: 'DirectExport' }],
+    ['frame', ['--at', '8.5'], { _tag: 'FrameExport', timestampSeconds: 8.5 }],
+    ['silent', ['--reencode', 'require'], { _tag: 'SilentExport', reencode: 'require' }],
+  ] as const)('parses %s inbox Export with rotation', (mode, options, expected) => {
+    expect(
+      command('inbox', 'export', 'entry-1', '--mode', mode, ...options, '--rotate', '270', '--json')
+    ).toMatchObject({
+      _tag: 'WatchInboxExport',
+      entryIds: ['entry-1'],
+      settings: { mode: expected, rotation: 270 },
+    });
+  });
+  it('parses frozen retries with explicit recovery', () => {
+    const planId = 'ad7a60ff-5e9f-470f-b036-f116e32fda41';
+    expect(command('inbox', 'retry', 'entry-1', planId, '--recovery', 'original')).toMatchObject({
+      _tag: 'WatchInboxRetry',
+      plans: [{ entryId: 'entry-1', planId }],
+      recovery: 'original',
+    });
+  });
+  it.each([
+    ['needs', 'extra'],
+    ['dismiss'],
+    ['retry', 'id', '--all'],
+    ['inbox', 'list', '--username'],
+    ['inbox', 'list', 'instagram', '--at', '5'],
+    ['inbox', 'remove', 'id', '--mode', 'frame'],
+    ['inbox', 'export', 'id', '--at', '5'],
+    ['inbox', 'export', 'id', '--mode', 'frame', '--at', 'Infinity'],
+    ['inbox', 'export', 'id', '--mode', 'silent'],
+    ['inbox', 'export', 'id', '--rotate', '45'],
+    ['inbox', 'retry', 'id'],
+    ['inbox', 'retry', 'id', 'bad-plan'],
+  ])('rejects invalid grammar %j', (...args) => expect(() => command(...args)).toThrow());
+});
+
+describe('CLI Watch partial terminal results', () => {
+  it.each([
+    {
+      args: ['needs'],
+      code: 0,
+      result: { _tag: 'WatchNeedsResult', items: [], watches: [], entries: [] },
+    },
+    {
+      args: ['dismiss', 'attention-1'],
+      code: 0,
+      result: {
+        _tag: 'WatchAttentionRecoverResult',
+        recoveredAttentionIds: ['attention-1'],
+        refused: [],
+        failures: [],
+        unknownAttentionIds: [],
+      },
+    },
+    {
+      args: ['retry', 'attention-1', 'attention-2'],
+      code: 1,
+      result: {
+        _tag: 'WatchAttentionRecoverResult',
+        recoveredAttentionIds: ['attention-1'],
+        refused: [],
+        failures: [
+          {
+            attentionId: 'attention-2',
+            outcome: { entryId: 'entry-2', state: 'failed', code: 'WATCH_NOTIFY_FAILED' },
+          },
+        ],
+        unknownAttentionIds: [],
+      },
+    },
+    {
+      args: ['confirm', 'missing'],
+      code: 1,
+      result: {
+        _tag: 'WatchAttentionRecoverResult',
+        recoveredAttentionIds: [],
+        refused: [],
+        failures: [],
+        unknownAttentionIds: ['missing'],
+      },
+    },
+    {
+      args: ['inbox', 'export', 'entry-1'],
+      code: 0,
+      result: {
+        _tag: 'WatchInboxExportResult',
+        outcomes: [{ entryId: 'entry-1', accepted: 1, failures: [] }],
+        unknownEntryIds: [],
+      },
+    },
+    {
+      args: ['inbox', 'export', 'entry-1', 'missing'],
+      code: 1,
+      result: {
+        _tag: 'WatchInboxExportResult',
+        outcomes: [
+          {
+            entryId: 'entry-1',
+            accepted: 1,
+            failures: [{ child: 1, code: 'BROWSER_DOWNLOAD_NETWORK_FAILED' }],
+          },
+        ],
+        unknownEntryIds: ['missing'],
+      },
+    },
+    {
+      args: ['inbox', 'remove', 'entry-1', 'missing'],
+      code: 1,
+      result: {
+        _tag: 'WatchInboxRemoveResult',
+        removedEntryIds: ['entry-1'],
+        unknownEntryIds: ['missing'],
+      },
+    },
+  ])('keeps one stdout result and exit $code for $args', async ({ args, code, result }) => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () => [
+      Progress.make({ phase: 'resolving' }),
+      Completed.make({ result: Schema.decodeUnknownSync(CommandResult)(result) }),
+    ]);
+    try {
+      const output = await runCliProcess(['watch', ...args, '--json'], endpoint);
+      expect(output.code).toBe(code);
+      expect(output.stdout.trim().split('\n')).toHaveLength(1);
+      expect(JSON.parse(output.stdout)).toEqual(result);
+      expect(
+        output.stderr
+          .trim()
+          .split('\n')
+          .map(line => JSON.parse(line))
+      ).toEqual([{ type: 'progress', phase: 'resolving' }]);
+      expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
   });
 });

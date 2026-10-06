@@ -74,6 +74,22 @@ causes are never ordinary UI copy or serialized report data.
 | `WHATSAPP_STATUS_CHANGED`              | item  | after user action                       | `retry-operation`                                                        | none                                   | acquisition              |
 | `WHATSAPP_FORMAT_CHANGED`              | item  | never                                   | `copy-diagnostics`                                                       | structural, copy offered               | acquisition format       |
 | `WHATSAPP_ACQUISITION_FAILED`          | item  | once manually; after edit lease expiry  | normal: `retry-operation`, `copy-diagnostics`; expiry: `retry-operation` | structural; copy offered except expiry | extension boundary       |
+| `WATCH_STORY_EXPIRED`                  | item  | never                                   | none                                                                     | structural                             | watch media              |
+| `WATCH_AVATAR_CHANGED`                 | item  | never                                   | none                                                                     | structural                             | watch media              |
+| `WATCH_INSTANT_NOT_IN_FEED`            | item  | never                                   | none                                                                     | structural                             | watch media              |
+| `WATCH_MEDIA_UNAVAILABLE`              | item  | never                                   | `open-in-instagram`                                                      | structural                             | watch media              |
+| `WATCH_USERNAME_UNCONFIRMED`           | batch | after next check                        | none                                                                     | structural                             | watch identity           |
+| `WATCH_CHECK_INCOMPLETE`               | batch | after next check                        | none                                                                     | structural                             | watch acquisition        |
+| `WATCH_STORE_CAPACITY_EXCEEDED`        | batch | after user action                       | `free-watch-storage`                                                     | structural                             | watch store              |
+| `WATCH_STORE_FAILED`                   | batch | after user action                       | `retry-operation`                                                        | structural                             | watch store              |
+| `WATCH_STORE_VERSION_UNSUPPORTED`      | batch | never                                   | none                                                                     | structural                             | watch store version      |
+| `WATCH_STORE_UNREADABLE`               | batch | never                                   | `copy-diagnostics`                                                       | structural, copy offered               | watch store              |
+| `WATCH_NOT_FOUND`                      | batch | never                                   | none                                                                     | none                                   | watch command            |
+| `WATCH_CONFIG_CONFLICT`                | batch | never                                   | none                                                                     | none                                   | watch command            |
+| `WATCH_UNATTENDED_NOT_ACCEPTED`        | batch | never                                   | none                                                                     | none                                   | watch command            |
+| `WATCH_RECOVERY_NOT_APPLICABLE`        | item  | never                                   | none                                                                     | none                                   | watch command            |
+| `WATCH_NOTIFY_PERMISSION_DENIED`       | item  | after user action                       | `retry-operation`                                                        | none                                   | browser notifications    |
+| `WATCH_NOTIFY_FAILED`                  | item  | after user action                       | `retry-operation`                                                        | none                                   | browser notifications    |
 
 Warnings are `HISTORY_SAVE_FAILED` and `SILENT_TEMPORARY_FILE_CLEANUP_UNCONFIRMED`. The skip code is `SILENT_REENCODE_DECLINED`.
 
@@ -99,6 +115,14 @@ uses `SILENT_MEMORY_CAPACITY_EXCEEDED`, not a browser-storage or browser-downloa
 Because WhatsApp capture bytes are released on terminal-operation failure, its `SILENT_*`
 presentations offer re-capture rather than the Instagram path's cached-original recovery.
 
+Watch failures use `phase: "watch"` for the store and command codes and `phase: "resolving"` for
+check problems and final unavailable items. The four unavailable codes are final for the exact
+recorded item: GramGrab never substitutes newer media. Check problems clear on the next successful
+check of that kind and are never retried through action recovery. Store failures keep saved Watch
+state exactly as it was; an unreadable or newer-version store is never reset. Command rejections
+answer the options page and `gramgrab watch` alike, and a missing acknowledgement carries the full
+disclosure text. Watch failures carry no diagnostic cause.
+
 ## Diagnostics
 
 Diagnostics use `diagnosticsVersion: 2` and are built per attempt from a closed allowlist. A preview
@@ -112,6 +136,10 @@ contain only a normalized hostname, path shape, extension, sorted query-paramete
 signature-parameter presence, and parsed expiry state. Reports never contain source URLs, signed media
 URLs, filenames, operation or request IDs, arbitrary causes, or full user-agent strings. Parsing failures
 produce a parse-status descriptor and never fall back to the input value.
+
+Watch reports are a separate `platform: "watch"` branch with only the structural code, phase, scope,
+and a closed media-kind field. They never contain Watch store contents, account or media identifiers,
+usernames, shortcodes, cursors, timestamps, or URLs.
 
 Diagnostics never include cookies, request headers, browser storage contents, or unrelated session
 state. They are not uploaded, archived, or collected as telemetry.

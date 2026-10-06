@@ -53,6 +53,7 @@ import { useFrameSeekEffect } from './popup/use-frame-seek';
 import { useWhatsAppCapture } from './popup/use-whatsapp-capture';
 import { WhatsAppStatusPanel } from './popup/whatsapp-status-panel';
 import { sendMessage } from './messaging/send';
+import { attentionCount } from './watch/attention';
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
@@ -1544,6 +1545,23 @@ function relativeHistoryTime(downloadedAt: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/** Opens the Watches page; its count matches the toolbar badge. */
+function WatchesButton() {
+  const [attention, setAttention] = useState(0);
+  useEffect(() => {
+    void attentionCount().then(setAttention);
+  }, []);
+  return (
+    <button
+      className={`workspace-launch ${attention > 0 ? 'watches-attention' : ''}`}
+      type="button"
+      onClick={() => void browser.runtime.openOptionsPage()}
+    >
+      Watches{attention > 0 ? ` · ${attention}` : ''}
+    </button>
+  );
+}
+
 function PopupHeader({
   workspaceMode,
   workspaceExists,
@@ -1588,6 +1606,7 @@ function PopupHeader({
             {workspaceExists ? 'Go to tab' : 'Open in tab'}
           </button>
         )}
+        {!workspaceMode && <WatchesButton />}
       </div>
     </>
   );
