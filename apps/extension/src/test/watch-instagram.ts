@@ -98,6 +98,7 @@ export function postsPage(posts: readonly FakePost[], next?: string) {
  */
 export function restMedia(post: FakePost) {
   const [video] = restVideoFixture.items;
+  const coauthor_producers = post.coauthors?.map(pk => ({ pk, id: pk })) ?? [];
   const item = (pk: string, isVideo: boolean) =>
     isVideo
       ? { ...video!, pk, carousel_media: null }
@@ -111,6 +112,7 @@ export function restMedia(post: FakePost) {
             code: `C${post.id}`,
             media_type: 8,
             user: { pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+            coauthor_producers,
             taken_at: post.takenAt,
             carousel_media: post.children.map((id, index) => item(id, index > 0)),
           }
@@ -119,6 +121,7 @@ export function restMedia(post: FakePost) {
             code: `C${post.id}`,
             taken_at: post.takenAt,
             user: { pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+            coauthor_producers,
           },
     ],
   };

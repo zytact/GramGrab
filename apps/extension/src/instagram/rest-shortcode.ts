@@ -82,14 +82,17 @@ const WatchMediaIdentity = Schema.Struct({
       media_type: Schema.Number,
       user: OwnerIdentity,
       owner: Schema.optional(OwnerIdentity),
+      coauthor_producers: Schema.optional(Schema.NullOr(Schema.Array(OwnerIdentity))),
       carousel_media: Schema.optional(Schema.NullOr(Schema.Array(ChildIdentity))),
     })
   ),
 });
+type WatchMediaItem = Schema.Schema.Type<typeof WatchMediaIdentity>['items'][number];
 
 interface ExpectedMedia {
   readonly parentId: string;
-  readonly ownerId: string;
+  /** The account that authored or co-authored the media. */
+  readonly accountId: string;
   readonly mediaType: 1 | 2 | 8;
   readonly children?: readonly {
     readonly mediaId: string;
@@ -118,14 +121,16 @@ const childrenMatch = (
       );
     }));
 
-const mediaMatches = (
-  item: Schema.Schema.Type<typeof WatchMediaIdentity>['items'][number],
-  expected: ExpectedMedia
-) =>
+/** A collab lists the account as a co-author while another account owns the media. */
+const belongsTo = (item: WatchMediaItem, accountId: string) =>
+  (ownerMatches(item.user, accountId) &&
+    (item.owner === undefined || ownerMatches(item.owner, accountId))) ||
+  (item.coauthor_producers ?? []).some(coauthor => ownerMatches(coauthor, accountId));
+
+const mediaMatches = (item: WatchMediaItem, expected: ExpectedMedia) =>
   item.pk === expected.parentId &&
   item.media_type === expected.mediaType &&
-  ownerMatches(item.user, expected.ownerId) &&
-  (item.owner === undefined || ownerMatches(item.owner, expected.ownerId)) &&
+  belongsTo(item, expected.accountId) &&
   childrenMatch(item.carousel_media, expected.children);
 
 const verifyExpectedMedia = (raw: unknown, shortcode: string, expected: ExpectedMedia) =>

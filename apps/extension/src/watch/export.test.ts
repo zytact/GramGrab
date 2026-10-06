@@ -286,6 +286,7 @@ describe('Watch inbox Export', () => {
     const [parent] = valid.items;
     for (const items of [
       restMedia({ ...post, owner: '3003' }).items,
+      restMedia({ ...post, owner: '3003', coauthors: ['3004'] }).items,
       [{ ...parent, pk: '999' }],
       [{ ...parent, user: { pk: TARGET.id, id: '3003' } }],
       [parent, parent],
@@ -320,6 +321,18 @@ describe('Watch inbox Export', () => {
       },
     ]);
     expect(await inbox()).toHaveLength(1);
+  });
+
+  it('downloads a collab Post another account owns with the target as a co-author', async () => {
+    const { entryId, post } = await discoverPost({
+      id: '510',
+      video: false,
+      owner: '3003',
+      coauthors: ['3003', TARGET.id],
+    });
+    instagram.state.media[`C${post.id}`] = restMedia(post);
+
+    expect((await exportEntries(entryId)).outcomes[0]).toMatchObject({ accepted: 1, failures: [] });
   });
 
   it('exports only the frozen Sidecar children and records the missing one', async () => {

@@ -49,7 +49,7 @@ const exact = (
 const restItems = (watch: Watch, ref: Extract<MediaRef, { _tag: 'Post' | 'Sidecar' }>) =>
   fetchRestShortcodeMedia(ref.shortcode, {
     parentId: ref.mediaId,
-    ownerId: watch.targetId,
+    accountId: watch.targetId,
     mediaType: ref._tag === 'Sidecar' ? 8 : ref.mediaType === 'image' ? 1 : 2,
     ...(ref._tag === 'Sidecar' ? { children: ref.children } : {}),
   }).pipe(Effect.filterOrFail(items => items.length > 0, untrusted));
