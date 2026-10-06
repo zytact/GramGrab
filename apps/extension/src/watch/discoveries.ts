@@ -77,6 +77,41 @@ const prune = (discoveries: readonly Discovery[], now: number): Discovery[] =>
     discovery => now - discovery.discoveredAt < RETENTION_MS || unresolved(discovery)
   );
 
+/** The oldest publication second a discovery may have: inside the 30-day window. */
+export const windowStartAt = (now: number) => Math.floor((now - RETENTION_MS) / SECOND_MS);
+
+/** Whether media published at `takenAt` is new: after the cutoff and inside the window. */
+export const eligible = (takenAt: number, cutoff: number, windowStart: number) =>
+  takenAt > cutoff && takenAt >= windowStart;
+
+/**
+ * Records every unseen eligible reference as a discovery of `checkId`, pruning what has aged out.
+ * Tracking is left to the caller.
+ */
+export function discoverNew(
+  watch: Watch,
+  refs: readonly TimedRef[],
+  context: {
+    readonly checkId: string;
+    readonly cutoff: number;
+    readonly windowStart: number;
+    readonly now: number;
+  }
+): { readonly watch: Watch; readonly newCount: number } {
+  const { checkId, cutoff, windowStart, now } = context;
+  const seen = new Set(watch.discoveries.map(discovery => refIdentity(discovery.ref)));
+  const found: Discovery[] = [];
+  for (const ref of refs) {
+    if (!eligible(ref.takenAt, cutoff, windowStart) || seen.has(ref.mediaId)) continue;
+    seen.add(ref.mediaId);
+    found.push(discover(ref, watch, checkId, now));
+  }
+  return {
+    watch: { ...watch, discoveries: prune([...watch.discoveries, ...found], now) },
+    newCount: found.length,
+  };
+}
+
 /**
  * Applies one timed kind's trustworthy acquisition. The first one only records the baseline
  * cutoff frozen when its request started; later ones discover unseen media published after that
@@ -92,26 +127,18 @@ export function applyTimedCheck(
   const baseline = watch.tracking[kind]?.baselineCutoff;
   const cutoff = baseline ?? proposedCutoff;
   const checked: TimedTracking = { baselineCutoff: cutoff, lastSuccessAt: now, lastCheckAt: now };
+  const tracked = { ...watch, tracking: { ...watch.tracking, [kind]: checked } };
   if (baseline === undefined)
-    return {
-      watch: { ...watch, tracking: { ...watch.tracking, [kind]: checked } },
-      outcome: KindBaselineRecorded.make({ kind }),
-    };
-  const windowStart = Math.floor((now - RETENTION_MS) / SECOND_MS);
-  const seen = new Set(watch.discoveries.map(discovery => refIdentity(discovery.ref)));
-  const found: Discovery[] = [];
-  for (const ref of refs) {
-    if (ref.takenAt <= cutoff || ref.takenAt < windowStart || seen.has(ref.mediaId)) continue;
-    seen.add(ref.mediaId);
-    found.push(discover(ref, watch, checkId, now));
-  }
+    return { watch: tracked, outcome: KindBaselineRecorded.make({ kind }) };
+  const result = discoverNew(tracked, refs, {
+    checkId,
+    cutoff,
+    windowStart: windowStartAt(now),
+    now,
+  });
   return {
-    watch: {
-      ...watch,
-      tracking: { ...watch.tracking, [kind]: checked },
-      discoveries: prune([...watch.discoveries, ...found], now),
-    },
-    outcome: KindCheckSucceeded.make({ kind, newCount: found.length, catchUp: false }),
+    watch: result.watch,
+    outcome: KindCheckSucceeded.make({ kind, newCount: result.newCount, catchUp: false }),
   };
 }
 

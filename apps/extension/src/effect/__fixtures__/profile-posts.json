@@ -1,0 +1,290 @@
+{
+  "data": {
+    "xdt_api__v1__feed__user_timeline_graphql_connection": {
+      "edges": [
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_52_ID",
+            "code": "SANITIZED_MEDIA_52_SHORTCODE",
+            "media_type": 2,
+            "product_type": "clips",
+            "taken_at": 1790795094,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": null,
+            "carousel_media": null
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_53_ID",
+            "code": "SANITIZED_MEDIA_53_SHORTCODE",
+            "media_type": 2,
+            "product_type": "clips",
+            "taken_at": 1790784230,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": null,
+            "carousel_media": null
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_59_ID",
+            "code": "SANITIZED_MEDIA_59_SHORTCODE",
+            "media_type": 2,
+            "product_type": "clips",
+            "taken_at": 1790697732,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": null,
+            "carousel_media": null
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_60_ID",
+            "code": "SANITIZED_MEDIA_60_SHORTCODE",
+            "media_type": 2,
+            "product_type": "clips",
+            "taken_at": 1790611157,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": null,
+            "carousel_media": null
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_61_ID",
+            "code": "SANITIZED_MEDIA_61_SHORTCODE",
+            "media_type": 1,
+            "product_type": "feed",
+            "taken_at": 1790445964,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": null,
+            "carousel_media": null
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_62_ID",
+            "code": "SANITIZED_MEDIA_62_SHORTCODE",
+            "media_type": 8,
+            "product_type": "carousel_container",
+            "taken_at": 1790438460,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": 3,
+            "carousel_media": [
+              {
+                "pk": "SANITIZED_MEDIA_63_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_64_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_65_ID",
+                "media_type": 1
+              }
+            ]
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_66_ID",
+            "code": "SANITIZED_MEDIA_66_SHORTCODE",
+            "media_type": 2,
+            "product_type": "clips",
+            "taken_at": 1790431402,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": null,
+            "carousel_media": null
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_67_ID",
+            "code": "SANITIZED_MEDIA_67_SHORTCODE",
+            "media_type": 8,
+            "product_type": "carousel_container",
+            "taken_at": 1790376911,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": 12,
+            "carousel_media": [
+              {
+                "pk": "SANITIZED_MEDIA_68_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_69_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_72_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_73_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_74_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_75_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_76_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_77_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_78_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_79_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_70_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_71_ID",
+                "media_type": 1
+              }
+            ]
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_80_ID",
+            "code": "SANITIZED_MEDIA_80_SHORTCODE",
+            "media_type": 8,
+            "product_type": "carousel_container",
+            "taken_at": 1790362909,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": 2,
+            "carousel_media": [
+              {
+                "pk": "SANITIZED_MEDIA_81_ID",
+                "media_type": 1
+              },
+              {
+                "pk": "SANITIZED_MEDIA_82_ID",
+                "media_type": 2
+              }
+            ]
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_83_ID",
+            "code": "SANITIZED_MEDIA_83_SHORTCODE",
+            "media_type": 2,
+            "product_type": "clips",
+            "taken_at": 1790358802,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": null,
+            "carousel_media": null
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_54_ID",
+            "code": "SANITIZED_MEDIA_54_SHORTCODE",
+            "media_type": 2,
+            "product_type": "clips",
+            "taken_at": 1790337734,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": null,
+            "carousel_media": null
+          }
+        },
+        {
+          "node": {
+            "pk": "SANITIZED_MEDIA_55_ID",
+            "code": "SANITIZED_MEDIA_55_SHORTCODE",
+            "media_type": 8,
+            "product_type": "carousel_container",
+            "taken_at": 1790289255,
+            "user": {
+              "pk": "SANITIZED_PERSON_17_ID",
+              "id": "SANITIZED_PERSON_17_ID",
+              "username": "SANITIZED_PERSON_17_USERNAME"
+            },
+            "carousel_media_count": 3,
+            "carousel_media": [
+              {
+                "pk": "SANITIZED_MEDIA_56_ID",
+                "media_type": 2
+              },
+              {
+                "pk": "SANITIZED_MEDIA_57_ID",
+                "media_type": 2
+              },
+              {
+                "pk": "SANITIZED_MEDIA_58_ID",
+                "media_type": 2
+              }
+            ]
+          }
+        }
+      ],
+      "page_info": {
+        "end_cursor": "SANITIZED_CURSOR_1",
+        "has_next_page": true,
+        "has_previous_page": false,
+        "start_cursor": null
+      }
+    }
+  }
+}

@@ -23,7 +23,9 @@ const OperationName = Schema.Literal(
   'reelsMedia',
   'instantsFeed',
   'viewer',
-  'profileById'
+  'profileById',
+  'profilePosts',
+  'profilePostsPage'
 );
 export type OperationName = Schema.Schema.Type<typeof OperationName>;
 
@@ -273,7 +275,7 @@ export function parseOperation(arguments_: readonly string[]): OperationName {
   const normalizedArguments = arguments_[0] === '--' ? arguments_.slice(1) : arguments_;
   if (normalizedArguments.length !== 2 || normalizedArguments[0] !== '--operation') {
     throw new Error(
-      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|instantsFeed|viewer|profileById>'
+      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|instantsFeed|viewer|profileById|profilePosts|profilePostsPage>'
     );
   }
   return Schema.decodeUnknownSync(OperationName)(normalizedArguments[1]);

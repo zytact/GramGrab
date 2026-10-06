@@ -57,6 +57,8 @@ export class ProtocolConfig extends Schema.Class<ProtocolConfig>('ProtocolConfig
     instantsFeed: Schema.optional(ProtocolOperation),
     viewer: ProtocolOperation,
     profileById: ProtocolOperation,
+    profilePosts: ProtocolOperation,
+    profilePostsPage: ProtocolOperation,
   }),
 }) {}
 

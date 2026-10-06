@@ -22,6 +22,7 @@ import {
   TopSearchResponseSchema,
   WebProfileInfoResponseSchema,
 } from './schemas.ts';
+import { PostsResponse } from '../watch/posts.ts';
 import type {
   ShortcodeImage,
   ShortcodeSidecar,
@@ -296,5 +297,20 @@ describe('fixtures: shortcode-sidecar.json', () => {
     const edges = sidecar.edge_sidecar_to_children?.edges ?? [];
     expect(edges.length).toBeGreaterThan(0);
     expect(edges.some(e => e.node.is_video === true)).toBe(true);
+  });
+});
+
+describe('fixtures: Watch Posts page', () => {
+  it('decodes profile-posts.json with every Sidecar holding its declared children', async () => {
+    const decoded = await Effect.runPromise(
+      Schema.decodeUnknown(PostsResponse)(loadFixture('profile-posts.json'))
+    );
+    const { edges, page_info } = decoded.data.xdt_api__v1__feed__user_timeline_graphql_connection;
+    const sidecars = edges.filter(edge => edge.node.media_type === 8);
+    expect(new Set(edges.map(edge => edge.node.media_type))).toEqual(new Set([1, 2, 8]));
+    expect(
+      sidecars.every(({ node }) => node.carousel_media?.length === node.carousel_media_count)
+    ).toBe(true);
+    expect(page_info.has_next_page).toBe(true);
   });
 });

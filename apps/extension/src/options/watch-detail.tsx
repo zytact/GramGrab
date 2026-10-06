@@ -33,7 +33,10 @@ export function healthText(health: KindHealth, enabled: boolean): string {
         ? 'First check pending. It records what is already there and acts on nothing.'
         : 'Paused before its first check.';
     case 'KindChecked':
-      return enabled ? `Checked ${relativeTime(health.lastSuccessAt)}` : 'Paused';
+      if (!enabled) return 'Paused';
+      return health.catchingUp
+        ? `Catching up. Older pages continue later this round. Last full check ${relativeTime(health.lastSuccessAt)}.`
+        : `Checked ${relativeTime(health.lastSuccessAt)}`;
     case 'KindProblem': {
       const copy = FAILURE_PRESENTATION[health.code];
       const last = health.lastSuccessAt

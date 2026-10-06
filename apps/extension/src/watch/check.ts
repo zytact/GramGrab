@@ -2,7 +2,9 @@ import { Effect, Either } from 'effect';
 import {
   KindCheckFailed,
   KindCheckSkipped,
+  KindCheckSucceeded,
   WATCH_KINDS,
+  type FailureCode,
   type KindCheckOutcome,
   type WatchKind,
 } from '@gramgrab/protocol';
@@ -19,8 +21,24 @@ import type {
   RateLimited,
   ResponseShapeUnknown,
 } from '../effect/errors.ts';
-import type { TimedRef, Watch } from './contracts.ts';
-import { applyKindProblem, applyTimedCheck } from './discoveries.ts';
+import type { TimedRef, TimedTracking, Watch } from './contracts.ts';
+import {
+  applyKindProblem,
+  applyTimedCheck,
+  discoverNew,
+  eligible,
+  windowStartAt,
+} from './discoveries.ts';
+import {
+  PAGES_PER_TURN,
+  PostsIncomplete,
+  continues,
+  fetchPostsPage,
+  loadTraversal,
+  readPostsPage,
+  saveTraversal,
+  type Traversal,
+} from './posts.ts';
 import { readStories, fetchStories } from './stories.ts';
 import { mutateStore, readStore } from './store.ts';
 import { fetchViewer } from './identity.ts';
@@ -44,18 +62,27 @@ type Acquisition =
   | NetworkError
   | RateLimited
   | ResponseShapeUnknown
-  | WatchRequestDeferred;
+  | WatchRequestDeferred
+  | PostsIncomplete;
 
 type Acquirer = (
   watch: Watch,
   nowSeconds: number
 ) => Effect.Effect<readonly TimedRef[], Acquisition, InstagramRequests>;
 
+const readPage = (watch: Watch, after: string | undefined, nowSeconds: number) =>
+  fetchPostsPage(watch.username, after).pipe(
+    Effect.flatMap(raw => readPostsPage(raw, watch.targetId, nowSeconds))
+  );
+
+/** How each timed kind acquires its baseline, and Stories every later check too. */
 const ACQUIRERS: Partial<Record<TimedKind, Acquirer>> = {
   stories: (watch, nowSeconds) =>
     fetchStories(watch.targetId).pipe(
       Effect.flatMap(raw => readStories(raw, watch.targetId, nowSeconds))
     ),
+  posts: (watch, nowSeconds) =>
+    readPage(watch, undefined, nowSeconds).pipe(Effect.map(page => page.refs)),
 };
 
 /** The time throttling holds Watch work until, or undefined when the failure is the kind's own. */
@@ -67,20 +94,8 @@ function deferral(
   return undefined;
 }
 
-/** Applies one kind's acquisition, or its failure, to the Watch as it is now stored. */
-function applyResult(
-  watch: Watch,
-  kind: TimedKind,
-  result: Either.Either<readonly TimedRef[], Acquisition>,
-  context: { readonly checkId: string; readonly proposedCutoff: number; readonly now: number }
-) {
-  if (Either.isRight(result)) return applyTimedCheck(watch, kind, result.right, context);
-  const code = normalizeSourceFailure(result.left).code;
-  return {
-    watch: applyKindProblem(watch, kind, code, context.now),
-    outcome: KindCheckFailed.make({ kind, code }),
-  };
-}
+const failureCode = (error: Acquisition): FailureCode =>
+  error._tag === 'PostsIncomplete' ? 'WATCH_CHECK_INCOMPLETE' : normalizeSourceFailure(error).code;
 
 const findWatch = async (watchId: string, viewerId: string) => {
   const read = await readStore();
@@ -96,18 +111,19 @@ interface KindStep {
   readonly deferredUntil?: number;
 }
 
-/** Saves one kind's result to the Watch as it is stored now; a deleted Watch stays deleted. */
-const commit = (
+/**
+ * Applies `change` to the Watch as it is stored now. A deleted Watch stays deleted, so its value
+ * is undefined.
+ */
+const update = <T>(
   watchId: string,
-  kind: TimedKind,
-  result: Either.Either<readonly TimedRef[], Acquisition>,
-  context: { readonly checkId: string; readonly proposedCutoff: number }
+  change: (watch: Watch, now: number) => { readonly watch: Watch; readonly value: T }
 ) =>
   Effect.promise(() =>
     mutateStore(store => {
       const current = store.watches.find(candidate => candidate.id === watchId);
       if (!current) return { store, value: undefined };
-      const applied = applyResult(current, kind, result, { ...context, now: Date.now() });
+      const applied = change(current, Date.now());
       return {
         store: {
           ...store,
@@ -115,29 +131,159 @@ const commit = (
             candidate.id === watchId ? applied.watch : candidate
           ),
         },
-        value: applied.outcome,
+        value: applied.value,
       };
     })
   );
 
-const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, checkId: string) =>
+/** The step a committed write leads to: storage failure and deletion both end the check. */
+function written<T>(
+  kind: TimedKind,
+  write: { readonly kind: 'ok'; readonly value: T | undefined } | { readonly kind: 'failed' },
+  step: (value: T) => KindStep
+): KindStep {
+  if (write.kind === 'failed')
+    return { outcome: KindCheckSkipped.make({ kind, reason: 'storage' }), stop: true };
+  return write.value === undefined ? { stop: true } : step(write.value);
+}
+
+/** A kind's failed acquisition: throttling defers the check, anything else is the kind's problem. */
+const failed = (watchId: string, kind: TimedKind, error: Acquisition) =>
   Effect.gen(function* () {
-    const proposedCutoff = Math.floor(Date.now() / 1000);
-    const result = yield* Effect.either(acquire(watch, proposedCutoff));
-    const until = Either.isLeft(result) ? deferral(result.left) : undefined;
+    const until = deferral(error);
     if (until !== undefined)
       return {
         outcome: KindCheckSkipped.make({ kind, reason: 'deferred' }),
         stop: true,
         deferredUntil: until,
       } satisfies KindStep;
-    const write = yield* commit(watch.id, kind, result, { checkId, proposedCutoff });
-    if (write.kind === 'failed')
+    const code = failureCode(error);
+    const write = yield* update(watchId, (watch, now) => ({
+      watch: applyKindProblem(watch, kind, code, now),
+      value: KindCheckFailed.make({ kind, code }),
+    }));
+    return written(kind, write, outcome => ({ outcome }));
+  });
+
+const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, checkId: string) =>
+  Effect.gen(function* () {
+    const proposedCutoff = Math.floor(Date.now() / 1000);
+    const result = yield* Effect.either(acquire(watch, proposedCutoff));
+    if (Either.isLeft(result)) return yield* failed(watch.id, kind, result.left);
+    const write = yield* update(watch.id, (current, now) => {
+      const applied = applyTimedCheck(current, kind, result.right, {
+        checkId,
+        proposedCutoff,
+        now,
+      });
+      return { watch: applied.watch, value: applied.outcome };
+    });
+    return written(kind, write, outcome => ({ outcome }));
+  });
+
+const withPosts = (watch: Watch, posts: TimedTracking): Watch => ({
+  ...watch,
+  tracking: { ...watch.tracking, posts },
+});
+
+/** One Posts page's result: the traversal completed, continues, or ended the kind's turn early. */
+type PageStep =
+  | { readonly _tag: 'done'; readonly newCount: number }
+  | { readonly _tag: 'continue'; readonly traversal: Traversal; readonly newCount: number }
+  | { readonly _tag: 'end'; readonly step: KindStep };
+
+/** The page after `traversal`, which must continue it, or the newest page. */
+const readNext = (watch: Watch, traversal: Traversal | undefined) =>
+  readPage(watch, traversal?.next, Math.floor(Date.now() / 1000)).pipe(
+    Effect.filterOrFail(
+      page => continues(traversal, page),
+      () => new PostsIncomplete()
+    )
+  );
+
+interface TraversalContext {
+  readonly cutoff: number;
+  readonly windowStart: number;
+  readonly checkId: string;
+}
+
+/** Records one page's discoveries, and the check's success when the page completes it. */
+const recordPage = (
+  watchId: string,
+  refs: readonly TimedRef[],
+  done: boolean,
+  context: TraversalContext
+) =>
+  update(watchId, (current, now) => {
+    const found = discoverNew(current, refs, { ...context, now });
+    const posts: TimedTracking = done
+      ? { baselineCutoff: context.cutoff, lastSuccessAt: now, lastCheckAt: now }
+      : (current.tracking.posts ?? {});
+    return { watch: withPosts(found.watch, posts), value: found.newCount };
+  });
+
+/**
+ * Reads the traversal's next page and records what it found. The traversal ends at Instagram's
+ * last page or at the first page reaching media that is no longer eligible: under the accepted
+ * newest-first ordering, every later page is older still.
+ */
+const postsPageStep = (watch: Watch, traversal: Traversal | undefined, context: TraversalContext) =>
+  Effect.gen(function* () {
+    const result = yield* Effect.either(readNext(watch, traversal));
+    if (Either.isLeft(result)) {
+      if (deferral(result.left) === undefined) yield* saveTraversal(watch.id, undefined);
       return {
-        outcome: KindCheckSkipped.make({ kind, reason: 'storage' }),
-        stop: true,
-      } satisfies KindStep;
-    return (write.value ? { outcome: write.value } : { stop: true }) satisfies KindStep;
+        _tag: 'end',
+        step: yield* failed(watch.id, 'posts', result.left),
+      } satisfies PageStep;
+    }
+    const { refs, next } = result.right;
+    const done =
+      next === undefined ||
+      refs.some(ref => !eligible(ref.takenAt, context.cutoff, context.windowStart));
+    const write = yield* recordPage(watch.id, refs, done, context);
+    if (write.kind === 'failed' || write.value === undefined) {
+      yield* saveTraversal(watch.id, undefined);
+      return { _tag: 'end', step: written('posts', write, () => ({})) } satisfies PageStep;
+    }
+    if (done) {
+      yield* saveTraversal(watch.id, undefined);
+      return { _tag: 'done', newCount: write.value } satisfies PageStep;
+    }
+    const continued: Traversal = {
+      windowStart: context.windowStart,
+      next,
+      cursors: [...(traversal?.cursors ?? []), next],
+      last: refs.at(-1)!,
+    };
+    yield* saveTraversal(watch.id, continued);
+    return { _tag: 'continue', traversal: continued, newCount: write.value } satisfies PageStep;
+  });
+
+/**
+ * Reads up to three more Posts pages of the traversal checkpointed for this Watch, or of a new
+ * one, discovering as it goes. A traversal that needs more pages is catching up and continues on
+ * the Watch's next turn from its checkpoint, within the window it started with.
+ */
+const traversePosts = (watch: Watch, cutoff: number, checkId: string) =>
+  Effect.gen(function* () {
+    let traversal = yield* loadTraversal(watch.id);
+    const windowStart = traversal?.windowStart ?? windowStartAt(Date.now());
+    let newCount = 0;
+    const succeeded = (catchUp: boolean) =>
+      KindCheckSucceeded.make({ kind: 'posts', newCount, catchUp });
+    for (let page = 0; page < PAGES_PER_TURN; page++) {
+      const step = yield* postsPageStep(watch, traversal, { cutoff, windowStart, checkId });
+      if (step._tag === 'end') return step.step;
+      newCount += step.newCount;
+      if (step._tag === 'done') return { outcome: succeeded(false) } satisfies KindStep;
+      traversal = step.traversal;
+    }
+    const write = yield* update(watch.id, (current, now) => ({
+      watch: withPosts(current, { ...current.tracking.posts, lastCheckAt: now, catchingUp: true }),
+      value: succeeded(true),
+    }));
+    return written('posts', write, outcome => ({ outcome }));
   });
 
 /** A selected kind's turn in a check: skipped while paused, checked otherwise. */
@@ -150,6 +296,8 @@ const turn = (
   if (!acquire) return Effect.succeed({});
   if (!watch.enabled)
     return Effect.succeed({ outcome: KindCheckSkipped.make({ kind, reason: 'paused' }) });
+  const cutoff = watch.tracking[kind]?.baselineCutoff;
+  if (kind === 'posts' && cutoff !== undefined) return traversePosts(watch, cutoff, checkId);
   return checkKind(watch, kind, acquire, checkId);
 };
 

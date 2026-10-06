@@ -104,6 +104,8 @@ export class KindBaselinePending extends Schema.TaggedClass<KindBaselinePending>
 export class KindChecked extends Schema.TaggedClass<KindChecked>()('KindChecked', {
   kind: WatchKind,
   lastSuccessAt: EpochMillis,
+  /** A longer Posts check is part way through and continues later this round. */
+  catchingUp: Schema.optional(Schema.Literal(true)),
 }) {}
 
 /** A kind that is not selected. Its baseline, if it has one, is kept for when it comes back. */

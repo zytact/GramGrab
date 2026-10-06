@@ -19,7 +19,7 @@ const EpochSeconds = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
 export const MediaId = Schema.String.pipe(Schema.pattern(/^\d{1,30}(?:_\d{1,30})?$/));
 /** Instagram's opaque picture/upload identity for an Avatar. */
 const PictureId = Schema.String.pipe(Schema.pattern(/^[0-9A-Za-z_:-]{1,128}$/));
-const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}$/));
+export const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}$/));
 const MediaType = Schema.Literal('image', 'video');
 
 export const STORE_KEY = 'watch-store';
@@ -36,6 +36,8 @@ const TimedTracking = Schema.Struct({
   lastSuccessAt: Schema.optional(EpochMillis),
   lastCheckAt: Schema.optional(EpochMillis),
   problem: Schema.optional(KindProblemRecord),
+  /** A Posts traversal stopped at its page limit and continues on a later turn. */
+  catchingUp: Schema.optional(Schema.Literal(true)),
 });
 export type TimedTracking = Schema.Schema.Type<typeof TimedTracking>;
 

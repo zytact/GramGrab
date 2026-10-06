@@ -21,7 +21,7 @@
 
   // IG_HIGHLIGHT_ID is from /stories/highlights/<ID>/. IG_STORY_USERNAME must have an active Story.
   // IG_AVATAR_USERNAME can be any user, IG_TRAY_USERNAME needs visible Highlights, and IG_PROFILE_USERNAME
-  // is used for web_profile_info. Posts may be public Instagram URLs or shortcodes.
+  // is used for web_profile_info and the Posts grid. Posts may be public Instagram URLs or shortcodes.
   // Shortcodes for each branch of the ShortcodeMedia union — one per __typename.
   // Find one of each by browsing instagram.com: /p/<code>/ for image+sidecar, /reel/<code>/ for video.
   // ---------------------------------------------------------------------------
@@ -273,6 +273,68 @@
       return readJsonResponse(response);
     }
 
+    // Keeps only the fields a Watch reads from each Post, so the sanitizer reviews a small shape.
+    function projectPosts(json) {
+      const connection = json.data.xdt_api__v1__feed__user_timeline_graphql_connection;
+      return {
+        data: {
+          xdt_api__v1__feed__user_timeline_graphql_connection: {
+            edges: connection.edges.map(({ node }) => ({
+              node: {
+                pk: node.pk,
+                code: node.code,
+                media_type: node.media_type,
+                product_type: node.product_type,
+                taken_at: node.taken_at,
+                user: { pk: node.user.pk, id: node.user.id, username: node.user.username },
+                carousel_media_count: node.carousel_media_count,
+                carousel_media:
+                  node.carousel_media &&
+                  node.carousel_media.map(child => ({
+                    pk: child.pk,
+                    media_type: child.media_type,
+                  })),
+              },
+            })),
+            page_info: connection.page_info,
+          },
+        },
+        ...(json.errors ? { errors: json.errors } : {}),
+      };
+    }
+
+    async function profilePostsFetch(username) {
+      const candidate = PROTOCOL_CONFIG.operations.profilePosts.candidates[0];
+      const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '';
+      const response = await fetch(candidate.requests[0].endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-IG-App-ID': APP_ID,
+          'X-ASBD-ID': ASBD_ID,
+          'X-CSRFToken': csrf,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          [candidate.kind]: candidate.id,
+          variables: JSON.stringify({
+            data: {
+              count: 12,
+              include_reel_media_seen_timestamp: true,
+              include_relationship_info: true,
+              latest_besties_reel_media: true,
+              latest_reel_media: true,
+            },
+            username,
+            __relay_internal__pv__PolarisMultiCaptionCarouselEnabledrelayprovider: true,
+            __relay_internal__pv__PolarisShortDramaEnabledrelayprovider: false,
+            __relay_internal__pv__PolarisReelsRecoDebugOverlayEnabledrelayprovider: false,
+          }),
+        }),
+      });
+      return readJsonResponse(response);
+    }
+
     const steps = [
       {
         label: 'Instants photo, video, and empty active-feed fixtures',
@@ -371,6 +433,20 @@
           const { status, json } = await webProfileInfo(PROFILE_USERNAME);
           console.log('  status:', status);
           dl('web-profile-info.json', trim(json));
+        },
+      },
+      {
+        label: `profile-posts.json (Posts grid, first page) for @${PROFILE_USERNAME}`,
+        run: async () => {
+          const { status, json, text } = await profilePostsFetch(PROFILE_USERNAME);
+          const connection = json?.data?.xdt_api__v1__feed__user_timeline_graphql_connection;
+          if (status !== 200 || !connection) {
+            throw new Error(`Posts request failed (${status}): ${text ?? 'invalid shape'}`);
+          }
+          if (!connection.edges.some(edge => edge.node.media_type === 8)) {
+            console.warn(`  @${PROFILE_USERNAME} has no Sidecar on its first Posts page`);
+          }
+          dl('profile-posts.json', projectPosts(json));
         },
       },
       {

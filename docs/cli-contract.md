@@ -79,6 +79,18 @@ naming the existing Watch. `set` replaces the kinds or actions it is given, and 
 kind's first check only records a baseline. Lifecycle commands report unknown selectors in
 `unknownWatches` and still apply to the others.
 
+A Posts check pages newest first, 12 Posts per page, and reads at most three pages per turn. It
+stops at the last page or at the first page that reaches media too old to be new: Instagram is
+assumed to list Posts newest first, so every later page would be older still. A Post already seen
+never stops it. A longer check reports `catchUp: true` and continues from its cursor after the
+round's other Watches, within the eligibility window it started with. The cursor lives only in the
+browser session, so a browser restart starts the traversal again from the newest page, and
+discoveries already recorded are not repeated. Out-of-order Posts, a Post repeated between pages,
+a repeated cursor, or a page that claims more without a cursor fail the check with
+`WATCH_CHECK_INCOMPLETE` and keep the baseline and last success. Reordering that does not break
+that order where GramGrab can see it, such as an item missing beyond the stopping page, is an
+accepted limit, not a guarantee of a complete snapshot.
+
 JSON progress is newline-delimited on stderr. Numeric updates are coalesced to 0%, 25%, 50%, 75%,
 and 100% milestones per item and phase. Phase changes are always emitted, and the terminal result
 is emitted once on stdout. Exit 0 means full success, exit 1 means command rejection, at least one

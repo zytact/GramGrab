@@ -9,13 +9,16 @@ import {
   WatchShow,
   type WatchAction,
   type WatchCommand,
+  type WatchKind,
   type WatchResult,
 } from '@gramgrab/protocol';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
 import {
   TARGET,
   createWatchInstagram,
+  postsPage,
   storyResponse,
+  type FakePost,
   type FakeStory,
 } from '../test/watch-instagram.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
@@ -63,11 +66,11 @@ const seconds = (time: number) => Math.floor(time / 1000);
 const setStories = (stories: readonly FakeStory[]) =>
   (instagram.state.stories[TARGET.id] = storyResponse(TARGET.id, stories));
 
-const addWatch = (actions: readonly WatchAction[] = ['collect']) =>
+const addWatch = (actions: readonly WatchAction[] = ['collect'], kind: WatchKind = 'stories') =>
   run(
     WatchAdd.make({
       target: TARGET.username,
-      kinds: ['stories'],
+      kinds: [kind],
       actions: [actions[0]!, ...actions.slice(1)],
       acceptUnattended: true,
     }),
@@ -229,5 +232,168 @@ describe('Story checks', () => {
     await vi.advanceTimersByTimeAsync(30 * DAY);
 
     expect((await run(WatchInboxList.make({}), 'WatchInboxListResult')).entries).toEqual([]);
+  });
+});
+
+describe('Posts checks', () => {
+  const OLD = { id: '1', takenAt: seconds(START) - DAY / 1000 };
+
+  /** Serves `pages` in order, chained by cursors `c1`, `c2`, and so on; the last ends the list. */
+  const setPosts = (...pages: readonly (readonly FakePost[])[]) => {
+    instagram.state.posts = Object.fromEntries(
+      pages.map((page, index) => [
+        index === 0 ? '' : `c${index}`,
+        postsPage(page, index < pages.length - 1 ? `c${index + 1}` : undefined),
+      ])
+    );
+    instagram.state.postRequests = [];
+  };
+
+  /** Posts published after the baseline below, newer for a higher number. */
+  const posts = (...ids: readonly number[]) =>
+    ids.map(id => ({ id: String(id), takenAt: seconds(START) + 400 + id }));
+
+  const postsHealth = async () =>
+    (await run(WatchList.make(), 'WatchListResult')).watches[0]?.kinds.find(
+      kind => kind.kind === 'posts'
+    );
+
+  /** Adds a Posts Watch and records its baseline five minutes after START. */
+  async function baselined() {
+    await addWatch(['collect'], 'posts');
+    setPosts([OLD]);
+    expect((await checkLater()).kinds).toEqual([{ _tag: 'KindBaselineRecorded', kind: 'posts' }]);
+    expect(instagram.state.postRequests).toEqual(['']);
+  }
+
+  it('discovers Posts, Reels, and Sidecars until a page reaches older media', async () => {
+    await baselined();
+    await vi.advanceTimersByTimeAsync(DAY);
+    const now = seconds(Date.now());
+    setPosts(
+      [
+        { id: '900', takenAt: now - 60, children: ['901', '902'] },
+        { id: '800', takenAt: now - 120, video: false },
+      ],
+      [{ id: '700', takenAt: now - 180 }, OLD],
+      posts(0)
+    );
+
+    const outcome = await checkLater();
+
+    expect(outcome.kinds).toEqual([
+      { _tag: 'KindCheckSucceeded', kind: 'posts', newCount: 3, catchUp: false },
+    ]);
+    expect(instagram.state.postRequests).toEqual(['', 'c1']);
+    expect(await found()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ mediaType: 'sidecar', childCount: 2 }),
+        expect.objectContaining({ mediaType: 'image' }),
+        expect.objectContaining({ mediaType: 'video' }),
+      ])
+    );
+  });
+
+  it('scans past seen Posts to an older one that became visible, until the list ends', async () => {
+    await baselined();
+    setPosts(posts(30));
+    await checkLater();
+    setPosts(posts(30), posts(20));
+
+    const outcome = await checkLater();
+
+    expect(outcome.kinds[0]).toMatchObject({ newCount: 1, catchUp: false });
+    expect(instagram.state.postRequests).toEqual(['', 'c1']);
+    expect(await found()).toHaveLength(2);
+  });
+
+  it.each([
+    ['a Post newer than the one before it', [posts(5, 6)], 0],
+    ['a page newer than where the last ended', [posts(6), posts(7)], 1],
+    ['a Post repeated across pages', [posts(7, 6), posts(6, 5)], 2],
+  ])('stops incomplete on %s and keeps its state', async (_case, pages, kept) => {
+    await baselined();
+    setPosts(...pages);
+
+    const outcome = await checkLater();
+
+    expect(outcome.kinds).toEqual([
+      { _tag: 'KindCheckFailed', kind: 'posts', code: 'WATCH_CHECK_INCOMPLETE' },
+    ]);
+    expect(await found()).toHaveLength(kept);
+    expect(await postsHealth()).toMatchObject({
+      _tag: 'KindProblem',
+      code: 'WATCH_CHECK_INCOMPLETE',
+      lastSuccessAt: expect.any(Number),
+    });
+  });
+
+  it('stops incomplete on a cursor it has already followed', async () => {
+    await baselined();
+    instagram.state.posts = {
+      '': postsPage(posts(9), 'c1'),
+      c1: postsPage(posts(8), 'c1'),
+    };
+    instagram.state.postRequests = [];
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ code: 'WATCH_CHECK_INCOMPLETE' });
+    expect(instagram.state.postRequests).toEqual(['', 'c1']);
+  });
+
+  it.each([
+    ['another owner', [{ ...posts(9)[0]!, owner: '9999' }]],
+    ['a Sidecar missing its declared children', [{ ...posts(9)[0]!, children: [] }]],
+    ['a non-numeric media ID', [{ ...posts(9)[0]!, id: '9x' }]],
+  ])('rejects a page with %s', async (_case, page) => {
+    await baselined();
+    setPosts(page);
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ code: 'IG_RESPONSE_SHAPE_UNKNOWN' });
+  });
+
+  it('catches up three pages per turn within a frozen window, then completes', async () => {
+    await baselined();
+    await vi.advanceTimersByTimeAsync(40 * DAY);
+    const now = seconds(Date.now());
+    // Eligible when the traversal starts five minutes from now, but not fifteen minutes later.
+    const nearWindowEdge = now - 30 * (DAY / 1000) + 6 * 60;
+    setPosts(
+      [
+        { id: '60', takenAt: now - 10 },
+        { id: '59', takenAt: now - 11 },
+      ],
+      [{ id: '50', takenAt: now - 30 }],
+      [{ id: '40', takenAt: now - 40 }],
+      [{ id: '30', takenAt: nearWindowEdge }],
+      [OLD]
+    );
+
+    const first = await checkLater();
+
+    expect(first.kinds[0]).toMatchObject({ newCount: 4, catchUp: true });
+    expect(instagram.state.postRequests).toEqual(['', 'c1', 'c2']);
+    expect(await postsHealth()).toMatchObject({ _tag: 'KindChecked', catchingUp: true });
+
+    await vi.advanceTimersByTimeAsync(10 * MINUTE);
+    const second = await checkLater();
+
+    expect(second.kinds[0]).toMatchObject({ newCount: 1, catchUp: false });
+    expect(instagram.state.postRequests).toEqual(['', 'c1', 'c2', 'c3', 'c4']);
+    expect(await postsHealth()).not.toHaveProperty('catchingUp');
+  });
+
+  it('restarts a traversal whose cursor was lost without repeating discoveries', async () => {
+    await baselined();
+    setPosts(posts(60), posts(50), posts(40), [...posts(30), OLD]);
+    await checkLater();
+    await harness.session.remove('watch-posts-traversals');
+
+    const restarted = await checkLater();
+    const finished = await checkLater();
+
+    expect(restarted.kinds[0]).toMatchObject({ newCount: 0, catchUp: true });
+    expect(finished.kinds[0]).toMatchObject({ newCount: 1, catchUp: false });
+    expect(instagram.state.postRequests.slice(3)).toEqual(['', 'c1', 'c2', 'c3']);
+    expect(await found()).toHaveLength(4);
   });
 });

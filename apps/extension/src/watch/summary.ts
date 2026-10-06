@@ -21,6 +21,9 @@ export function initialized(watch: Watch, kind: WatchKind): boolean {
   );
 }
 
+const catchingUp = (watch: Watch, kind: WatchKind) =>
+  kind === 'posts' && watch.tracking.posts?.catchingUp === true;
+
 function kindHealth(watch: Watch, kind: WatchKind) {
   const tracking = watch.tracking[kind];
   if (!watch.kinds.includes(kind))
@@ -33,7 +36,11 @@ function kindHealth(watch: Watch, kind: WatchKind) {
       ...(tracking.lastSuccessAt === undefined ? {} : { lastSuccessAt: tracking.lastSuccessAt }),
     });
   if (initialized(watch, kind) && tracking?.lastSuccessAt !== undefined)
-    return KindChecked.make({ kind, lastSuccessAt: tracking.lastSuccessAt });
+    return KindChecked.make({
+      kind,
+      lastSuccessAt: tracking.lastSuccessAt,
+      ...(catchingUp(watch, kind) ? { catchingUp: true } : {}),
+    });
   return KindBaselinePending.make({ kind });
 }
 
