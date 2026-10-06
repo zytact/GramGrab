@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/zytact/GramGrab/compare/v2.0.2...v2.0.3) (2026-10-06)
+
+
+### Bug Fixes
+
+* **watch:** keep Check now state across navigation and show what it found ([#245](https://github.com/zytact/GramGrab/issues/245)) ([ab7937e](https://github.com/zytact/GramGrab/commit/ab7937ec0ff4e83aa80253d54195c4e378014323))
+
 ## [2.0.2](https://github.com/zytact/GramGrab/compare/v2.0.1...v2.0.2) (2026-10-06)
 
 
