@@ -6,6 +6,35 @@ const mediaIdentity = { itemIndex: 0, mediaId: 'stable-media-id' };
 const itemFailure = { code: 'MEDIA_NETWORK_FAILED', scope: 'item' };
 
 export const requestFixtures: readonly unknown[] = [
+  { version: 2, requestId, command: { _tag: 'WatchNeeds' } },
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchAttentionRecover',
+      operation: 'retry',
+      attentionIds: ['action.download.entry-1.1', 'missing'],
+    },
+  },
+  ...[
+    { mode: { _tag: 'DirectExport' } },
+    { mode: { _tag: 'FrameExport', timestampSeconds: 8.5 }, rotation: 90 },
+    { mode: { _tag: 'SilentExport', reencode: 'require' }, rotation: 270 },
+  ].map(settings => ({
+    version: 2,
+    requestId,
+    command: { _tag: 'WatchInboxExport', entryIds: ['entry-1'], settings },
+  })),
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchInboxRetry',
+      plans: [{ entryId: 'entry-1', planId: operationId }],
+      recovery: 'original',
+    },
+  },
+
   {
     version: 2,
     requestId,
@@ -129,6 +158,55 @@ const watchSummary = {
 };
 
 const resultFixtures: readonly unknown[] = [
+  {
+    _tag: 'WatchNeedsResult',
+    watches: [],
+    entries: [],
+    items: [
+      {
+        _tag: 'CheckAttention',
+        attentionId: 'check.watch-1.posts',
+        watchId: 'watch-1',
+        kind: 'posts',
+        code: 'WATCH_CHECK_INCOMPLETE',
+        since: 1000,
+      },
+      {
+        _tag: 'ActionAttention',
+        attentionId: 'action.download.entry-1.1',
+        entryId: 'entry-1',
+        action: 'download',
+        child: 1,
+        state: 'failed',
+        code: 'BROWSER_DOWNLOAD_NETWORK_FAILED',
+        operations: ['retry', 'dismiss'],
+      },
+      {
+        _tag: 'ActionAttention',
+        attentionId: 'uncertain.entry-2.0',
+        entryId: 'entry-2',
+        action: 'download',
+        child: 0,
+        state: 'unconfirmed',
+        operations: ['confirm'],
+      },
+      { _tag: 'PauseAttention', attentionId: 'pause.1001', until: 2000, code: 'IG_RATE_LIMITED' },
+      { _tag: 'StorageAttention', attentionId: 'storage', code: 'WATCH_STORE_FAILED' },
+    ],
+  },
+  {
+    _tag: 'WatchAttentionRecoverResult',
+    recoveredAttentionIds: ['action.download.entry-1.1'],
+    refused: [{ attentionId: 'check.watch-1.posts', code: 'WATCH_RECOVERY_NOT_APPLICABLE' }],
+    failures: [
+      {
+        attentionId: 'action.notify.entry-1',
+        outcome: { entryId: 'entry-1', state: 'failed', code: 'WATCH_NOTIFY_PERMISSION_DENIED' },
+      },
+    ],
+    unknownAttentionIds: ['missing'],
+  },
+
   {
     _tag: 'InspectResult',
     sourceUrl: 'https://www.instagram.com/p/example/',

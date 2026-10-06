@@ -20,6 +20,14 @@ import {
   WatchRecoverResult,
   WatchLifecycleResult,
   WatchListResult,
+  WatchNeedsResult,
+  WatchAttentionRecoverResult,
+  PauseAttention,
+  StorageAttention,
+  WatchRecover,
+  RecoveryOutcome,
+  type WatchAttention,
+  type AttentionOperation,
   WatchSchedule,
   WatchSetResult,
   WatchShowResult,
@@ -37,13 +45,13 @@ import { PersonRequests, requestLedger, type InstagramRequests } from '../instag
 import { normalizeSourceFailure } from '../errors/normalize.ts';
 import type { WatchCommandResponse, WatchPreviewResponse } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
-import { loginAttention, refreshBadge, rememberViewer } from './attention.ts';
+import { loginAttention, refreshBadge, rememberViewer, watchAttentionItems } from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
 import { attentionEntries, discoveries, inbox, initialized, summarize } from './summary.ts';
 import { retryNotify } from './notify.ts';
 import { inInbox } from './discoveries.ts';
 import { finishActions } from './auto-download.ts';
-import { recoverable, applyRecovery } from './recovery.ts';
+import { recoverable, applyRecovery, recoveryOutcome } from './recovery.ts';
 import type { Learned } from './export.ts';
 import { exportPlannedEntry } from './manual-export-run.ts';
 import { InboxExportExecution } from './manual-export.ts';
@@ -560,6 +568,7 @@ const recover = (command: Extract<WatchCommand, { _tag: 'WatchRecover' }>) =>
       return {
         store: recovered.length > 0 ? { ...store, watches } : store,
         value: {
+          before: recovered.map(id => entries.get(id)!.discovery),
           retried: recovered.map(id => ({ watchId: entries.get(id)!.watch.id, entryId: id })),
           result: WatchRecoverResult.make({
             recoveredEntryIds: recovered,
@@ -582,7 +591,131 @@ const recover = (command: Extract<WatchCommand, { _tag: 'WatchRecover' }>) =>
       for (const watch of owned(read, viewer)) if (ids.has(watch.id)) yield* finishActions(watch);
     }
     yield* Effect.promise(refreshBadge);
-    return result.result;
+    const after = yield* loadOrReject;
+    const entries = new Map(
+      owned(after, viewer).flatMap(watch =>
+        discoveries(watch).map(entry => [entry.entryId, entry] as const)
+      )
+    );
+    const outcomes = result.before.map(before =>
+      recoveryOutcome(before, entries.get(before.id), command)
+    );
+    return WatchRecoverResult.make({
+      refused: result.result.refused,
+      unknownEntryIds: result.result.unknownEntryIds,
+      recoveredEntryIds: outcomes
+        .filter(outcome => outcome.state === 'recovered')
+        .map(outcome => outcome.entryId),
+      outcomes,
+    });
+  });
+
+const NEEDS_STORAGE_CODE = {
+  full: 'WATCH_STORE_CAPACITY_EXCEEDED',
+  'write-failed': 'WATCH_STORE_FAILED',
+  unreadable: 'WATCH_STORE_UNREADABLE',
+  unsupported: 'WATCH_STORE_VERSION_UNSUPPORTED',
+} as const;
+
+const needs = Effect.gen(function* () {
+  const snapshot = yield* list;
+  const read = yield* load;
+  const items =
+    read.kind === 'ok'
+      ? read.store.watches
+          .filter(watch => watch.viewerId === snapshot.viewer.accountId)
+          .flatMap(watchAttentionItems)
+      : [];
+  if (snapshot.schedule.pausedUntil && snapshot.watches.length)
+    items.unshift(
+      PauseAttention.make({
+        attentionId: `pause.${snapshot.viewer.accountId}`,
+        until: snapshot.schedule.pausedUntil,
+        code: 'IG_RATE_LIMITED',
+      })
+    );
+  if (snapshot.storage.status !== 'ok')
+    items.unshift(
+      StorageAttention.make({
+        attentionId: 'storage',
+        code: NEEDS_STORAGE_CODE[snapshot.storage.status],
+      })
+    );
+  return WatchNeedsResult.make({
+    items,
+    watches: snapshot.watches,
+    entries: snapshot.attentionEntries,
+  });
+});
+
+const recoverAttention = Effect.fn(function* (
+  item: WatchAttention | undefined,
+  attentionId: string,
+  operation: AttentionOperation
+) {
+  if (!item) return { state: 'unknown' as const, attentionId };
+  if (item._tag !== 'ActionAttention' || !item.operations.includes(operation))
+    return { state: 'refused' as const, attentionId };
+  const result = yield* recover(
+    WatchRecover.make({
+      operation,
+      action: item.action,
+      entryIds: [item.entryId],
+      ...(item.child === undefined ? {} : { child: item.child }),
+    })
+  ).pipe(Effect.either);
+  if (Either.isLeft(result))
+    return {
+      state: 'failed' as const,
+      attentionId,
+      outcome: RecoveryOutcome.make({
+        entryId: item.entryId,
+        state: 'failed',
+        code: result.left.code,
+      }),
+    };
+  return attentionRecoveryResult(result.right, item, attentionId);
+});
+
+function attentionRecoveryResult(
+  result: WatchRecoverResult,
+  item: Extract<WatchAttention, { _tag: 'ActionAttention' }>,
+  attentionId: string
+) {
+  if (result.unknownEntryIds.length) return { state: 'unknown' as const, attentionId };
+  if (result.refused.length) return { state: 'refused' as const, attentionId };
+  const outcome =
+    result.outcomes?.[0] ?? RecoveryOutcome.make({ entryId: item.entryId, state: 'waiting' });
+  return outcome.state === 'recovered'
+    ? { state: 'recovered' as const, attentionId }
+    : { state: 'failed' as const, attentionId, outcome };
+}
+
+const attentionRecover = (command: Extract<WatchCommand, { _tag: 'WatchAttentionRecover' }>) =>
+  Effect.gen(function* () {
+    const snapshot = yield* needs;
+    const items = new Map(snapshot.items.map(item => [item.attentionId, item] as const));
+    const outcomes = yield* Effect.forEach([...new Set(command.attentionIds)], attentionId =>
+      recoverAttention(items.get(attentionId), attentionId, command.operation)
+    );
+    return WatchAttentionRecoverResult.make({
+      recoveredAttentionIds: outcomes.flatMap(outcome =>
+        outcome.state === 'recovered' ? [outcome.attentionId] : []
+      ),
+      unknownAttentionIds: outcomes.flatMap(outcome =>
+        outcome.state === 'unknown' ? [outcome.attentionId] : []
+      ),
+      refused: outcomes.flatMap(outcome =>
+        outcome.state === 'refused'
+          ? [{ attentionId: outcome.attentionId, code: 'WATCH_RECOVERY_NOT_APPLICABLE' as const }]
+          : []
+      ),
+      failures: outcomes.flatMap(outcome =>
+        outcome.state === 'failed'
+          ? [{ attentionId: outcome.attentionId, outcome: outcome.outcome }]
+          : []
+      ),
+    });
   });
 
 const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>) =>
@@ -599,6 +732,8 @@ const program = (
 ): Effect.Effect<WatchResult, WatchRejection, InstagramRequests | InboxExportExecution> =>
   Match.valueTags(command, {
     WatchList: () => list,
+    WatchNeeds: () => needs,
+    WatchAttentionRecover: attentionRecover,
     WatchShow: show,
     WatchAdd: add,
     WatchSet: set,

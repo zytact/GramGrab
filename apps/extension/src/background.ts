@@ -1152,7 +1152,14 @@ async function executeCommand(
       case 'WatchAdd':
       case 'WatchSet':
       case 'WatchLifecycle':
-      case 'WatchCheck': {
+      case 'WatchCheck':
+      case 'WatchNeeds':
+      case 'WatchAttentionRecover':
+      case 'WatchRecover':
+      case 'WatchInboxList':
+      case 'WatchInboxRemove':
+      case 'WatchInboxExport':
+      case 'WatchInboxRetry': {
         emit(Progress.make({ phase: 'resolving' }));
         const outcome = await abortable(
           runWatchCommand(command, runPreparedInDocument, watchCheck =>

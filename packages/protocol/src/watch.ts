@@ -45,6 +45,19 @@ export type WatchSelector = Schema.Schema.Type<typeof WatchSelector>;
 
 export class WatchList extends Schema.TaggedClass<WatchList>()('WatchList', {}) {}
 
+export class WatchNeeds extends Schema.TaggedClass<WatchNeeds>()('WatchNeeds', {}) {}
+
+export const AttentionOperation = Schema.Literal('retry', 'dismiss', 'confirm');
+export type AttentionOperation = Schema.Schema.Type<typeof AttentionOperation>;
+
+export class WatchAttentionRecover extends Schema.TaggedClass<WatchAttentionRecover>()(
+  'WatchAttentionRecover',
+  {
+    operation: AttentionOperation,
+    attentionIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
+  }
+) {}
+
 export class WatchShow extends Schema.TaggedClass<WatchShow>()('WatchShow', {
   watch: WatchSelector,
 }) {}
@@ -103,6 +116,8 @@ export class WatchRecover extends Schema.TaggedClass<WatchRecover>()('WatchRecov
 
 export const WatchCommand = Schema.Union(
   WatchList,
+  WatchNeeds,
+  WatchAttentionRecover,
   WatchShow,
   WatchAdd,
   WatchSet,
@@ -221,6 +236,7 @@ export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoveryS
   discoveredAt: EpochMillis,
   /** When the entry leaves the inbox; absent when it was never collected or was removed. */
   inboxUntil: Schema.optional(EpochMillis),
+  remainingRetentionMs: Schema.optional(Count),
   unavailable: Schema.optional(FailureCodeSchema),
   missingChildren: Schema.optional(Count),
   notify: Schema.optional(ActionOutcome),
@@ -244,6 +260,78 @@ export class WatchShowResult extends Schema.TaggedClass<WatchShowResult>()('Watc
   watch: WatchSummary,
   discoveries: Schema.Array(DiscoverySummary),
 }) {}
+
+export class CheckAttention extends Schema.TaggedClass<CheckAttention>()('CheckAttention', {
+  attentionId: NonEmptyString,
+  watchId: NonEmptyString,
+  kind: WatchKind,
+  code: FailureCodeSchema,
+  since: EpochMillis,
+  lastSuccessAt: Schema.optional(EpochMillis),
+}) {}
+
+export class ActionAttention extends Schema.TaggedClass<ActionAttention>()('ActionAttention', {
+  attentionId: NonEmptyString,
+  entryId: NonEmptyString,
+  action: WatchAction,
+  child: Schema.optional(Count),
+  state: Schema.Literal('failed', 'unconfirmed'),
+  code: Schema.optional(FailureCodeSchema),
+  operations: Schema.Array(AttentionOperation),
+}) {}
+
+export class PauseAttention extends Schema.TaggedClass<PauseAttention>()('PauseAttention', {
+  attentionId: NonEmptyString,
+  until: EpochMillis,
+  code: Schema.Literal('IG_RATE_LIMITED'),
+}) {}
+
+export class StorageAttention extends Schema.TaggedClass<StorageAttention>()('StorageAttention', {
+  attentionId: NonEmptyString,
+  code: Schema.Literal(
+    'WATCH_STORE_CAPACITY_EXCEEDED',
+    'WATCH_STORE_FAILED',
+    'WATCH_STORE_UNREADABLE',
+    'WATCH_STORE_VERSION_UNSUPPORTED'
+  ),
+}) {}
+
+export const WatchAttention = Schema.Union(
+  CheckAttention,
+  ActionAttention,
+  PauseAttention,
+  StorageAttention
+);
+export type WatchAttention = Schema.Schema.Type<typeof WatchAttention>;
+
+export class WatchNeedsResult extends Schema.TaggedClass<WatchNeedsResult>()('WatchNeedsResult', {
+  items: Schema.Array(WatchAttention),
+  watches: Schema.Array(WatchSummary),
+  entries: Schema.Array(DiscoverySummary),
+}) {}
+
+export class RecoveryOutcome extends Schema.Class<RecoveryOutcome>('RecoveryOutcome')({
+  entryId: NonEmptyString,
+  state: Schema.Literal('recovered', 'failed', 'waiting', 'unconfirmed'),
+  code: Schema.optional(FailureCodeSchema),
+}) {}
+
+export class WatchAttentionRecoverResult extends Schema.TaggedClass<WatchAttentionRecoverResult>()(
+  'WatchAttentionRecoverResult',
+  {
+    recoveredAttentionIds: Schema.Array(NonEmptyString),
+    refused: Schema.Array(
+      Schema.Struct({
+        attentionId: NonEmptyString,
+        code: Schema.Literal('WATCH_RECOVERY_NOT_APPLICABLE'),
+      })
+    ),
+    failures: Schema.Array(
+      Schema.Struct({ attentionId: NonEmptyString, outcome: RecoveryOutcome })
+    ),
+    unknownAttentionIds: Schema.Array(NonEmptyString),
+  }
+) {}
 
 export class KindBaselineRecorded extends Schema.TaggedClass<KindBaselineRecorded>()(
   'KindBaselineRecorded',
@@ -343,6 +431,7 @@ export class WatchRecoverResult extends Schema.TaggedClass<WatchRecoverResult>()
   'WatchRecoverResult',
   {
     recoveredEntryIds: Schema.Array(NonEmptyString),
+    outcomes: Schema.optional(Schema.Array(RecoveryOutcome)),
     refused: Schema.Array(
       Schema.Struct({
         entryId: NonEmptyString,
@@ -355,6 +444,8 @@ export class WatchRecoverResult extends Schema.TaggedClass<WatchRecoverResult>()
 
 export const WatchResult = Schema.Union(
   WatchListResult,
+  WatchNeedsResult,
+  WatchAttentionRecoverResult,
   WatchShowResult,
   WatchAddResult,
   WatchSetResult,

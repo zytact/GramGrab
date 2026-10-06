@@ -1,4 +1,10 @@
-import type { WatchCommand } from '@gramgrab/protocol';
+import {
+  RecoveryOutcome,
+  WatchRecover,
+  type WatchCommand,
+  type DiscoverySummary,
+  type ActionOutcome,
+} from '@gramgrab/protocol';
 import type { ChildDownload, Discovery } from './contracts.ts';
 import { retryableDownload } from './auto-download.ts';
 
@@ -72,4 +78,63 @@ export function applyRecovery(entry: Discovery, command: Recovery): Discovery {
     ...entry,
     download: { ...entry.download, children, dismissed: false },
   };
+}
+
+function affectedOutcomes(
+  before: Discovery,
+  after: DiscoverySummary,
+  command: Recovery
+): readonly ActionOutcome[] {
+  if (command.action !== 'download') {
+    const action = after[command.action];
+    return action ? [action] : [];
+  }
+  return (
+    before.download?.children.flatMap((_, index) => {
+      if (command.child !== undefined && command.child !== index) return [];
+      const selected = recoverable(
+        before,
+        WatchRecover.make({
+          action: 'download',
+          operation: command.operation,
+          entryIds: command.entryIds,
+          child: index,
+        })
+      );
+      const outcome = after.downloadChildren?.[index];
+      return selected && outcome ? [outcome] : [];
+    }) ?? []
+  );
+}
+
+function recovered(outcomes: readonly ActionOutcome[], operation: Recovery['operation']): boolean {
+  return (
+    outcomes.length > 0 &&
+    outcomes.every(
+      outcome => outcome.state === 'done' || (operation === 'dismiss' && outcome.dismissed)
+    )
+  );
+}
+
+export function recoveryOutcome(
+  before: Discovery,
+  after: DiscoverySummary | undefined,
+  command: Recovery
+): RecoveryOutcome {
+  if (!after)
+    return RecoveryOutcome.make({ entryId: before.id, state: 'failed', code: 'WATCH_NOT_FOUND' });
+  const outcomes = affectedOutcomes(before, after, command);
+  if (recovered(outcomes, command.operation))
+    return RecoveryOutcome.make({ entryId: before.id, state: 'recovered' });
+  const failed = outcomes.find(outcome => outcome.state === 'failed' && !outcome.dismissed);
+  const state = failed
+    ? 'failed'
+    : outcomes.some(outcome => outcome.state === 'unconfirmed')
+      ? 'unconfirmed'
+      : 'waiting';
+  return RecoveryOutcome.make({
+    entryId: before.id,
+    state,
+    ...(failed?.code ? { code: failed.code } : {}),
+  });
 }
