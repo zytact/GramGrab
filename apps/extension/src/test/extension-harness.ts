@@ -1,6 +1,6 @@
 import { Schema } from 'effect';
 import { vi } from 'vite-plus/test';
-import type { DownloadQuery } from '../lib/browser.ts';
+import type { DownloadQuery, StorageChanges } from '../lib/browser.ts';
 import {
   Event,
   CancelRequest,
@@ -19,6 +19,7 @@ type Listener = (
 /** In-memory `storage.local`/`storage.session` that round-trips values like the browser does. */
 class FakeStorageArea {
   readonly data = new Map<string, string>();
+  readonly onChanged = hook<(changes: StorageChanges) => void>();
   failWrites = false;
   /** Rejects any write that would leave the area larger than this many bytes. */
   quotaBytes = Number.POSITIVE_INFINITY;
@@ -47,11 +48,19 @@ class FakeStorageArea {
     const size = [...next.values()].reduce((total, value) => total + value.length, 0);
     if (size > this.quotaBytes) throw new Error('QUOTA_BYTES quota exceeded');
     for (const [key, value] of next) this.data.set(key, value);
+    this.emit(Object.keys(items));
   });
 
   remove = vi.fn(async (keys: string | string[]) => {
-    for (const key of Array.isArray(keys) ? keys : [keys]) this.data.delete(key);
+    const removed = Array.isArray(keys) ? keys : [keys];
+    for (const key of removed) this.data.delete(key);
+    this.emit(removed);
   });
+
+  private emit(keys: readonly string[]) {
+    const changes = Object.fromEntries(keys.map(key => [key, { newValue: this.read(key) }]));
+    for (const listener of this.onChanged.listeners) listener(changes);
+  }
 
   read(key: string): unknown {
     const value = this.data.get(key);

@@ -28,6 +28,7 @@ import {
   RecoveryOutcome,
   type WatchAttention,
   type AttentionOperation,
+  type DeferredReason,
   WatchSchedule,
   WatchSetResult,
   WatchShowResult,
@@ -148,8 +149,10 @@ const list = Effect.gen(function* () {
   const store = read.kind === 'ok' ? read.store : undefined;
   const viewer = yield* verifyViewer(store);
   const storage = yield* Effect.promise(() => storageState(read));
-  const watches = store ? owned(store, viewer).map(watch => summarize(watch)) : [];
   const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
+  const watches = store
+    ? owned(store, viewer).map(watch => summarize(watch, schedule.manualChecks.get(watch.id)))
+    : [];
   yield* Effect.promise(() => requestLedger.ready());
   const pausedUntil = requestLedger.pausedUntil(Date.now());
   return WatchListResult.make({
@@ -331,11 +334,19 @@ const lifecycle = (command: Extract<WatchCommand, { _tag: 'WatchLifecycle' }>) =
     });
   });
 
-function deferredUntil(watch: Watch, now: number): number | undefined {
+const pacingReason = (now: number): DeferredReason =>
+  requestLedger.pausedUntil(now) === undefined ? 'paced' : 'rate-limited';
+
+/** When and why a Check now of `watch` must wait, or undefined when it may run now. */
+function deferral(watch: Watch, now: number) {
   const last = lastCheckAt(watch);
   const manual = last === undefined ? now : last + MANUAL_CHECK_INTERVAL_MS;
   const paced = requestLedger.nextWatchAllowedAt(now);
-  return manual > now || paced > now + 25_000 ? Math.max(manual, paced) : undefined;
+  if (manual <= now && paced <= now + 25_000) return undefined;
+  return {
+    deferredUntil: Math.max(manual, paced),
+    deferredReason: manual >= paced ? ('checked-recently' as const) : pacingReason(now),
+  };
 }
 
 const checkOne = Effect.fn(function* (
@@ -369,7 +380,9 @@ const checkOne = Effect.fn(function* (
     accountId: watch.targetId,
     username: watch.username,
     kinds: [...off, ...run.kinds],
-    ...(run.deferredUntil === undefined ? {} : { deferredUntil: run.deferredUntil }),
+    ...(run.deferredUntil === undefined
+      ? {}
+      : { deferredUntil: run.deferredUntil, deferredReason: pacingReason(Date.now()) }),
   });
 });
 
@@ -392,7 +405,7 @@ const check = (
         selected.flatMap(({ watch }) => (watch ? [[watch.id, watch] as const] : []))
       ).values(),
     ];
-    const holds = new Map(unique.map(watch => [watch.id, deferredUntil(watch, Date.now())]));
+    const holds = new Map(unique.map(watch => [watch.id, deferral(watch, Date.now())]));
     const admitted = unique.filter(watch => holds.get(watch.id) === undefined);
     const checkId = decodeUuid(crypto.randomUUID());
     const queued = yield* Effect.tryPromise({
@@ -400,12 +413,18 @@ const check = (
       catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
     }).pipe(Effect.either);
     const outcomes = yield* Effect.forEach(unique, watch => {
-      const until =
+      const held =
         holds.get(watch.id) ??
         (Either.isRight(queued) && !queued.right.watchIds.has(watch.id)
-          ? Math.max(requestLedger.nextWatchAllowedAt(Date.now()), Date.now() + 1_000)
+          ? {
+              deferredUntil: Math.max(
+                requestLedger.nextWatchAllowedAt(Date.now()),
+                Date.now() + 1_000
+              ),
+              deferredReason: 'queued' as const,
+            }
           : undefined);
-      return until === undefined
+      return held === undefined
         ? Either.isRight(queued)
           ? checkOne(watch, viewer, checkId, onProgress)
           : Effect.succeed(
@@ -422,7 +441,7 @@ const check = (
               accountId: watch.targetId,
               username: watch.username,
               kinds: [],
-              deferredUntil: until,
+              ...held,
             })
           );
     }).pipe(
@@ -723,7 +742,11 @@ const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>) =>
     const store = yield* loadOrReject;
     const viewer = yield* verifyViewer(store);
     const watch = yield* findOwned(store, viewer, command.watch);
-    return WatchShowResult.make({ watch: summarize(watch), discoveries: discoveries(watch) });
+    const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
+    return WatchShowResult.make({
+      watch: summarize(watch, schedule.manualChecks.get(watch.id)),
+      discoveries: discoveries(watch),
+    });
   });
 
 const program = (

@@ -5,6 +5,7 @@ import {
   WatchAdd,
   WatchCheck,
   WatchList,
+  WatchShow,
   type EventPayload,
 } from '@gramgrab/protocol';
 import { Schema } from 'effect';
@@ -92,6 +93,9 @@ describe('native Watch checks', () => {
     expect(harness.local.read('watch-scheduler')).toMatchObject({
       logins: { '1001': { manual: [] } },
     });
+    expect(await settled(harness.command(check()))).toMatchObject({
+      result: { outcomes: [{ deferredReason: 'checked-recently', kinds: [] }] },
+    });
   });
 
   it('admits one concurrent check per Watch and defers the other without duplicate acquisition', async () => {
@@ -105,7 +109,7 @@ describe('native Watch checks', () => {
         : []
     );
     expect(results).toHaveLength(2);
-    expect(results.filter(result => result.outcomes[0]?.deferredUntil !== undefined)).toHaveLength(
+    expect(results.filter(result => result.outcomes[0]?.deferredReason === 'queued')).toHaveLength(
       1
     );
     expect(storyRequests()).toBe(1);
@@ -132,7 +136,11 @@ describe('native Watch checks', () => {
     const terminal = await settled(harness.command(check()));
     expect(terminal).toMatchObject({
       _tag: 'Completed',
-      result: { outcomes: [{ deferredUntil: START + 50 * 60_000, kinds: [] }] },
+      result: {
+        outcomes: [
+          { deferredUntil: START + 50 * 60_000, deferredReason: 'rate-limited', kinds: [] },
+        ],
+      },
     });
     expect(storyRequests()).toBe(0);
     expect(harness.local.read('watch-scheduler')).toMatchObject({
@@ -197,17 +205,41 @@ describe('native Watch checks', () => {
       )
     )
       await vi.advanceTimersByTimeAsync(1_000);
-    expect(harness.local.read('watch-scheduler')).toMatchObject({
-      logins: { '1001': { manual: [{ remainingKinds: ['posts'] }] } },
-    });
     while (!profileStarted) await vi.advanceTimersByTimeAsync(1_000);
     reloaded = true;
     await harness.loadWorker();
+    const show = () =>
+      settled(
+        harness.send<WatchCommandResponse>({
+          type: 'WATCH_COMMAND',
+          command: WatchShow.make({ watch: AccountIdSelector.make({ accountId: TARGET.id }) }),
+        })
+      );
+    expect((await show()).result).toMatchObject({
+      watch: {
+        manualCheck: {
+          _tag: 'ManualCheckPending',
+          remainingKinds: ['posts'],
+          outcomes: [{ _tag: 'KindBaselineRecorded', kind: 'stories' }],
+        },
+      },
+    });
     harness.fireAlarm('watch-pump');
     await vi.advanceTimersByTimeAsync(3 * 60_000);
     expect(storyRequests()).toBe(1);
     expect(harness.local.read('watch-scheduler')).toMatchObject({
       logins: { '1001': { manual: [] } },
+    });
+    expect((await show()).result).toMatchObject({
+      watch: {
+        manualCheck: {
+          _tag: 'ManualCheckFinished',
+          outcomes: [
+            { _tag: 'KindBaselineRecorded', kind: 'stories' },
+            { _tag: 'KindBaselineRecorded', kind: 'posts' },
+          ],
+        },
+      },
     });
   });
 

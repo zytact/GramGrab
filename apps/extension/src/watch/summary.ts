@@ -6,6 +6,7 @@ import {
   WATCH_KINDS,
   WatchSummary,
   type DiscoverySummary,
+  type ManualCheck,
   type WatchKind,
 } from '@gramgrab/protocol';
 import type { Watch } from './contracts.ts';
@@ -45,7 +46,7 @@ function kindHealth(watch: Watch, kind: WatchKind) {
   return KindBaselinePending.make({ kind });
 }
 
-export function summarize(watch: Watch, now = Date.now()): WatchSummary {
+export function summarize(watch: Watch, manualCheck?: ManualCheck, now = Date.now()): WatchSummary {
   const lastCheck = lastCheckAt(watch);
   return WatchSummary.make({
     watchId: watch.id,
@@ -59,6 +60,7 @@ export function summarize(watch: Watch, now = Date.now()): WatchSummary {
     inboxCount: inbox(watch, now).length,
     createdAt: watch.createdAt,
     ...(lastCheck === undefined ? {} : { lastCheckAt: lastCheck }),
+    ...(manualCheck ? { manualCheck } : {}),
   });
 }
 
