@@ -86,9 +86,10 @@ export class WatchInboxExport extends Schema.TaggedClass<WatchInboxExport>()('Wa
 
 /** Retries or dismisses a failed action of each entry; other entries cannot be recovered so. */
 export class WatchRecover extends Schema.TaggedClass<WatchRecover>()('WatchRecover', {
-  action: Schema.Literal('notify'),
-  operation: Schema.Literal('retry', 'dismiss'),
+  action: Schema.Literal('notify', 'download', 'collect'),
+  operation: Schema.Literal('retry', 'dismiss', 'confirm', 'download-again'),
   entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
+  child: Schema.optional(Count),
 }) {}
 
 export const WatchCommand = Schema.Union(
@@ -173,6 +174,7 @@ export class WatchSchedule extends Schema.Class<WatchSchedule>('WatchSchedule')(
 export class ActionOutcome extends Schema.Class<ActionOutcome>('ActionOutcome')({
   state: Schema.Literal('waiting', 'done', 'failed', 'unconfirmed'),
   code: Schema.optional(FailureCodeSchema),
+  dismissed: Schema.optional(Schema.Boolean),
 }) {}
 
 /** One discovery as the page and CLI show it: no media bytes, URLs, or captions. */
@@ -191,6 +193,7 @@ export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoveryS
   missingChildren: Schema.optional(Count),
   notify: Schema.optional(ActionOutcome),
   download: Schema.optional(ActionOutcome),
+  downloadChildren: Schema.optional(Schema.Array(ActionOutcome)),
   collect: Schema.optional(ActionOutcome),
 }) {}
 

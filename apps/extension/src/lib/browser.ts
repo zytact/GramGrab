@@ -35,6 +35,23 @@ export interface NativePort {
   onDisconnect: PortEvent<() => void>;
 }
 
+export interface DownloadQuery {
+  id?: number;
+  state?: 'in_progress' | 'complete' | 'interrupted';
+  startedAfter?: string;
+  limit?: number;
+  orderBy?: string[];
+}
+
+export interface BrowserDownload {
+  id: number;
+  state?: string;
+  fileSize?: number;
+  filename?: string;
+  startTime?: string;
+  byExtensionId?: string;
+}
+
 export interface ExecuteScriptDetails {
   target: { tabId: number; frameIds: number[] };
   files: string[];
@@ -78,9 +95,7 @@ export interface BrowserShim {
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
     cancel: (downloadId: number) => Promise<void>;
-    search: (query: {
-      id?: number;
-    }) => Promise<{ id: number; state?: string; fileSize?: number }[]>;
+    search: (query: DownloadQuery) => Promise<BrowserDownload[]>;
     onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {
@@ -218,10 +233,7 @@ interface ChromeGlobal extends Partial<PromisedApis> {
       cb?: (id: number) => void
     ) => void;
     cancel?: (downloadId: number, callback?: () => void) => void;
-    search: (
-      query: { id?: number },
-      callback: (items: { id: number; state?: string; fileSize?: number }[]) => void
-    ) => void;
+    search: (query: DownloadQuery, callback: (items: BrowserDownload[]) => void) => void;
     onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {
@@ -282,9 +294,7 @@ interface NativeBrowserGlobal extends Partial<PromisedApis> {
   downloads: {
     download: (options: { url: string; filename?: string; saveAs?: boolean }) => Promise<number>;
     cancel?: (downloadId: number) => Promise<void>;
-    search: (query: {
-      id?: number;
-    }) => Promise<{ id: number; state?: string; fileSize?: number }[]>;
+    search: (query: DownloadQuery) => Promise<BrowserDownload[]>;
     onChanged: PortEvent<(delta: DownloadDelta) => void>;
   };
   storage: {

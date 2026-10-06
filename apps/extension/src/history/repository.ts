@@ -129,7 +129,11 @@ function append(added: readonly HistoryEntry[]): Promise<HistoryEntry[]> {
     const current = await read();
     if (current.kind === 'unknown-version')
       throw new Error('Download history uses a newer version.');
-    const entries = [...current.entries, ...added].slice(-DOWNLOAD_HISTORY_LIMIT);
+    const ids = new Set(added.flatMap(entry => ('id' in entry ? [entry.id] : [])));
+    const entries = [
+      ...current.entries.filter(entry => !('id' in entry) || !ids.has(entry.id)),
+      ...added,
+    ].slice(-DOWNLOAD_HISTORY_LIMIT);
     await browser.storage.set({
       [DOWNLOAD_HISTORY_KEY]: { version: DOWNLOAD_HISTORY_VERSION, entries },
     });

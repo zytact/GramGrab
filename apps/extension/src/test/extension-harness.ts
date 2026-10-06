@@ -1,5 +1,6 @@
 import { Schema } from 'effect';
 import { vi } from 'vite-plus/test';
+import type { DownloadQuery } from '../lib/browser.ts';
 import {
   Event,
   PROTOCOL_VERSION,
@@ -68,6 +69,7 @@ interface FakeDownload {
   saveAs?: boolean;
   state: 'in_progress' | 'complete' | 'interrupted';
   startTime: string;
+  byExtensionId: string;
 }
 
 type EventHook<T extends (...args: never[]) => unknown> = {
@@ -99,6 +101,7 @@ export function createExtensionHarness() {
   const local = new FakeStorageArea();
   const session = new FakeStorageArea();
   const downloads: FakeDownload[] = [];
+  let nextDownloadId = 1;
   const nativeMessages: unknown[] = [];
   const nativeSubscribers = new Set<(message: unknown) => void>();
   const notifications = new Map<string, { title: string; message: string; iconUrl: string }>();
@@ -156,21 +159,23 @@ export function createExtensionHarness() {
     downloads: {
       download: vi.fn(async (options: { url: string; filename?: string; saveAs?: boolean }) => {
         if (downloadFailure) throw downloadFailure;
-        const id = downloads.length + 1;
+        const id = nextDownloadId++;
         downloads.push({
           id,
           ...options,
           state: 'in_progress',
           startTime: new Date(Date.now()).toISOString(),
+          byExtensionId: 'test',
         });
         return id;
       }),
       cancel: vi.fn(async () => undefined),
-      search: vi.fn(async (query: { id?: number; startedAfter?: string }) =>
+      search: vi.fn(async (query: DownloadQuery) =>
         downloads.filter(
           download =>
             (query.id === undefined || download.id === query.id) &&
-            (query.startedAfter === undefined || download.startTime > query.startedAfter)
+            (query.startedAfter === undefined || download.startTime > query.startedAfter) &&
+            (query.state === undefined || download.state === query.state)
         )
       ),
       onChanged: onDownloadChanged,

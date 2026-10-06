@@ -107,6 +107,50 @@ describe('Watches options page', () => {
     expect(harness.downloads).toEqual([]);
   });
 
+  it('offers confirmation for uncertain files and dismissal for final download failures', async () => {
+    const now = Date.now();
+    seedWatchWithProblemAndEntry([
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
+        ref: {
+          _tag: 'Sidecar',
+          mediaId: '80',
+          shortcode: 'C80',
+          takenAt: 2,
+          children: [
+            { mediaId: '81', mediaType: 'image' },
+            { mediaId: '82', mediaType: 'video' },
+          ],
+        },
+        discoveredAt: now,
+        download: {
+          children: [
+            { status: 'uncertain', at: now },
+            { status: 'failed', code: 'WATCH_MEDIA_UNAVAILABLE', at: now },
+          ],
+          dismissed: false,
+        },
+        missingChildren: ['82'],
+      },
+    ]);
+    const user = userEvent.setup();
+    render(<Watches />);
+    await screen.findByRole('button', { name: 'I have the file' });
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(harness.badge).toBe('3');
+    await user.click(screen.getByRole('button', { name: 'I have the file' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'I have the file' })).toBeNull()
+    );
+    expect(harness.badge).toBe('2');
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull());
+    expect(harness.badge).toBe('1');
+    expect(harness.downloads).toEqual([]);
+    expect(harness.local.read('download-history')).toBeUndefined();
+  });
+
   it('adds a Watch only after the settled disclosure is acknowledged', async () => {
     const user = userEvent.setup();
     render(<Watches />);
