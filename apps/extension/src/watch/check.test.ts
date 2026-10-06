@@ -358,8 +358,19 @@ describe('Posts checks', () => {
     expect(instagram.state.postRequests).toEqual(['', 'c1']);
   });
 
+  it('discovers a collab Post another account owns with the target as a co-author', async () => {
+    await baselined();
+    setPosts([{ ...posts(9)[0]!, owner: '9999', coauthors: ['9999', TARGET.id] }, OLD]);
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ newCount: 1 });
+  });
+
   it.each([
     ['another owner', [{ ...posts(9)[0]!, owner: '9999' }]],
+    [
+      'another owner and only other co-authors',
+      [{ ...posts(9)[0]!, owner: '9999', coauthors: ['8888'] }],
+    ],
     ['a Sidecar missing its declared children', [{ ...posts(9)[0]!, children: [] }]],
     ['a non-numeric media ID', [{ ...posts(9)[0]!, id: '9x' }]],
   ])('rejects a page with %s', async (_case, page) => {

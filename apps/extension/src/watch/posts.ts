@@ -26,6 +26,9 @@ const PostNode = Schema.Struct({
   media_type: Schema.Literal(1, 2, 8),
   taken_at: Seconds,
   user: Schema.Struct({ pk: Schema.String }),
+  coauthor_producers: Schema.optional(
+    Schema.NullOr(Schema.Array(Schema.Struct({ pk: Schema.String })))
+  ),
   carousel_media_count: Schema.optional(Schema.NullOr(Schema.Number)),
   carousel_media: Schema.optional(Schema.NullOr(Schema.Array(Child))),
 });
@@ -80,6 +83,11 @@ function toRef(node: PostNode): TimedRef | undefined {
   };
 }
 
+/** A collab Post lists the target as a co-author while another account owns it. */
+const belongsTo = (node: PostNode, targetId: string) =>
+  node.user.pk === targetId ||
+  (node.coauthor_producers ?? []).some(coauthor => coauthor.pk === targetId);
+
 const untrusted = () => new ResponseShapeUnknown({ context: 'watch_posts' });
 
 /**
@@ -92,8 +100,8 @@ const consistent = (refs: readonly TimedRef[], next: string | undefined) =>
   (next === undefined || (next !== '' && refs.length > 0));
 
 /**
- * Reads one Posts page of `targetId`. Every node must belong to the target, carry trustworthy
- * identity and timing, and come newest first; any GraphQL error fails the page.
+ * Reads one Posts page of `targetId`. Every node must be authored or co-authored by the target,
+ * carry trustworthy identity and timing, and come newest first; any GraphQL error fails the page.
  */
 export const readPostsPage = (raw: unknown, targetId: string, nowSeconds: number) =>
   Effect.gen(function* () {
@@ -104,7 +112,7 @@ export const readPostsPage = (raw: unknown, targetId: string, nowSeconds: number
     const connection = decoded.data.xdt_api__v1__feed__user_timeline_graphql_connection;
     const nodes = connection.edges.map(edge => edge.node);
     const trusted = nodes.every(
-      node => node.user.pk === targetId && node.taken_at <= nowSeconds + CLOCK_SKEW_SECONDS
+      node => belongsTo(node, targetId) && node.taken_at <= nowSeconds + CLOCK_SKEW_SECONDS
     );
     const refs = nodes.map(toRef).filter(ref => ref !== undefined);
     if (!trusted || refs.length !== nodes.length) return yield* Effect.fail(untrusted());

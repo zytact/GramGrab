@@ -55,6 +55,7 @@ export interface FakePost {
   /** Sidecar children by ID; a Post without them is a single image or video. */
   readonly children?: readonly string[];
   readonly owner?: string;
+  readonly coauthors?: readonly string[];
 }
 
 const POSTS_ROOT = 'xdt_api__v1__feed__user_timeline_graphql_connection';
@@ -77,6 +78,7 @@ export function postsPage(posts: readonly FakePost[], next?: string) {
             code: `C${post.id}`,
             taken_at: post.takenAt,
             user: { ...sidecar.user, pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+            coauthor_producers: post.coauthors?.map(pk => ({ pk })) ?? [],
             media_type: post.children ? 8 : post.video === false ? 1 : 2,
             carousel_media_count: post.children?.length ?? null,
             carousel_media:
