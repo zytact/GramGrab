@@ -164,6 +164,67 @@ export class KindProblem extends Schema.TaggedClass<KindProblem>()('KindProblem'
 export const KindHealth = Schema.Union(KindBaselinePending, KindChecked, KindOff, KindProblem);
 export type KindHealth = Schema.Schema.Type<typeof KindHealth>;
 
+export class KindBaselineRecorded extends Schema.TaggedClass<KindBaselineRecorded>()(
+  'KindBaselineRecorded',
+  { kind: WatchKind }
+) {}
+
+export class KindCheckSucceeded extends Schema.TaggedClass<KindCheckSucceeded>()(
+  'KindCheckSucceeded',
+  {
+    kind: WatchKind,
+    newCount: Count,
+    /** A longer traversal continues on a later turn of the same round. */
+    catchUp: Schema.Boolean,
+  }
+) {}
+
+export class KindCheckFailed extends Schema.TaggedClass<KindCheckFailed>()('KindCheckFailed', {
+  kind: WatchKind,
+  code: FailureCodeSchema,
+}) {}
+
+export class KindCheckSkipped extends Schema.TaggedClass<KindCheckSkipped>()('KindCheckSkipped', {
+  kind: WatchKind,
+  reason: Schema.Literal('paused', 'kind-off', 'login-unverified', 'storage', 'deferred'),
+}) {}
+
+export const KindCheckOutcome = Schema.Union(
+  KindBaselineRecorded,
+  KindCheckSucceeded,
+  KindCheckFailed,
+  KindCheckSkipped
+);
+export type KindCheckOutcome = Schema.Schema.Type<typeof KindCheckOutcome>;
+
+/**
+ * Why a check was held back: the Watch was checked in the last 5 minutes, Watch requests are
+ * spaced out, Instagram rate limited a Watch request, or a check of it is already queued.
+ */
+export const DeferredReason = Schema.Literal('checked-recently', 'paced', 'rate-limited', 'queued');
+export type DeferredReason = Schema.Schema.Type<typeof DeferredReason>;
+
+/** A Check now the worker has queued or is running, with each kind it has finished so far. */
+export class ManualCheckPending extends Schema.TaggedClass<ManualCheckPending>()(
+  'ManualCheckPending',
+  {
+    remainingKinds: Schema.Array(WatchKind),
+    outcomes: Schema.Array(KindCheckOutcome),
+    /** Set when pacing held the check back part way: when and why it continues. */
+    deferredUntil: Schema.optional(EpochMillis),
+    deferredReason: Schema.optional(DeferredReason),
+  }
+) {}
+
+/** The Watch's last finished Check now and what each kind found. */
+export class ManualCheckFinished extends Schema.TaggedClass<ManualCheckFinished>()(
+  'ManualCheckFinished',
+  { finishedAt: EpochMillis, outcomes: Schema.Array(KindCheckOutcome) }
+) {}
+
+export const ManualCheck = Schema.Union(ManualCheckPending, ManualCheckFinished);
+export type ManualCheck = Schema.Schema.Type<typeof ManualCheck>;
+
 export class WatchSummary extends Schema.Class<WatchSummary>('WatchSummary')({
   watchId: NonEmptyString,
   accountId: AccountId,
@@ -176,6 +237,7 @@ export class WatchSummary extends Schema.Class<WatchSummary>('WatchSummary')({
   inboxCount: Count,
   createdAt: EpochMillis,
   lastCheckAt: Schema.optional(EpochMillis),
+  manualCheck: Schema.optional(ManualCheck),
 }) {}
 
 export class WatchStorage extends Schema.Class<WatchStorage>('WatchStorage')({
@@ -333,39 +395,6 @@ export class WatchAttentionRecoverResult extends Schema.TaggedClass<WatchAttenti
   }
 ) {}
 
-export class KindBaselineRecorded extends Schema.TaggedClass<KindBaselineRecorded>()(
-  'KindBaselineRecorded',
-  { kind: WatchKind }
-) {}
-
-export class KindCheckSucceeded extends Schema.TaggedClass<KindCheckSucceeded>()(
-  'KindCheckSucceeded',
-  {
-    kind: WatchKind,
-    newCount: Count,
-    /** A longer traversal continues on a later turn of the same round. */
-    catchUp: Schema.Boolean,
-  }
-) {}
-
-export class KindCheckFailed extends Schema.TaggedClass<KindCheckFailed>()('KindCheckFailed', {
-  kind: WatchKind,
-  code: FailureCodeSchema,
-}) {}
-
-export class KindCheckSkipped extends Schema.TaggedClass<KindCheckSkipped>()('KindCheckSkipped', {
-  kind: WatchKind,
-  reason: Schema.Literal('paused', 'kind-off', 'login-unverified', 'storage', 'deferred'),
-}) {}
-
-export const KindCheckOutcome = Schema.Union(
-  KindBaselineRecorded,
-  KindCheckSucceeded,
-  KindCheckFailed,
-  KindCheckSkipped
-);
-export type KindCheckOutcome = Schema.Schema.Type<typeof KindCheckOutcome>;
-
 export class WatchCheckProgress extends Schema.Class<WatchCheckProgress>('WatchCheckProgress')({
   watchId: Schema.UUID,
   kind: WatchKind,
@@ -379,6 +408,7 @@ export class WatchCheckOutcome extends Schema.Class<WatchCheckOutcome>('WatchChe
   kinds: Schema.Array(KindCheckOutcome),
   /** Set when pacing held the check back: the earliest time it can run. */
   deferredUntil: Schema.optional(EpochMillis),
+  deferredReason: Schema.optional(DeferredReason),
 }) {}
 
 export class WatchCheckResult extends Schema.TaggedClass<WatchCheckResult>()('WatchCheckResult', {

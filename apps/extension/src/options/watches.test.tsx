@@ -8,6 +8,8 @@ import { processingBrowser } from '../test/processing-browser.ts';
 import type { MessageResponse } from '../messaging/contracts.ts';
 import { Watches } from './watches.tsx';
 
+const WATCH_ID = '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f';
+const CHECK_ID = '3e1a7c5b-9d2f-4a6e-8b0c-1d2e3f4a5b6c';
 let harness: ExtensionHarness;
 let instagram: ReturnType<typeof createWatchInstagram>;
 const savedBrowser = globalThis.browser;
@@ -41,7 +43,7 @@ function seedWatchWithProblemAndEntry(extra: readonly object[] = []) {
     version: 1,
     watches: [
       {
-        id: '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f',
+        id: WATCH_ID,
         viewerId: VIEWER.id,
         targetId: TARGET.id,
         username: TARGET.username,
@@ -261,6 +263,95 @@ describe('Watches options page', () => {
     expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
     expect(screen.getByText('0 Watches stored in this browser.')).toBeDefined();
     expect(screen.queryByText('+ Add Watch')).toBeNull();
+  });
+
+  it('shows the check the worker is running across navigation, then the outcome it recorded', async () => {
+    seedWatchWithProblemAndEntry();
+    const schedule = { nextRoundAt: Date.now() + 60 * 60_000, remaining: [], earlyRetries: [] };
+    const resumeAt = Date.now() + 10 * 60_000;
+    harness.local.write('watch-scheduler', {
+      version: 1,
+      logins: {
+        [VIEWER.id]: {
+          ...schedule,
+          manual: [
+            {
+              watchId: WATCH_ID,
+              checkId: CHECK_ID,
+              remainingKinds: ['stories'],
+              outcomes: [],
+              deferredUntil: resumeAt,
+              deferredReason: 'paced',
+            },
+          ],
+        },
+      },
+    });
+    const user = userEvent.setup();
+    render(<Watches />);
+    const openWatch = async () =>
+      user.click(await screen.findByRole('button', { name: new RegExp(`^@${TARGET.username}`) }));
+    await openWatch();
+
+    expect(await screen.findByRole('button', { name: 'Checking…' })).toHaveProperty(
+      'disabled',
+      true
+    );
+    expect(
+      screen.getByText(
+        `Still to check: Stories. Watch requests are spaced out. This check can run at ${new Date(resumeAt).toLocaleTimeString()}.`
+      )
+    ).toBeDefined();
+    await user.click(screen.getByText(/^All inbox$/));
+    await openWatch();
+    expect(await screen.findByRole('button', { name: 'Checking…' })).toBeDefined();
+
+    await harness.local.set({
+      'watch-scheduler': {
+        version: 1,
+        logins: {
+          [VIEWER.id]: {
+            ...schedule,
+            manual: [],
+            lastManual: [
+              {
+                watchId: WATCH_ID,
+                finishedAt: Date.now(),
+                outcomes: [
+                  { _tag: 'KindCheckSucceeded', kind: 'stories', newCount: 2, catchUp: false },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(await screen.findByRole('button', { name: 'Check now' })).toBeDefined();
+    expect(screen.getByText('Last check just now: Stories: 2 new.')).toBeDefined();
+  });
+
+  it('says why and until when a rate-limit pause holds Check now back', async () => {
+    seedWatchWithProblemAndEntry();
+    const until = Date.now() + 30 * 60_000;
+    harness.local.write('instagram-requests', {
+      version: 1,
+      attempts: [],
+      nextWatchAt: 0,
+      pause: { until, level: 0 },
+    });
+    await harness.loadWorker();
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(
+      await screen.findByRole('button', { name: new RegExp(`^@${TARGET.username}`) })
+    );
+    await user.click(await screen.findByRole('button', { name: 'Check now' }));
+
+    expect(
+      await screen.findByText(
+        `Instagram rate limited a Watch request. Checks wait until ${new Date(until).toLocaleTimeString()}.`
+      )
+    ).toBeDefined();
   });
 
   it('stops with a red storage banner when the store cannot be read', async () => {

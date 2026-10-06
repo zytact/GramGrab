@@ -5,6 +5,7 @@ import {
   WatchAdd,
   WatchCheck,
   WatchList,
+  WatchShow,
   type EventPayload,
 } from '@gramgrab/protocol';
 import { Schema } from 'effect';
@@ -92,10 +93,14 @@ describe('native Watch checks', () => {
     expect(harness.local.read('watch-scheduler')).toMatchObject({
       logins: { '1001': { manual: [] } },
     });
+    expect(await settled(harness.command(check()))).toMatchObject({
+      result: { outcomes: [{ deferredReason: 'checked-recently', kinds: [] }] },
+    });
   });
 
   it('admits one concurrent check per Watch and defers the other without duplicate acquisition', async () => {
     await add();
+    vi.mocked(Math.random).mockReturnValue(0.3701);
     const terminals = await settled(
       Promise.all([harness.command(check()), harness.command(check())])
     );
@@ -105,7 +110,7 @@ describe('native Watch checks', () => {
         : []
     );
     expect(results).toHaveLength(2);
-    expect(results.filter(result => result.outcomes[0]?.deferredUntil !== undefined)).toHaveLength(
+    expect(results.filter(result => result.outcomes[0]?.deferredReason === 'queued')).toHaveLength(
       1
     );
     expect(storyRequests()).toBe(1);
@@ -132,12 +137,55 @@ describe('native Watch checks', () => {
     const terminal = await settled(harness.command(check()));
     expect(terminal).toMatchObject({
       _tag: 'Completed',
-      result: { outcomes: [{ deferredUntil: START + 50 * 60_000, kinds: [] }] },
+      result: {
+        outcomes: [
+          { deferredUntil: START + 50 * 60_000, deferredReason: 'rate-limited', kinds: [] },
+        ],
+      },
     });
     expect(storyRequests()).toBe(0);
     expect(harness.local.read('watch-scheduler')).toMatchObject({
       logins: { '1001': { nextRoundAt: START + 12 * 60 * 60_000 } },
     });
+  });
+
+  it('gives a waiting manual check the pause that holds the pump back', async () => {
+    await add();
+    const watchId = (harness.local.read('watch-store') as { watches: { id: string }[] }).watches[0]!
+      .id;
+    const until = Date.now() + 30 * 60_000;
+    harness.local.write('instagram-requests', {
+      version: 1,
+      attempts: [],
+      nextWatchAt: 0,
+      pause: { until, level: 0 },
+    });
+    harness.local.write('watch-scheduler', {
+      version: 1,
+      logins: {
+        '1001': {
+          nextRoundAt: Date.now() + 12 * 60 * 60_000,
+          remaining: [],
+          earlyRetries: [],
+          manual: [
+            {
+              watchId,
+              checkId: '3e1a7c5b-9d2f-4a6e-8b0c-1d2e3f4a5b6c',
+              remainingKinds: ['stories'],
+              outcomes: [],
+            },
+          ],
+        },
+      },
+    });
+    await harness.session.set({ 'watch-browser-session': true });
+    await harness.loadWorker();
+    harness.fireAlarm('watch-pump');
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(harness.local.read('watch-scheduler')).toMatchObject({
+      logins: { '1001': { manual: [{ deferredUntil: until, deferredReason: 'rate-limited' }] } },
+    });
+    expect(storyRequests()).toBe(0);
   });
 
   it('cancels transport output while the durable check completes in the background', async () => {
@@ -197,17 +245,41 @@ describe('native Watch checks', () => {
       )
     )
       await vi.advanceTimersByTimeAsync(1_000);
-    expect(harness.local.read('watch-scheduler')).toMatchObject({
-      logins: { '1001': { manual: [{ remainingKinds: ['posts'] }] } },
-    });
     while (!profileStarted) await vi.advanceTimersByTimeAsync(1_000);
     reloaded = true;
     await harness.loadWorker();
+    const show = () =>
+      settled(
+        harness.send<WatchCommandResponse>({
+          type: 'WATCH_COMMAND',
+          command: WatchShow.make({ watch: AccountIdSelector.make({ accountId: TARGET.id }) }),
+        })
+      );
+    expect((await show()).result).toMatchObject({
+      watch: {
+        manualCheck: {
+          _tag: 'ManualCheckPending',
+          remainingKinds: ['posts'],
+          outcomes: [{ _tag: 'KindBaselineRecorded', kind: 'stories' }],
+        },
+      },
+    });
     harness.fireAlarm('watch-pump');
     await vi.advanceTimersByTimeAsync(3 * 60_000);
     expect(storyRequests()).toBe(1);
     expect(harness.local.read('watch-scheduler')).toMatchObject({
       logins: { '1001': { manual: [] } },
+    });
+    expect((await show()).result).toMatchObject({
+      watch: {
+        manualCheck: {
+          _tag: 'ManualCheckFinished',
+          outcomes: [
+            { _tag: 'KindBaselineRecorded', kind: 'stories' },
+            { _tag: 'KindBaselineRecorded', kind: 'posts' },
+          ],
+        },
+      },
     });
   });
 

@@ -22,6 +22,12 @@ export type OnMessageCallback = (
   sendResponse: (response: unknown) => void
 ) => boolean | void;
 
+/** What `storage.local.onChanged` reports for each changed key. */
+export type StorageChanges = Record<
+  string,
+  { readonly oldValue?: unknown; readonly newValue?: unknown }
+>;
+
 export interface PortEvent<T> {
   addListener: (callback: T) => void;
   removeListener: (callback: T) => void;
@@ -102,6 +108,7 @@ export interface BrowserShim {
     get: (keys?: unknown) => Promise<Record<string, unknown>>;
     set: (items: Record<string, unknown>) => Promise<void>;
     remove: (keys: string | string[]) => Promise<void>;
+    onChanged: PortEvent<(changes: StorageChanges) => void>;
   };
   sessionStorage: {
     get: (keys?: unknown) => Promise<Record<string, unknown>>;
@@ -241,6 +248,7 @@ interface ChromeGlobal extends Partial<PromisedApis> {
       get: (keys: unknown, cb: (result: Record<string, unknown>) => void) => void;
       set: (items: Record<string, unknown>, cb?: () => void) => void;
       remove: (keys: string | string[], cb?: () => void) => void;
+      onChanged: PortEvent<(changes: StorageChanges) => void>;
     };
     session?: {
       get: (keys: unknown, cb: (result: Record<string, unknown>) => void) => void;
@@ -302,6 +310,7 @@ interface NativeBrowserGlobal extends Partial<PromisedApis> {
       get: (keys?: unknown) => Promise<Record<string, unknown>>;
       set: (items: Record<string, unknown>) => Promise<void>;
       remove: (keys: string | string[]) => Promise<void>;
+      onChanged: PortEvent<(changes: StorageChanges) => void>;
     };
     session?: {
       get: (keys?: unknown) => Promise<Record<string, unknown>>;
@@ -476,6 +485,7 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             else resolve();
           });
         }),
+      onChanged: chrome.storage.local.onChanged,
     },
     sessionStorage: session
       ? {
@@ -702,6 +712,7 @@ const noopStorage: BrowserShim['storage'] = {
   get: () => Promise.resolve({}),
   set: () => Promise.resolve(),
   remove: () => Promise.resolve(),
+  onChanged: { addListener: () => {}, removeListener: () => {} },
 };
 
 const noopShim: BrowserShim = {

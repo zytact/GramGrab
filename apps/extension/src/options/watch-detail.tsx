@@ -6,10 +6,12 @@ import {
   WatchInboxRemove,
   WatchShow,
   type ActionOutcome,
+  type DeferredReason,
   type DiscoverySummary,
   type InboxExportOutcome,
   type KindCheckOutcome,
   type KindHealth,
+  type ManualCheck,
   type WatchCommand,
   type WatchSummary,
 } from '@gramgrab/protocol';
@@ -297,34 +299,85 @@ function outcomeText(outcome: KindCheckOutcome): string {
   }
 }
 
-/** Puts the Watch at the front of the queue; pacing may still hold it back. */
-function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string>();
+const DEFERRED_TEXT: Record<DeferredReason, (at: string) => string> = {
+  'checked-recently': at => `Checked in the last 5 minutes. Check again at ${at}.`,
+  paced: at => `Watch requests are spaced out. This check can run at ${at}.`,
+  'rate-limited': at => `Instagram rate limited a Watch request. Checks wait until ${at}.`,
+  queued: () => 'A check of this Watch is already queued.',
+};
+
+const deferredText = (reason: DeferredReason, until: number) =>
+  DEFERRED_TEXT[reason](new Date(until).toLocaleTimeString());
+
+/** Where the Watch's manual check stands, as the worker records it. */
+function ManualCheckStatus({ check }: { check: ManualCheck }) {
+  const done = check.outcomes.map(outcomeText).join(' · ');
+  if (check._tag === 'ManualCheckFinished')
+    return (
+      <p className="opt-meta">
+        Last check {relativeTime(check.finishedAt)}: {done || 'nothing to check'}.
+      </p>
+    );
+  const remaining = check.remainingKinds.map(kind => KIND_LABEL[kind]).join(', ');
+  const waiting =
+    check.deferredUntil !== undefined && check.deferredReason && check.deferredUntil > Date.now()
+      ? deferredText(check.deferredReason, check.deferredUntil)
+      : undefined;
+  return (
+    <p className="opt-meta">
+      {done && `${done}. `}
+      {remaining && `Still to check: ${remaining}. `}
+      {waiting}
+    </p>
+  );
+}
+
+/**
+ * Puts the Watch at the front of the queue; pacing may still hold it back. Whether it is checking
+ * comes from the worker's record, so it survives leaving the Watch or reloading the page.
+ */
+function CheckNow({
+  watch,
+  manualCheck,
+  onChecked,
+}: {
+  watch: WatchSummary;
+  manualCheck: ManualCheck | undefined;
+  onChecked: () => void;
+}) {
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState<string>();
   const [failure, setFailure] = useState<WatchFailure>();
+  const checking = sending || manualCheck?._tag === 'ManualCheckPending';
   const check = async () => {
-    setBusy(true);
-    setMessage(undefined);
+    setSending(true);
+    setNotice(undefined);
     const response = await runCommand(
       WatchCheck.make({ watches: [AccountIdSelector.make({ accountId: watch.accountId })] })
     );
-    setBusy(false);
+    setSending(false);
     setFailure(response.failure);
     const outcome =
       response.result?._tag === 'WatchCheckResult' ? response.result.outcomes[0] : undefined;
-    if (outcome?.deferredUntil)
-      setMessage(
-        `Watch checks are paced. This one can run at ${new Date(outcome.deferredUntil).toLocaleTimeString()}.`
-      );
-    else if (outcome) setMessage(outcome.kinds.map(outcomeText).join(' · ') || 'Nothing to check.');
+    if (outcome?.deferredUntil !== undefined)
+      setNotice(deferredText(outcome.deferredReason ?? 'paced', outcome.deferredUntil));
+    else if (
+      outcome?.kinds.some(kind => kind._tag === 'KindCheckSkipped' && kind.reason === 'storage')
+    )
+      setNotice(outcome.kinds.map(outcomeText).join(' · '));
     onChecked();
   };
   return (
     <div className="opt-col">
-      <button className="opt-btn" disabled={busy || !watch.enabled} onClick={() => void check()}>
-        {busy ? 'Checking…' : 'Check now'}
+      <button
+        className="opt-btn"
+        disabled={checking || !watch.enabled}
+        onClick={() => void check()}
+      >
+        {checking ? 'Checking…' : 'Check now'}
       </button>
-      {message && <p className="opt-meta">{message}</p>}
+      {manualCheck && <ManualCheckStatus check={manualCheck} />}
+      {notice && <p className="opt-meta">{notice}</p>}
       {failure?._tag === 'CommandFailure' && (
         <p className="opt-meta opt-error">{FAILURE_PRESENTATION[failure.failure.code].title}</p>
       )}
@@ -335,10 +388,12 @@ function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => 
 /** One Watch's health and what it found, reloaded whenever `version` changes. */
 export function WatchDetail({
   watch,
+  manualCheck,
   version,
   onChanged,
 }: {
   watch: WatchSummary;
+  manualCheck: ManualCheck | undefined;
   version: number;
   onChanged: () => void;
 }) {
@@ -365,7 +420,7 @@ export function WatchDetail({
           <span className="opt-h1">@{watch.username}</span>
           {watch.formerUsername && <span className="opt-meta">was @{watch.formerUsername}</span>}
         </div>
-        <CheckNow watch={watch} onChecked={onChanged} />
+        <CheckNow watch={watch} manualCheck={manualCheck} onChecked={onChanged} />
       </div>
       {!watch.enabled && (
         <p className="opt-banner">

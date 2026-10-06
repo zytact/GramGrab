@@ -1,8 +1,20 @@
 import { Effect, Schema } from 'effect';
-import { AccountId, WatchKind, KindCheckOutcome, type FailureCode } from '@gramgrab/protocol';
+import {
+  WatchKind,
+  KindCheckOutcome,
+  type DeferredReason,
+  type FailureCode,
+} from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
-import { WatchRequests } from '../instagram/requests.ts';
+import { WatchRequests, requestLedger } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
+import {
+  SCHEDULER_KEY,
+  SchedulerState,
+  decodeSchedulerState,
+  manualChecks,
+  type LoginSchedule,
+} from './schedule-state.ts';
 import { refreshBadge } from './attention.ts';
 import { checkWatch, type CheckScope } from './check.ts';
 import { notifyCheck, resumeNotifications, notificationsNeedWork } from './notify.ts';
@@ -13,7 +25,6 @@ import { readStore } from './store.ts';
 const liveManual = new Set<string>();
 
 export const ALARM_NAME = 'watch-pump';
-const STATE_KEY = 'watch-scheduler';
 const SESSION_KEY = 'watch-browser-session';
 const HOUR_MS = 60 * 60_000;
 const ROUND_MS = 12 * HOUR_MS;
@@ -42,45 +53,11 @@ const suspends = (outcomes: readonly KindCheckOutcome[]) =>
       : outcome._tag === 'KindCheckFailed' && SUSPENDING.has(outcome.code)
   );
 
-const EarlyRetry = Schema.Struct({ watchId: Schema.UUID, kind: WatchKind, at: Schema.Number });
-
-const LoginSchedule = Schema.Struct({
-  nextRoundAt: Schema.Number.pipe(Schema.int()),
-  /** Watches of the current round still waiting for their turn, in order. */
-  remaining: Schema.Array(Schema.UUID),
-  /** The current round, whose Watches share one Instants feed. */
-  roundId: Schema.optional(Schema.UUID),
-  /** Watches whose Posts traversal continues this round once the remaining Watches had a turn. */
-  catchUp: Schema.optional(Schema.Array(Schema.UUID)),
-  earlyRetries: Schema.Array(EarlyRetry),
-  manual: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        watchId: Schema.UUID,
-        checkId: Schema.UUID,
-        remainingKinds: Schema.Array(WatchKind),
-        outcomes: Schema.optional(Schema.Array(KindCheckOutcome)),
-      })
-    )
-  ),
-});
-type LoginSchedule = Schema.Schema.Type<typeof LoginSchedule>;
-
-const SchedulerState = Schema.Struct({
-  version: Schema.Literal(1),
-  logins: Schema.Record({ key: AccountId, value: LoginSchedule }),
-  startupHoldUntil: Schema.optional(Schema.Number),
-  /** Set when the session was rejected; cleared when the person next verifies their login. */
-  suspended: Schema.optional(Schema.Boolean),
-});
-type SchedulerState = Schema.Schema.Type<typeof SchedulerState>;
-
-const EMPTY: SchedulerState = { version: 1, logins: {} };
-
 async function loadState(): Promise<SchedulerState> {
-  const stored = await browser.storage.get(STATE_KEY).catch((): Record<string, unknown> => ({}));
-  const decoded = Schema.decodeUnknownOption(SchedulerState)(stored[STATE_KEY]);
-  return decoded._tag === 'Some' ? decoded.value : EMPTY;
+  const stored = await browser.storage
+    .get(SCHEDULER_KEY)
+    .catch((): Record<string, unknown> => ({}));
+  return decodeSchedulerState(stored[SCHEDULER_KEY]);
 }
 
 let writes: Promise<unknown> = Promise.resolve();
@@ -93,7 +70,7 @@ function updateState(
   const run = async () => {
     const next = change(await loadState());
     await browser.storage
-      .set({ [STATE_KEY]: Schema.encodeSync(SchedulerState)(next) })
+      .set({ [SCHEDULER_KEY]: Schema.encodeSync(SchedulerState)(next) })
       .catch(cause => {
         if (required) throw cause;
       });
@@ -172,11 +149,14 @@ function nextJob(
   now: number
 ): { readonly job?: Job; readonly schedule: LoginSchedule } {
   const enabled = new Set(watches.filter(watch => watch.enabled).map(watch => watch.id));
+  const exists = (job: { readonly watchId: string }) =>
+    watches.some(watch => watch.id === job.watchId);
   const current: LoginSchedule = {
     ...(schedule ?? { nextRoundAt: now, remaining: [], earlyRetries: [] }),
-    manual: schedule?.manual?.filter(job => watches.some(watch => watch.id === job.watchId)),
+    manual: schedule?.manual?.filter(exists),
+    lastManual: schedule?.lastManual?.filter(exists),
   };
-  const manual = current.manual?.find(job => watches.some(watch => watch.id === job.watchId));
+  const manual = current.manual?.[0];
   if (manual) return { job: { _tag: 'manual', ...manual }, schedule: current };
   const retry = current.earlyRetries.find(item => item.at <= now && enabled.has(item.watchId));
   if (retry) return { job: { _tag: 'retry', ...retry }, schedule: current };
@@ -235,9 +215,30 @@ async function readyViewer(): Promise<string | undefined> {
   if (!hasDueWork(state, read.store.watches)) return undefined;
   const viewer = await verifyViewer();
   if (viewer._tag === 'Right') return viewer.right.accountId;
-  if (viewer.left._tag !== 'WatchRequestDeferred' && viewer.left._tag !== 'RateLimited')
-    await updateState(current => ({ ...current, suspended: true }));
+  if (viewer.left._tag === 'WatchRequestDeferred' || viewer.left._tag === 'RateLimited')
+    await holdPendingManual(Date.now());
+  else await updateState(current => ({ ...current, suspended: true }));
   return undefined;
+}
+
+/** Pacing held the pump back before any job ran: pending manual checks wait for the same hold. */
+async function holdPendingManual(now: number) {
+  const until = requestLedger.nextWatchAllowedAt(now);
+  const state = await loadState();
+  if (until <= now || !Object.values(state.logins).some(login => login.manual?.length)) return;
+  const deferredReason = pacingReason(now);
+  await updateState(current => ({
+    ...current,
+    logins: Object.fromEntries(
+      Object.entries(current.logins).map(([viewerId, login]) => [
+        viewerId,
+        {
+          ...login,
+          manual: login.manual?.map(job => ({ ...job, deferredUntil: until, deferredReason })),
+        },
+      ])
+    ),
+  }));
 }
 
 const setSchedule = (
@@ -263,6 +264,7 @@ async function recoverManualJob(viewerId: string, job: Extract<Job, { _tag: 'man
   );
   if (run.deferredUntil === undefined)
     await finishManual(viewerId, job.watchId, job.checkId, [...(job.outcomes ?? []), ...run.kinds]);
+  else await deferManual(viewerId, job.watchId, job.checkId, run.deferredUntil);
   await refreshBadge();
   return run.deferredUntil === undefined;
 }
@@ -371,7 +373,10 @@ export async function resumeAfterPerson(): Promise<void> {
   if (state.suspended) await updateState(current => ({ ...current, suspended: undefined }));
 }
 
-/** When the verified login's next round starts, and how many Watches its current round has left. */
+/**
+ * When the verified login's next round starts, how many Watches its current round has left, and
+ * where each Watch's manual check stands.
+ */
 export async function scheduleOf(viewerId: string) {
   const state = await loadState();
   const schedule = state.logins[viewerId];
@@ -379,6 +384,7 @@ export async function scheduleOf(viewerId: string) {
     nextRoundAt: schedule?.nextRoundAt,
     roundRemaining: schedule?.remaining.length ?? 0,
     suspended: state.suspended ?? false,
+    manualChecks: manualChecks(schedule),
   };
 }
 
@@ -429,14 +435,16 @@ export async function queueManual(viewerId: string, checkId: string, watches: re
   };
 }
 
-export async function checkpointManual(
+type ManualJob = NonNullable<LoginSchedule['manual']>[number];
+
+/** Replaces one manual job of the login through `change`. */
+const updateManual = (
   viewerId: string,
   watchId: string,
   checkId: string,
-  outcome: import('@gramgrab/protocol').KindCheckOutcome
-) {
-  if (outcome._tag === 'KindCheckSkipped' && outcome.reason === 'deferred') return;
-  await updateState(state => {
+  change: (job: ManualJob) => ManualJob
+) =>
+  updateState(state => {
     const current = state.logins[viewerId];
     if (!current) return state;
     return {
@@ -446,21 +454,44 @@ export async function checkpointManual(
         [viewerId]: {
           ...current,
           manual: current.manual?.map(job =>
-            job.watchId === watchId && job.checkId === checkId
-              ? {
-                  ...job,
-                  remainingKinds: job.remainingKinds.filter(kind => kind !== outcome.kind),
-                  outcomes: [
-                    ...(job.outcomes ?? []).filter(previous => previous.kind !== outcome.kind),
-                    outcome,
-                  ],
-                }
-              : job
+            job.watchId === watchId && job.checkId === checkId ? change(job) : job
           ),
         },
       },
     };
   }, true);
+
+export async function checkpointManual(
+  viewerId: string,
+  watchId: string,
+  checkId: string,
+  outcome: import('@gramgrab/protocol').KindCheckOutcome
+) {
+  if (outcome._tag === 'KindCheckSkipped' && outcome.reason === 'deferred') return;
+  await updateManual(viewerId, watchId, checkId, job => ({
+    watchId: job.watchId,
+    checkId: job.checkId,
+    remainingKinds: job.remainingKinds.filter(kind => kind !== outcome.kind),
+    outcomes: [...(job.outcomes ?? []).filter(previous => previous.kind !== outcome.kind), outcome],
+  }));
+}
+
+/** Why pacing holds Watch work back right now: a rate-limit pause, or ordinary spacing. */
+export const pacingReason = (now: number): DeferredReason =>
+  requestLedger.pausedUntil(now) === undefined ? 'paced' : 'rate-limited';
+
+/** Records that pacing stopped a manual check part way, and until when. */
+export async function deferManual(
+  viewerId: string,
+  watchId: string,
+  checkId: string,
+  until: number
+) {
+  await updateManual(viewerId, watchId, checkId, job => ({
+    ...job,
+    deferredUntil: until,
+    deferredReason: pacingReason(Date.now()),
+  }));
 }
 
 export async function finishManual(
@@ -481,6 +512,10 @@ export async function finishManual(
   await setSchedule(viewerId, current => ({
     ...(current ?? { nextRoundAt: Date.now(), remaining: [], earlyRetries: [] }),
     manual: current?.manual?.filter(job => job.watchId !== watchId || job.checkId !== checkId),
+    lastManual: [
+      ...(current?.lastManual ?? []).filter(last => last.watchId !== watchId),
+      { watchId, finishedAt: Date.now(), outcomes },
+    ],
     earlyRetries: [
       ...(current?.earlyRetries ?? []).filter(
         retry => retry.watchId !== watchId || !completed.has(retry.kind)
