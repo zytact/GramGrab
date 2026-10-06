@@ -307,6 +307,19 @@ export const eventFixtures: readonly unknown[] = [
     requestId,
     event: {
       _tag: 'Progress',
+      phase: 'watch-check',
+      watchCheck: {
+        watchId: operationId,
+        kind: 'stories',
+        outcome: { _tag: 'KindBaselineRecorded', kind: 'stories' },
+      },
+    },
+  },
+  {
+    version: 2,
+    requestId,
+    event: {
+      _tag: 'Progress',
       operationId,
       itemNumber: 1,
       phase: 'silent-copy',

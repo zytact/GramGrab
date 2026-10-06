@@ -15,6 +15,10 @@ import {
   UNATTENDED_DISCLOSURE,
   UnattendedDisclosure,
   WatchLifecycleResult,
+  WatchCheckResult,
+  WatchCheckProgress,
+  KindCheckFailed,
+  KindBaselineRecorded,
   type EventPayload,
   decodeClientMessage,
   decodeJsonFrame,
@@ -337,7 +341,7 @@ describe('CLI capability grammar', () => {
 /** An extension stand-in that answers each request with `answer`'s terminal event. */
 async function answeringServer(
   endpoint: string,
-  answer: (request: Request) => EventPayload
+  answer: (request: Request) => EventPayload | readonly EventPayload[]
 ): Promise<{ readonly requests: Request[]; readonly close: () => Promise<void> }> {
   const requests: Request[] = [];
   const server = createServer(socket => {
@@ -347,7 +351,8 @@ async function answeringServer(
       for (const frame of decoder.push(chunk)) {
         const incoming = Schema.decodeUnknownSync(Request)(decodeJsonFrame(frame));
         requests.push(incoming);
-        for (const event of [Accepted.make({}), answer(incoming)])
+        const events = answer(incoming);
+        for (const event of [Accepted.make({}), ...(Array.isArray(events) ? events : [events])])
           socket.write(
             encodeJsonFrame(
               Schema.encodeSync(Event)(
@@ -416,6 +421,26 @@ describe('CLI watch grammar', () => {
     );
   });
 
+  it('parses selected and all Watch checks with local selectors', () => {
+    expect(command('check', 'instagram', '12345', '--json')).toMatchObject({
+      _tag: 'WatchCheck',
+      watches: [{ username: 'instagram' }, { accountId: '12345' }],
+    });
+    expect(command('check', '--all')).toMatchObject({ _tag: 'WatchCheck' });
+    expect(command('check', '12345', '--username')).toMatchObject({
+      watches: [{ username: '12345' }],
+    });
+  });
+  it.each([
+    [['check'], 'needs WATCH selectors or --all'],
+    [['check', 'instagram', '--all'], 'selectors or --all, not both'],
+    [['check', '--all', '--username'], 'selectors or --all, not both'],
+    [['check', 'instagram', '--kinds', 'posts'], 'Unknown option'],
+    [['check', 'instagram', '--username', '--account-id'], 'either --account-id or --username'],
+  ])('rejects invalid check grammar %j', (arguments_, message) =>
+    expect(() => command(...arguments_)).toThrow(message)
+  );
+
   it.each([
     [['add', 'someone', '--actions', 'collect'], 'needs --kinds and --actions'],
     [['add', 'someone', '--kinds', 'posts,posts', '--actions', 'collect'], 'Invalid --kinds'],
@@ -431,6 +456,98 @@ describe('CLI watch grammar', () => {
 });
 
 describe('CLI watch process', () => {
+  it('prints every kind progress on stderr and a single unsuccessful terminal result on stdout', async () => {
+    const endpoint = await testEndpoint();
+    const watchId = 'ad7a60ff-5e9f-470f-b036-f116e32fda41';
+    const outcomes = [
+      KindBaselineRecorded.make({ kind: 'stories' }),
+      KindCheckFailed.make({ kind: 'posts', code: 'IG_RESPONSE_SHAPE_UNKNOWN' }),
+    ];
+    const server = await answeringServer(endpoint, () => [
+      ...outcomes.map(outcome =>
+        Progress.make({
+          phase: 'watch-check',
+          watchCheck: WatchCheckProgress.make({ watchId, kind: outcome.kind, outcome }),
+        })
+      ),
+      Completed.make({
+        result: Schema.decodeUnknownSync(WatchCheckResult)({
+          _tag: 'WatchCheckResult',
+          outcomes: [{ watchId, accountId: '2002', username: 'instagram', kinds: outcomes }],
+          unknownWatches: ['missing'],
+        }),
+      }),
+    ]);
+    const result = await runCliProcess(
+      ['watch', 'check', 'instagram', 'missing', '--json'],
+      endpoint
+    );
+    expect(result.code).toBe(1);
+    expect(result.stdout.trim().split('\n')).toHaveLength(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      _tag: 'WatchCheckResult',
+      unknownWatches: ['missing'],
+    });
+    const progress = result.stderr
+      .trim()
+      .split('\n')
+      .map(line => JSON.parse(line));
+    expect(progress).toMatchObject([
+      { watchCheck: { kind: 'stories' } },
+      { watchCheck: { kind: 'posts' } },
+    ]);
+    await server.close();
+  });
+  it('returns unsuccessful status and the next allowed time for a deferred check', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Completed.make({
+        result: Schema.decodeUnknownSync(WatchCheckResult)({
+          _tag: 'WatchCheckResult',
+          outcomes: [
+            {
+              watchId: 'watch',
+              accountId: '2002',
+              username: 'instagram',
+              kinds: [],
+              deferredUntil: 1790859000000,
+            },
+          ],
+          unknownWatches: [],
+        }),
+      })
+    );
+    const result = await runCliProcess(['watch', 'check', '--all', '--json'], endpoint);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      outcomes: [{ deferredUntil: 1790859000000 }],
+    });
+    await server.close();
+  });
+  it('returns success when every configured kind succeeds', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Completed.make({
+        result: Schema.decodeUnknownSync(WatchCheckResult)({
+          _tag: 'WatchCheckResult',
+          outcomes: [
+            {
+              watchId: 'watch',
+              accountId: '2002',
+              username: 'instagram',
+              kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
+            },
+          ],
+          unknownWatches: [],
+        }),
+      })
+    );
+    const result = await runCliProcess(['watch', 'check', '--all', '--json'], endpoint);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim().split('\n')).toHaveLength(1);
+    await server.close();
+  });
+
   it('exits 1 with the disclosure when add is not acknowledged', async () => {
     const endpoint = await testEndpoint();
     const server = await answeringServer(endpoint, () =>

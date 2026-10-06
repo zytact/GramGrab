@@ -278,6 +278,12 @@ export const KindCheckOutcome = Schema.Union(
 );
 export type KindCheckOutcome = Schema.Schema.Type<typeof KindCheckOutcome>;
 
+export class WatchCheckProgress extends Schema.Class<WatchCheckProgress>('WatchCheckProgress')({
+  watchId: Schema.UUID,
+  kind: WatchKind,
+  outcome: KindCheckOutcome,
+}) {}
+
 export class WatchCheckOutcome extends Schema.Class<WatchCheckOutcome>('WatchCheckOutcome')({
   watchId: NonEmptyString,
   accountId: AccountId,

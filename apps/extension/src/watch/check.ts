@@ -43,9 +43,8 @@ import {
 import { readStories, fetchStories } from './stories.ts';
 import { readInstants, sharedInstantsFeed } from './instants.ts';
 import { fetchAvatar, readAvatar } from './avatar.ts';
-import { UsernameUnconfirmed, confirmProfile } from './identity.ts';
+import { UsernameUnconfirmed, confirmProfile, fetchViewer } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
-import { fetchViewer } from './identity.ts';
 
 /**
  * One Watch's check runs these stages in order. `profile` confirms the current username by
@@ -125,6 +124,7 @@ const findWatch = async (watchId: string, viewerId: string) => {
 export interface CheckScope {
   readonly checkId: string;
   readonly feedScope: string;
+  readonly onKind?: (outcome: KindCheckOutcome) => void | Promise<void>;
 }
 
 /** One kind's turn: its outcome, and whether the rest of the check must stop. */
@@ -396,6 +396,7 @@ const runStage = (
 
 const checkAuthorization = Effect.fn(function* (
   watch: Watch,
+  scope: CheckScope,
   only: readonly WatchKind[] | undefined,
   completed: readonly KindCheckOutcome[]
 ) {
@@ -410,12 +411,15 @@ const checkAuthorization = Effect.fn(function* (
     .map(kind =>
       KindCheckSkipped.make({ kind, reason: until === undefined ? 'login-unverified' : 'deferred' })
     );
+  for (const outcome of kinds)
+    yield* Effect.promise(() => Promise.resolve(scope.onKind?.(outcome)));
   return { kinds, deferredUntil: until };
 });
 
 const authorizeStage = Effect.fn(function* (
   watch: Watch,
   stage: (typeof STAGES)[number],
+  scope: CheckScope,
   only: readonly WatchKind[] | undefined,
   completed: readonly KindCheckOutcome[]
 ) {
@@ -424,7 +428,7 @@ const authorizeStage = Effect.fn(function* (
       ? NEEDS_PROFILE.some(kind => selected(watch, kind, only))
       : selected(watch, stage, only);
   if (!chosen) return undefined;
-  return yield* checkAuthorization(watch, only, completed);
+  return yield* checkAuthorization(watch, scope, only, completed);
 });
 
 /**
@@ -446,13 +450,17 @@ export const checkWatch = (
     for (const stage of STAGES) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
-      const authorization = yield* authorizeStage(watch, stage, only, outcomes);
+      const authorization = yield* authorizeStage(watch, stage, scope, only, outcomes);
       if (authorization)
         return { ...authorization, kinds: [...outcomes, ...authorization.kinds], pictureUrl };
       const result: StageResult = yield* runStage(watch, stage, only, { scope: shared, blocked });
       blocked = result.blocked;
       for (const step of result.steps) {
-        if (step.outcome) outcomes.push(step.outcome);
+        const outcome = step.outcome;
+        if (outcome) {
+          outcomes.push(outcome);
+          yield* Effect.promise(() => Promise.resolve(scope.onKind?.(outcome)));
+        }
         pictureUrl ??= step.pictureUrl;
         if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil, pictureUrl };
       }

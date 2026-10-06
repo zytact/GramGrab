@@ -1,4 +1,4 @@
-import { Data, Effect, Match, Schema } from 'effect';
+import { Data, Effect, Either, Match, Schema } from 'effect';
 import {
   AccountId,
   CommandFailure,
@@ -9,6 +9,9 @@ import {
   UnattendedDisclosure,
   WatchAddResult,
   WatchCheckOutcome,
+  WatchCheckProgress,
+  WATCH_KINDS,
+  KindCheckSkipped,
   WatchCheckResult,
   WatchInboxExportResult,
   WatchInboxListResult,
@@ -44,7 +47,14 @@ import { recoverable, applyRecovery } from './recovery.ts';
 import type { Learned } from './export.ts';
 import { exportPlannedEntry } from './manual-export-run.ts';
 import { InboxExportExecution } from './manual-export.ts';
-import { resumeAfterPerson, runCheck, scheduleOf } from './scheduler.ts';
+import {
+  resumeAfterPerson,
+  runCheck,
+  scheduleOf,
+  queueManual,
+  checkpointManual,
+  finishManual,
+} from './scheduler.ts';
 import { confirmProfile, fetchViewer, type Account } from './identity.ts';
 import {
   mutateStore,
@@ -313,27 +323,52 @@ const lifecycle = (command: Extract<WatchCommand, { _tag: 'WatchLifecycle' }>) =
     });
   });
 
-/** Runs one manual check, unless the Watch was checked moments ago. */
-const checkOne = (watch: Watch, viewer: Account, checkId: string) =>
-  Effect.gen(function* () {
-    const last = lastCheckAt(watch);
-    const earliest = last === undefined ? 0 : last + MANUAL_CHECK_INTERVAL_MS;
-    const run =
-      earliest > Date.now()
-        ? { kinds: [], deferredUntil: earliest }
-        : yield* Effect.promise(() =>
-            runCheck(watch.id, viewer.accountId, { checkId, feedScope: checkId })
-          );
-    return WatchCheckOutcome.make({
-      watchId: watch.id,
-      accountId: watch.targetId,
-      username: watch.username,
-      kinds: run.kinds,
-      ...(run.deferredUntil === undefined ? {} : { deferredUntil: run.deferredUntil }),
-    });
-  });
+function deferredUntil(watch: Watch, now: number): number | undefined {
+  const last = lastCheckAt(watch);
+  const manual = last === undefined ? now : last + MANUAL_CHECK_INTERVAL_MS;
+  const paced = requestLedger.nextWatchAllowedAt(now);
+  return manual > now || paced > now + 25_000 ? Math.max(manual, paced) : undefined;
+}
 
-const check = (command: Extract<WatchCommand, { _tag: 'WatchCheck' }>) =>
+const checkOne = Effect.fn(function* (
+  watch: Watch,
+  viewer: Account,
+  checkId: string,
+  onProgress: (progress: WatchCheckProgress) => void
+) {
+  const publish = (outcome: import('@gramgrab/protocol').KindCheckOutcome) =>
+    onProgress(WatchCheckProgress.make({ watchId: watch.id, kind: outcome.kind, outcome }));
+  const off = WATCH_KINDS.filter(kind => !watch.kinds.includes(kind)).map(kind =>
+    KindCheckSkipped.make({ kind, reason: 'kind-off' })
+  );
+  for (const outcome of off) publish(outcome);
+  const run = yield* Effect.tryPromise({
+    try: () =>
+      runCheck(watch.id, viewer.accountId, {
+        checkId,
+        feedScope: checkId,
+        onKind: async outcome => {
+          await checkpointManual(viewer.accountId, watch.id, checkId, outcome);
+          publish(outcome);
+        },
+      }),
+    catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
+  });
+  if (run.deferredUntil === undefined)
+    yield* Effect.promise(() => finishManual(viewer.accountId, watch.id, checkId, run.kinds));
+  return WatchCheckOutcome.make({
+    watchId: watch.id,
+    accountId: watch.targetId,
+    username: watch.username,
+    kinds: [...off, ...run.kinds],
+    ...(run.deferredUntil === undefined ? {} : { deferredUntil: run.deferredUntil }),
+  });
+});
+
+const check = (
+  command: Extract<WatchCommand, { _tag: 'WatchCheck' }>,
+  onProgress: (progress: WatchCheckProgress) => void
+) =>
   Effect.gen(function* () {
     const store = yield* loadOrReject;
     const viewer = yield* verifyViewer(store);
@@ -344,10 +379,51 @@ const check = (command: Extract<WatchCommand, { _tag: 'WatchCheck' }>) =>
           watch: mine.find(watch => matches(watch, selector)),
         }))
       : mine.filter(watch => watch.enabled).map(watch => ({ selector: undefined, watch }));
-    const outcomes: WatchCheckOutcome[] = [];
+    const unique = [
+      ...new Map(
+        selected.flatMap(({ watch }) => (watch ? [[watch.id, watch] as const] : []))
+      ).values(),
+    ];
+    const holds = new Map(unique.map(watch => [watch.id, deferredUntil(watch, Date.now())]));
+    const admitted = unique.filter(watch => holds.get(watch.id) === undefined);
     const checkId = decodeUuid(crypto.randomUUID());
-    for (const { watch } of selected)
-      if (watch) outcomes.push(yield* checkOne(watch, viewer, checkId));
+    const queued = yield* Effect.tryPromise({
+      try: () => queueManual(viewer.accountId, checkId, admitted),
+      catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
+    }).pipe(Effect.either);
+    const outcomes = yield* Effect.forEach(unique, watch => {
+      const until =
+        holds.get(watch.id) ??
+        (Either.isRight(queued) && !queued.right.watchIds.has(watch.id)
+          ? Math.max(requestLedger.nextWatchAllowedAt(Date.now()), Date.now() + 1_000)
+          : undefined);
+      return until === undefined
+        ? Either.isRight(queued)
+          ? checkOne(watch, viewer, checkId, onProgress)
+          : Effect.succeed(
+              WatchCheckOutcome.make({
+                watchId: watch.id,
+                accountId: watch.targetId,
+                username: watch.username,
+                kinds: watch.kinds.map(kind => KindCheckSkipped.make({ kind, reason: 'storage' })),
+              })
+            )
+        : Effect.succeed(
+            WatchCheckOutcome.make({
+              watchId: watch.id,
+              accountId: watch.targetId,
+              username: watch.username,
+              kinds: [],
+              deferredUntil: until,
+            })
+          );
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (Either.isRight(queued)) queued.right.release();
+        })
+      )
+    );
     return WatchCheckResult.make({
       outcomes,
       unknownWatches: selected.flatMap(({ selector, watch }) =>
@@ -518,7 +594,8 @@ const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>) =>
   });
 
 const program = (
-  command: WatchCommand
+  command: WatchCommand,
+  onProgress: (progress: WatchCheckProgress) => void
 ): Effect.Effect<WatchResult, WatchRejection, InstagramRequests | InboxExportExecution> =>
   Match.valueTags(command, {
     WatchList: () => list,
@@ -526,7 +603,7 @@ const program = (
     WatchAdd: add,
     WatchSet: set,
     WatchLifecycle: lifecycle,
-    WatchCheck: check,
+    WatchCheck: command => check(command, onProgress),
     WatchInboxList: inboxList,
     WatchInboxRemove: inboxRemove,
     WatchInboxExport: inboxExport,
@@ -556,10 +633,11 @@ const runForPerson = <A>(
 /** Runs one Watch command, as the options page and CLI both do. */
 export const runWatchCommand = (
   command: WatchCommand,
-  run: InboxExportExecution['Type']['run']
+  run: InboxExportExecution['Type']['run'],
+  onProgress: (progress: WatchCheckProgress) => void = () => {}
 ): Promise<WatchCommandResponse> =>
   runForPerson(
-    Effect.map(program(command), result => ({ result })).pipe(
+    Effect.map(program(command, onProgress), result => ({ result })).pipe(
       Effect.provideService(InboxExportExecution, { run })
     )
   );

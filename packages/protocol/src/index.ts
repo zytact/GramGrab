@@ -9,7 +9,7 @@ export {
   ExportSettings,
 } from './export-modes.ts';
 import { FailureCodeSchema } from './failures.ts';
-import { WatchCommand, WatchFailureDetail, WatchResult } from './watch.ts';
+import { WatchCommand, WatchFailureDetail, WatchResult, WatchCheckProgress } from './watch.ts';
 
 export { decodeJsonFrame, encodeFrame, encodeJsonFrame, FrameDecoder } from './framing.ts';
 export { localIpcEndpoint, type IpcEnvironment } from './ipc.ts';
@@ -351,7 +351,9 @@ export class Accepted extends Schema.TaggedClass<Accepted>()('Accepted', {}) {}
 export class Progress extends Schema.TaggedClass<Progress>()('Progress', {
   operationId: Schema.optional(OperationId),
   itemNumber: Schema.optional(HumanItemNumber),
+  watchCheck: Schema.optional(WatchCheckProgress),
   phase: Schema.Literal(
+    'watch-check',
     'resolving',
     'direct-download',
     'frame-metadata',

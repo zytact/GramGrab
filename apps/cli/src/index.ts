@@ -88,6 +88,7 @@ Usage:
   gramgrab debug get|export [--json]
   gramgrab watch list [--json]
   gramgrab watch show WATCH [--json]
+  gramgrab watch check WATCH...|--all [--json]
   gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
   gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
   gramgrab watch pause|resume|delete WATCH ... [--json]
@@ -462,6 +463,14 @@ export function createProgressPrinter(
   const states = new Map<string, { phase: string; milestone: number }>();
   return event => {
     if (event._tag !== 'Progress') return;
+    if (event.watchCheck) {
+      write(
+        json
+          ? `${JSON.stringify({ type: 'progress', phase: event.phase, watchCheck: event.watchCheck })}\n`
+          : `watch ${event.watchCheck.watchId} ${event.watchCheck.kind}: ${event.watchCheck.outcome._tag}\n`
+      );
+      return;
+    }
     const key = progressKey(event);
     const previous = states.get(key);
     const milestone = progressMilestone(event.progress);
@@ -528,6 +537,19 @@ function requestsHelp(arguments_: readonly string[]): boolean {
 function unsuccessful(result: CommandResult): boolean {
   if (result._tag === 'ExportResult')
     return result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded');
+  if (result._tag === 'WatchCheckResult')
+    return (
+      result.unknownWatches.length > 0 ||
+      result.outcomes.some(
+        outcome =>
+          outcome.deferredUntil !== undefined ||
+          outcome.kinds.some(
+            kind =>
+              kind._tag === 'KindCheckFailed' ||
+              (kind._tag === 'KindCheckSkipped' && kind.reason !== 'kind-off')
+          )
+      )
+    );
   if (result._tag === 'WatchLifecycleResult') return result.unknownWatches.length > 0;
   if (result._tag === 'WatchRecoverResult')
     return result.refused.length > 0 || result.unknownEntryIds.length > 0;

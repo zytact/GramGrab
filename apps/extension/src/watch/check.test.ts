@@ -88,7 +88,12 @@ const addWatch = (actions: readonly WatchAction[] = ['collect'], kind: WatchKind
 async function checkLater() {
   await vi.advanceTimersByTimeAsync(5 * MINUTE);
   const result = await run(WatchCheck.make({ watches: [selector] }), 'WatchCheckResult');
-  return result.outcomes[0]!;
+  const outcome = result.outcomes[0]!;
+  return {
+    kinds: outcome.kinds.filter(
+      kind => kind._tag !== 'KindCheckSkipped' || kind.reason !== 'kind-off'
+    ),
+  };
 }
 
 const found = async () =>

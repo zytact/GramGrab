@@ -3,6 +3,7 @@ import { vi } from 'vite-plus/test';
 import type { DownloadQuery } from '../lib/browser.ts';
 import {
   Event,
+  CancelRequest,
   PROTOCOL_VERSION,
   Request,
   type Command,
@@ -347,6 +348,15 @@ export function createExtensionHarness() {
     loadRunner,
     send,
     command,
+    cancel: (requestId: string) =>
+      nativeListener?.(
+        Schema.encodeSync(CancelRequest)(
+          CancelRequest.make({
+            version: PROTOCOL_VERSION,
+            requestId: Schema.decodeUnknownSync(Request.fields.requestId)(requestId),
+          })
+        )
+      ),
     fireStartup: () => onStartup.listeners.forEach(listener => listener()),
     fireInstalled: (reason = 'install') =>
       onInstalled.listeners.forEach(listener => listener({ reason })),
