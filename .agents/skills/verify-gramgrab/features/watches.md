@@ -28,6 +28,27 @@ own simulated failures and interruptions.
    confirm only where that operation is offered. Check problems are not action
    recovery targets. Removal affects inbox metadata only.
 
+## Posts on a real grid
+
+Instagram's Posts grid is not newest first, and a collab Post can belong to another account. Unit
+fixtures cannot show which accounts do this, so prove Posts against a live grid that has it:
+
+1. Pick a target whose first Posts page has pinned Posts (`timeline_pinned_user_ids` holds the
+   target), an older Post above a newer one, or a collab whose `user.pk` is another account with
+   the target in `coauthor_producers`. The official `instagram` account has none of these, so
+   this needs a private target. Check the shape from the worker with a structure-only probe that
+   prints booleans, never handles, IDs or media URLs.
+2. `gramgrab watch add TARGET --kinds posts --actions collect --accept-unattended --json`, then
+   `watch check TARGET --json`. The first check records `KindBaselineRecorded`. A check five
+   minutes later runs the page traversal and should report `KindCheckSucceeded` for `posts`, not
+   `IG_RESPONSE_SHAPE_UNKNOWN` (collab ownership) or `WATCH_CHECK_INCOMPLETE` (grid order).
+3. Screenshot the Watch on the options page, then `watch delete TARGET`. Redact the target and
+   the login before a screenshot leaves `.local/`.
+
+A copied profile can carry a rate-limit `pause` in `instagram-requests`, which makes every check
+report `deferredUntil` with no kinds run. Clear it as in step 1 of the next section before
+judging a check.
+
 ## Rate-limit pause
 
 Only a 429 on a Watch request pauses Watches. A person's own request that gets a
