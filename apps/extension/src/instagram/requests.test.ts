@@ -166,13 +166,27 @@ describe('Watch request admission', () => {
     expect(Either.isRight(await watch)).toBe(true);
   });
 
-  it('pauses Watch work after any 429 and lets one probe end the pause', async () => {
+  it("leaves Watch work running after a person request's 429", async () => {
     vi.useFakeTimers();
     let status = 429;
     harness.setFetch(() => new Response('{}', { status }));
     await harness.loadWorker();
 
-    await runPerson('https://www.instagram.com/person');
+    expect((await runPerson('https://www.instagram.com/person')).status).toBe(429);
+    status = 200;
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(Either.isRight(await runWatch('https://www.instagram.com/watch'))).toBe(true);
+    expect((await ledger()).pause).toBeUndefined();
+  });
+
+  it("pauses Watch work after a Watch request's 429 and lets one probe end the pause", async () => {
+    vi.useFakeTimers();
+    let status = 429;
+    harness.setFetch(() => new Response('{}', { status }));
+    await harness.loadWorker();
+
+    await runWatch('https://www.instagram.com/watch');
     const deferred = await runWatch('https://www.instagram.com/watch');
     expect(Either.isLeft(deferred) && deferred.left._tag === 'WatchRequestDeferred').toBe(true);
     if (Either.isLeft(deferred) && deferred.left._tag === 'WatchRequestDeferred')
