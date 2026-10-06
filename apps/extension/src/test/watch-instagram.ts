@@ -55,6 +55,7 @@ export interface FakePost {
   /** Sidecar children by ID; a Post without them is a single image or video. */
   readonly children?: readonly string[];
   readonly owner?: string;
+  readonly coauthors?: readonly string[];
 }
 
 const POSTS_ROOT = 'xdt_api__v1__feed__user_timeline_graphql_connection';
@@ -77,6 +78,7 @@ export function postsPage(posts: readonly FakePost[], next?: string) {
             code: `C${post.id}`,
             taken_at: post.takenAt,
             user: { ...sidecar.user, pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+            coauthor_producers: post.coauthors?.map(pk => ({ pk })) ?? [],
             media_type: post.children ? 8 : post.video === false ? 1 : 2,
             carousel_media_count: post.children?.length ?? null,
             carousel_media:
@@ -96,6 +98,7 @@ export function postsPage(posts: readonly FakePost[], next?: string) {
  */
 export function restMedia(post: FakePost) {
   const [video] = restVideoFixture.items;
+  const coauthor_producers = post.coauthors?.map(pk => ({ pk, id: pk })) ?? [];
   const item = (pk: string, isVideo: boolean) =>
     isVideo
       ? { ...video!, pk, carousel_media: null }
@@ -109,6 +112,7 @@ export function restMedia(post: FakePost) {
             code: `C${post.id}`,
             media_type: 8,
             user: { pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+            coauthor_producers,
             taken_at: post.takenAt,
             carousel_media: post.children.map((id, index) => item(id, index > 0)),
           }
@@ -117,6 +121,7 @@ export function restMedia(post: FakePost) {
             code: `C${post.id}`,
             taken_at: post.takenAt,
             user: { pk: post.owner ?? TARGET.id, id: post.owner ?? TARGET.id },
+            coauthor_producers,
           },
     ],
   };

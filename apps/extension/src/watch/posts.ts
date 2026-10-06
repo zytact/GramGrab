@@ -26,6 +26,9 @@ const PostNode = Schema.Struct({
   media_type: Schema.Literal(1, 2, 8),
   taken_at: Seconds,
   user: Schema.Struct({ pk: Schema.String }),
+  coauthor_producers: Schema.optional(
+    Schema.NullOr(Schema.Array(Schema.Struct({ pk: Schema.String })))
+  ),
   carousel_media_count: Schema.optional(Schema.NullOr(Schema.Number)),
   carousel_media: Schema.optional(Schema.NullOr(Schema.Array(Child))),
 });
@@ -80,20 +83,24 @@ function toRef(node: PostNode): TimedRef | undefined {
   };
 }
 
+/** A collab Post lists the target as a co-author while another account owns it. */
+const belongsTo = (node: PostNode, targetId: string) =>
+  node.user.pk === targetId ||
+  (node.coauthor_producers ?? []).some(coauthor => coauthor.pk === targetId);
+
 const untrusted = () => new ResponseShapeUnknown({ context: 'watch_posts' });
 
 /**
- * Whether a page reads as part of one ordered list: distinct items, newest first, and a cursor
- * whenever it claims more.
+ * Whether a page reads as part of one list: distinct items, and a cursor whenever it claims more.
+ * Instagram's grid is not newest first: pinned Posts lead it, and older Posts can sit above newer.
  */
 const consistent = (refs: readonly TimedRef[], next: string | undefined) =>
   new Set(refs.map(ref => ref.mediaId)).size === refs.length &&
-  refs.every((ref, index) => index === 0 || ref.takenAt <= refs[index - 1]!.takenAt) &&
   (next === undefined || (next !== '' && refs.length > 0));
 
 /**
- * Reads one Posts page of `targetId`. Every node must belong to the target, carry trustworthy
- * identity and timing, and come newest first; any GraphQL error fails the page.
+ * Reads one Posts page of `targetId`. Every node must be authored or co-authored by the target,
+ * and carry trustworthy identity and timing; any GraphQL error fails the page.
  */
 export const readPostsPage = (raw: unknown, targetId: string, nowSeconds: number) =>
   Effect.gen(function* () {
@@ -104,7 +111,7 @@ export const readPostsPage = (raw: unknown, targetId: string, nowSeconds: number
     const connection = decoded.data.xdt_api__v1__feed__user_timeline_graphql_connection;
     const nodes = connection.edges.map(edge => edge.node);
     const trusted = nodes.every(
-      node => node.user.pk === targetId && node.taken_at <= nowSeconds + CLOCK_SKEW_SECONDS
+      node => belongsTo(node, targetId) && node.taken_at <= nowSeconds + CLOCK_SKEW_SECONDS
     );
     const refs = nodes.map(toRef).filter(ref => ref !== undefined);
     if (!trusted || refs.length !== nodes.length) return yield* Effect.fail(untrusted());
@@ -188,8 +195,8 @@ const Traversal = Schema.Struct({
   next: Schema.String,
   /** Every cursor this traversal has followed, so a repeat is caught. */
   cursors: Schema.Array(Schema.String),
-  /** The last reference of the previous page, which the next page must come after. */
-  last: Schema.Struct({ mediaId: MediaId, takenAt: Schema.Number }),
+  /** Every media this traversal has read, so a repeat is caught. */
+  media: Schema.Array(MediaId),
 });
 export type Traversal = Schema.Schema.Type<typeof Traversal>;
 
@@ -215,14 +222,20 @@ export const saveTraversal = (watchId: string, traversal: Traversal | undefined)
     await browser.sessionStorage.set({ [TRAVERSALS_KEY]: next }).catch(() => undefined);
   });
 
-/**
- * Checks that `page` continues `traversal`: a new cursor, nothing repeated from the previous page,
- * and nothing newer than where that page ended.
- */
-export function continues(traversal: Traversal | undefined, page: PostsPage): boolean {
-  if (!traversal) return true;
-  const [first] = page.refs;
-  if (page.next && traversal.cursors.includes(page.next)) return false;
-  if (page.refs.some(ref => ref.mediaId === traversal.last.mediaId)) return false;
-  return !first || first.takenAt <= traversal.last.takenAt;
-}
+/** The traversal after `page`, which continues at its cursor. */
+export const advance = (
+  traversal: Traversal | undefined,
+  page: { readonly refs: readonly TimedRef[]; readonly next: string },
+  windowStart: number
+): Traversal => ({
+  windowStart,
+  next: page.next,
+  cursors: [...(traversal?.cursors ?? []), page.next],
+  media: [...(traversal?.media ?? []), ...page.refs.map(ref => ref.mediaId)],
+});
+
+/** Checks that `page` continues `traversal`: a new cursor, and no media it has already read. */
+export const continues = (traversal: Traversal | undefined, page: PostsPage) =>
+  !traversal ||
+  (!(page.next && traversal.cursors.includes(page.next)) &&
+    !page.refs.some(ref => traversal.media.includes(ref.mediaId)));
