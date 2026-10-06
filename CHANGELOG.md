@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/zytact/GramGrab/compare/v2.0.0...v2.0.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **watch:** make Story Watches work again for accounts without active Stories ([#240](https://github.com/zytact/GramGrab/issues/240)) ([4d945e2](https://github.com/zytact/GramGrab/commit/4d945e2208aa447f3d56fa8257edca204237b625))
+* **watch:** stop the person's own 429s from pausing all Watches ([#241](https://github.com/zytact/GramGrab/issues/241)) ([6eef1a0](https://github.com/zytact/GramGrab/commit/6eef1a0128105d8e574010674752b7161d29d572))
+
 ## [2.0.0](https://github.com/zytact/GramGrab/compare/v1.1.0...v2.0.0) (2026-10-06)
 
 
