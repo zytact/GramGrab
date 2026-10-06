@@ -20,7 +20,7 @@ Paths in the first table are relative to `apps/extension/src/`.
 | Story baseline cutoff and publication during initialization                                                                   | `watch/check.test.ts`: "records a baseline without actions, then discovers only media after its cutoff", "leaves media published during initialization eligible for the next check"                                                                                                                                                                                                                             |
 | No-reel baseline; unknown, malformed, wrong-owner and ambiguous Stories                                                       | `watch/check.test.ts`: parameterized Story refusal cases; "records a baseline from an account without active Stories", "accepts an identified reel holding only expired Stories as a baseline"                                                                                                                                                                                                                  |
 | Seen-media retention independent of inbox removal; 30-day expiry                                                              | `watch/check.test.ts`: "collects each Story once and keeps it seen after removal from the inbox", "drops collected entries from the inbox after 30 days"                                                                                                                                                                                                                                                        |
-| Posts/Reels/REST Sidecar identities and fail-closed GraphQL Sidecars                                                          | `watch/check.test.ts`: "discovers Posts, Reels, and Sidecars until a page reaches older media" and parameterized unsupported Posts cases; `instagram/rest-shortcode.test.ts`: "keeps sidecar child identities and media types"                                                                                                                                                                                  |
+| Posts/Reels/REST Sidecar identities and fail-closed GraphQL Sidecars                                                          | `watch/check.test.ts`: "discovers Posts, Reels, and Sidecars until a page holds no new media" and the parameterized "rejects a page with %s" cases; `instagram/rest-shortcode.test.ts`: "keeps sidecar child identities and media types"                                                                                                                                                                        |
 | Posts collab authorship: owner or co-author is the target in both the Posts page and the REST export check, anyone else fails | `watch/check.test.ts`: "discovers a collab Post another account owns with the target as a co-author" and the "another owner" rejection cases; `watch/export.test.ts`: "downloads a collab Post another account owns with the target as a co-author", "rejects wrong owners, parents, and ambiguous parent matches before downloading"                                                                           |
 | Posts pinned and reordered grid, seen entries, repeated Posts and cursors, frozen window, continuation                        | `watch/check.test.ts`: "scans past seen Posts to an older one that became visible, until the list ends", "reads past pinned and reordered Posts that sit above newer ones", "stops incomplete on a Post repeated across pages and keeps its state", "stops incomplete on a cursor it has already followed", "catches up three pages per turn within a frozen window, then completes"                            |
 | Session cursor loss without duplicate discoveries                                                                             | `watch/check.test.ts`: "restarts a traversal whose cursor was lost without repeating discoveries"                                                                                                                                                                                                                                                                                                               |
@@ -75,22 +75,22 @@ the registry in [error-model.md](error-model.md), and the shared protocol fixtur
 round-trip. Watch domain failures use `watchFailure`; upstream failures use the
 existing source/media/browser normalizers.
 
-| Required code                     | Producer and behavioral proof                                              |
-| --------------------------------- | -------------------------------------------------------------------------- |
-| `WATCH_STORY_EXPIRED`             | `watch/export.ts`; expired Story without request                           |
-| `WATCH_AVATAR_CHANGED`            | `watch/export.ts`; current-picture-only Avatar export                      |
-| `WATCH_INSTANT_NOT_IN_FEED`       | `watch/export.ts`; absence only from valid feed                            |
-| `WATCH_MEDIA_UNAVAILABLE`         | `watch/export.ts`; frozen Sidecar missing child                            |
-| `WATCH_USERNAME_UNCONFIRMED`      | `watch/identity.ts`, `service.ts`; unconfirmed target/rename               |
-| `WATCH_CHECK_INCOMPLETE`          | `watch/posts.ts`; ordering and repeated cursor refusals                    |
-| `WATCH_STORE_CAPACITY_EXCEEDED`   | `watch/store.ts`; aggregate budget and explicit freeing                    |
-| `WATCH_STORE_FAILED`              | `watch/store.ts`; write refusal before dependent actions                   |
-| `WATCH_STORE_VERSION_UNSUPPORTED` | `watch/store.ts`; newer store preserved                                    |
-| `WATCH_STORE_UNREADABLE`          | `watch/store.ts`; corruption/forbidden fields preserved                    |
-| `WATCH_NOT_FOUND`                 | `watch/service.ts`; other-login show refusal                               |
-| `WATCH_CONFIG_CONFLICT`           | `watch/service.ts`; conflicting repeated add                               |
-| `WATCH_UNATTENDED_NOT_ACCEPTED`   | `watch/service.ts`; disclosure before requests                             |
-| `WATCH_RECOVERY_NOT_APPLICABLE`   | `watch/service.ts`, `recovery.ts`; check problems and unsupported recovery |
+| Required code                     | Producer and behavioral proof                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `WATCH_STORY_EXPIRED`             | `watch/export.ts`; expired Story without request                              |
+| `WATCH_AVATAR_CHANGED`            | `watch/export.ts`; current-picture-only Avatar export                         |
+| `WATCH_INSTANT_NOT_IN_FEED`       | `watch/export.ts`; absence only from valid feed                               |
+| `WATCH_MEDIA_UNAVAILABLE`         | `watch/export.ts`; frozen Sidecar missing child                               |
+| `WATCH_USERNAME_UNCONFIRMED`      | `watch/identity.ts`, `service.ts`; unconfirmed target/rename                  |
+| `WATCH_CHECK_INCOMPLETE`          | `watch/posts.ts`; repeated Post, repeated cursor, and missing cursor refusals |
+| `WATCH_STORE_CAPACITY_EXCEEDED`   | `watch/store.ts`; aggregate budget and explicit freeing                       |
+| `WATCH_STORE_FAILED`              | `watch/store.ts`; write refusal before dependent actions                      |
+| `WATCH_STORE_VERSION_UNSUPPORTED` | `watch/store.ts`; newer store preserved                                       |
+| `WATCH_STORE_UNREADABLE`          | `watch/store.ts`; corruption/forbidden fields preserved                       |
+| `WATCH_NOT_FOUND`                 | `watch/service.ts`; other-login show refusal                                  |
+| `WATCH_CONFIG_CONFLICT`           | `watch/service.ts`; conflicting repeated add                                  |
+| `WATCH_UNATTENDED_NOT_ACCEPTED`   | `watch/service.ts`; disclosure before requests                                |
+| `WATCH_RECOVERY_NOT_APPLICABLE`   | `watch/service.ts`, `recovery.ts`; check problems and unsupported recovery    |
 
 The existing `WATCH_NOTIFY_PERMISSION_DENIED` and `WATCH_NOTIFY_FAILED` literals
 have the same contract coverage and real notification refusal/retry tests.

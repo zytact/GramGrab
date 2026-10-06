@@ -336,14 +336,14 @@ describe('Posts checks', () => {
 
   it('stops incomplete on a Post repeated across pages and keeps its state', async () => {
     await baselined();
-    setPosts(posts(7, 6), posts(6, 5));
+    setPosts(posts(8, 7), posts(6), posts(8, 5));
 
     const outcome = await checkLater();
 
     expect(outcome.kinds).toEqual([
       { _tag: 'KindCheckFailed', kind: 'posts', code: 'WATCH_CHECK_INCOMPLETE' },
     ]);
-    expect(await found()).toHaveLength(2);
+    expect(await found()).toHaveLength(3);
     expect(await postsHealth()).toMatchObject({
       _tag: 'KindProblem',
       code: 'WATCH_CHECK_INCOMPLETE',

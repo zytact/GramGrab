@@ -33,6 +33,7 @@ import {
 import {
   PAGES_PER_TURN,
   PostsIncomplete,
+  advance,
   continues,
   fetchPostsPage,
   loadTraversal,
@@ -276,12 +277,7 @@ const postsPageStep = (watch: Watch, traversal: Traversal | undefined, context: 
       yield* saveTraversal(watch.id, undefined);
       return { _tag: 'done', newCount: write.value } satisfies PageStep;
     }
-    const continued: Traversal = {
-      windowStart: context.windowStart,
-      next,
-      cursors: [...(traversal?.cursors ?? []), next],
-      last: refs.at(-1)!.mediaId,
-    };
+    const continued = advance(traversal, { refs, next }, context.windowStart);
     yield* saveTraversal(watch.id, continued);
     return { _tag: 'continue', traversal: continued, newCount: write.value } satisfies PageStep;
   });

@@ -195,8 +195,8 @@ const Traversal = Schema.Struct({
   next: Schema.String,
   /** Every cursor this traversal has followed, so a repeat is caught. */
   cursors: Schema.Array(Schema.String),
-  /** The last media of the previous page, which the next page must not repeat. */
-  last: MediaId,
+  /** Every media this traversal has read, so a repeat is caught. */
+  media: Schema.Array(MediaId),
 });
 export type Traversal = Schema.Schema.Type<typeof Traversal>;
 
@@ -222,8 +222,20 @@ export const saveTraversal = (watchId: string, traversal: Traversal | undefined)
     await browser.sessionStorage.set({ [TRAVERSALS_KEY]: next }).catch(() => undefined);
   });
 
-/** Checks that `page` continues `traversal`: a new cursor, and nothing repeated from the previous page. */
+/** The traversal after `page`, which continues at its cursor. */
+export const advance = (
+  traversal: Traversal | undefined,
+  page: { readonly refs: readonly TimedRef[]; readonly next: string },
+  windowStart: number
+): Traversal => ({
+  windowStart,
+  next: page.next,
+  cursors: [...(traversal?.cursors ?? []), page.next],
+  media: [...(traversal?.media ?? []), ...page.refs.map(ref => ref.mediaId)],
+});
+
+/** Checks that `page` continues `traversal`: a new cursor, and no media it has already read. */
 export const continues = (traversal: Traversal | undefined, page: PostsPage) =>
   !traversal ||
   (!(page.next && traversal.cursors.includes(page.next)) &&
-    !page.refs.some(ref => ref.mediaId === traversal.last));
+    !page.refs.some(ref => traversal.media.includes(ref.mediaId)));
