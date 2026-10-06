@@ -23,7 +23,7 @@ store.
 ## Driving it with the harness
 
 ```bash
-cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 D=.agents/skills/verify-gramgrab/scripts/drive.mjs
 
 node apps/cli/bin/gramgrab.mjs history list

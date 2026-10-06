@@ -28,6 +28,41 @@ own simulated failures and interruptions.
    confirm only where that operation is offered. Check problems are not action
    recovery targets. Removal affects inbox metadata only.
 
+## Rate-limit pause
+
+Only a 429 on a Watch request pauses Watches. A person's own request that gets a
+429 must not, because Instagram routinely answers `web_profile_info` with 429
+and the person's flow falls back to `topsearch`. `scripts/throttle.mjs` answers
+the worker's matching requests with a status, so both sides are drivable:
+
+1. Read `instagram-requests` from the worker's `chrome.storage.local`. An
+   inherited `pause` comes from earlier runs, so clear the key and relaunch
+   before judging, and only on the verification profile.
+2. Start `node .agents/skills/verify-gramgrab/scripts/throttle.mjs
+   web_profile_info 429` in the background and keep its output.
+3. Run `gramgrab inspect instagram --json`. The throttle log shows a 429 for
+   `web_profile_info`, the inspect still resolves through `topsearch`, and
+   `watch list --json` has no `schedule.pausedUntil`. `watch needs` has no
+   `PauseAttention`, and the options page shows no `Watches paused` banner.
+4. Stop the throttle. A manual check verifies the viewer once as the person and
+   then again as Watch work, through the viewer query
+   `d6f4427fbe92d846298cf93df0b937d3` (`operations.viewer` in
+   `apps/extension/src/instagram-protocol/config.json`). Start `throttle.mjs
+   d6f4427fbe92d846298cf93df0b937d3 429 --pass 1` and run `watch check
+   instagram --json`, then stop the throttle at once, since `watch list` and
+   `watch needs` verify the viewer too. The log shows one `passed` line, then
+   one 429. The Watch request's 429 sets `schedule.pausedUntil` about 30 minutes out, `watch
+   needs` has a `PauseAttention` with `IG_RATE_LIMITED`, and the options page
+   shows `Instagram rate limited a Watch request`. Without `--pass 1` the
+   person's viewer check takes the 429, so the check fails with
+   `IG_NOT_AUTHENTICATED` and nothing pauses. Matching a Posts `doc_id` does not
+   work either, because Posts requests send it in a POST body. A ledger already
+   holding 60 attempts from the last hour defers the check on capacity before
+   any Watch request starts, so read `attempts` first and reset as in step 1.
+5. Stop the throttle. Clear `instagram-requests` and relaunch, as in step 1.
+   Clearing alone is not enough, because the running worker writes its
+   in-memory pause back.
+
 Watch checks pace requests and can take minutes. Rerunning inside five minutes
 may defer a check; keep that terminal result as evidence. All-digit WATCH values
 mean account IDs unless `--username` forces a username. CLI help is the grammar
