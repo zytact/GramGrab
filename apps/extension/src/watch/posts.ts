@@ -91,17 +91,16 @@ const belongsTo = (node: PostNode, targetId: string) =>
 const untrusted = () => new ResponseShapeUnknown({ context: 'watch_posts' });
 
 /**
- * Whether a page reads as part of one ordered list: distinct items, newest first, and a cursor
- * whenever it claims more.
+ * Whether a page reads as part of one list: distinct items, and a cursor whenever it claims more.
+ * Instagram's grid is not newest first: pinned Posts lead it, and older Posts can sit above newer.
  */
 const consistent = (refs: readonly TimedRef[], next: string | undefined) =>
   new Set(refs.map(ref => ref.mediaId)).size === refs.length &&
-  refs.every((ref, index) => index === 0 || ref.takenAt <= refs[index - 1]!.takenAt) &&
   (next === undefined || (next !== '' && refs.length > 0));
 
 /**
  * Reads one Posts page of `targetId`. Every node must be authored or co-authored by the target,
- * carry trustworthy identity and timing, and come newest first; any GraphQL error fails the page.
+ * and carry trustworthy identity and timing; any GraphQL error fails the page.
  */
 export const readPostsPage = (raw: unknown, targetId: string, nowSeconds: number) =>
   Effect.gen(function* () {
@@ -196,8 +195,8 @@ const Traversal = Schema.Struct({
   next: Schema.String,
   /** Every cursor this traversal has followed, so a repeat is caught. */
   cursors: Schema.Array(Schema.String),
-  /** The last reference of the previous page, which the next page must come after. */
-  last: Schema.Struct({ mediaId: MediaId, takenAt: Schema.Number }),
+  /** The last media of the previous page, which the next page must not repeat. */
+  last: MediaId,
 });
 export type Traversal = Schema.Schema.Type<typeof Traversal>;
 
@@ -223,14 +222,8 @@ export const saveTraversal = (watchId: string, traversal: Traversal | undefined)
     await browser.sessionStorage.set({ [TRAVERSALS_KEY]: next }).catch(() => undefined);
   });
 
-/**
- * Checks that `page` continues `traversal`: a new cursor, nothing repeated from the previous page,
- * and nothing newer than where that page ended.
- */
-export function continues(traversal: Traversal | undefined, page: PostsPage): boolean {
-  if (!traversal) return true;
-  const [first] = page.refs;
-  if (page.next && traversal.cursors.includes(page.next)) return false;
-  if (page.refs.some(ref => ref.mediaId === traversal.last.mediaId)) return false;
-  return !first || first.takenAt <= traversal.last.takenAt;
-}
+/** Checks that `page` continues `traversal`: a new cursor, and nothing repeated from the previous page. */
+export const continues = (traversal: Traversal | undefined, page: PostsPage) =>
+  !traversal ||
+  (!(page.next && traversal.cursors.includes(page.next)) &&
+    !page.refs.some(ref => ref.mediaId === traversal.last));

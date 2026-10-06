@@ -250,8 +250,8 @@ const recordPage = (
 
 /**
  * Reads the traversal's next page and records what it found. The traversal ends at Instagram's
- * last page or at the first page reaching media that is no longer eligible: under the accepted
- * newest-first ordering, every later page is older still.
+ * last page or at the first page with no eligible media. A page that only reaches older media
+ * does not end it, since pinned and reordered Posts put older media above newer.
  */
 const postsPageStep = (watch: Watch, traversal: Traversal | undefined, context: TraversalContext) =>
   Effect.gen(function* () {
@@ -266,7 +266,7 @@ const postsPageStep = (watch: Watch, traversal: Traversal | undefined, context: 
     const { refs, next } = result.right;
     const done =
       next === undefined ||
-      refs.some(ref => !eligible(ref.takenAt, context.cutoff, context.windowStart));
+      !refs.some(ref => eligible(ref.takenAt, context.cutoff, context.windowStart));
     const write = yield* recordPage(watch.id, refs, done, context);
     if (write.kind === 'failed' || write.value === undefined) {
       yield* saveTraversal(watch.id, undefined);
@@ -280,7 +280,7 @@ const postsPageStep = (watch: Watch, traversal: Traversal | undefined, context: 
       windowStart: context.windowStart,
       next,
       cursors: [...(traversal?.cursors ?? []), next],
-      last: refs.at(-1)!,
+      last: refs.at(-1)!.mediaId,
     };
     yield* saveTraversal(watch.id, continued);
     return { _tag: 'continue', traversal: continued, newCount: write.value } satisfies PageStep;

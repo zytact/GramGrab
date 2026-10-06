@@ -284,7 +284,7 @@ describe('Posts checks', () => {
     expect(instagram.state.postRequests).toEqual(['']);
   }
 
-  it('discovers Posts, Reels, and Sidecars until a page reaches older media', async () => {
+  it('discovers Posts, Reels, and Sidecars until a page holds no new media', async () => {
     await baselined();
     await vi.advanceTimersByTimeAsync(DAY);
     const now = seconds(Date.now());
@@ -294,6 +294,7 @@ describe('Posts checks', () => {
         { id: '800', takenAt: now - 120, video: false },
       ],
       [{ id: '700', takenAt: now - 180 }, OLD],
+      [{ id: '2', takenAt: OLD.takenAt - 1 }],
       posts(0)
     );
 
@@ -302,7 +303,7 @@ describe('Posts checks', () => {
     expect(outcome.kinds).toEqual([
       { _tag: 'KindCheckSucceeded', kind: 'posts', newCount: 3, catchUp: false },
     ]);
-    expect(instagram.state.postRequests).toEqual(['', 'c1']);
+    expect(instagram.state.postRequests).toEqual(['', 'c1', 'c2']);
     expect(await found()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ mediaType: 'sidecar', childCount: 2 }),
@@ -325,20 +326,24 @@ describe('Posts checks', () => {
     expect(await found()).toHaveLength(2);
   });
 
-  it.each([
-    ['a Post newer than the one before it', [posts(5, 6)], 0],
-    ['a page newer than where the last ended', [posts(6), posts(7)], 1],
-    ['a Post repeated across pages', [posts(7, 6), posts(6, 5)], 2],
-  ])('stops incomplete on %s and keeps its state', async (_case, pages, kept) => {
+  it('reads past pinned and reordered Posts that sit above newer ones', async () => {
     await baselined();
-    setPosts(...pages);
+    setPosts([OLD, ...posts(5, 6)], [...posts(7), { id: '2', takenAt: OLD.takenAt - 1 }]);
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ newCount: 3, catchUp: false });
+    expect(instagram.state.postRequests).toEqual(['', 'c1']);
+  });
+
+  it('stops incomplete on a Post repeated across pages and keeps its state', async () => {
+    await baselined();
+    setPosts(posts(7, 6), posts(6, 5));
 
     const outcome = await checkLater();
 
     expect(outcome.kinds).toEqual([
       { _tag: 'KindCheckFailed', kind: 'posts', code: 'WATCH_CHECK_INCOMPLETE' },
     ]);
-    expect(await found()).toHaveLength(kept);
+    expect(await found()).toHaveLength(2);
     expect(await postsHealth()).toMatchObject({
       _tag: 'KindProblem',
       code: 'WATCH_CHECK_INCOMPLETE',
