@@ -8,7 +8,7 @@
 //   drive.mjs click <match> <selector>     click an element
 //   drive.mjs type <match> <selector> <v>  replace an input value and dispatch input
 //   drive.mjs blur <match> <selector>      blur an element
-//   drive.mjs eval <match> <expression>    evaluate in the first target whose url contains <match>
+//   drive.mjs eval <match> <expression>    evaluate in the target whose url ends with <match>, else the first containing it
 //   drive.mjs text <match>                 print document.body.innerText
 //   drive.mjs shot <match> <file>          save a PNG screenshot
 //   drive.mjs wait <match> <needle> [ms]   poll innerText until <needle> appears
@@ -47,7 +47,8 @@ async function findTarget(match) {
       target =>
         target.webSocketDebuggerUrl && (target.url.includes(match) || target.title === match)
     );
-    const hit = matches.find(target => target.type === 'page') ?? matches[0];
+    const pages = matches.filter(target => target.type === 'page');
+    const hit = pages.find(target => target.url.endsWith(match)) ?? pages[0] ?? matches[0];
     if (hit) return hit;
     if (Date.now() > deadline) fail(`No target matching ${JSON.stringify(match)}.`);
     await new Promise(resolve => setTimeout(resolve, 250));

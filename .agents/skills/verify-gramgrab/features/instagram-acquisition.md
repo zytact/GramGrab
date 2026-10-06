@@ -36,7 +36,7 @@ The toolbar popup closes on focus loss, so open the same document as a tab. Use
 the popup one; both need driving when a change touches shared UI.
 
 ```bash
-cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 D=.agents/skills/verify-gramgrab/scripts/drive.mjs
 
 node $D open "chrome-extension://$GRAMGRAB_EXT_ID/popup.html?surface=workspace"

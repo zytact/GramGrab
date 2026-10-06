@@ -19,16 +19,18 @@ from the browser context menu.
 ## Driving it
 
 Fetch a multi-item source in plain `popup.html`, change selection and one frame
-setting, then click `.workspace-launch`. Wait for the new
+setting, then click `Open in tab`. Select it by text, because the Watches
+button shares the `.workspace-launch` class. Wait for the new
 `popup.html?surface=workspace` target. Its source, results, selected rows, and
 frame setting must match the popup.
 
 Open plain `popup.html` again. It must say `Go to tab`. Count workspace targets,
-click `.workspace-launch`, and count again. The existing workspace comes to the
+click `Go to tab`, and count again. The existing workspace comes to the
 front and the count stays one.
 
 Fetch a different source in the popup. Click `Replace tab session`, capture the
-`Replace workspace session` dialog, and choose Cancel. The workspace keeps its
+confirmation (`aria-label="Replace workspace session"`, text
+`Replace the current workspace session?`), and choose Cancel. The workspace keeps its
 old source. Repeat and choose Replace; the same workspace target reloads with
 the new source and session state. Start a download before attempting the action
 once more and require the open or replace control to stay disabled.

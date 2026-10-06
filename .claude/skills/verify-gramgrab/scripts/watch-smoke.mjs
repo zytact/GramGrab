@@ -44,14 +44,6 @@ async function drive(...words) {
 try {
   const health = await cli(['status']);
   results.bridge = health.exit === 0 && health.value.compatible === true;
-  try {
-    await run(process.execPath, [resolve(repo, 'artifacts/gramgrab.mjs'), 'watch', 'add', 'instagram',
-      '--kinds', 'stories', '--actions', 'collect', '--accept-unattended', '--json'],
-      { cwd: repo, env: process.env, timeout: 30_000 });
-    results.storiesUnavailable = false;
-  } catch (error) {
-    results.storiesUnavailable = error.code === 2 && error.stderr.includes('IG_RESPONSE_SHAPE_UNKNOWN');
-  }
   let list = await cli(['watch', 'list']);
   const target = list.value.watches.find(watch => watch.username === 'instagram');
   if (doCheck && target) {

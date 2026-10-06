@@ -17,10 +17,10 @@ own simulated failures and interruptions.
    recovery and unknown-entry refusals. Omit `--check` for read-only page/CLI
    checks. A missing existing Watch fails the requested check.
 3. On `chrome-extension://$GRAMGRAB_EXT_ID/options.html`, open Add Watch. Preview
-   an existing visible target, verify the disclosure, and verify that Stories
-   is disabled with `IG_RESPONSE_SHAPE_UNKNOWN`. Posts, Instants and Avatar
-   remain selectable. Creation stays disabled until acknowledgement. An existing
-   target opens its Watch instead of creating a duplicate.
+   an existing visible target, verify the disclosure, and verify that Posts and
+   Stories start selected and every kind is selectable. Creation stays disabled
+   until acknowledgement. An existing target opens its Watch instead of creating
+   a duplicate.
 4. Use naturally collected entries for `watch inbox export` in Direct, Frame
    and Silent modes, then `watch inbox retry ENTRY_ID PLAN_ID` for failed frozen
    plans. Compare requested/delivered History, preserved accepted siblings and

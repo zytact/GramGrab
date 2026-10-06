@@ -89,7 +89,7 @@ node $D eval "background.js" \
 Every later command needs the session variables:
 
 ```bash
-cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 ```
 
 That exports `GRAMGRAB_CDP_PORT`, `GRAMGRAB_EXT_ID`, `GRAMGRAB_IPC_PATH`,
@@ -173,9 +173,9 @@ node $D shot  "popup.html" .local/verify-evidence/run/workspace.png
 The toolbar popup itself closes as soon as focus moves, so drive `popup.html`
 as an ordinary tab instead. Opened plain it is the popup surface; opened with
 `?surface=workspace` the same React root turns on workspace behaviour, which
-`src/workspace/use-workspace-surface.ts` reads from that parameter. Match the
-target on `popup.html?surface` when both tabs are open, since `popup.html` alone
-matches whichever came first.
+`src/workspace/use-workspace-surface.ts` reads from that parameter. A target whose
+URL ends with the match wins, so `popup.html` selects the plain popup and
+`popup.html?surface` the workspace even when both tabs are open.
 
 CSS uppercases much of the chrome. `drive.mjs text` and `wait` read `innerText`,
 so they see `HISTORY` and `FETCH MEDIA`, while `textContent` in an `eval`

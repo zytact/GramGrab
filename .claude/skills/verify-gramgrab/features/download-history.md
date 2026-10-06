@@ -23,7 +23,7 @@ store.
 ## Driving it with the harness
 
 ```bash
-cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 D=.agents/skills/verify-gramgrab/scripts/drive.mjs
 
 node apps/cli/bin/gramgrab.mjs history list
@@ -77,6 +77,7 @@ node $D eval "background.js" "chrome.storage.local.set({'download-history':$STOR
 ```
 
 Repeat once with `{version:999,entries:[]}`. Opening history in the UI must show
+`Download history uses a newer version.`, the presentation of
 `HISTORY_VERSION_UNSUPPORTED`; `history list --json` must reject with
 `Unsupported history version.` Restore again. Never perform corruption checks
 on a non-verification profile.
