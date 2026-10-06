@@ -1,5 +1,6 @@
 import { Either, Schema } from 'effect';
 import type { Rotation } from '../rotation/contracts.ts';
+import type { ExportSettings } from '@gramgrab/protocol';
 
 export const DOWNLOAD_HISTORY_KEY = 'download-history';
 export const DOWNLOAD_HISTORY_VERSION = 4 as const;
@@ -21,6 +22,8 @@ export interface DownloadHistoryEntry {
   exportMode?: 'direct' | 'frame' | 'silent';
   frameTimestampSeconds?: number;
   rotation?: Rotation;
+  requestedExport?: ExportSettings;
+  recovery?: 'original' | 'reencode';
   downloadedAt: number;
   outcome: 'accepted';
 }

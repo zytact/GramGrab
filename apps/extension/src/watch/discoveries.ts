@@ -1,3 +1,4 @@
+import { planOutcome } from './manual-export.ts';
 import { Schema } from 'effect';
 import {
   ActionOutcome,
@@ -258,6 +259,9 @@ export function summarizeDiscovery(
   const download = downloadOutcome(discovery);
   return DiscoverySummary.make({
     entryId: discovery.id,
+    ...(discovery.manualExport
+      ? { manualExport: planOutcome(discovery.id, discovery.manualExport, ref._tag === 'Sidecar') }
+      : {}),
     watchId: watch.id,
     accountId: watch.targetId,
     username: watch.username,

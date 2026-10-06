@@ -21,6 +21,7 @@ import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser } from '../lib/browser.ts';
 import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';
+import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox-export.tsx';
 import { RecoveryActions } from './recovery-actions.tsx';
 import { AllInbox, WatchDetail, healthText, runCommand } from './watch-detail.tsx';
 
@@ -716,6 +717,7 @@ function Console({
   version: number;
   refresh: () => Promise<void>;
 }) {
+  const exporter = useInboxExport(() => void refresh());
   const [view, setView] = useState<View | undefined>(linkedView);
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
   const attention = list.attentionCount;
@@ -730,6 +732,7 @@ function Console({
       : undefined;
 
   const go = (next: View) => {
+    exporter.clear();
     setActionFailure(undefined);
     setView(next);
   };
@@ -743,33 +746,37 @@ function Console({
   };
 
   return (
-    <div className="opt-console">
-      <Navigation
-        list={list}
-        current={current}
-        attention={attention}
-        activeWatchId={watch?.watchId}
-        onGo={go}
-      />
+    <InboxExportContext.Provider value={exporter}>
+      <div className="opt-console">
+        <Navigation
+          list={list}
+          current={current}
+          attention={attention}
+          activeWatchId={watch?.watchId}
+          onGo={go}
+        />
 
-      <Feed
-        list={list}
-        current={current}
-        watch={watch}
-        actionFailure={actionFailure}
-        version={version}
-        onGo={go}
-        onRun={run}
-        onChanged={() => void refresh()}
-      />
+        <Feed
+          list={list}
+          current={current}
+          watch={watch}
+          actionFailure={actionFailure}
+          version={version}
+          onGo={go}
+          onRun={run}
+          onChanged={() => void refresh()}
+        />
 
-      <section className="opt-inspector">
-        {watch ? (
-          <WatchSettings watch={watch} onRun={run} onDeleted={() => go('inbox')} />
-        ) : (
-          <p className="opt-meta">Pick a Watch on the left to change it.</p>
-        )}
-      </section>
-    </div>
+        <section className="opt-inspector">
+          {exporter.active ? (
+            <InboxExportControls value={exporter} />
+          ) : watch ? (
+            <WatchSettings watch={watch} onRun={run} onDeleted={() => go('inbox')} />
+          ) : (
+            <p className="opt-meta">Pick a Watch on the left to change it.</p>
+          )}
+        </section>
+      </div>
+    </InboxExportContext.Provider>
   );
 }

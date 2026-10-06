@@ -1,4 +1,5 @@
 import { Schema } from 'effect';
+import { ExportSettings } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 import {
@@ -27,7 +28,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function validInstagramEntry(value: unknown): value is DownloadHistoryEntry {
   const item = value as Partial<DownloadHistoryEntry> | null;
-  return Boolean(item && hasValidIdentity(item) && hasValidMedia(item) && hasValidOutcome(item));
+  return Boolean(
+    item &&
+    hasValidIdentity(item) &&
+    hasValidMedia(item) &&
+    hasValidOutcome(item) &&
+    hasValidExportPlan(item)
+  );
+}
+
+function hasValidExportPlan(item: Partial<DownloadHistoryEntry>): boolean {
+  return (
+    (item.requestedExport === undefined ||
+      Schema.decodeUnknownOption(ExportSettings)(item.requestedExport)._tag === 'Some') &&
+    (item.recovery === undefined || item.recovery === 'original' || item.recovery === 'reencode')
+  );
 }
 
 function validHistoryEntry(value: unknown): value is HistoryEntry {
@@ -55,7 +70,7 @@ function hasValidMedia(item: Partial<DownloadHistoryEntry>): boolean {
       item.exportMode === 'frame' ||
       item.exportMode === 'silent') &&
     (item.frameTimestampSeconds === undefined ||
-      (Number.isSafeInteger(item.frameTimestampSeconds) && item.frameTimestampSeconds >= 0)) &&
+      (Number.isFinite(item.frameTimestampSeconds) && item.frameTimestampSeconds >= 0)) &&
     (item.exportMode !== 'frame' || item.frameTimestampSeconds !== undefined) &&
     (item.rotation === undefined || isRotation(item.rotation))
   );

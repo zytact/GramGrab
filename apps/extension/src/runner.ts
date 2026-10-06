@@ -30,6 +30,7 @@ import { executeFrameExport } from './frame-export/executor.ts';
 import { executeRotatedExport } from './rotation/executor.ts';
 import { runSilentVideoBatch } from './silent-video/batch.ts';
 import { approvedReencodeOperationIds } from './silent-video/policy.ts';
+import { frameFilename } from './frame-export/timestamp.ts';
 
 type RunnerRequest = MessageOf<'RUN_EXPORT'>;
 
@@ -61,6 +62,7 @@ function toOutcome(operation: ExportOperation, result: DownloadOperationResult):
       operationId: operation.operationId,
       itemNumber: operation.itemNumber,
       mediaIdentity,
+      ...(result.warning?.code === 'HISTORY_SAVE_FAILED' ? { warning: result.warning.code } : {}),
     });
   if (result.status === 'skipped')
     return ItemSkipped.make({
@@ -87,10 +89,19 @@ function toOutcome(operation: ExportOperation, result: DownloadOperationResult):
 }
 
 // fallow-ignore-next-line complexity
-async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<ExportResult> {
-  const inspected = await (originKind === 'instants'
-    ? sendMessage({ type: 'FETCH_INSTANTS' })
-    : sendMessage({ type: 'FETCH_MEDIA', url: sourceUrl }));
+async function run({
+  sourceUrl,
+  originKind,
+  command,
+  preparedMedia,
+  requestedExport,
+  recovery,
+}: RunnerRequest): Promise<ExportResult> {
+  const inspected = preparedMedia
+    ? { media: preparedMedia }
+    : await (originKind === 'instants'
+        ? sendMessage({ type: 'FETCH_INSTANTS' })
+        : sendMessage({ type: 'FETCH_MEDIA', url: sourceUrl }));
   const operations: AttemptOperation[] = [];
   const invalid: ItemOutcome[] = [];
   const requestedById = new Map<string, ExportOperation>();
@@ -125,7 +136,10 @@ async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<E
       itemIndex: item.itemIndex,
       ...(item.mediaId ? { mediaId: item.mediaId } : {}),
       url: item.url,
-      filename: `${item.filenameHint}_${item.itemIndex + 1}${suffix}`,
+      filename:
+        preparedMedia && requested.mode._tag === 'FrameExport'
+          ? frameFilename(item.filenameHint, requested.mode.timestampSeconds)
+          : `${item.filenameHint}_${item.itemIndex + 1}${suffix}`,
       mediaType: item.type,
       originalUrl: item.url,
       originalFilename: `${item.filenameHint}_${item.itemIndex + 1}.${extension}`,
@@ -135,6 +149,8 @@ async function run({ sourceUrl, originKind, command }: RunnerRequest): Promise<E
         ? { frameTimestampSeconds: requested.mode.timestampSeconds }
         : {}),
       ...(requested.rotation ? { rotation: requested.rotation } : {}),
+      ...(requestedExport ? { requestedExport } : {}),
+      ...(recovery ? { recovery } : {}),
     });
     requestedById.set(requested.operationId, requested);
   }

@@ -5,6 +5,8 @@ import {
   HumanItemNumber,
   OperationId as ProtocolOperationId,
   WatchCommand,
+  ExportSettings,
+  MediaItem as ProtocolMediaItem,
   type CommandFailure,
   type ExportResult,
   type ValidationFailure,
@@ -33,6 +35,8 @@ const HistoryItem = Schema.Struct({
   filename: Schema.String.pipe(Schema.nonEmptyString()),
   mediaType: Schema.Literal('image', 'video'),
   rotation: Schema.optional(RotationSchema),
+  requestedExport: Schema.optional(ExportSettings),
+  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
 });
 
 const FrameHistoryItem = Schema.Struct({
@@ -145,6 +149,9 @@ const RunExport = Schema.Struct({
   sourceUrl: Schema.String,
   originKind: OriginKind,
   command: Schema.Union(ProtocolExport, ProtocolInstantsExport),
+  preparedMedia: Schema.optional(Schema.Array(ProtocolMediaItem)),
+  requestedExport: Schema.optional(ExportSettings),
+  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
 });
 
 const RunnerReady = Schema.Struct({ type: Schema.Literal('RUNNER_READY') });

@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
   AccountIdSelector,
+  FrameExport,
+  SilentExport,
   WatchAdd,
   WatchCheck,
   WatchInboxExport,
+  WatchInboxRetry,
   WatchInboxList,
   type WatchCommand,
   type WatchKind,
@@ -21,6 +24,7 @@ import {
   type FakePost,
 } from '../test/watch-instagram.ts';
 import type { MessageResponse, WatchCommandResponse } from '../messaging/contracts.ts';
+import { processingBrowser, silentBrowser } from '../test/processing-browser.ts';
 
 const START = Date.UTC(2026, 9, 1, 12);
 const MINUTE = 60_000;
@@ -42,6 +46,7 @@ beforeEach(async () => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   globalThis.browser = savedBrowser;
   globalThis.fetch = savedFetch;
 });
@@ -106,6 +111,157 @@ async function discoverPost(post: Omit<FakePost, 'takenAt'>) {
 }
 
 describe('Watch inbox Export', () => {
+  it('runs Frame with rotation through the real runner and writes requested and delivered History', async () => {
+    const { entryId, post } = await discoverPost({ id: '200', video: true });
+    instagram.state.media.C200 = restMedia(post);
+    const { seek, context } = await processingBrowser(harness, instagram);
+    const result = await run(
+      WatchInboxExport.make({
+        entryIds: [entryId],
+        settings: { mode: FrameExport.make({ timestampSeconds: 8.5 }), rotation: 90 },
+      }),
+      'WatchInboxExportResult'
+    );
+    expect(result.outcomes[0]).toMatchObject({ accepted: 1, failures: [] });
+    expect(seek).toHaveBeenCalledWith(8.5);
+    expect(context.rotate).toHaveBeenCalledWith(Math.PI / 2);
+    expect(await history()).toMatchObject([
+      {
+        exportMode: 'frame',
+        frameTimestampSeconds: 8.5,
+        rotation: 90,
+        requestedExport: { mode: { _tag: 'FrameExport', timestampSeconds: 8.5 }, rotation: 90 },
+      },
+    ]);
+    expect(harness.browser.tabs.create).not.toHaveBeenCalled();
+    expect(harness.local.read('workspace-snapshot')).toBeUndefined();
+    expect(await inbox()).toHaveLength(1);
+  });
+
+  it('retries the frozen failed child after processing failure without repeating accepted siblings', async () => {
+    const { entryId, post } = await discoverPost({ id: '210', children: ['211', '212'] });
+    instagram.state.media.C210 = restMedia(post);
+    const { seek } = await processingBrowser(harness, instagram);
+    const download = vi.mocked(harness.browser.downloads.download);
+    download
+      .mockImplementationOnce(download.getMockImplementation()!)
+      .mockRejectedValueOnce(new Error('network failure'));
+    const result = await run(
+      WatchInboxExport.make({
+        entryIds: [entryId],
+        settings: { mode: FrameExport.make({ timestampSeconds: 9 }) },
+      }),
+      'WatchInboxExportResult'
+    );
+    expect(result.outcomes[0]).toMatchObject({
+      accepted: 1,
+      failures: [{ child: 1, code: 'BROWSER_DOWNLOAD_NETWORK_FAILED' }],
+    });
+
+    const retried = await run(
+      WatchInboxRetry.make({ plans: [{ entryId, planId: result.outcomes[0]!.planId! }] }),
+      'WatchInboxExportResult'
+    );
+    expect(retried.outcomes[0]).toMatchObject({ accepted: 2, failures: [] });
+    expect(harness.downloads).toHaveLength(2);
+    expect(seek.mock.calls.every(([second]) => second === 9)).toBe(true);
+    expect(await history()).toMatchObject([
+      { exportMode: 'frame', frameTimestampSeconds: 9 },
+      { exportMode: 'direct' },
+    ]);
+  });
+
+  it('offers only applicable recovery and delivers Original without the failed rotation', async () => {
+    const { entryId, post } = await discoverPost({ id: '215', video: true });
+    instagram.state.media.C215 = restMedia(post);
+    await processingBrowser(harness, instagram);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    const result = await run(
+      WatchInboxExport.make({
+        entryIds: [entryId],
+        settings: {
+          mode: FrameExport.make({ timestampSeconds: 4 }),
+          rotation: 90,
+        },
+      }),
+      'WatchInboxExportResult'
+    );
+    const plans = [{ entryId, planId: result.outcomes[0]!.planId! }];
+    const refused = await run(WatchInboxRetry.make({ plans }), 'WatchInboxExportResult');
+    expect(refused.outcomes[0]?.failures).toEqual([{ code: 'WATCH_RECOVERY_NOT_APPLICABLE' }]);
+    const original = await run(
+      WatchInboxRetry.make({ plans, recovery: 'original' }),
+      'WatchInboxExportResult'
+    );
+    expect(original.outcomes[0]).toMatchObject({ accepted: 1, failures: [] });
+    expect(await history()).toMatchObject([
+      {
+        exportMode: 'direct',
+        recovery: 'original',
+        requestedExport: { mode: { _tag: 'FrameExport', timestampSeconds: 4 }, rotation: 90 },
+      },
+    ]);
+    expect((await history())[0]).not.toHaveProperty('rotation');
+    expect(JSON.stringify(harness.local.read('watch-store'))).not.toMatch(
+      /https:|blob:|data:|media\.jpg/
+    );
+  });
+
+  it('refuses transformed Avatars and plan writes that cannot be persisted', async () => {
+    await watching('avatar');
+    instagram.state.search = avatarSearch({ ...TARGET, pictureId: 'PIC_B' });
+    await check();
+    const [entry] = await inbox();
+    const refused = await run(
+      WatchInboxExport.make({
+        entryIds: [entry!.entryId],
+        settings: {
+          mode: FrameExport.make({ timestampSeconds: 1 }),
+        },
+      }),
+      'WatchInboxExportResult'
+    );
+    expect(refused.outcomes[0]?.failures).toEqual([{ code: 'WATCH_RECOVERY_NOT_APPLICABLE' }]);
+    harness.local.failWrites = true;
+    const failed = await exportEntries(entry!.entryId);
+    expect(failed.outcomes[0]?.failures).toEqual([{ code: 'WATCH_STORE_FAILED' }]);
+    expect(harness.downloads).toHaveLength(0);
+  });
+
+  it('requires explicit silent re-encode approval and preserves the requested plan in History', async () => {
+    const { entryId, post } = await discoverPost({ id: '220', video: true });
+    instagram.state.media.C220 = restMedia(post);
+    await processingBrowser(harness, instagram);
+    silentBrowser();
+    const result = await run(
+      WatchInboxExport.make({
+        entryIds: [entryId],
+        settings: { mode: SilentExport.make({ reencode: 'forbid' }) },
+      }),
+      'WatchInboxExportResult'
+    );
+    expect(result.outcomes[0]).toMatchObject({
+      accepted: 0,
+      skipped: [{ code: 'SILENT_REENCODE_DECLINED' }],
+    });
+    expect(harness.downloads).toHaveLength(0);
+    const retried = await run(
+      WatchInboxRetry.make({
+        plans: [{ entryId, planId: result.outcomes[0]!.planId! }],
+        recovery: 'reencode',
+      }),
+      'WatchInboxExportResult'
+    );
+    expect(retried.outcomes[0]).toMatchObject({ accepted: 1, failures: [] });
+    expect(await history()).toMatchObject([
+      {
+        exportMode: 'silent',
+        requestedExport: { mode: { _tag: 'SilentExport', reencode: 'forbid' } },
+        recovery: 'reencode',
+      },
+    ]);
+  });
+
   it('verifies the creating login again after reacquisition before browser delivery', async () => {
     const { entryId, post } = await discoverPost({ id: '300', video: false });
     instagram.state.media.C300 = restMedia(post);
