@@ -4,7 +4,6 @@ import {
   UNATTENDED_DISCLOSURE,
   WATCH_ACTIONS,
   WATCH_KINDS,
-  WATCH_ADD_UNAVAILABLE,
   WatchAdd,
   WatchLifecycle,
   WatchList,
@@ -191,14 +190,12 @@ function OptionList<T extends string>({
   chosen,
   label,
   note,
-  unavailable,
   onToggle,
 }: {
   all: readonly T[];
   chosen: readonly T[];
   label: Record<T, string>;
   note: (value: T) => string;
-  unavailable?: Readonly<Partial<Record<T, string>>>;
   onToggle: (value: T) => void;
 }) {
   return (
@@ -210,7 +207,7 @@ function OptionList<T extends string>({
             <input
               type="checkbox"
               checked={checked}
-              disabled={!!unavailable?.[value] || (checked && chosen.length === 1)}
+              disabled={checked && chosen.length === 1}
               onChange={() => onToggle(value)}
             />
             <span>
@@ -270,7 +267,7 @@ function NewWatchForm({
   onChange: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [kinds, setKinds] = useState<readonly WatchKind[]>(['posts']);
+  const [kinds, setKinds] = useState<readonly WatchKind[]>(['posts', 'stories']);
   const [actions, setActions] = useState<readonly WatchAction[]>(['notify', 'collect']);
   const [accepted, setAccepted] = useState(false);
   const [failure, setFailure] = useState<WatchFailure>();
@@ -310,12 +307,7 @@ function NewWatchForm({
         all={WATCH_KINDS}
         chosen={kinds}
         label={KIND_LABEL}
-        note={kind =>
-          WATCH_ADD_UNAVAILABLE[kind]
-            ? `Unavailable. Instagram's Stories response format is unsupported. ${WATCH_ADD_UNAVAILABLE[kind]}.`
-            : KIND_NOTE[kind]
-        }
-        unavailable={WATCH_ADD_UNAVAILABLE}
+        note={kind => KIND_NOTE[kind]}
         onToggle={kind => setKinds(toggled(kinds, kind))}
       />
       <span className="opt-label">When something new appears</span>

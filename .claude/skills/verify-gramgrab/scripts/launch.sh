@@ -113,6 +113,10 @@ port="$(node -e '
 ')"
 
 ipc_path="$session_dir/gramgrab.sock"
+if [ "${#ipc_path}" -gt 107 ]; then
+  echo "Socket path $ipc_path exceeds the 107-byte Unix socket limit. Launch from a shorter checkout path or a symlink to it." >&2
+  exit 1
+fi
 
 sed -e "s#__GRAMGRAB_NATIVE_HOST_PATH__#$repo/apps/native-host/bin/gramgrab-native-host.mjs#" \
     "$repo/apps/native-host/manifests/chromium.json" \

@@ -77,6 +77,7 @@ node $D eval "background.js" "chrome.storage.local.set({'download-history':$STOR
 ```
 
 Repeat once with `{version:999,entries:[]}`. Opening history in the UI must show
+`Download history uses a newer version.`, the presentation of
 `HISTORY_VERSION_UNSUPPORTED`; `history list --json` must reject with
 `Unsupported history version.` Restore again. Never perform corruption checks
 on a non-verification profile.

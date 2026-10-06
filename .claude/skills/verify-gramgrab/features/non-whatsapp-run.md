@@ -162,6 +162,7 @@ and prove the same entries appear in the popup and CLI. Then:
    run `history list --json`, and require `repaired: true` with the malformed
    entry removed. Restore the valid store saved before this check.
 5. Write `{version: 999, entries: []}`. The UI must show
+   `Download history uses a newer version.`, the presentation of
    `HISTORY_VERSION_UNSUPPORTED`; `history list --json` must reject with
    `Unsupported history version.` Restore the saved store.
 

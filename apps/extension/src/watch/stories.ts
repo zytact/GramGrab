@@ -44,9 +44,9 @@ const CLOCK_SKEW_SECONDS = 5 * 60;
 const untrusted = () => new ResponseShapeUnknown({ context: 'watch_stories' });
 
 /**
- * Reads the target's identified Story collection into exact references. A missing collection,
- * another owner, a non-presentation GraphQL error, or an item without trustworthy identity and
- * timing fails instead of reading as "no Stories".
+ * Reads the target's Story collection into exact references. Instagram answers an account without
+ * active Stories with no reel. Another owner, several reels, a non-presentation GraphQL error, or an
+ * item without trustworthy identity and timing fails instead of reading as "no Stories".
  */
 export const readStories = (raw: unknown, targetId: string, nowSeconds: number) =>
   Effect.gen(function* () {
@@ -56,7 +56,8 @@ export const readStories = (raw: unknown, targetId: string, nowSeconds: number) 
     if (errors.some(error => !OPTIONAL_STORY_FIELDS.has(error.path?.at(-1))))
       return yield* Effect.fail(untrusted());
     const [reel, ...others] = data.reels_media;
-    if (!reel || others.length > 0 || reel.id !== targetId || reel.owner.id !== targetId)
+    if (!reel) return [];
+    if (others.length > 0 || reel.id !== targetId || reel.owner.id !== targetId)
       return yield* Effect.fail(untrusted());
     const timed = reel.items.every(
       item =>
