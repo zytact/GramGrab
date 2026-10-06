@@ -372,11 +372,13 @@ const checkOne = Effect.fn(function* (
     catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
   });
   const until = run.deferredUntil;
-  yield* Effect.promise(() =>
-    until === undefined
-      ? finishManual(viewer.accountId, watch.id, checkId, run.kinds)
-      : deferManual(viewer.accountId, watch.id, checkId, until)
-  );
+  yield* Effect.tryPromise({
+    try: () =>
+      until === undefined
+        ? finishManual(viewer.accountId, watch.id, checkId, run.kinds)
+        : deferManual(viewer.accountId, watch.id, checkId, until),
+    catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
+  });
   return WatchCheckOutcome.make({
     watchId: watch.id,
     accountId: watch.targetId,

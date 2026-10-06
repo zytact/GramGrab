@@ -149,6 +149,45 @@ describe('native Watch checks', () => {
     });
   });
 
+  it('gives a waiting manual check the pause that holds the pump back', async () => {
+    await add();
+    const watchId = (harness.local.read('watch-store') as { watches: { id: string }[] }).watches[0]!
+      .id;
+    const until = Date.now() + 30 * 60_000;
+    harness.local.write('instagram-requests', {
+      version: 1,
+      attempts: [],
+      nextWatchAt: 0,
+      pause: { until, level: 0 },
+    });
+    harness.local.write('watch-scheduler', {
+      version: 1,
+      logins: {
+        '1001': {
+          nextRoundAt: Date.now() + 12 * 60 * 60_000,
+          remaining: [],
+          earlyRetries: [],
+          manual: [
+            {
+              watchId,
+              checkId: '3e1a7c5b-9d2f-4a6e-8b0c-1d2e3f4a5b6c',
+              remainingKinds: ['stories'],
+              outcomes: [],
+            },
+          ],
+        },
+      },
+    });
+    await harness.session.set({ 'watch-browser-session': true });
+    await harness.loadWorker();
+    harness.fireAlarm('watch-pump');
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(harness.local.read('watch-scheduler')).toMatchObject({
+      logins: { '1001': { manual: [{ deferredUntil: until, deferredReason: 'rate-limited' }] } },
+    });
+    expect(storyRequests()).toBe(0);
+  });
+
   it('cancels transport output while the durable check completes in the background', async () => {
     await add();
     const events: EventPayload[] = [];

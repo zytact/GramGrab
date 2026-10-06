@@ -215,9 +215,30 @@ async function readyViewer(): Promise<string | undefined> {
   if (!hasDueWork(state, read.store.watches)) return undefined;
   const viewer = await verifyViewer();
   if (viewer._tag === 'Right') return viewer.right.accountId;
-  if (viewer.left._tag !== 'WatchRequestDeferred' && viewer.left._tag !== 'RateLimited')
-    await updateState(current => ({ ...current, suspended: true }));
+  if (viewer.left._tag === 'WatchRequestDeferred' || viewer.left._tag === 'RateLimited')
+    await holdPendingManual(Date.now());
+  else await updateState(current => ({ ...current, suspended: true }));
   return undefined;
+}
+
+/** Pacing held the pump back before any job ran: pending manual checks wait for the same hold. */
+async function holdPendingManual(now: number) {
+  const until = requestLedger.nextWatchAllowedAt(now);
+  const state = await loadState();
+  if (until <= now || !Object.values(state.logins).some(login => login.manual?.length)) return;
+  const deferredReason = pacingReason(now);
+  await updateState(current => ({
+    ...current,
+    logins: Object.fromEntries(
+      Object.entries(current.logins).map(([viewerId, login]) => [
+        viewerId,
+        {
+          ...login,
+          manual: login.manual?.map(job => ({ ...job, deferredUntil: until, deferredReason })),
+        },
+      ])
+    ),
+  }));
 }
 
 const setSchedule = (
