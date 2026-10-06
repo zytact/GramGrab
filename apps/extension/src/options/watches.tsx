@@ -669,9 +669,9 @@ function ScheduleNotice({ schedule }: { schedule: WatchListResult['schedule'] })
   if (schedule.pausedUntil)
     return (
       <p className="opt-banner opt-banner-error">
-        <strong>Watches paused.</strong> Instagram rate limited a request, so Watch checks wait
-        until {new Date(schedule.pausedUntil).toLocaleTimeString()}. Your own downloads still go
-        first.
+        <strong>Watches paused.</strong> Instagram rate limited a Watch request, so Watch checks
+        wait until {new Date(schedule.pausedUntil).toLocaleTimeString()}. Your own downloads still
+        go first.
       </p>
     );
   return null;

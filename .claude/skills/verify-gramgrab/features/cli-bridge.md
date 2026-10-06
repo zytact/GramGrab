@@ -29,7 +29,7 @@ worker connects to the host on startup.
 ## Driving it with the harness
 
 ```bash
-cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 
 node apps/cli/bin/gramgrab.mjs status
 node apps/cli/bin/gramgrab.mjs history list

@@ -30,7 +30,7 @@ different mode.
 ## Driving it with the harness
 
 ```bash
-cd /home/arnab/Projects/GramGrab && . ./.local/verify/session.env
+cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 EV=.local/verify-evidence/$(date -u +%Y%m%dT%H%M%SZ) && mkdir -p "$EV"
 
 node apps/cli/bin/gramgrab.mjs export https://www.instagram.com/p/SHORTCODE/ \
