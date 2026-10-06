@@ -59,7 +59,8 @@ type WatchAdmission =
 
 /**
  * The browser's Instagram request ledger. One session signs in at a time, so the rolling cap,
- * spacing, and 429 pause belong to whichever login is signed in.
+ * spacing, and 429 pause belong to whichever login is signed in. Only a Watch request's 429 starts
+ * the pause: person-initiated work hits endpoints that 429 alone and recovers through fallbacks.
  */
 class RequestLedger {
   private attempts: readonly number[] = [];
@@ -135,7 +136,7 @@ class RequestLedger {
     if (origin.kind === 'person') this.personInFlight = Math.max(0, this.personInFlight - 1);
     else this.watchInFlight = false;
     this.nextWatchAt = now + WATCH_SPACING_MS + Math.random() * WATCH_SPACING_JITTER_MS;
-    if (status === 429) {
+    if (status === 429 && origin.kind === 'watch') {
       const level = this.currentPause ? this.currentPause.level + 1 : 0;
       this.currentPause = RequestPause.make({
         until: now + Math.min(PAUSE_BASE_MS * 2 ** level, PAUSE_CEILING_MS),
@@ -209,5 +210,5 @@ const watchFetch = (url: string, init?: RequestInit) =>
 /** Requests the person asked for in the moment: counted, never held back. */
 export const PersonRequests = Layer.succeed(InstagramRequests, { fetch: personFetch });
 
-/** Unattended Watch requests: one at a time, spaced, capped, and stopped by a shared pause. */
+/** Unattended Watch requests: one at a time, spaced, capped, and stopped by their own 429 pause. */
 export const WatchRequests = Layer.succeed(InstagramRequests, { fetch: watchFetch });

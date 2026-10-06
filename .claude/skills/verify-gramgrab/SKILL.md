@@ -125,9 +125,22 @@ Verified: a cookie written seconds before teardown is on disk after
 `cleanup.sh` and readable by the page after the next `launch.sh`.
 
 `GRAMGRAB_PROFILE=<dir>` points at a different profile, which is how you keep a
-second account. Never point it at the developer's real browser profile:
-Chromium refuses to open a profile a running browser already holds, and a second
-instance driving a live session is worse than not verifying.
+second account. Never point it at the developer's real browser profile: a
+running browser that already holds a profile takes the launch over instead of
+starting a second instance, so `launch.sh` refuses a profile whose
+`SingletonLock` names a live process.
+
+A git worktree starts with no `.local/verify-profile/`. To reuse another
+checkout's sign-ins, copy that profile into this worktree while no browser holds
+it, leaving out its lock files:
+
+```bash
+rsync -a --exclude 'Singleton*' --exclude 'Default/Service Worker' \
+  "$OTHER_CHECKOUT/.local/verify-profile/" .local/verify-profile/
+```
+
+The copy carries that profile's extension storage, Watches and request ledger
+included, so read the state you inherited before treating it as this run's.
 
 ## Doctor
 
@@ -313,6 +326,7 @@ All are executable and take no arguments beyond what is shown above.
 | `scripts/signin.sh`  | Launch with Instagram and WhatsApp Web open for a one-time sign-in     |
 | `scripts/doctor.mjs` | Six read-only health checks, non-zero exit on any failure              |
 | `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, reading, and capturing pages |
+| `scripts/throttle.mjs` | Answer the worker's matching Instagram requests with a status such as 429 |
 | `scripts/cleanup.sh` | Close the browser, remove run state, keep the profile and evidence     |
 
 For Watches, `scripts/watch-smoke.mjs` drives the packaged CLI and options page.

@@ -55,6 +55,16 @@ build_fingerprint="$(rg --files "$ext_dir" -0 | sort -z | xargs -0 sha256sum | s
 mkdir -p "$session_dir"
 profile="${GRAMGRAB_PROFILE:-$repo/.local/verify-profile}"
 downloads="$session_dir/downloads"
+
+# A running browser that holds the profile takes the launch over and never opens
+# this run's CDP port, so fail with the owner instead of a port timeout.
+lock_pid="$(readlink "$profile/SingletonLock" 2>/dev/null | sed 's/.*-//' || true)"
+if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+  echo "Profile $profile is in use by browser pid $lock_pid." >&2
+  echo "Copy it and set GRAMGRAB_PROFILE to the copy, or wait for that run to end." >&2
+  exit 2
+fi
+
 mkdir -p "$profile/NativeMessagingHosts" "$profile/Default" "$downloads"
 
 # Force the download directory on every launch, not only the first. Chromium
