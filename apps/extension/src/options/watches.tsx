@@ -753,6 +753,7 @@ function Feed({
       )}
       {watch && (
         <WatchDetail
+          key={watch.watchId}
           watch={watch}
           manualCheck={manualChecks.get(watch.watchId)}
           version={version}

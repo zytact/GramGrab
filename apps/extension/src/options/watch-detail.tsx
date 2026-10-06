@@ -338,12 +338,12 @@ function CheckNow({
   onChecked: () => void;
 }) {
   const [sending, setSending] = useState(false);
-  const [deferred, setDeferred] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [failure, setFailure] = useState<WatchFailure>();
   const checking = sending || manualCheck?._tag === 'ManualCheckPending';
   const check = async () => {
     setSending(true);
-    setDeferred(undefined);
+    setNotice(undefined);
     const response = await runCommand(
       WatchCheck.make({ watches: [AccountIdSelector.make({ accountId: watch.accountId })] })
     );
@@ -352,11 +352,15 @@ function CheckNow({
     const outcome =
       response.result?._tag === 'WatchCheckResult' ? response.result.outcomes[0] : undefined;
     if (outcome?.deferredUntil !== undefined)
-      setDeferred(
+      setNotice(
         DEFERRED_TEXT[outcome.deferredReason ?? 'paced'](
           new Date(outcome.deferredUntil).toLocaleTimeString()
         )
       );
+    else if (
+      outcome?.kinds.some(kind => kind._tag === 'KindCheckSkipped' && kind.reason === 'storage')
+    )
+      setNotice(outcome.kinds.map(outcomeText).join(' · '));
     onChecked();
   };
   return (
@@ -369,7 +373,7 @@ function CheckNow({
         {checking ? 'Checking…' : 'Check now'}
       </button>
       {manualCheck && <ManualCheckStatus check={manualCheck} />}
-      {deferred && <p className="opt-meta">{deferred}</p>}
+      {notice && <p className="opt-meta">{notice}</p>}
       {failure?._tag === 'CommandFailure' && (
         <p className="opt-meta opt-error">{FAILURE_PRESENTATION[failure.failure.code].title}</p>
       )}
