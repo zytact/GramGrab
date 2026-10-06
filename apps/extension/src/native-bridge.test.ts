@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect';
+import { Schema } from 'effect';
 import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test';
 import { getMockBrowser } from './test/setup.ts';
 import {
@@ -6,6 +6,7 @@ import {
   Event,
   Inspect,
   PROTOCOL_VERSION,
+  Rejected,
   Request,
   RequestId,
   validationFailureFrom,
@@ -21,9 +22,8 @@ describe('native bridge protocol negotiation', () => {
     const requestId = Schema.decodeUnknownSync(RequestId)('10000000-0000-4000-8000-000000000001');
     const encoded = unsupportedVersionEvent({ version: 1, requestId });
 
-    const decoded = Effect.runSync(Schema.decodeUnknown(Event)(encoded));
-
-    expect(decoded.event).toMatchObject({
+    expect(encoded.version).toBe(1);
+    expect(Schema.decodeUnknownSync(Rejected)(encoded.event)).toMatchObject({
       _tag: 'Rejected',
       failure: { _tag: 'TransportFailure', code: 'PROTOCOL_VERSION_UNSUPPORTED' },
     });

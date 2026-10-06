@@ -65,12 +65,9 @@ const save = <T>(change: (store: WatchStore) => { store: WatchStore; value: T })
  */
 const verifyViewer = (store: WatchStore | undefined) =>
   fetchViewer.pipe(
-    Effect.catchAll(error => {
-      const detail = StoredWatchCount.make({ count: store?.watches.length ?? 0 });
-      if (error._tag === 'ViewerMissing') return reject('IG_NOT_AUTHENTICATED', detail);
-      if (error._tag === 'WatchRequestDeferred') return reject('SOURCE_UNEXPECTED_FAILURE', detail);
-      return reject(normalizeSourceFailure(error).code, detail);
-    })
+    Effect.catchAll(() =>
+      reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
+    )
   );
 
 const owned = (store: WatchStore, viewer: Account) =>

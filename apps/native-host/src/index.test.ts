@@ -8,11 +8,12 @@ import {
   decodeClientMessage,
   decodeJsonFrame,
   encodeJsonFrame,
+  FrameDecoder,
   PROTOCOL_VERSION,
   Request,
   Status,
 } from '@gramgrab/protocol';
-import { attachClient, prepareLocalIpcEndpoint } from './index.ts';
+import { attachClient, prepareLocalIpcEndpoint, relayExtensionFrame } from './index.ts';
 
 const temporaryDirectories: string[] = [];
 
@@ -86,6 +87,38 @@ describe('native host request ownership', () => {
     await new Promise(resolve => setTimeout(resolve, 10));
 
     expect(decodeJsonFrame(relayed[0]!)).toEqual(skewed);
+    client.end();
+    await new Promise<void>(resolve => client.once('close', resolve));
+    await new Promise<void>((resolve, reject) =>
+      server.close(error => (error ? reject(error) : resolve()))
+    );
+  });
+
+  it('relays a version rejection stamped with another protocol version', async () => {
+    const path = await temporarySocketPath();
+    const server = createServer(socket => attachClient(socket, () => undefined));
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(path, resolve);
+    });
+    const client = connect(path);
+    await new Promise<void>((resolve, reject) => {
+      client.once('error', reject);
+      client.once('connect', resolve);
+    });
+    const received = new Promise<Buffer>(resolve => client.once('data', resolve));
+    const rejection = {
+      version: PROTOCOL_VERSION - 1,
+      requestId: crypto.randomUUID(),
+      event: {
+        _tag: 'Rejected',
+        failure: { _tag: 'TransportFailure', code: 'PROTOCOL_VERSION_UNSUPPORTED' },
+      },
+    };
+    relayExtensionFrame(new TextEncoder().encode(JSON.stringify(rejection)));
+
+    const decoder = new FrameDecoder();
+    expect(decodeJsonFrame(decoder.push(await received)[0]!)).toEqual(rejection);
     client.end();
     await new Promise<void>(resolve => client.once('close', resolve));
     await new Promise<void>((resolve, reject) =>

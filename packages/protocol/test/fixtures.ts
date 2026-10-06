@@ -7,13 +7,13 @@ const itemFailure = { code: 'MEDIA_NETWORK_FAILED', scope: 'item' };
 
 export const requestFixtures: readonly unknown[] = [
   {
-    version: 1,
+    version: 2,
     requestId,
     command: { _tag: 'Inspect', sourceUrl: 'https://www.instagram.com/p/example/' },
   },
-  { version: 1, requestId, command: { _tag: 'InstantsInspect' } },
+  { version: 2, requestId, command: { _tag: 'InstantsInspect' } },
   {
-    version: 1,
+    version: 2,
     requestId,
     command: {
       _tag: 'Export',
@@ -34,28 +34,87 @@ export const requestFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 1,
+    version: 2,
     requestId,
     command: {
       _tag: 'InstantsExport',
       operations: [{ operationId, itemNumber: 1, mediaIdentity, mode: { _tag: 'DirectExport' } }],
     },
   },
-  { version: 1, requestId, command: { _tag: 'HistoryList' } },
+  { version: 2, requestId, command: { _tag: 'HistoryList' } },
   {
-    version: 1,
+    version: 2,
     requestId,
     command: { _tag: 'HistoryRemove', entryIds: ['history-1'] },
   },
-  { version: 1, requestId, command: { _tag: 'HistoryClear' } },
+  { version: 2, requestId, command: { _tag: 'HistoryClear' } },
   {
-    version: 1,
+    version: 2,
     requestId,
     command: { _tag: 'HistoryRedownload', entryIds: ['history-1'] },
   },
-  { version: 1, requestId, command: { _tag: 'DebugGet' } },
-  { version: 1, requestId, command: { _tag: 'DebugExport' } },
+  { version: 2, requestId, command: { _tag: 'DebugGet' } },
+  { version: 2, requestId, command: { _tag: 'DebugExport' } },
+  { version: 2, requestId, command: { _tag: 'WatchList' } },
+  {
+    version: 2,
+    requestId,
+    command: { _tag: 'WatchShow', watch: { _tag: 'AccountIdSelector', accountId: '2002' } },
+  },
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchAdd',
+      target: 'https://www.instagram.com/example/',
+      kinds: ['posts', 'stories'],
+      actions: ['notify', 'collect'],
+      acceptUnattended: true,
+    },
+  },
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchSet',
+      watch: { _tag: 'UsernameSelector', username: 'example' },
+      actions: ['download'],
+    },
+  },
+  {
+    version: 2,
+    requestId,
+    command: {
+      _tag: 'WatchLifecycle',
+      operation: 'pause',
+      watches: [{ _tag: 'UsernameSelector', username: 'example' }],
+    },
+  },
 ];
+
+const watchSummary = {
+  watchId: '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f',
+  accountId: '2002',
+  username: 'example',
+  formerUsername: 'old.example',
+  enabled: true,
+  kinds: [
+    { _tag: 'KindChecked', kind: 'posts', lastSuccessAt: 1_700_000_000_000 },
+    { _tag: 'KindBaselinePending', kind: 'stories' },
+    { _tag: 'KindOff', kind: 'instants', baselineKept: true },
+    {
+      _tag: 'KindProblem',
+      kind: 'avatar',
+      code: 'WATCH_USERNAME_UNCONFIRMED',
+      since: 1_700_000_000_000,
+    },
+  ],
+  actions: ['notify', 'collect'],
+  attentionCount: 1,
+  inboxCount: 2,
+  createdAt: 1_690_000_000_000,
+  lastCheckAt: 1_700_000_000_000,
+};
 
 const resultFixtures: readonly unknown[] = [
   {
@@ -146,12 +205,29 @@ const resultFixtures: readonly unknown[] = [
     filename: 'gramgrab-diagnostics.json',
     status: 'started',
   },
+  {
+    _tag: 'WatchListResult',
+    viewer: { accountId: '1001', username: 'viewer' },
+    otherLoginWatchCount: 1,
+    storage: { usedBytes: 2048, budgetBytes: 2_097_152, status: 'ok' },
+    attentionCount: 1,
+    watches: [watchSummary],
+  },
+  { _tag: 'WatchShowResult', watch: watchSummary },
+  { _tag: 'WatchAddResult', created: false, watch: watchSummary },
+  { _tag: 'WatchSetResult', watch: watchSummary, baselineKinds: ['stories'] },
+  {
+    _tag: 'WatchLifecycleResult',
+    operation: 'pause',
+    watches: [watchSummary],
+    unknownWatches: ['missing'],
+  },
 ];
 
 export const eventFixtures: readonly unknown[] = [
-  { version: 1, requestId, event: { _tag: 'Accepted' } },
+  { version: 2, requestId, event: { _tag: 'Accepted' } },
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Progress',
@@ -162,12 +238,12 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   ...resultFixtures.map(result => ({
-    version: 1,
+    version: 2,
     requestId,
     event: { _tag: 'Completed', result },
   })),
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -175,7 +251,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -183,7 +259,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -191,7 +267,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 1,
+    version: 2,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -201,4 +277,20 @@ export const eventFixtures: readonly unknown[] = [
       },
     },
   },
+  ...[
+    { _tag: 'StoredWatchCount', count: 3 },
+    { _tag: 'UnattendedDisclosure', text: 'Watches check Instagram for you.' },
+    { _tag: 'ExistingWatch', accountId: '2002', username: 'example' },
+  ].map(detail => ({
+    version: 2,
+    requestId,
+    event: {
+      _tag: 'Rejected',
+      failure: {
+        _tag: 'CommandFailure',
+        failure: { code: 'WATCH_CONFIG_CONFLICT', scope: 'batch' },
+        detail,
+      },
+    },
+  })),
 ];
