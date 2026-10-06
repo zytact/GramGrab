@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/zytact/GramGrab/compare/v2.0.1...v2.0.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* **watch:** make Posts Watches work on grids with collabs and pinned Posts ([#243](https://github.com/zytact/GramGrab/issues/243)) ([172f287](https://github.com/zytact/GramGrab/commit/172f28744dc48f35437c4539dea83afbe3c01ab6))
+
 ## [2.0.1](https://github.com/zytact/GramGrab/compare/v2.0.0...v2.0.1) (2026-10-06)
 
 
