@@ -2,6 +2,7 @@ import instantPhoto from '../effect/__fixtures__/instants-photo.json';
 import instantVideo from '../effect/__fixtures__/instants-video.json';
 import postsFixture from '../effect/__fixtures__/profile-posts.json';
 import storyFixture from '../effect/__fixtures__/story.json';
+import searchFixture from '../effect/__fixtures__/topsearch.json';
 import { json } from './extension-harness.ts';
 
 export const VIEWER = { id: '1001', username: 'viewer.one' };
@@ -122,6 +123,35 @@ export function instantsFeed(instants: readonly FakeInstant[]) {
 }
 
 /**
+ * A search answer in the shape of the sanitized `topsearch.json` capture holding one record per
+ * account, each with the given picture ID and a fresh picture URL.
+ */
+export function avatarSearch(
+  ...accounts: readonly {
+    readonly id: string;
+    readonly username: string;
+    readonly pictureId?: string;
+  }[]
+) {
+  const [entry] = searchFixture.users;
+  return {
+    ...searchFixture,
+    users: accounts.map((account, index) => ({
+      ...entry,
+      user: {
+        ...entry!.user,
+        pk: account.id,
+        pk_id: account.id,
+        id: account.id,
+        username: account.username,
+        profile_pic_id: account.pictureId ?? null,
+        profile_pic_url: `https://sanitized.invalid/avatar/${index}/${Math.random()}`,
+      },
+    })),
+  };
+}
+
+/**
  * A fake of the Instagram endpoints Watches call. Tests change `state` to model a different
  * login, a rename, a lookup Instagram refuses, or the target's current Stories, Posts pages, and
  * the viewer's Instants feed.
@@ -141,6 +171,9 @@ export function createWatchInstagram() {
     /** The cursor of every Posts page requested, '' for the first page. */
     postRequests: [] as string[],
     instants: instantsFeed([]) as unknown,
+    search: avatarSearch({ ...TARGET, pictureId: 'PIC_A' }) as unknown,
+    /** The query of every search request. */
+    searches: [] as string[],
     instantsRequests: 0,
   };
 
@@ -168,6 +201,11 @@ export function createWatchInstagram() {
       if (searchParams.get('query_hash') !== '45246d3fe16ccc6577e0bd297a5db1ab') return undefined;
       const targetId = variable(searchParams);
       return json(state.stories[targetId] ?? storyResponse(targetId, []), state.storyStatus);
+    },
+    ({ pathname, searchParams }) => {
+      if (pathname !== '/web/search/topsearch/') return undefined;
+      state.searches.push(searchParams.get('query') ?? '');
+      return json(state.search);
     },
     ({ pathname, searchParams }) =>
       pathname === '/api/v1/users/web_profile_info/'
