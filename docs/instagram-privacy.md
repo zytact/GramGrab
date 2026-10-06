@@ -10,13 +10,52 @@ retention, or use of Instagram data.
 Instagram acquisition runs from the extension background worker. It does not inspect Instagram
 pages through a content script. The manifest grants access to `https://*.instagram.com/*` for media
 metadata and `https://*.fbcdn.net/*` for media previews and downloads. Those permissions are for the
-requested GramGrab operation, not unrelated browsing or session state.
+requested GramGrab operation or a consented Watch check, not unrelated browsing or session state.
+
+## Watches
+
+Watches are the one exception to request-in-the-moment access. See
+[ADR 0005](./adr/0005-unattended-instagram-access-for-watches.md).
+
+- **Consent.** The person acknowledges this disclosure every time they add a Watch, on the options page
+  or with `gramgrab watch add --accept-unattended`:
+
+  > Watches check Instagram for you about twice a day while your browser is open, using your
+  > signed-in Instagram session, even when you are not using GramGrab. Instagram may treat this
+  > automated activity as unusual and could limit or flag your account. GramGrab stores only the
+  > account and media IDs and check results it needs, on this device, never media files or media
+  > links. You can pause or delete a Watch at any time.
+
+- **Requests.** Unattended requests are limited to the profile, Stories, Instants, and Posts requests
+  for enabled Watches. They run only while the creating Instagram login is verified, and the Watch
+  cadence and rate policy bounds them. Watch auto-downloads fetch from the CDN. Account Avatars for
+  notification icons and the options page load only into memory and are dropped after use.
+- **Stored state.** The Watch store lives in `storage.local` and holds only what its allowlisted
+  Effect schema permits:
+  - IDs: the creating viewer ID, the target account ID, and the target's current and previous usernames
+  - settings: the chosen kinds and actions, and whether the Watch is enabled or paused
+  - per kind: the baseline cutoff, the seen media IDs with publication times, and the last check
+    status, code, and time
+  - media references: shortcodes, media IDs, Sidecar child IDs, media type, publication time, Story
+    expiry time, and discovery time
+  - Avatar picture identities: the last one observed and one for each recorded change
+  - per-action and per-child outcomes, Watch attention items, and Watch inbox entries
+
+  It never holds media bytes, signed, preview, data, or blob URLs, thumbnails, captions, full or
+  display names, locations, cookies, or tokens. The viewer's own username and Avatar are fetched when
+  needed and are not stored. A Posts traversal cursor lives only in `storage.session`.
+
+- **Ownership and lifetime.** Watch state belongs to the Instagram login that created it, and
+  another login cannot see or use it. Inbox entries expire 30 days after discovery. The whole store
+  stays under a 2 MiB budget. Deleting a Watch removes its state, while downloaded files and History
+  receipts remain.
 
 ## Authentication material
 
 Instagram requests may use the browser's authenticated session where required. The `cookies`
-permission is limited to reading Instagram's `csrftoken` cookie for an Instants request and sending
-that value back to Instagram as the CSRF header for that request.
+permission is limited to reading Instagram's `csrftoken` cookie immediately before an Instagram
+request that requires it, such as Instants, Posts, or the profile query, and sending that value back
+to Instagram as the CSRF header for that request. The value is never stored or logged.
 
 Cookies, CSRF tokens, request headers, browser storage contents, and unrelated session state never
 enter shareable diagnostics or committed artifacts. They must not be copied into source,
@@ -29,6 +68,10 @@ structural-only contract here. A report is built from an allowlisted schema and 
 capable of carrying a raw signed media URL, literal Instagram source URL, filename, operation or
 request identifier, arbitrary technical cause, full user-agent string, cookie, request header,
 browser storage content, or unrelated session state. Parsing failures never fall back to raw input.
+
+A Watch failure adds only a closed media-kind field to the code, phase, and scope. Reports never
+contain usernames, account or media IDs, shortcodes, cursors, timestamps, or other Watch store
+content.
 
 A person previews the complete serialized report before copying it. Reports are generated
 transiently and are never uploaded, archived, or collected as telemetry by GramGrab.

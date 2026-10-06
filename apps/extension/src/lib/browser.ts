@@ -47,6 +47,7 @@ export interface BrowserShim {
     getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
     connectNative: (application: string) => NativePort;
+    openOptionsPage: () => Promise<void>;
     onMessage: {
       addListener: (callback: OnMessageCallback) => void;
     };
@@ -141,6 +142,7 @@ interface ChromeRuntime {
   lastError?: { message?: string };
   sendMessage: (msg: unknown, callback: (response: unknown) => void) => void;
   connectNative?: (application: string) => NativePort;
+  openOptionsPage: (callback: () => void) => void;
   onMessage: { addListener: (callback: OnMessageCallback) => void };
   onStartup?: { addListener: (callback: () => void) => void };
 }
@@ -211,6 +213,7 @@ interface NativeBrowserGlobal {
     getManifest: () => { version?: string };
     sendMessage: (msg: unknown) => Promise<unknown>;
     connectNative?: (application: string) => NativePort;
+    openOptionsPage: () => Promise<void>;
     onMessage: { addListener: (callback: OnMessageCallback) => void };
     onStartup?: { addListener: (callback: () => void) => void };
   };
@@ -292,6 +295,8 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
           });
         }),
       connectNative: application => chrome.runtime.connectNative?.(application) ?? noopNativePort,
+      openOptionsPage: () =>
+        callbackPromise(chrome, callback => chrome.runtime.openOptionsPage(callback)),
       onMessage: {
         addListener: callback => chrome.runtime.onMessage.addListener(callback),
       },
@@ -616,6 +621,7 @@ const noopShim: BrowserShim = {
     getManifest: () => ({}),
     sendMessage: () => Promise.resolve(undefined),
     connectNative: () => noopNativePort,
+    openOptionsPage: () => Promise.resolve(),
     onMessage: { addListener: () => {} },
     onStartup: noopRuntimeStartup,
   },

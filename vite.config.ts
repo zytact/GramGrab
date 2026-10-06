@@ -306,6 +306,7 @@ export default defineConfig({
       input: {
         popup: resolve(extensionRoot, 'templates/popup.html'),
         runner: resolve(extensionRoot, 'templates/runner.html'),
+        options: resolve(extensionRoot, 'templates/options.html'),
         // The controller entry has no exports or external imports so it can be
         // injected as a classic packaged isolated-world script.
         'whatsapp-controller': resolve(extensionRoot, 'src/whatsapp/controller-entry.ts'),

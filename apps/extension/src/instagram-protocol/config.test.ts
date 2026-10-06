@@ -30,6 +30,8 @@ describe('protocol configuration', () => {
           },
         ],
       },
+      viewer: { candidates: [{ kind: 'query_hash', id: 'viewer-id', requests: [request] }] },
+      profileById: { candidates: [{ kind: 'doc_id', id: 'profile-id', requests: [request] }] },
     },
   });
 

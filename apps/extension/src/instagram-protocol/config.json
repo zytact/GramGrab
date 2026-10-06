@@ -86,6 +86,34 @@
           ]
         }
       ]
+    },
+    "viewer": {
+      "candidates": [
+        {
+          "kind": "query_hash",
+          "id": "d6f4427fbe92d846298cf93df0b937d3",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query/",
+              "transport": "query"
+            }
+          ]
+        }
+      ]
+    },
+    "profileById": {
+      "candidates": [
+        {
+          "kind": "doc_id",
+          "id": "28036671149327607",
+          "requests": [
+            {
+              "endpoint": "https://www.instagram.com/graphql/query/",
+              "transport": "form"
+            }
+          ]
+        }
+      ]
     }
   }
 }
