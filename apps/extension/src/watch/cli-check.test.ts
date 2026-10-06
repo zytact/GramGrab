@@ -100,6 +100,7 @@ describe('native Watch checks', () => {
 
   it('admits one concurrent check per Watch and defers the other without duplicate acquisition', async () => {
     await add();
+    vi.mocked(Math.random).mockReturnValue(0.3701);
     const terminals = await settled(
       Promise.all([harness.command(check()), harness.command(check())])
     );

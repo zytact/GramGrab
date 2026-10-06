@@ -135,7 +135,7 @@ class RequestLedger {
   end(origin: RequestOrigin, now: number, status: number | 'failed', probe = false): void {
     if (origin.kind === 'person') this.personInFlight = Math.max(0, this.personInFlight - 1);
     else this.watchInFlight = false;
-    this.nextWatchAt = now + WATCH_SPACING_MS + Math.random() * WATCH_SPACING_JITTER_MS;
+    this.nextWatchAt = now + WATCH_SPACING_MS + Math.round(Math.random() * WATCH_SPACING_JITTER_MS);
     if (status === 429 && origin.kind === 'watch') {
       const level = this.currentPause ? this.currentPause.level + 1 : 0;
       this.currentPause = RequestPause.make({
