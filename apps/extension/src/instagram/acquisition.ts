@@ -304,7 +304,8 @@ export const readCsrfToken = Effect.tryPromise({
   catch: cause => new NetworkError({ cause }),
 }).pipe(Effect.map(cookie => cookie?.value ?? ''));
 
-export const fetchInstantMediaItems = () => {
+/** The signed-in viewer's active Instants feed, decoded but not yet normalized. */
+export const fetchInstantItems = () => {
   const operation = protocolConfig.operations.instantsFeed;
   if (!operation) return Effect.fail(new ResponseShapeUnknown({ context: 'instants_protocol' }));
   const candidate = operation.candidates[0]!;
@@ -317,10 +318,12 @@ export const fetchInstantMediaItems = () => {
         ...IG_API_GRAPHQL_HEADERS,
         'X-IG-App-ID': operation.appId ?? protocolConfig.client.appId,
       })
-    ),
-    Effect.flatMap(normalizeInstantItems)
+    )
   );
 };
+
+export const fetchInstantMediaItems = () =>
+  fetchInstantItems().pipe(Effect.flatMap(normalizeInstantItems));
 
 export const resolveMediaEffect = (url: string) =>
   Effect.gen(function* () {

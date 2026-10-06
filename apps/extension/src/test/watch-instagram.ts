@@ -1,3 +1,5 @@
+import instantPhoto from '../effect/__fixtures__/instants-photo.json';
+import instantVideo from '../effect/__fixtures__/instants-video.json';
 import postsFixture from '../effect/__fixtures__/profile-posts.json';
 import storyFixture from '../effect/__fixtures__/story.json';
 import { json } from './extension-harness.ts';
@@ -85,9 +87,44 @@ export function postsPage(posts: readonly FakePost[], next?: string) {
   };
 }
 
+export interface FakeInstant {
+  /** The media part of the ID; the owner part is appended. */
+  readonly pk: string;
+  readonly owner: string;
+  readonly takenAt: number;
+  readonly video?: boolean;
+}
+
+/**
+ * An Instants feed in the shape of the sanitized `instants-*.json` captures, with numeric
+ * owner-bound identities in place of their sanitized tokens.
+ */
+export function instantsFeed(instants: readonly FakeInstant[]) {
+  const [photo] = instantPhoto.data.xdt_get_quick_snaps.items_ordered_by_time;
+  const [video] = instantVideo.data.xdt_get_quick_snaps.items_ordered_by_time;
+  return {
+    data: {
+      xdt_get_quick_snaps: {
+        ...instantPhoto.data.xdt_get_quick_snaps,
+        items_ordered_by_time: instants.map(instant => {
+          const item = instant.video ? video! : photo!;
+          return {
+            ...item,
+            id: `${instant.pk}_${instant.owner}`,
+            taken_at: instant.takenAt,
+            user: { ...item.user, id: instant.owner },
+          };
+        }),
+        sample_items: [],
+      },
+    },
+  };
+}
+
 /**
  * A fake of the Instagram endpoints Watches call. Tests change `state` to model a different
- * login, a rename, a lookup Instagram refuses, or the target's current Stories and Posts pages.
+ * login, a rename, a lookup Instagram refuses, or the target's current Stories, Posts pages, and
+ * the viewer's Instants feed.
  */
 export function createWatchInstagram() {
   const state = {
@@ -103,6 +140,8 @@ export function createWatchInstagram() {
     posts: { '': postsPage([]) } as Record<string, unknown>,
     /** The cursor of every Posts page requested, '' for the first page. */
     postRequests: [] as string[],
+    instants: instantsFeed([]) as unknown,
+    instantsRequests: 0,
   };
 
   const variable = (query: URLSearchParams) =>
@@ -139,6 +178,12 @@ export function createWatchInstagram() {
       formDocument(init) === '28991540097136703' ? postsAnswer(init, false) : undefined,
     (_url, init) =>
       formDocument(init) === '29240983615539641' ? postsAnswer(init, true) : undefined,
+    (_url, init) => {
+      if (!(init?.body instanceof URLSearchParams)) return undefined;
+      if (init.body.get('client_doc_id') !== '13779138904809319315782061537') return undefined;
+      state.instantsRequests += 1;
+      return json(state.instants);
+    },
     // The configured primary Story request answered 403 in every live probe.
     (_url, init) =>
       formDocument(init) === '28299494542988937' ? new Response('', { status: 403 }) : undefined,

@@ -180,13 +180,18 @@ describe('Watch request admission', () => {
 
     await vi.advanceTimersByTimeAsync(30 * 60_000);
     await runWatch('https://www.instagram.com/watch');
-    expect((await ledger()).pause?.level).toBe(1);
     expect(((await ledger()).pause?.until ?? 0) - Date.now()).toBe(60 * 60_000);
 
     status = 200;
     await vi.advanceTimersByTimeAsync(60 * 60_000);
     expect(Either.isRight(await runWatch('https://www.instagram.com/watch'))).toBe(true);
-    expect((await ledger()).pause).toBeUndefined();
+    expect((await ledger()).pause?.until).toBeUndefined();
+
+    // The probe reset the backoff, so the next 429 pauses for the base 30 minutes again.
+    status = 429;
+    await vi.advanceTimersByTimeAsync(60_000);
+    await runWatch('https://www.instagram.com/watch');
+    expect(((await ledger()).pause?.until ?? 0) - Date.now()).toBe(30 * 60_000);
   });
 
   it('stops a helper from retrying past the shared pause', async () => {

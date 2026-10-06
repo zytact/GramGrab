@@ -386,4 +386,17 @@ describe('Watch scheduling', () => {
       'posts:c3',
     ]);
   });
+
+  it('shares one Instants feed between the Watches of a round, and only that round', async () => {
+    await add(TARGET.username, ['instants']);
+    await add(OTHER.username, ['instants']);
+
+    await wake();
+    expect(instagram.state.instantsRequests).toBe(1);
+    const next = (await schedule()).nextRoundAt!;
+    await vi.advanceTimersByTimeAsync(next - Date.now());
+    await wake();
+
+    expect(instagram.state.instantsRequests).toBe(2);
+  });
 });

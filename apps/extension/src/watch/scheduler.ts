@@ -4,7 +4,7 @@ import { browser } from '../lib/browser.ts';
 import { WatchRequests } from '../instagram/requests.ts';
 import type { Watch } from './contracts.ts';
 import { refreshBadge } from './attention.ts';
-import { checkWatch } from './check.ts';
+import { checkWatch, type CheckScope } from './check.ts';
 import { fetchViewer } from './identity.ts';
 import { readStore } from './store.ts';
 
@@ -41,9 +41,11 @@ const suspends = (outcomes: readonly KindCheckOutcome[]) =>
 const EarlyRetry = Schema.Struct({ watchId: Schema.UUID, kind: WatchKind, at: Schema.Number });
 
 const LoginSchedule = Schema.Struct({
-  nextRoundAt: Schema.Number,
+  nextRoundAt: Schema.Number.pipe(Schema.int()),
   /** Watches of the current round still waiting for their turn, in order. */
   remaining: Schema.Array(Schema.UUID),
+  /** The current round, whose Watches share one Instants feed. */
+  roundId: Schema.optional(Schema.UUID),
   /** Watches whose Posts traversal continues this round once the remaining Watches had a turn. */
   catchUp: Schema.optional(Schema.Array(Schema.UUID)),
   earlyRetries: Schema.Array(EarlyRetry),
@@ -90,7 +92,7 @@ function updateState(
 
 /** The next round starts 12 hours after this one, give or take 10%. */
 const nextRoundFrom = (start: number) =>
-  start + ROUND_MS * (1 - ROUND_JITTER + Math.random() * 2 * ROUND_JITTER);
+  Math.round(start + ROUND_MS * (1 - ROUND_JITTER + Math.random() * 2 * ROUND_JITTER));
 
 const lastSuccess = (watch: Watch) =>
   Math.min(...watch.kinds.map(kind => watch.tracking[kind]?.lastSuccessAt ?? 0));
@@ -114,12 +116,12 @@ function exclusive<T>(work: () => Promise<T>): Promise<T> {
 export async function runCheck(
   watchId: string,
   viewerId: string,
-  checkId: string,
+  scope: CheckScope,
   only?: readonly WatchKind[]
 ) {
   const run = await exclusive(() =>
     Effect.runPromise(
-      checkWatch(watchId, viewerId, checkId, only).pipe(Effect.provide(WatchRequests))
+      checkWatch(watchId, viewerId, scope, only).pipe(Effect.provide(WatchRequests))
     )
   );
   const posts = run.kinds.find(outcome => outcome.kind === 'posts');
@@ -156,6 +158,7 @@ function nextJob(
   if (current.nextRoundAt > now || enabled.size === 0) return { schedule: current };
   const started: LoginSchedule = {
     ...current,
+    roundId: crypto.randomUUID(),
     nextRoundAt: nextRoundFrom(now),
     remaining: roundOrder(watches.filter(watch => enabled.has(watch.id))),
   };
@@ -231,7 +234,9 @@ async function runNextJob(viewerId: string): Promise<boolean> {
   const { job, schedule } = next;
   const only =
     job._tag === 'retry' ? [job.kind] : job._tag === 'catchUp' ? ['posts' as const] : undefined;
-  const run = await runCheck(job.watchId, viewerId, crypto.randomUUID(), only);
+  const checkId = crypto.randomUUID();
+  const feedScope = job._tag === 'round' ? `round:${schedule.roundId ?? checkId}` : checkId;
+  const run = await runCheck(job.watchId, viewerId, { checkId, feedScope }, only);
   await refreshBadge();
   if (run.deferredUntil !== undefined) return false;
   const failures = run.kinds.flatMap(outcome =>
