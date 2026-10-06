@@ -1,5 +1,6 @@
 import { Effect, Schedule, Schema } from 'effect';
 import { blobToDataUrl } from '../lib/data-url.ts';
+import { InstagramRequests, type WatchRequestDeferred } from '../instagram/requests.ts';
 import {
   GraphQLRequestFailed,
   HttpError,
@@ -23,7 +24,12 @@ const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
 );
 
 const shouldRetryGraphqlError = (
-  err: NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+  err:
+    | NetworkError
+    | GraphQLRequestFailed
+    | RateLimited
+    | ResponseShapeUnknown
+    | WatchRequestDeferred
 ): boolean =>
   err._tag === 'NetworkError' ||
   err._tag === 'RateLimited' ||
@@ -66,7 +72,7 @@ const parseInstagramLsdToken = (html: string): string | undefined =>
   html.match(/"lsd":"([^"]+)"/)?.[1] ??
   html.match(/name="lsd"\s+value="([^"]+)"/)?.[1];
 
-const getInstagramLsdToken = (): Effect.Effect<string | undefined> => {
+const getInstagramLsdToken = (): Effect.Effect<string | undefined, never, InstagramRequests> => {
   const inputToken =
     globalThis.document?.querySelector<HTMLInputElement>('input[name="lsd"]')?.value;
   if (inputToken) return Effect.succeed(inputToken);
@@ -74,16 +80,15 @@ const getInstagramLsdToken = (): Effect.Effect<string | undefined> => {
   const cookieToken = globalThis.document?.cookie.match(/(?:^|;\s*)lsd=([^;]+)/)?.[1];
   if (cookieToken) return Effect.succeed(cookieToken);
 
-  return Effect.tryPromise({
-    try: async () => {
-      const res = await fetch('https://www.instagram.com/', {
-        credentials: 'include',
-        headers: { Accept: 'text/html' },
-      });
-      if (!res.ok) return undefined;
-      return parseInstagramLsdToken(await res.text());
-    },
-    catch: () => undefined,
+  return Effect.gen(function* () {
+    const requests = yield* InstagramRequests;
+    const res = yield* requests.fetch('https://www.instagram.com/', {
+      credentials: 'include',
+      headers: { Accept: 'text/html' },
+    });
+    if (!res.ok) return undefined;
+    const html = yield* Effect.tryPromise(() => res.text());
+    return parseInstagramLsdToken(html);
   }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 };
 
@@ -95,17 +100,16 @@ export const graphqlFetch = (
   headers: Record<string, string>
 ): Effect.Effect<
   Record<string, unknown>,
-  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
+  InstagramRequests
 > => {
   const attempt = Effect.gen(function* () {
     const qs = new URLSearchParams({
       [operationKey]: operationId,
       variables: JSON.stringify(variables),
     });
-    const res = yield* Effect.tryPromise({
-      try: () => fetch(`${url}?${qs}`, { credentials: 'include', headers }),
-      catch: cause => new NetworkError({ cause }),
-    });
+    const requests = yield* InstagramRequests;
+    const res = yield* requests.fetch(`${url}?${qs}`, { credentials: 'include', headers });
     yield* requireSuccessfulResponse(
       res,
       response => new GraphQLRequestFailed({ status: response.status })
@@ -129,7 +133,8 @@ export const graphqlPost = (
   operationKey: 'doc_id' | 'query_hash' = 'doc_id'
 ): Effect.Effect<
   Record<string, unknown>,
-  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
+  InstagramRequests
 > => {
   const attempt = Effect.gen(function* () {
     const lsd = yield* getInstagramLsdToken();
@@ -138,19 +143,16 @@ export const graphqlPost = (
       variables: JSON.stringify(variables),
     });
     if (lsd) body.set('lsd', lsd);
-    const res = yield* Effect.tryPromise({
-      try: () =>
-        fetch(url, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            ...headers,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            ...(lsd ? { 'X-FB-LSD': lsd } : {}),
-          },
-          body,
-        }),
-      catch: cause => new NetworkError({ cause }),
+    const requests = yield* InstagramRequests;
+    const res = yield* requests.fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...(lsd ? { 'X-FB-LSD': lsd } : {}),
+      },
+      body,
     });
     yield* requireSuccessfulResponse(
       res,
@@ -175,7 +177,8 @@ export const fetchInstantsFeed = (
   headers: Record<string, string>
 ): Effect.Effect<
   readonly InstantItem[],
-  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
+  InstagramRequests
 > =>
   Effect.gen(function* () {
     const variables = JSON.stringify({ request: {} });
@@ -193,21 +196,18 @@ export const fetchInstantsFeed = (
       variables,
       client_doc_id: clientDocumentId,
     });
-    const res = yield* Effect.tryPromise({
-      try: () =>
-        fetch(url, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            ...headers,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-FB-Friendly-Name': friendlyName,
-            'X-Client-Doc-Id': clientDocumentId,
-            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-          },
-          body,
-        }),
-      catch: cause => new NetworkError({ cause }),
+    const requests = yield* InstagramRequests;
+    const res = yield* requests.fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-FB-Friendly-Name': friendlyName,
+        'X-Client-Doc-Id': clientDocumentId,
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+      body,
     });
     yield* requireSuccessfulResponse(
       res,
@@ -249,12 +249,14 @@ const fetchDecodedJson = <A, I>(
   init: RequestInit,
   schema: Schema.Schema<A, I>,
   context: RestContext
-): Effect.Effect<A, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> =>
+): Effect.Effect<
+  A,
+  HttpError | NetworkError | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
+  InstagramRequests
+> =>
   Effect.gen(function* () {
-    const res = yield* Effect.tryPromise({
-      try: () => fetch(url, init),
-      catch: cause => new NetworkError({ cause }),
-    });
+    const requests = yield* InstagramRequests;
+    const res = yield* requests.fetch(url, init);
     yield* requireSuccessfulResponse(
       res,
       response => new HttpError({ status: response.status, message: response.statusText })
@@ -274,7 +276,8 @@ export const fetchWebProfileInfoUser = (
   headers: Record<string, string>
 ): Effect.Effect<
   WebProfileInfoUser | undefined,
-  HttpError | NetworkError | RateLimited | ResponseShapeUnknown
+  HttpError | NetworkError | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
+  InstagramRequests
 > =>
   fetchDecodedJson(
     url,
@@ -289,7 +292,8 @@ export const fetchTopSearchUserId = (
   headers: Record<string, string>
 ): Effect.Effect<
   string | undefined,
-  HttpError | NetworkError | RateLimited | ResponseShapeUnknown
+  HttpError | NetworkError | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
+  InstagramRequests
 > =>
   fetchDecodedJson(
     `https://www.instagram.com/web/search/topsearch/?context=blended&query=${encodeURIComponent(username)}`,
@@ -316,7 +320,8 @@ export const fetchReelsMedia = (
   method: 'GET' | 'POST' = 'GET'
 ): Effect.Effect<
   readonly ReelItem[],
-  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown
+  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
+  InstagramRequests
 > =>
   Effect.gen(function* () {
     const raw = yield* method === 'POST'
@@ -331,22 +336,17 @@ export const fetchReelsMedia = (
 export const fetchHdAvatarUser = (
   userId: string,
   headers: Record<string, string>
-): Effect.Effect<HdAvatarUser | undefined, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const res = await fetch(`https://i.instagram.com/api/v1/users/${userId}/info/`, {
-        credentials: 'include',
-        headers: { ...headers, Origin: 'https://www.instagram.com' },
-      });
-      if (!res.ok) return undefined;
-      const json = (await res.json()) as unknown;
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(HdAvatarResponseSchema)(json).pipe(Effect.option)
-      );
-      // decoded is Option<HdAvatarResponse>; return user or undefined
-      return decoded._tag === 'Some' ? decoded.value.user : undefined;
-    },
-    catch: () => undefined,
+): Effect.Effect<HdAvatarUser | undefined, never, InstagramRequests> =>
+  Effect.gen(function* () {
+    const requests = yield* InstagramRequests;
+    const res = yield* requests.fetch(`https://i.instagram.com/api/v1/users/${userId}/info/`, {
+      credentials: 'include',
+      headers: { ...headers, Origin: 'https://www.instagram.com' },
+    });
+    if (!res.ok) return undefined;
+    const json = yield* Effect.tryPromise(() => res.json() as Promise<unknown>);
+    const decoded = yield* Schema.decodeUnknown(HdAvatarResponseSchema)(json);
+    return decoded.user;
   }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
 export const fetchHighlightsTray = (
@@ -354,7 +354,8 @@ export const fetchHighlightsTray = (
   headers: Record<string, string>
 ): Effect.Effect<
   readonly HighlightsTrayItem[],
-  HttpError | NetworkError | RateLimited | ResponseShapeUnknown
+  HttpError | NetworkError | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
+  InstagramRequests
 > =>
   fetchDecodedJson(
     `https://i.instagram.com/api/v1/highlights/${encodeURIComponent(userId)}/highlights_tray/`,

@@ -1,6 +1,7 @@
 import { Effect, Schema } from 'effect';
 import { HttpError, NetworkError, RateLimited, ResponseShapeUnknown } from '../effect/errors.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
+import { InstagramRequests } from './requests.ts';
 import type { MediaItem } from './normalize.ts';
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -156,24 +157,19 @@ function decodeRestItem(
   });
 }
 
-export const fetchRestShortcodeRaw = (
-  shortcode: string
-): Effect.Effect<unknown, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> =>
+export const fetchRestShortcodeRaw = (shortcode: string) =>
   Effect.gen(function* () {
     const id = shortcodeMediaId(shortcode);
     if (!id) return yield* Effect.fail(unknownShape());
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetch(`https://www.instagram.com/api/v1/media/${id}/info/`, {
-          credentials: 'include',
-          headers: {
-            'X-IG-App-ID': protocolConfig.client.appId,
-            'X-ASBD-ID': protocolConfig.client.asbdId,
-            'X-Requested-With': 'XMLHttpRequest',
-            Accept: 'application/json',
-          },
-        }),
-      catch: cause => new NetworkError({ cause }),
+    const requests = yield* InstagramRequests;
+    const response = yield* requests.fetch(`https://www.instagram.com/api/v1/media/${id}/info/`, {
+      credentials: 'include',
+      headers: {
+        'X-IG-App-ID': protocolConfig.client.appId,
+        'X-ASBD-ID': protocolConfig.client.asbdId,
+        'X-Requested-With': 'XMLHttpRequest',
+        Accept: 'application/json',
+      },
     });
     if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
     if (!response.ok)
@@ -186,9 +182,7 @@ export const fetchRestShortcodeRaw = (
     });
   });
 
-export const fetchRestShortcodeMedia = (
-  shortcode: string
-): Effect.Effect<MediaItem[], HttpError | NetworkError | RateLimited | ResponseShapeUnknown> =>
+export const fetchRestShortcodeMedia = (shortcode: string) =>
   Effect.gen(function* () {
     const raw = yield* fetchRestShortcodeRaw(shortcode);
     const decoded = yield* decode(RestShortcodeResponseSchema, raw);

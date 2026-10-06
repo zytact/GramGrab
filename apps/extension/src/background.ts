@@ -109,12 +109,9 @@ import {
 } from './messaging/contracts.ts';
 import { MESSAGE_REFUSALS } from './messaging/refusals.ts';
 import { sendTabMessage } from './messaging/send.ts';
-import type { ReelItem } from './effect/schemas.ts';
 import {
   GraphQLRequestFailed,
-  HttpError,
   InvalidInstagramUrl,
-  MediaDashOnlyUnsupported,
   NetworkError,
   RateLimited,
   ResponseShapeUnknown,
@@ -122,6 +119,7 @@ import {
   formatError,
 } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
+import { PersonRequests, type WatchRequestDeferred } from './instagram/requests.ts';
 import type { Rotation } from './rotation/contracts.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
@@ -172,9 +170,7 @@ function parseInstagramUrl(url: string): ParsedUrl | null {
   return canonicalizeInstagramUrl(url)?.target ?? null;
 }
 
-function resolveUsernameToId(
-  username: string
-): Effect.Effect<string | null, HttpError | NetworkError | RateLimited | ResponseShapeUnknown> {
+function resolveUsernameToId(username: string) {
   const url = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
   const headers = { ...IG_HEADERS, Origin: 'https://www.instagram.com' };
   return fetchWebProfileInfoUser(url, 'include', headers).pipe(
@@ -276,27 +272,23 @@ const classifyShortcodeRaw = (raw: Record<string, unknown>) =>
     )
   );
 
-const attemptShortcodeRequest = (
+const attemptShortcodeRequest = <R>(
   request: Effect.Effect<
     Record<string, unknown>,
-    GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
+    GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown | WatchRequestDeferred,
+    R
   >
-): Effect.Effect<ShortcodeFetchAttempt, RateLimited> =>
+) =>
   request.pipe(
     Effect.flatMap(classifyShortcodeRaw),
     Effect.catchAll(err =>
-      err._tag === 'RateLimited'
+      err._tag === 'RateLimited' || err._tag === 'WatchRequestDeferred'
         ? Effect.fail(err)
         : Effect.succeed({ _tag: 'Failed', error: err } as const)
     )
   );
 
-const fetchShortcodeMediaRaw = (
-  shortcode: string
-): Effect.Effect<
-  Record<string, unknown>,
-  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
-> =>
+const fetchShortcodeMediaRaw = (shortcode: string) =>
   Effect.gen(function* () {
     const state: ShortcodeAttemptState = {};
     for (const { candidate, request } of configuredRequests(
@@ -316,12 +308,7 @@ const fetchShortcodeMediaRaw = (
     );
   });
 
-const fetchShortcodeMediaItems = (
-  shortcode: string
-): Effect.Effect<
-  MediaItem[],
-  GraphQLRequestFailed | HttpError | RateLimited | NetworkError | ResponseShapeUnknown
-> =>
+const fetchShortcodeMediaItems = (shortcode: string) =>
   Effect.gen(function* () {
     const rest = yield* fetchRestShortcodeMedia(shortcode).pipe(Effect.either);
     if (rest._tag === 'Right') return rest.right;
@@ -353,12 +340,7 @@ function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
       };
 }
 
-const fetchConfiguredReelsMedia = (
-  variables: Record<string, unknown>
-): Effect.Effect<
-  readonly ReelItem[],
-  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
-> =>
+const fetchConfiguredReelsMedia = (variables: Record<string, unknown>) =>
   Effect.gen(function* () {
     let lastError: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown | undefined;
     for (const { candidate, request } of configuredRequests(protocolConfig.operations.reelsMedia)) {
@@ -371,33 +353,19 @@ const fetchConfiguredReelsMedia = (
         request.transport === 'form' ? 'POST' : 'GET'
       ).pipe(Effect.either);
       if (result._tag === 'Right') return result.right;
-      if (result.left._tag === 'RateLimited') return yield* Effect.fail(result.left);
+      if (result.left._tag === 'RateLimited' || result.left._tag === 'WatchRequestDeferred')
+        return yield* Effect.fail(result.left);
       lastError = result.left;
     }
     return yield* Effect.fail(lastError ?? new ResponseShapeUnknown({ context: 'reels_media' }));
   });
 
-const fetchHighlightMediaItems = (
-  highlightId: string
-): Effect.Effect<
-  MediaItem[],
-  GraphQLRequestFailed | RateLimited | NetworkError | ResponseShapeUnknown
-> =>
+const fetchHighlightMediaItems = (highlightId: string) =>
   fetchConfiguredReelsMedia(createReelsRequestVariables('highlight', highlightId)).pipe(
     Effect.map(normalizeReelsMediaItems)
   );
 
-const fetchStoryMediaItems = (
-  username: string
-): Effect.Effect<
-  MediaItem[],
-  | UsernameUnresolved
-  | GraphQLRequestFailed
-  | HttpError
-  | RateLimited
-  | NetworkError
-  | ResponseShapeUnknown
-> =>
+const fetchStoryMediaItems = (username: string) =>
   Effect.gen(function* () {
     const userId = yield* resolveUsernameToId(username);
 
@@ -410,9 +378,7 @@ const fetchStoryMediaItems = (
     return normalizeReelsMediaItems(reels);
   });
 
-const fetchProfileMediaItems = (
-  username: string
-): Effect.Effect<MediaItem[], HttpError | NetworkError | RateLimited | ResponseShapeUnknown> => {
+const fetchProfileMediaItems = (username: string) => {
   const profileInfoUrl = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
 
   return fetchWebProfileInfoUser(profileInfoUrl, 'omit', IG_GRAPHQL_HEADERS).pipe(
@@ -443,14 +409,7 @@ const fetchProfileMediaItems = (
   );
 };
 
-const fetchInstantMediaItems = (): Effect.Effect<
-  MediaItem[],
-  | GraphQLRequestFailed
-  | RateLimited
-  | NetworkError
-  | ResponseShapeUnknown
-  | MediaDashOnlyUnsupported
-> => {
+const fetchInstantMediaItems = () => {
   const operation = protocolConfig.operations.instantsFeed;
   if (!operation) return Effect.fail(new ResponseShapeUnknown({ context: 'instants_protocol' }));
   const candidate = operation.candidates[0]!;
@@ -477,18 +436,7 @@ const fetchInstantMediaItems = (): Effect.Effect<
   );
 };
 
-const resolveMediaEffect = (
-  url: string
-): Effect.Effect<
-  MediaItem[],
-  | InvalidInstagramUrl
-  | UsernameUnresolved
-  | HttpError
-  | NetworkError
-  | GraphQLRequestFailed
-  | RateLimited
-  | ResponseShapeUnknown
-> =>
+const resolveMediaEffect = (url: string) =>
   Effect.gen(function* () {
     const parsed = parseInstagramUrl(url);
     if (!parsed) return yield* Effect.fail(new InvalidInstagramUrl({ url }));
@@ -979,7 +927,8 @@ async function handleDebugShape(
   return Effect.runPromise(
     fetchRestShortcodeRaw(parsed.shortcode!).pipe(
       Effect.map(raw => ({ raw })),
-      Effect.catchAll(err => Effect.succeed({ error: formatError(err) }))
+      Effect.catchAll(err => Effect.succeed({ error: formatError(err) })),
+      Effect.provide(PersonRequests)
     )
   );
 }
