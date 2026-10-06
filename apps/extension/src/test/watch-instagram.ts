@@ -197,7 +197,7 @@ export function createWatchInstagram() {
       data: { user: { id: TARGET.id, pk: TARGET.id, username: TARGET.username } },
     } as Record<string, unknown>,
     accounts: { [TARGET.username]: { id: TARGET.id } } as Record<string, { id: string }>,
-    /** The raw Story answer per target ID; absent targets get an identified empty reel. */
+    /** The raw Story answer per target ID; absent targets get Instagram's no-reel answer. */
     stories: {} as Record<string, unknown>,
     storyStatus: 200,
     /** Posts answers by the cursor that requests them; the first page is under ''. */
@@ -242,7 +242,7 @@ export function createWatchInstagram() {
     ({ searchParams }) => {
       if (searchParams.get('query_hash') !== '45246d3fe16ccc6577e0bd297a5db1ab') return undefined;
       const targetId = variable(searchParams);
-      return json(state.stories[targetId] ?? storyResponse(targetId, []), state.storyStatus);
+      return json(state.stories[targetId] ?? { data: { reels_media: [] } }, state.storyStatus);
     },
     ({ pathname, searchParams }) => {
       if (pathname !== '/web/search/topsearch/') return undefined;

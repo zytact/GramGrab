@@ -170,8 +170,14 @@ describe('Story checks', () => {
     expect((await checkLater()).kinds[0]?._tag).toBe('KindBaselineRecorded');
   });
 
+  it('records a baseline from an account without active Stories', async () => {
+    await addWatch();
+    instagram.state.stories[TARGET.id] = { data: { reels_media: [] } };
+
+    expect((await checkLater()).kinds[0]?._tag).toBe('KindBaselineRecorded');
+  });
+
   it.each([
-    ['a missing collection', { data: { reels_media: [] } }],
     ['another owner', storyResponse('9999', [])],
     [
       'an acquisition error',

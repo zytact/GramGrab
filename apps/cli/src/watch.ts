@@ -11,7 +11,6 @@ import {
   WatchNeeds,
   WatchAttentionRecover,
   WatchKinds,
-  WATCH_ADD_UNAVAILABLE,
   WatchLifecycle,
   WatchList,
   WatchRecover,
@@ -125,11 +124,6 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
     const kinds = list(values, '--kinds', WatchKinds);
     const actions = list(values, '--actions', WatchActions);
     if (!kinds || !actions) throw new Error('gramgrab watch add needs --kinds and --actions.');
-    const unavailable = kinds.find(kind => WATCH_ADD_UNAVAILABLE[kind]);
-    if (unavailable)
-      throw new Error(
-        `Cannot add ${unavailable}: Instagram's response format is unsupported. ${WATCH_ADD_UNAVAILABLE[unavailable]}.`
-      );
     return WatchAdd.make({
       target: one(positionals, 'TARGET'),
       kinds,

@@ -16,12 +16,11 @@ Runtime request spacing, rolling capacity and shared backoff remain enforced.
    both the page and Watch help. Protocol version 2 makes this a breaking release.
 2. Inspect an existing Watch before checking. Its creating login must verify.
    Record each registered kind's first check and whether it acted on existing
-   media. A known identified empty response can baseline; a literal empty Story
-   outer response cannot establish owner or absence and must fail closed.
+   media. A Story response without a reel means no active Stories and can baseline.
 3. Run the packaged smoke script with `--check`, then compare page and CLI needs
    and inbox counts. Keep one terminal stdout record and per-kind JSON progress
-   on stderr. Failed, deferred, unknown or partial members require exit 1. Invalid grammar,
-   including unavailable Stories in add, exits 2 before transport.
+   on stderr. Failed, deferred, unknown or partial members require exit 1.
+   Invalid grammar exits 2 before transport.
 4. On a naturally collected entry, exercise Direct, Frame and Silent Export,
    explicit re-encode approval, rotation, frozen retry, per-child partial results
    and History. Verify that removal changes only inbox metadata. If no entry is
@@ -81,17 +80,17 @@ redact the verified login. No account mutation or automatic download was used.
 
 ## Accepted live gaps
 
-| Unobserved fact                                                                                                  | Authoritative synthetic behavior                                                                                                                          |
-| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Naturally new Posts/Reels/Sidecars/Stories/Instants and notification/download/collection                         | Baselines, cutoffs, independent actions, exact identities and per-child acceptance                                                                        |
-| Avatar change, default Avatar, rename/reassignment                                                               | Stable account ID, verified rename, opaque picture identity and invalid/default refusal                                                                   |
-| Literal empty Stories upstream meaning, real zero-Post/unavailable-Post variants, ordering beyond stopping point | Strict decoding and fail-closed absence/identity/order classification                                                                                     |
-| Instant lifetime and feed completeness                                                                           | Strict ordered-feed decoding, owner matching and supported-feed absence                                                                                   |
-| Actual transformed Watch Export and native Save As acceptance/uncertainty                                        | Real runner, frozen plans, browser acceptance adapter, reconciliation and explicit uncertainty                                                            |
-| Active-worker action interruption without eligible natural media                                                 | Persistence-before-effects and real-dispatcher worker restart tests; no duplicate accepted sibling delivery                                               |
-| Catch-up completion after the observed browser restart, held by rolling request capacity                         | Session startup hold, capacity admission, durable queued work and round resumption                                                                        |
-| Owner switch/sign-out                                                                                            | Verified-login-only visibility and re-verification before delivery; stored count only on failed auth                                                      |
-| Actual extension-manager reload                                                                                  | Fresh built worker loading is observed through a dedicated browser restart. `runtime.reload()` can disable an unpacked extension, so the skill avoids it. |
-| Firefox alarm persistence, data-URL icon acceptance and actual notification rendering                            | Promise-based browser adapter, startup alarm recreation, notifications without buttons and packaged-icon fallback                                         |
+| Unobserved fact                                                                          | Authoritative synthetic behavior                                                                                                                          |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Naturally new Posts/Reels/Sidecars/Stories/Instants and notification/download/collection | Baselines, cutoffs, independent actions, exact identities and per-child acceptance                                                                        |
+| Avatar change, default Avatar, rename/reassignment                                       | Stable account ID, verified rename, opaque picture identity and invalid/default refusal                                                                   |
+| Real zero-Post/unavailable-Post variants, ordering beyond stopping point                 | Strict decoding and fail-closed absence/identity/order classification                                                                                     |
+| Instant lifetime and feed completeness                                                   | Strict ordered-feed decoding, owner matching and supported-feed absence                                                                                   |
+| Actual transformed Watch Export and native Save As acceptance/uncertainty                | Real runner, frozen plans, browser acceptance adapter, reconciliation and explicit uncertainty                                                            |
+| Active-worker action interruption without eligible natural media                         | Persistence-before-effects and real-dispatcher worker restart tests; no duplicate accepted sibling delivery                                               |
+| Catch-up completion after the observed browser restart, held by rolling request capacity | Session startup hold, capacity admission, durable queued work and round resumption                                                                        |
+| Owner switch/sign-out                                                                    | Verified-login-only visibility and re-verification before delivery; stored count only on failed auth                                                      |
+| Actual extension-manager reload                                                          | Fresh built worker loading is observed through a dedicated browser restart. `runtime.reload()` can disable an unpacked extension, so the skill avoids it. |
+| Firefox alarm persistence, data-URL icon acceptance and actual notification rendering    | Promise-based browser adapter, startup alarm recreation, notifications without buttons and packaged-icon fallback                                         |
 
 No upstream coverage claim follows from a synthetic fixture or simulated browser.
