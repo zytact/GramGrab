@@ -43,10 +43,11 @@ described in Live page below.
    the click is not deferred. Open the `instagram` Watch and click Check now.
    The button reads `Checking…` and is disabled, and the line under it lists
    finished kinds and `Still to check: ...`. When pacing stops the check part
-   way, the same line adds the reason and time it continues, and that survives
-   navigation too.
+   way, the button reads `Waiting…` until that time, the same line adds the
+   reason and time it continues, and that survives navigation too.
 2. Switch to All inbox and back, then reload `options.html`. Both times the
-   button still reads `Checking…` with the same or later progress. A second
+   button still reads `Checking…` (or `Waiting…` while held) with the same or
+   later progress. A second
    click is impossible while it is disabled. `watch check instagram --json`
    during the check returns `deferredReason: "queued"` and the `manual` array
    in `watch-scheduler` still holds one job for the Watch.
@@ -59,7 +60,8 @@ described in Live page below.
 4. Click Check now again within five minutes. It returns at once with `Checked
    in the last 5 minutes. Check again at HH:MM.` With a rate-limit pause active
    it says `Instagram rate limited a Watch request. Checks wait until HH:MM.`
-   instead, and other spacing reads `Watch requests are spaced out.`
+   instead, and other spacing, the hourly cap included, reads `Watch requests
+   are spaced out.`
 
 ## Live page
 
@@ -204,6 +206,35 @@ the worker's matching requests with a status, so both sides are drivable:
 5. Stop the throttle. Clear `instagram-requests` and relaunch, as in step 1.
    Clearing alone is not enough, because the running worker writes its
    in-memory pause back.
+
+## Request cap
+
+The ledger in `instagram-requests` counts every Instagram API attempt, the
+person's included, and holds Watch requests once the rolling hour has 60. That
+hold is not a pause: it shows as `schedule.cappedUntil` in `watch list --json`,
+not `pausedUntil`, and adds no `PauseAttention`. Reaching it with real traffic
+costs 60 requests on the real account, so seed the ledger instead, on the
+verification profile only. The seed is local timestamps, so say so in evidence;
+it is not an Instagram response.
+
+1. Read `instagram-requests`, `watch-scheduler` and the Watch count from the
+   worker as counts and booleans. With the browser still inside its two-minute
+   startup hold, so no Watch request has started, write `attempts` as 60
+   timestamps spread over the last 40 minutes, keep any `pause`, and put one
+   Watch ID in the login's `remaining` with `nextRoundAt` hours ahead. Run
+   cleanup, then `launch.sh --restart`. The running worker keeps its ledger in
+   memory, so a write without a restart is overwritten on its next request.
+2. Read `attempts` back: 60. Open `options.html`. The sidebar reads `Waiting: 1
+   left this round`, not `Checking`, and a `Watches waiting.` banner says Watch
+   checks resume around a time about 20 minutes out. Opening the page verifies
+   the viewer as the person, which adds one attempt and can move that time.
+   The page follows `instagram-requests` and `watch-scheduler` in storage, so
+   an open page picks up a cap that fills later without a reload.
+3. Open the Watch and click Check now once. The line reads `Watch requests are
+   spaced out. This check can run at HH:MM.` with the banner's time, the
+   button returns to `Check now`, and no Watch request starts.
+4. Run cleanup soon after. Once the seeded attempts age out the round runs for
+   real against the account.
 
 Watch checks pace requests and can take minutes. Rerunning inside five minutes
 may defer a check; keep that terminal result as evidence. All-digit WATCH values
