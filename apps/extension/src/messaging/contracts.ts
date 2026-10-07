@@ -12,6 +12,7 @@ import {
   WatchViewer,
   ExportSettings,
   MediaItem as ProtocolMediaItem,
+  type FailureCode,
   type CommandFailure,
   type ExportResult,
   type ValidationFailure,
@@ -163,6 +164,11 @@ const WatchAvatars = Schema.Struct({
   viewerId: AccountId,
 });
 
+const WatchInboxPreview = Schema.Struct({
+  type: Schema.Literal('WATCH_INBOX_PREVIEW'),
+  entryId: Schema.UUID,
+});
+
 const RunExport = Schema.Struct({
   type: Schema.Literal('RUN_EXPORT'),
   sourceUrl: Schema.String,
@@ -208,6 +214,7 @@ const MessageSchema = Schema.Union(
   WatchReadMessage,
   WatchPreview,
   WatchAvatars,
+  WatchInboxPreview,
   RunExport,
   RunnerReady,
   RunnerProgress
@@ -304,6 +311,12 @@ export interface WatchAvatarsResponse {
   readonly watches: Readonly<Record<string, string>>;
 }
 
+export type WatchInboxPreviewResponse = {
+  readonly media?: readonly MediaItem[];
+  readonly unavailable?: readonly { readonly child: number; readonly code: FailureCode }[];
+  readonly failure?: WatchFailure;
+};
+
 interface MessageResponses extends Record<MessageType, unknown> {
   FETCH_MEDIA: SourceMediaResponse;
   FETCH_INSTANTS: InstantsMediaResponse;
@@ -329,6 +342,7 @@ interface MessageResponses extends Record<MessageType, unknown> {
   WATCH_READ: WatchCommandResponse;
   WATCH_PREVIEW: WatchPreviewResponse;
   WATCH_AVATARS: WatchAvatarsResponse;
+  WATCH_INBOX_PREVIEW: WatchInboxPreviewResponse;
   RUN_EXPORT: ExportResult;
   RUNNER_READY: void;
   RUNNER_PROGRESS: void;

@@ -46,6 +46,7 @@ import type {
   WatchCommandResponse,
   WatchPreviewResponse,
   WatchRead,
+  WatchInboxPreviewResponse,
 } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
 import { loginAttention, refreshBadge, watchAttentionItems } from './attention.ts';
@@ -55,7 +56,7 @@ import { retryNotify } from './notify.ts';
 import { inInbox } from './discoveries.ts';
 import { finishActions } from './auto-download.ts';
 import { recoverable, applyRecovery, recoveryOutcome } from './recovery.ts';
-import type { Learned } from './export.ts';
+import { reacquire, exportAuthorization, type Learned } from './export.ts';
 import { exportPlannedEntry } from './manual-export-run.ts';
 import { InboxExportExecution } from './manual-export.ts';
 import {
@@ -830,5 +831,42 @@ export const previewWatchTarget = (target: string): Promise<WatchPreviewResponse
       const account = yield* resolveTarget(target);
       const existing = owned(store, viewer).find(watch => watch.targetId === account.accountId);
       return { account, ...(existing ? { existing: summarize(existing) } : {}) };
+    })
+  );
+
+export const previewInboxEntry = (entryId: string): Promise<WatchInboxPreviewResponse> =>
+  runForPerson(
+    Effect.gen(function* () {
+      const store = yield* loadOrReject;
+      const viewer = yield* verifyViewer(store);
+      const entry = owned(store, viewer).flatMap(watch =>
+        watch.discoveries
+          .filter(discovery => discovery.id === entryId && inInbox(discovery, Date.now()))
+          .map(discovery => ({ watch, discovery }))
+      )[0];
+      if (!entry) return yield* reject('WATCH_NOT_FOUND');
+      const { watch, discovery } = entry;
+      if (discovery.unavailable) return yield* reject(discovery.unavailable);
+      const slots = yield* reacquire(watch, discovery.ref, Math.floor(Date.now() / 1000)).pipe(
+        Effect.catchAll(error => reject(normalizeSourceFailure(error).code))
+      );
+      const denied = yield* exportAuthorization(watch, discovery);
+      if (denied) return yield* reject(denied);
+      const unavailable: { child: number; code: FailureCode }[] = [];
+      const media = slots.flatMap((slot, child) => {
+        const ref = discovery.ref;
+        const knownMissing =
+          ref._tag === 'Sidecar' &&
+          discovery.missingChildren?.includes(ref.children[child]!.mediaId);
+        if (slot._tag === 'gone' || knownMissing) {
+          unavailable.push({
+            child,
+            code: slot._tag === 'gone' ? slot.code : 'WATCH_MEDIA_UNAVAILABLE',
+          });
+          return [];
+        }
+        return [{ ...slot.item, itemIndex: child }];
+      });
+      return { media, unavailable };
     })
   );

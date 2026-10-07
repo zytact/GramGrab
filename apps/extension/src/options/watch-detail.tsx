@@ -175,6 +175,7 @@ interface Selection {
   readonly selected: ReadonlySet<string>;
   readonly onToggle: (entryId: string) => void;
   readonly outcomes: ReadonlyMap<string, InboxExportOutcome>;
+  readonly busy: boolean;
 }
 
 function DiscoveryList({
@@ -200,7 +201,7 @@ function DiscoveryList({
                 type="checkbox"
                 aria-label="Select for download"
                 checked={selection.selected.has(entry.entryId)}
-                disabled={entry.unavailable !== undefined}
+                disabled={selection.busy || entry.unavailable !== undefined}
                 onChange={() => selection.onToggle(entry.entryId)}
               />
             )}
@@ -251,6 +252,7 @@ function InboxList({
         selection={{
           selected: new Set(exporter.selected.keys()),
           outcomes: exporter.outcomes,
+          busy: exporter.busy,
           onToggle: entryId => {
             const entry = entries.find(candidate => candidate.entryId === entryId);
             if (entry) exporter.toggle(entry);

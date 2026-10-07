@@ -63,6 +63,17 @@ async function run<T extends WatchResult['_tag']>(command: WatchCommand, expecte
   return response.result as Extract<WatchResult, { _tag: T }>;
 }
 
+async function previewEntry(entryId: string) {
+  let response: MessageResponse<'WATCH_INBOX_PREVIEW'> | undefined;
+  void harness
+    .send<MessageResponse<'WATCH_INBOX_PREVIEW'>>({ type: 'WATCH_INBOX_PREVIEW', entryId })
+    .then(answer => {
+      response = answer;
+    });
+  while (!response) await vi.advanceTimersByTimeAsync(1_000);
+  return response;
+}
+
 const seconds = (time: number) => Math.floor(time / 1000);
 
 /** Adds a collecting Watch of `kind`, records its baseline, and returns the baseline second. */
@@ -111,6 +122,60 @@ async function discoverPost(post: Omit<FakePost, 'takenAt'>) {
 }
 
 describe('Watch inbox Export', () => {
+  it('previews exact recorded children without downloading, creating a plan or writing History', async () => {
+    const { entryId, post } = await discoverPost({ id: '600', children: ['601', '602'] });
+    instagram.state.media.C600 = restMedia({ ...post, children: ['601', '603'] });
+    const before = harness.local.read('watch-store');
+    const preview = await previewEntry(entryId);
+    expect(preview.media?.map(item => [item.itemIndex, item.mediaId])).toEqual([[0, '601']]);
+    expect(preview.unavailable).toEqual([{ child: 1, code: 'WATCH_MEDIA_UNAVAILABLE' }]);
+    expect(harness.local.read('watch-store')).toEqual(before);
+    expect(harness.downloads).toEqual([]);
+    expect(await history()).toEqual([]);
+  });
+
+  it('reacquires at download time and refuses a child removed since preview', async () => {
+    const { entryId, post } = await discoverPost({ id: '600', children: ['601', '602'] });
+    instagram.state.media.C600 = restMedia(post);
+    expect((await previewEntry(entryId)).media).toHaveLength(2);
+    instagram.state.media.C600 = restMedia({ ...post, children: ['601', '603'] });
+    const result = await run(
+      WatchInboxExport.make({
+        entryIds: [entryId],
+        items: [
+          {
+            entryId,
+            child: 1,
+            settings: { mode: FrameExport.make({ timestampSeconds: 5 }) },
+          },
+        ],
+      }),
+      'WatchInboxExportResult'
+    );
+    expect(result.outcomes[0]).toMatchObject({
+      accepted: 0,
+      failures: [{ child: 1, code: 'WATCH_MEDIA_UNAVAILABLE' }],
+    });
+    expect(harness.downloads).toEqual([]);
+  });
+
+  it('rejects duplicate or out-of-range selections before fetching recorded media', async () => {
+    const { entryId } = await discoverPost({ id: '600', children: ['601', '602'] });
+    const item = {
+      entryId,
+      child: 0,
+      settings: { mode: FrameExport.make({ timestampSeconds: 5 }) },
+    };
+    for (const items of [[item, item], [{ ...item, child: 2 }]]) {
+      const result = await run(
+        WatchInboxExport.make({ entryIds: [entryId], items }),
+        'WatchInboxExportResult'
+      );
+      expect(result.outcomes[0]?.failures).toEqual([{ code: 'WATCH_RECOVERY_NOT_APPLICABLE' }]);
+    }
+    expect(instagram.state.mediaRequests).toBe(0);
+  });
+
   it('runs Frame with rotation through the real runner and writes requested and delivered History', async () => {
     const { entryId, post } = await discoverPost({ id: '200', video: true });
     instagram.state.media.C200 = restMedia(post);
