@@ -126,10 +126,15 @@ describe('Watch inbox Export', () => {
     const { entryId, post } = await discoverPost({ id: '600', children: ['601', '602'] });
     instagram.state.media.C600 = restMedia({ ...post, children: ['601', '603'] });
     const before = harness.local.read('watch-store');
+    if (typeof before !== 'object' || before === null) throw new Error('Missing Watch store');
     const preview = await previewEntry(entryId);
     expect(preview.media?.map(item => [item.itemIndex, item.mediaId])).toEqual([[0, '601']]);
     expect(preview.unavailable).toEqual([{ child: 1, code: 'WATCH_MEDIA_UNAVAILABLE' }]);
-    expect(harness.local.read('watch-store')).toEqual(before);
+    expect(harness.local.read('watch-store')).toMatchObject(before);
+    expect((await inbox())[0]).toMatchObject({ missingChildren: 1 });
+    const stored = await (await import('./store.ts')).readStore();
+    if (stored.kind !== 'ok') throw new Error('Unreadable Watch store');
+    expect(stored.store.watches[0]?.discoveries[0]?.manualExport).toBeUndefined();
     expect(harness.downloads).toEqual([]);
     expect(await history()).toEqual([]);
   });

@@ -12,11 +12,7 @@ import {
 } from '../popup/media-item.ts';
 import { loadVideoMetadata } from '../popup/video-metadata.ts';
 import { useFrameSeekEffect } from '../popup/use-frame-seek.ts';
-import {
-  clampFrameSecond,
-  defaultFrameSecond,
-  type FrameExportSetting,
-} from '../frame-export/timestamp.ts';
+import { withClampedFrameSecond, type FrameExportSetting } from '../frame-export/timestamp.ts';
 import { nextRotation } from '../rotation/contracts.ts';
 
 type InboxItem = MediaItem & { entryId: string; child: number; avatar: boolean };
@@ -59,6 +55,7 @@ export function useInboxMedia() {
   const [notices, setNotices] = useState<string[]>([]);
   const generation = useRef(0);
   const videos = useRef<Record<number, HTMLVideoElement | null>>({});
+  const pendingFrameDefaults = useRef(new Set<number>());
   useEffect(
     () => () => {
       generation.current++;
@@ -74,6 +71,7 @@ export function useInboxMedia() {
     setFrames({});
     setSilent(new Set());
     videos.current = {};
+    pendingFrameDefaults.current.clear();
     setNotices([]);
     setLoading(false);
   };
@@ -109,18 +107,8 @@ export function useInboxMedia() {
       ...runtime,
       frame: { status: 'ready', durationSeconds: seconds },
     }));
-    setFrames(previous => {
-      const setting = previous[index];
-      return setting
-        ? {
-            ...previous,
-            [index]: {
-              ...setting,
-              timestampSeconds: clampFrameSecond(setting.timestampSeconds, seconds),
-            },
-          }
-        : previous;
-    });
+    const resetToDefault = pendingFrameDefaults.current.delete(index);
+    setFrames(previous => withClampedFrameSecond(previous, index, seconds, resetToDefault));
   };
   const metadata = async (index: number) => {
     const item = items.find(item => item.index === index);
@@ -155,11 +143,10 @@ export function useInboxMedia() {
       ...previous,
       [index]: {
         enabled,
-        timestampSeconds:
-          setting?.timestampSeconds ??
-          defaultFrameSecond(itemRuntimeAt(runtimes, index).frame.durationSeconds ?? 6),
+        timestampSeconds: setting?.timestampSeconds ?? 0,
       },
     }));
+    if (!setting) pendingFrameDefaults.current.add(index);
     if (enabled) {
       setSilent(previous => new Set([...previous].filter(item => item !== index)));
       void metadata(index);
@@ -176,8 +163,9 @@ export function useInboxMedia() {
     );
   };
   const previewError = async (item: MediaItem) => {
+    if (itemRuntimeAt(runtimes, item.index).preview !== 'idle') return;
     const current = generation.current;
-    if (item.type === 'video' || item.previewUrl) {
+    if (item.type === 'video' || item.previewUrl?.startsWith('data:')) {
       patchRuntime(item.index, runtime => ({ ...runtime, preview: 'failed' }));
       return;
     }
@@ -226,6 +214,14 @@ export function useInboxMedia() {
     loading,
     notices,
     selections,
+    canDownload:
+      selections.length > 0 &&
+      items.every(
+        item =>
+          !item.selected ||
+          !frames[item.index]?.enabled ||
+          itemRuntimeAt(runtimes, item.index).frame.status === 'ready'
+      ),
     clear,
     fetch,
     actions: {

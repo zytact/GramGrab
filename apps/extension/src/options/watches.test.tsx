@@ -96,7 +96,7 @@ describe('Watches options page', () => {
     expect(screen.getByText(/leaves the inbox in 30 days/)).toBeDefined();
   });
 
-  it('downloads selected inbox entries as Original but never selects an unavailable one', async () => {
+  it('keeps an expired Story reason visible and never selects an unavailable entry', async () => {
     seedWatchWithProblemAndEntry([
       {
         id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
@@ -105,6 +105,13 @@ describe('Watches options page', () => {
         discoveredAt: Date.now() - 120_000,
         unavailable: 'WATCH_INSTANT_NOT_IN_FEED',
         collect: { at: Date.now() - 120_000 },
+      },
+      {
+        id: '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
+        discoveredAt: Date.now() - 180_000,
+        collect: { at: Date.now() - 180_000 },
       },
     ]);
     const user = userEvent.setup();
@@ -118,7 +125,9 @@ describe('Watches options page', () => {
     await user.click(story!);
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
 
-    await screen.findByText(/Story expired/);
+    await screen.findAllByText(/Story expired/);
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select for download' })[2]!);
+    expect(screen.getByText(/Story expired/)).toBeDefined();
     expect(harness.downloads).toEqual([]);
   });
 
@@ -502,7 +511,7 @@ describe('Watches options page', () => {
     render(<Watches />);
     await user.click(await screen.findByText(/^All inbox$/));
     await user.click(await screen.findByRole('checkbox', { name: 'Select for download' }));
-    expect(screen.getByRole('button', { name: 'Download Original (1)' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Fetch media' })).toHaveProperty('disabled', false);
     const viewerRequests = instagram.state.viewerRequests;
 
     instagram.state.viewer = { id: '1002', username: 'instagram' };
@@ -512,7 +521,7 @@ describe('Watches options page', () => {
     expect(await screen.findByText('@instagram')).toBeDefined();
     expect(screen.getByText('Watches (0)')).toBeDefined();
     expect(screen.queryByRole('checkbox', { name: 'Select for download' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Download Original (1)' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Fetch media' })).toBeNull();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
   });
 

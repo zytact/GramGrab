@@ -18,9 +18,9 @@ import { useDownloadAttempt } from './download/use-download-attempt';
 import { ExportCandidate, planExportOperations } from './download/coordinator';
 import {
   clampFrameSecond,
-  defaultFrameSecond,
   frameFilename,
   maximumFrameSecond,
+  withClampedFrameSecond,
   type FrameExportSetting,
 } from './frame-export/timestamp';
 import { executeFrameExport } from './frame-export/executor';
@@ -60,22 +60,6 @@ type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
 /** Reassurance appended when a redownload fails: the stored history entry is left untouched. */
 const HISTORY_KEPT = 'History was kept.';
-
-/** Holds one item's chosen frame second inside a newly measured duration. */
-function withClampedFrameSecond(
-  settings: Record<number, FrameExportSetting>,
-  index: number,
-  durationSeconds: number,
-  resetToDefault: boolean
-): Record<number, FrameExportSetting> {
-  const setting = settings[index];
-  if (!setting) return settings;
-  const requested = resetToDefault ? defaultFrameSecond(durationSeconds) : setting.timestampSeconds;
-  return {
-    ...settings,
-    [index]: { ...setting, timestampSeconds: clampFrameSecond(requested, durationSeconds) },
-  };
-}
 
 /** The one way the popup turns a failure into a sentence a person reads. */
 function failureMessage(failure: OperationFailure, suffix?: string): string {
@@ -249,22 +233,10 @@ export default function Popup() {
       patchRuntime(index, current =>
         withFrame(current, { ...current.frame, status: 'ready', durationSeconds, error: undefined })
       );
-      setFrameExportSettings(previous => {
-        const setting = previous[index];
-        if (!setting) return previous;
-        return {
-          ...previous,
-          [index]: {
-            ...setting,
-            timestampSeconds: clampFrameSecond(
-              pendingFrameDefaults.current.delete(index)
-                ? defaultFrameSecond(durationSeconds)
-                : setting.timestampSeconds,
-              durationSeconds
-            ),
-          },
-        };
-      });
+      const resetToDefault = pendingFrameDefaults.current.delete(index);
+      setFrameExportSettings(previous =>
+        withClampedFrameSecond(previous, index, durationSeconds, resetToDefault)
+      );
     },
     [patchRuntime]
   );

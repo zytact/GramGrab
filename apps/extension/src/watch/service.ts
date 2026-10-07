@@ -56,7 +56,7 @@ import { retryNotify } from './notify.ts';
 import { inInbox } from './discoveries.ts';
 import { finishActions } from './auto-download.ts';
 import { recoverable, applyRecovery, recoveryOutcome } from './recovery.ts';
-import { reacquire, exportAuthorization, type Learned } from './export.ts';
+import { reacquire, exportAuthorization, learnedAvailability, type Learned } from './export.ts';
 import { exportPlannedEntry } from './manual-export-run.ts';
 import { InboxExportExecution } from './manual-export.ts';
 import {
@@ -512,6 +512,23 @@ const inboxRemove = (command: Extract<WatchCommand, { _tag: 'WatchInboxRemove' }
     });
   });
 
+const rememberAvailability = (learned: ReadonlyMap<string, Learned>) =>
+  Effect.promise(() =>
+    mutateStore(current => ({
+      store: {
+        ...current,
+        watches: current.watches.map(watch => ({
+          ...watch,
+          discoveries: watch.discoveries.map(discovery => ({
+            ...discovery,
+            ...learned.get(discovery.id),
+          })),
+        })),
+      },
+      value: undefined,
+    }))
+  );
+
 /**
  * Exports each selected inbox entry's exact media with its frozen settings, in the order given. One entry's
  * failure never stops the others, and every entry stays in the inbox. What an Export shows to be
@@ -547,22 +564,7 @@ const inboxExport = (
       outcomes.push(result.outcome);
       if (result.learned) learned.set(id, result.learned);
     }
-    if (learned.size > 0)
-      yield* Effect.promise(() =>
-        mutateStore(current => ({
-          store: {
-            ...current,
-            watches: current.watches.map(watch => ({
-              ...watch,
-              discoveries: watch.discoveries.map(discovery => ({
-                ...discovery,
-                ...learned.get(discovery.id),
-              })),
-            })),
-          },
-          value: undefined,
-        }))
-      );
+    if (learned.size > 0) yield* rememberAvailability(learned);
     return WatchInboxExportResult.make({
       outcomes,
       unknownEntryIds: selected.filter(id => !entries.has(id)),
@@ -852,9 +854,18 @@ export const previewInboxEntry = (entryId: string): Promise<WatchInboxPreviewRes
       );
       const denied = yield* exportAuthorization(watch, discovery);
       if (denied) return yield* reject(denied);
+      const ref = discovery.ref;
+      const missing = slots.flatMap((slot, child) =>
+        slot._tag === 'gone' &&
+        ref._tag === 'Sidecar' &&
+        !discovery.missingChildren?.includes(ref.children[child]!.mediaId)
+          ? [ref.children[child]!.mediaId]
+          : []
+      );
+      const learned = learnedAvailability(discovery, missing, slots);
+      if (learned) yield* rememberAvailability(new Map([[discovery.id, learned]]));
       const unavailable: { child: number; code: FailureCode }[] = [];
       const media = slots.flatMap((slot, child) => {
-        const ref = discovery.ref;
         const knownMissing =
           ref._tag === 'Sidecar' &&
           discovery.missingChildren?.includes(ref.children[child]!.mediaId);

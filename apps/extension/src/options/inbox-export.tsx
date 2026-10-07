@@ -68,7 +68,7 @@ export function useInboxExport(onChanged: () => void) {
   };
   const download = () => {
     const items = media.selections;
-    if (!items.length) return;
+    if (!media.canDownload) return;
     void execute(
       WatchInboxExport.make({
         entryIds: [...new Set(items.map(item => item.entryId))],
@@ -186,7 +186,7 @@ export function InboxExportControls({ value }: { value: ExportState }) {
       )}
       <button
         className="opt-btn"
-        disabled={value.busy || value.media.selections.length === 0}
+        disabled={value.busy || !value.media.canDownload}
         onClick={value.download}
       >
         {value.busy

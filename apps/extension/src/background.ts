@@ -91,7 +91,12 @@ import { sendTabMessage } from './messaging/send.ts';
 import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
-import { previewInboxEntry, previewWatchTarget, runWatchCommand, runWatchRead } from './watch/service.ts';
+import {
+  previewInboxEntry,
+  previewWatchTarget,
+  runWatchCommand,
+  runWatchRead,
+} from './watch/service.ts';
 import { watchAvatars } from './watch/avatar-image.ts';
 import { refreshBadge } from './watch/attention.ts';
 import {
