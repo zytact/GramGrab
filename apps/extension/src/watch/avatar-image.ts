@@ -1,6 +1,6 @@
 import { Effect, Either } from 'effect';
 import type { KindCheckOutcome } from '@gramgrab/protocol';
-import { WatchRequests } from '../instagram/requests.ts';
+import { InstagramRequests, withWatchAdmission } from '../instagram/requests.ts';
 import type { WatchAvatarsResponse } from '../messaging/contracts.ts';
 import type { Watch } from './contracts.ts';
 import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
@@ -15,11 +15,15 @@ const LOOKUP_AFTER_MS = 7 * 24 * 60 * 60_000;
 /** Looks up the account's current picture by its stored username, matched by account ID. */
 const lookup = (watch: Watch) =>
   Effect.runPromise(
-    fetchAvatar(watch.username).pipe(
-      Effect.flatMap(raw => readAvatar(raw, watch.targetId, watch.username)),
-      Effect.provide(WatchRequests),
-      Effect.either
-    )
+    withWatchAdmission(requests =>
+      Effect.gen(function* () {
+        if ((yield* Effect.promise(verifiedViewerId)) !== watch.viewerId) return undefined;
+        return yield* fetchAvatar(watch.username).pipe(
+          Effect.flatMap(raw => readAvatar(raw, watch.targetId, watch.username)),
+          Effect.provideService(InstagramRequests, requests)
+        );
+      })
+    ).pipe(Effect.either)
   );
 
 const saveImage = (watchId: string, change: Pick<Watch, 'avatarImage' | 'avatarLookupAt'>) =>
@@ -88,7 +92,10 @@ export async function refreshAvatarImage(
     const booked = await saveImage(watch.id, { avatarLookupAt: now });
     if (booked.kind !== 'ok' || !booked.value) return;
     const result = await lookup(watch);
-    if (Either.isLeft(result) && result.left._tag === 'WatchRequestDeferred') {
+    if (
+      (Either.isLeft(result) && result.left._tag === 'WatchRequestDeferred') ||
+      (Either.isRight(result) && result.right === undefined)
+    ) {
       await saveImage(watch.id, { avatarLookupAt: watch.avatarLookupAt });
       return;
     }

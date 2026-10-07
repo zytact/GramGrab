@@ -283,6 +283,38 @@ describe('Watch Avatar images', () => {
     ).toBeUndefined();
   });
 
+  it.each([true, false])(
+    'cancels a paced lookup when the login changes, signed out=%s',
+    async signedOut => {
+      const { watch } = await addWatch('stories');
+      const { refreshAvatarImage } = await import('./avatar-image.ts');
+      let done = false;
+      void refreshAvatarImage(watch.watchId, VIEWER.id, {
+        kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
+        loginVerified: true,
+        avatarAttempted: false,
+      }).then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(done).toBe(false);
+      expect(
+        Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
+          ?.avatarLookupAt
+      ).toBeDefined();
+      instagram.state.viewer = signedOut ? null : { id: '1009', username: 'instagram' };
+      const { fetchViewer } = await import('./identity.ts');
+      const { PersonRequests } = await import('../instagram/requests.ts');
+      const { Effect } = await import('effect');
+      await Effect.runPromise(fetchViewer.pipe(Effect.either, Effect.provide(PersonRequests)));
+      while (!done) await vi.advanceTimersByTimeAsync(1_000);
+      expect(instagram.state.searches).toHaveLength(0);
+      expect(avatarImage()).toBeUndefined();
+      expect(
+        Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
+          ?.avatarLookupAt
+      ).toBeUndefined();
+    }
+  );
+
   it('preserves authentication failure when recording its kind outcome fails', async () => {
     await run(
       WatchAdd.make({

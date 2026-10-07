@@ -29,9 +29,10 @@ Watches are the one exception to request-in-the-moment access. See
 - **Requests.** Unattended requests are limited to the profile, Stories, Instants, and Posts requests
   for enabled Watches, plus a search request that looks up an initial Avatar when its check omitted
   the Avatar kind, or refreshes a Watch that does not watch Avatar changes. These lookups run at most
-  once a week, including failed attempts; request-cap deferrals do not count as attempts. They run
-  only while the creating Instagram login is verified, and the Watch cadence and rate policy bounds
-  them. Watch auto-downloads and Avatar images fetch from the CDN. A notification icon loads into
+  once a week, including failed attempts. Unspent deferrals and login-change cancellations do not
+  count as attempts. They run only while the creating Instagram login is verified, and the Watch
+  cadence and rate policy bound them. Watch auto-downloads and Avatar images fetch from the CDN.
+  A notification icon loads into
   memory and is dropped after use. The login's own Avatar comes from the viewer query that verifies
   the login, so showing it costs no request; it is held only in memory.
 - **Stored state.** The Watch store lives in `storage.local` and holds only what its allowlisted
