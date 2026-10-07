@@ -44,6 +44,7 @@ import {
 import { readStories, fetchStories } from './stories.ts';
 import { readInstants, sharedInstantsFeed } from './instants.ts';
 import { fetchAvatar, readAvatar } from './avatar.ts';
+import type { ObservedAvatar } from './avatar-image.ts';
 import { UsernameUnconfirmed, confirmProfile, fetchViewer } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
 
@@ -133,8 +134,8 @@ interface KindStep {
   readonly outcome?: KindCheckOutcome;
   readonly stop?: boolean;
   readonly deferredUntil?: number;
-  /** The target's current Avatar URL, held only until this check's notification is sent. */
-  readonly pictureUrl?: string;
+  /** The target's current Avatar, its URL held only until this check's notification is sent. */
+  readonly avatar?: ObservedAvatar;
 }
 
 /**
@@ -320,7 +321,7 @@ const checkAvatar = (watch: Watch, checkId: string) =>
       const applied = applyAvatarCheck(current, result.right.pictureId, { checkId, now });
       return { watch: applied.watch, value: applied.outcome };
     });
-    return written('avatar', write, outcome => ({ outcome, pictureUrl: result.right.pictureUrl }));
+    return written('avatar', write, outcome => ({ outcome, avatar: result.right }));
   });
 
 /** A selected kind's turn in a check: skipped while paused, checked otherwise. */
@@ -442,13 +443,13 @@ export const checkWatch = (
     const shared = { ...scope, feedScope: `${viewerId}:${scope.feedScope}` };
     const outcomes: KindCheckOutcome[] = [];
     let blocked = false;
-    let pictureUrl: string | undefined;
+    let avatar: ObservedAvatar | undefined;
     for (const stage of STAGES) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
       const authorization = yield* authorizeStage(watch, stage, scope, only, outcomes);
       if (authorization)
-        return { ...authorization, kinds: [...outcomes, ...authorization.kinds], pictureUrl };
+        return { ...authorization, kinds: [...outcomes, ...authorization.kinds], avatar };
       const result: StageResult = yield* runStage(watch, stage, only, { scope: shared, blocked });
       blocked = result.blocked;
       for (const step of result.steps) {
@@ -457,11 +458,11 @@ export const checkWatch = (
           outcomes.push(outcome);
           yield* Effect.promise(() => Promise.resolve(scope.onKind?.(outcome)));
         }
-        pictureUrl ??= step.pictureUrl;
-        if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil, pictureUrl };
+        avatar ??= step.avatar;
+        if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil, avatar };
       }
     }
-    return { kinds: outcomes, deferredUntil: undefined, pictureUrl };
+    return { kinds: outcomes, deferredUntil: undefined, avatar };
   });
 
 /** The most recent check of any of the Watch's kinds. */

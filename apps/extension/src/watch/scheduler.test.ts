@@ -137,7 +137,7 @@ describe('Watch scheduling', () => {
       })),
     });
 
-    await wake();
+    await wake(4);
     expect(storyRequests()).toEqual([OTHER.id, TARGET.id]);
   });
 
@@ -245,7 +245,7 @@ describe('Watch scheduling', () => {
     await add(TARGET.username);
     await add(OTHER.username);
 
-    await wake();
+    await wake(4);
     expect(storyRequests()).toEqual([TARGET.id, OTHER.id]);
     const next = (await schedule()).nextRoundAt!;
     expect(next - START).toBeGreaterThanOrEqual(0.9 * 12 * HOUR);

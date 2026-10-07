@@ -70,6 +70,7 @@ import {
   pacingReason,
 } from './scheduler.ts';
 import { confirmProfile, fetchViewer, verifiedViewerId, type Account } from './identity.ts';
+import { noteViewerPicture } from './avatar-image.ts';
 import {
   mutateStore,
   readStore,
@@ -107,7 +108,10 @@ const save = <T>(change: (store: WatchStore) => { store: WatchStore; value: T })
  */
 const verifyViewer = (store: WatchStore | undefined) =>
   fetchViewer.pipe(
-    Effect.tap(() => Effect.promise(resumeAfterPerson)),
+    Effect.tap(viewer => {
+      noteViewerPicture(viewer);
+      return Effect.promise(resumeAfterPerson);
+    }),
     Effect.catchAll(() =>
       reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
     )
@@ -166,7 +170,7 @@ const list = Effect.fn(function* (known?: WatchViewer) {
   yield* Effect.promise(() => requestLedger.ready());
   const pausedUntil = requestLedger.pausedUntil(Date.now());
   return WatchListResult.make({
-    viewer: WatchViewer.make(viewer),
+    viewer: WatchViewer.make({ accountId: viewer.accountId, username: viewer.username }),
     schedule: WatchSchedule.make({
       ...(schedule.nextRoundAt === undefined ? {} : { nextRoundAt: schedule.nextRoundAt }),
       roundRemaining: schedule.roundRemaining,

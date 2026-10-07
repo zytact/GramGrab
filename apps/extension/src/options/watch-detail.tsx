@@ -21,6 +21,7 @@ import type { WatchCommandResponse, WatchFailure, WatchRead } from '../messaging
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { KIND_LABEL, relativeTime } from './copy.ts';
 import { useInboxSelection } from './inbox-export.tsx';
+import { Avatar } from './avatar.tsx';
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -394,11 +395,13 @@ function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => 
 export function WatchDetail({
   viewer,
   watch,
+  avatar,
   version,
   onChanged,
 }: {
   viewer: WatchViewer;
   watch: WatchSummary;
+  avatar: string | undefined;
   version: number;
   onChanged: () => void;
 }) {
@@ -421,7 +424,8 @@ export function WatchDetail({
   return (
     <>
       <div className="opt-row opt-between">
-        <div className="opt-account-text">
+        <Avatar src={avatar} username={watch.username} size="lg" />
+        <div className="opt-account-text opt-grow">
           <span className="opt-h1">@{watch.username}</span>
           {watch.formerUsername && <span className="opt-meta">was @{watch.formerUsername}</span>}
         </div>

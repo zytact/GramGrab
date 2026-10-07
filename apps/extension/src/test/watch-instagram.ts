@@ -1,3 +1,4 @@
+import { vi } from 'vite-plus/test';
 import instantPhoto from '../effect/__fixtures__/instants-photo.json';
 import instantVideo from '../effect/__fixtures__/instants-video.json';
 import postsFixture from '../effect/__fixtures__/profile-posts.json';
@@ -197,7 +198,7 @@ export function avatarSearch(
  */
 export function createWatchInstagram() {
   const state = {
-    viewer: VIEWER as { id: string; username: string } | null,
+    viewer: VIEWER as { id: string; username: string; profile_pic_url?: string } | null,
     viewerRequests: 0,
     profile: {
       data: { user: { id: TARGET.id, pk: TARGET.id, username: TARGET.username } },
@@ -292,3 +293,25 @@ export function createWatchInstagram() {
 
   return { state, handle };
 }
+
+/**
+ * Stands in for the browser's image decoding and canvas, which jsdom lacks. Every scaled picture
+ * encodes to the same few JPEG bytes.
+ */
+export function stubAvatarScaling() {
+  vi.stubGlobal('createImageBitmap', async () => ({ width: 150, height: 100, close() {} }));
+  vi.stubGlobal(
+    'OffscreenCanvas',
+    class {
+      getContext() {
+        return { drawImage() {} };
+      }
+      async convertToBlob() {
+        return new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' });
+      }
+    }
+  );
+}
+
+/** The data URL `stubAvatarScaling` pictures arrive at the page as. */
+export const STUB_AVATAR = 'data:image/jpeg;base64,/9j/2Q==';

@@ -19,6 +19,7 @@ import { refreshBadge } from './attention.ts';
 import { checkWatch, type CheckScope } from './check.ts';
 import { notifyCheck, resumeNotifications, notificationsNeedWork } from './notify.ts';
 import { runActions, actionsNeedWork } from './auto-download.ts';
+import { refreshAvatarImage } from './avatar-image.ts';
 import { fetchViewer } from './identity.ts';
 import { readStore } from './store.ts';
 
@@ -117,7 +118,8 @@ export async function runCheck(
     )
   );
   await runActions(watchId, viewerId);
-  await notifyCheck(watchId, scope.checkId, startedAt, run.pictureUrl);
+  await notifyCheck(watchId, scope.checkId, startedAt, run.avatar?.pictureUrl);
+  await refreshAvatarImage(watchId, viewerId, run);
   const posts = run.kinds.find(outcome => outcome.kind === 'posts');
   if (posts) {
     const catchingUp = posts._tag === 'KindCheckSucceeded' && posts.catchUp;

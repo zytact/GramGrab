@@ -3,7 +3,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UNATTENDED_DISCLOSURE } from '@gramgrab/protocol';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
-import { TARGET, VIEWER, createWatchInstagram, restMedia } from '../test/watch-instagram.ts';
+import {
+  STUB_AVATAR,
+  TARGET,
+  VIEWER,
+  createWatchInstagram,
+  restMedia,
+  stubAvatarScaling,
+} from '../test/watch-instagram.ts';
 import { processingBrowser } from '../test/processing-browser.ts';
 import type { MessageResponse } from '../messaging/contracts.ts';
 import { Watches } from './watches.tsx';
@@ -253,6 +260,32 @@ describe('Watches options page', () => {
 
     expect(await screen.findByText('Pause checks')).toBeDefined();
     expect(harness.local.read('watch-store')).toMatchObject({ watches: [{}] });
+  });
+
+  it('shows cached Avatars beside the login and the Watch, and an initial before one exists', async () => {
+    stubAvatarScaling();
+    seedWatchWithProblemAndEntry();
+    const store = harness.local.read('watch-store') as { watches: object[] };
+    harness.local.write('watch-store', {
+      ...store,
+      watches: [
+        {
+          ...store.watches[0],
+          avatarImage: { pictureId: 'PIC_A', jpeg: '/9j/2Q==', checkedAt: 1 },
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    const { container } = render(<Watches />);
+    await user.click(await screen.findByText(`@${TARGET.username}`));
+
+    const pictures = () => [...container.querySelectorAll('img.opt-avatar')];
+    await waitFor(() => expect(pictures()).toHaveLength(2));
+    expect(pictures().map(picture => picture.getAttribute('src'))).toEqual([
+      STUB_AVATAR,
+      STUB_AVATAR,
+    ]);
+    expect(container.querySelector('.opt-viewer .opt-avatar')?.textContent).toBe('V');
   });
 
   it('shows only sign-in guidance and the stored count without a verified login', async () => {

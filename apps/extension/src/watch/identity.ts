@@ -26,6 +26,11 @@ export interface Account {
   readonly username: string;
 }
 
+/** The signed-in login, with its Avatar URL for transient use. */
+interface Viewer extends Account {
+  readonly pictureUrl?: string;
+}
+
 /** An account ID as Instagram sends it: a decimal string, or a number only while it is exact. */
 export const WireAccountId = Schema.Union(
   AccountId,
@@ -38,7 +43,13 @@ export const WireAccountId = Schema.Union(
 
 const ViewerResponse = Schema.Struct({
   data: Schema.Struct({
-    user: Schema.NullOr(Schema.Struct({ id: WireAccountId, username: InstagramUsername })),
+    user: Schema.NullOr(
+      Schema.Struct({
+        id: WireAccountId,
+        username: InstagramUsername,
+        profile_pic_url: Schema.optional(Schema.NullOr(Schema.String)),
+      })
+    ),
   }),
   errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
@@ -100,7 +111,11 @@ export const fetchViewer = Effect.gen(function* () {
   ).pipe(Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' })));
   const user = decoded.data.user;
   if (!user || (decoded.errors?.length ?? 0) > 0) return yield* Effect.fail(new ViewerMissing());
-  return { accountId: user.id, username: user.username } satisfies Account;
+  return {
+    accountId: user.id,
+    username: user.username,
+    ...(user.profile_pic_url ? { pictureUrl: user.profile_pic_url } : {}),
+  } satisfies Viewer;
 }).pipe(
   Effect.tap(viewer =>
     Effect.promise(() =>

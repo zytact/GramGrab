@@ -91,6 +91,20 @@ const InstantRef = Schema.TaggedStruct('Instant', {
 
 const AvatarRef = Schema.TaggedStruct('Avatar', { pictureId: PictureId });
 
+/** A downscaled JPEG's base64 text, at most 8 KiB of image bytes. */
+export const AvatarJpeg = Schema.String.pipe(
+  Schema.pattern(/^[A-Za-z0-9+/]+={0,2}$/),
+  Schema.maxLength(Math.ceil((8 * 1024) / 3) * 4)
+);
+
+/** The cached picture shown beside the Watch, and when its picture identity was last confirmed. */
+const AvatarImage = Schema.Struct({
+  pictureId: PictureId,
+  jpeg: AvatarJpeg,
+  checkedAt: EpochMillis,
+});
+export type AvatarImage = Schema.Schema.Type<typeof AvatarImage>;
+
 const MediaRef = Schema.Union(PostRef, SidecarRef, StoryRef, InstantRef, AvatarRef);
 export type MediaRef = Schema.Schema.Type<typeof MediaRef>;
 /** A reference to media with a publication time, which every kind but Avatar records. */
@@ -209,6 +223,7 @@ const Watch = Schema.Struct({
   actions: WatchActions,
   tracking: Tracking,
   discoveries: Schema.Array(Discovery),
+  avatarImage: Schema.optional(AvatarImage),
 });
 export type Watch = Schema.Schema.Type<typeof Watch>;
 

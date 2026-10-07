@@ -380,3 +380,29 @@ select {
 .opt-error {
   color: var(--error);
 }
+.opt-avatar {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  color: var(--text-mid);
+  font-family: var(--font-display);
+}
+.opt-avatar-sm {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+.opt-avatar-md {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+}
+.opt-avatar-lg {
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+}
