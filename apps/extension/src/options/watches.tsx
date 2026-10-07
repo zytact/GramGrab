@@ -726,7 +726,15 @@ export function Watches() {
   useEffect(() => {
     if (!ready) return;
     const listener = (changes: StorageChanges) => {
-      if (STORE_KEY in changes || SCHEDULER_KEY in changes) void refresh();
+      const ledger = changes[LEDGER_KEY];
+      if (
+        STORE_KEY in changes ||
+        SCHEDULER_KEY in changes ||
+        (ledger &&
+          decodeLedger(ledger.oldValue)?.pause?.until !==
+            decodeLedger(ledger.newValue)?.pause?.until)
+      )
+        void refresh();
     };
     browser.storage.onChanged.addListener(listener);
     void refresh();

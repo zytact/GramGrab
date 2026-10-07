@@ -562,11 +562,16 @@ describe('Watches options page', () => {
     render(<Watches />);
     await screen.findByRole('heading', { name: 'Needs you' });
     expect(screen.queryByText('Watches paused.')).toBeNull();
+    const viewerRequests = instagram.state.viewerRequests;
+    const attention = screen.getByRole('button', { name: /Needs you/ });
+    expect(attention.textContent).toContain('1');
 
     const { requestLedger } = await import('../instagram/requests.ts');
     requestLedger.end({ kind: 'watch' }, Date.now(), 429);
 
     expect(await screen.findByText('Watches paused.')).toBeDefined();
+    await waitFor(() => expect(attention.textContent).toContain('2'));
+    expect(instagram.state.viewerRequests).toBe(viewerRequests);
   });
 
   it('shows the sign-in gate and clears the badge when an action finds the login gone', async () => {
