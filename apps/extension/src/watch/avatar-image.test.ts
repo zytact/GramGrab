@@ -42,7 +42,8 @@ beforeEach(async () => {
   await harness.loadWorker();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await vi.advanceTimersByTimeAsync(0);
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -75,7 +76,7 @@ const addWatch = (kind: WatchKind) =>
 
 async function checkLater(after = 5 * MINUTE) {
   await vi.advanceTimersByTimeAsync(after);
-  await run(WatchCheck.make({ watches: [selector] }), 'WatchCheckResult');
+  return await run(WatchCheck.make({ watches: [selector] }), 'WatchCheckResult');
 }
 
 const avatarImage = () =>
@@ -167,6 +168,7 @@ describe('Watch Avatar images', () => {
     let done = false;
     void refreshAvatarImage(watch.watchId, VIEWER.id, {
       kinds: [KindBaselineRecorded.make({ kind: 'posts' })],
+      loginVerified: true,
       avatarAttempted: false,
     }).then(() => (done = true));
     while (!done) await vi.advanceTimersByTimeAsync(1_000);
@@ -205,6 +207,7 @@ describe('Watch Avatar images', () => {
     const { refreshAvatarImage } = await import('./avatar-image.ts');
     await refreshAvatarImage(watch.watchId, VIEWER.id, {
       kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
+      loginVerified: true,
       avatarAttempted: false,
     });
     expect(instagram.state.searches).toHaveLength(0);
@@ -214,9 +217,14 @@ describe('Watch Avatar images', () => {
     ).toBeUndefined();
   });
 
-  it.each([true, false])(
-    'does not fetch an initial image after a later login check fails, signed out=%s',
-    async signedOut => {
+  it.each([
+    { stage: 'stories', signedOut: true },
+    { stage: 'stories', signedOut: false },
+    { stage: 'profile', signedOut: true },
+    { stage: 'profile', signedOut: false },
+  ])(
+    'does not fetch an initial image after a later login check fails, %j',
+    async ({ stage, signedOut }) => {
       await run(
         WatchAdd.make({
           target: TARGET.username,
@@ -226,19 +234,31 @@ describe('Watch Avatar images', () => {
         }),
         'WatchAddResult'
       );
+      if (stage === 'profile')
+        instagram.state.profile = { data: { user: { id: '9999', username: TARGET.username } } };
       harness.setFetch((url, init) => {
         const response = instagram.handle(url, init);
-        if (new URL(url).searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
+        const finished =
+          stage === 'stories'
+            ? new URL(url).searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab'
+            : init?.body instanceof URLSearchParams &&
+              init.body.get('doc_id') === '28036671149327607';
+        if (finished)
           instagram.state.viewer = signedOut ? null : { id: '1009', username: 'instagram' };
         return response;
       });
-      await checkLater();
+      const result = await checkLater();
+      expect(result.outcomes[0]?.kinds).toContainEqual(
+        KindBaselineRecorded.make({ kind: 'stories' })
+      );
       expect(instagram.state.searches).toHaveLength(0);
       expect(avatarImage()).toBeUndefined();
       expect(
         Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
           ?.avatarLookupAt
       ).toBeUndefined();
+      const { scheduleOf } = await import('./scheduler.ts');
+      expect((await scheduleOf(VIEWER.id)).suspended).toBe(true);
     }
   );
 
@@ -299,6 +319,7 @@ describe('Watch Avatar images', () => {
       let done = false;
       void refreshAvatarImage(watch.watchId, VIEWER.id, {
         kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
+        loginVerified: true,
         avatarAttempted: observed,
         ...(observed
           ? { avatar: { pictureId: 'PIC_A', pictureUrl: 'https://sanitized.invalid/avatar' } }

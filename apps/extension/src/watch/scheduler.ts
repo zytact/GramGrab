@@ -104,6 +104,8 @@ export async function runCheck(
       checkWatch(watchId, viewerId, scope, only).pipe(Effect.provide(WatchRequests))
     )
   );
+  if (!run.loginVerified && run.deferredUntil === undefined)
+    await updateState(state => ({ ...state, suspended: true }));
   await runActions(watchId, viewerId);
   await notifyCheck(watchId, scope.checkId, startedAt, run.avatar?.pictureUrl);
   await refreshAvatarImage(watchId, viewerId, run);

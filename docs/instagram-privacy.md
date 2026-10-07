@@ -33,7 +33,7 @@ Watches are the one exception to request-in-the-moment access. See
   only while the creating Instagram login is verified, and the Watch cadence and rate policy bounds
   them. Watch auto-downloads and Avatar images fetch from the CDN. A notification icon loads into
   memory and is dropped after use. The login's own Avatar comes from the viewer query that verifies
-  the login, so showing it costs no request; it is held in worker memory only.
+  the login, so showing it costs no request; it is held only in memory.
 - **Stored state.** The Watch store lives in `storage.local` and holds only what its allowlisted
   Effect schema permits:
   - IDs: the creating viewer ID, the target account ID, and the target's current and previous usernames

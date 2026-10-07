@@ -469,6 +469,7 @@ export const checkWatch = (
         return {
           ...authorization,
           kinds: [...outcomes, ...authorization.kinds],
+          loginVerified: false,
           avatar,
           avatarAttempted,
         };
@@ -483,10 +484,22 @@ export const checkWatch = (
         avatar ??= step.avatar;
         avatarAttempted ||= step.avatarAttempted === true;
         if (step.stop)
-          return { kinds: outcomes, deferredUntil: step.deferredUntil, avatar, avatarAttempted };
+          return {
+            kinds: outcomes,
+            deferredUntil: step.deferredUntil,
+            loginVerified: !checkNeedsLogin(outcomes),
+            avatar,
+            avatarAttempted,
+          };
       }
     }
-    return { kinds: outcomes, deferredUntil: undefined, avatar, avatarAttempted };
+    return {
+      kinds: outcomes,
+      deferredUntil: undefined,
+      loginVerified: !checkNeedsLogin(outcomes),
+      avatar,
+      avatarAttempted,
+    };
   });
 
 /** The most recent check of any of the Watch's kinds. */
