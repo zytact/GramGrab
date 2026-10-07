@@ -14,6 +14,7 @@ import {
   type ManualCheck,
   type WatchCommand,
   type WatchSummary,
+  type WatchViewer,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
 import type { WatchCommandResponse, WatchFailure, WatchRead } from '../messaging/contracts.ts';
@@ -26,9 +27,9 @@ const DAY_MS = 24 * 60 * 60_000;
 export const runCommand = (command: WatchCommand): Promise<WatchCommandResponse> =>
   sendMessage({ type: 'WATCH_COMMAND', command });
 
-/** Reads as the login the worker last verified, which asks Instagram only when none is known. */
-export const runRead = (command: WatchRead): Promise<WatchCommandResponse> =>
-  sendMessage({ type: 'WATCH_READ', command });
+/** Reads as `viewer` without asking Instagram while it is still the last login verified. */
+export const runRead = (command: WatchRead, viewer: WatchViewer): Promise<WatchCommandResponse> =>
+  sendMessage({ type: 'WATCH_READ', command, viewer });
 
 export function healthText(health: KindHealth, enabled: boolean): string {
   switch (health._tag) {
@@ -261,18 +262,26 @@ function InboxList({
 }
 
 /** Every collected entry of the verified login, reloaded whenever `version` changes. */
-export function AllInbox({ version, onChanged }: { version: number; onChanged: () => void }) {
+export function AllInbox({
+  viewer,
+  version,
+  onChanged,
+}: {
+  viewer: WatchViewer;
+  version: number;
+  onChanged: () => void;
+}) {
   const [entries, setEntries] = useState<readonly DiscoverySummary[]>();
   useEffect(() => {
     let current = true;
-    void runRead(WatchInboxList.make({})).then(response => {
+    void runRead(WatchInboxList.make({}), viewer).then(response => {
       if (current && response.result?._tag === 'WatchInboxListResult')
         setEntries(response.result.entries);
     });
     return () => {
       current = false;
     };
-  }, [version]);
+  }, [viewer, version]);
   return (
     <>
       <h1 className="opt-h1">All inbox</h1>
@@ -384,10 +393,12 @@ function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => 
 
 /** One Watch's health and what it found, reloaded whenever `version` changes. */
 export function WatchDetail({
+  viewer,
   watch,
   version,
   onChanged,
 }: {
+  viewer: WatchViewer;
   watch: WatchSummary;
   version: number;
   onChanged: () => void;
@@ -397,7 +408,7 @@ export function WatchDetail({
   const { accountId } = watch;
   useEffect(() => {
     let current = true;
-    void runRead(WatchShow.make({ watch: AccountIdSelector.make({ accountId }) })).then(
+    void runRead(WatchShow.make({ watch: AccountIdSelector.make({ accountId }) }), viewer).then(
       response => {
         if (current && response.result?._tag === 'WatchShowResult')
           setFound(response.result.discoveries);
@@ -406,7 +417,7 @@ export function WatchDetail({
     return () => {
       current = false;
     };
-  }, [accountId, version]);
+  }, [viewer, accountId, version]);
   const inbox = found?.filter(entry => entry.inboxUntil !== undefined);
   return (
     <>

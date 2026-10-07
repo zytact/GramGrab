@@ -49,14 +49,7 @@ import type {
   WatchRead,
 } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
-import {
-  forgetViewer,
-  loginAttention,
-  refreshBadge,
-  rememberViewer,
-  rememberedViewer,
-  watchAttentionItems,
-} from './attention.ts';
+import { loginAttention, refreshBadge, watchAttentionItems } from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
 import { attentionEntries, discoveries, inbox, initialized, summarize } from './summary.ts';
 import { retryNotify } from './notify.ts';
@@ -76,7 +69,7 @@ import {
   deferManual,
   pacingReason,
 } from './scheduler.ts';
-import { confirmProfile, fetchViewer, type Account } from './identity.ts';
+import { confirmProfile, fetchViewer, verifiedViewerId, type Account } from './identity.ts';
 import {
   mutateStore,
   readStore,
@@ -114,31 +107,19 @@ const save = <T>(change: (store: WatchStore) => { store: WatchStore; value: T })
  */
 const verifyViewer = (store: WatchStore | undefined) =>
   fetchViewer.pipe(
-    Effect.tap(viewer =>
-      Effect.promise(() =>
-        Promise.all([rememberViewer(WatchViewer.make(viewer)), resumeAfterPerson()])
-      )
-    ),
+    Effect.tap(() => Effect.promise(resumeAfterPerson)),
     Effect.catchAll(() =>
-      Effect.zipRight(
-        Effect.promise(forgetViewer),
-        reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
-      )
+      reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
     )
   );
 
-/**
- * Where a read finds its viewer. `remembered` takes the login the last verification found, which
- * a failed verification forgets, and verifies only when there is none.
- */
-type ViewerSource = 'verify' | 'remembered';
-
-const viewerFrom = (store: WatchStore | undefined, source: ViewerSource) =>
-  source === 'verify'
-    ? verifyViewer(store)
-    : Effect.flatMap(Effect.promise(rememberedViewer), remembered =>
-        remembered ? Effect.succeed<Account>(remembered) : verifyViewer(store)
-      );
+/** The viewer a page already holds while it is still the last one verified, or a fresh check. */
+const viewerFrom = (store: WatchStore | undefined, known: WatchViewer | undefined) =>
+  known
+    ? Effect.flatMap(Effect.promise(verifiedViewerId), viewerId =>
+        viewerId === known.accountId ? Effect.succeed<Account>(known) : verifyViewer(store)
+      )
+    : verifyViewer(store);
 
 const owned = (store: WatchStore, viewer: Account) =>
   store.watches.filter(watch => watch.viewerId === viewer.accountId);
@@ -174,10 +155,10 @@ async function storageState(read: StoreRead): Promise<WatchStorage> {
   });
 }
 
-const list = Effect.fn(function* (source: ViewerSource) {
+const list = Effect.fn(function* (known?: WatchViewer) {
   const read = yield* load;
   const store = read.kind === 'ok' ? read.store : undefined;
-  const viewer = yield* viewerFrom(store, source);
+  const viewer = yield* viewerFrom(store, known);
   const storage = yield* Effect.promise(() => storageState(read));
   const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
   const watches = store
@@ -494,11 +475,11 @@ const check = (
 
 const inboxList = (
   command: Extract<WatchCommand, { _tag: 'WatchInboxList' }>,
-  source: ViewerSource
+  known?: WatchViewer
 ) =>
   Effect.gen(function* () {
     const store = yield* loadOrReject;
-    const viewer = yield* viewerFrom(store, source);
+    const viewer = yield* viewerFrom(store, known);
     const watches = command.watch
       ? [yield* findOwned(store, viewer, command.watch)]
       : owned(store, viewer);
@@ -673,7 +654,7 @@ const NEEDS_STORAGE_CODE = {
 } as const;
 
 const needs = Effect.gen(function* () {
-  const snapshot = yield* list('verify');
+  const snapshot = yield* list();
   const read = yield* load;
   const items =
     read.kind === 'ok'
@@ -773,10 +754,10 @@ const attentionRecover = (command: Extract<WatchCommand, { _tag: 'WatchAttention
     });
   });
 
-const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>, source: ViewerSource) =>
+const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>, known?: WatchViewer) =>
   Effect.gen(function* () {
     const store = yield* loadOrReject;
-    const viewer = yield* viewerFrom(store, source);
+    const viewer = yield* viewerFrom(store, known);
     const watch = yield* findOwned(store, viewer, command.watch);
     const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
     return WatchShowResult.make({
@@ -785,11 +766,11 @@ const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>, source: Vie
     });
   });
 
-const read = (command: WatchRead, source: ViewerSource) =>
+const read = (command: WatchRead, known?: WatchViewer) =>
   Match.valueTags(command, {
-    WatchList: () => list(source),
-    WatchShow: command => show(command, source),
-    WatchInboxList: command => inboxList(command, source),
+    WatchList: () => list(known),
+    WatchShow: command => show(command, known),
+    WatchInboxList: command => inboxList(command, known),
   });
 
 const program = (
@@ -797,15 +778,15 @@ const program = (
   onProgress: (progress: WatchCheckProgress) => void
 ): Effect.Effect<WatchResult, WatchRejection, InstagramRequests | InboxExportExecution> =>
   Match.valueTags(command, {
-    WatchList: command => read(command, 'verify'),
+    WatchList: command => read(command),
     WatchNeeds: () => needs,
     WatchAttentionRecover: attentionRecover,
-    WatchShow: command => read(command, 'verify'),
+    WatchShow: command => read(command),
     WatchAdd: add,
     WatchSet: set,
     WatchLifecycle: lifecycle,
     WatchCheck: command => check(command, onProgress),
-    WatchInboxList: command => read(command, 'verify'),
+    WatchInboxList: command => read(command),
     WatchInboxRemove: inboxRemove,
     WatchInboxExport: inboxExport,
     WatchInboxRetry: inboxExport,
@@ -843,9 +824,12 @@ export const runWatchCommand = (
     )
   );
 
-/** Runs a read for the options page as the last verified login. */
-export const runWatchRead = (command: WatchRead): Promise<WatchCommandResponse> =>
-  runForPerson(Effect.map(read(command, 'remembered'), result => ({ result })));
+/** Runs a read for the options page as the viewer it verified, while that is still the signed-in one. */
+export const runWatchRead = (
+  command: WatchRead,
+  viewer: WatchViewer
+): Promise<WatchCommandResponse> =>
+  runForPerson(Effect.map(read(command, viewer), result => ({ result })));
 
 /** Resolves an add target for the person to inspect before adding it. */
 export const previewWatchTarget = (target: string): Promise<WatchPreviewResponse> =>

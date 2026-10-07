@@ -1260,7 +1260,7 @@ const messageHandlers: MessageHandlers = {
   DEBUG_SHAPE: handleDebugShape,
   DOWNLOAD_DEBUG_JSON: handleDownloadDebugJson,
   WATCH_COMMAND: message => runWatchCommand(message.command, runPreparedInDocument),
-  WATCH_READ: message => runWatchRead(message.command),
+  WATCH_READ: message => runWatchRead(message.command, message.viewer),
   WATCH_PREVIEW: message => previewWatchTarget(message.target),
 };
 

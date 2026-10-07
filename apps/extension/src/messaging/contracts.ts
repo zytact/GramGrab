@@ -8,6 +8,7 @@ import {
   WatchInboxList,
   WatchList,
   WatchShow,
+  WatchViewer,
   ExportSettings,
   MediaItem as ProtocolMediaItem,
   type CommandFailure,
@@ -149,6 +150,7 @@ export type WatchRead = Schema.Schema.Type<typeof WatchRead>;
 const WatchReadMessage = Schema.Struct({
   type: Schema.Literal('WATCH_READ'),
   command: WatchRead,
+  viewer: WatchViewer,
 });
 
 const WatchPreview = Schema.Struct({

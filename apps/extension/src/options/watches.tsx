@@ -13,6 +13,7 @@ import {
   type WatchKind,
   type WatchListResult,
   type WatchSummary,
+  type WatchViewer,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
 import type {
@@ -24,6 +25,7 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
+import { LEDGER_KEY, storedPauseUntil } from '../instagram/requests.ts';
 import { STORE_KEY } from '../watch/contracts.ts';
 import { SCHEDULER_KEY } from '../watch/schedule-state.ts';
 import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';
@@ -638,17 +640,23 @@ export function Watches() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const [version, setVersion] = useState(0);
   const latest = useRef(0);
+  const viewer = useRef<WatchViewer>(undefined);
 
   const load = useCallback(async (send: () => Promise<WatchCommandResponse>) => {
     const request = ++latest.current;
     const response = await send();
     if (request !== latest.current) return;
     if (response.failure) setLoaded({ kind: 'failed', failure: response.failure });
-    else if (response.result._tag === 'WatchListResult')
+    else if (response.result._tag === 'WatchListResult') {
+      viewer.current = response.result.viewer;
       setLoaded({ kind: 'ready', list: response.result });
+    }
     setVersion(current => current + 1);
   }, []);
-  const refresh = useCallback(() => load(() => runRead(WatchList.make())), [load]);
+  const refresh = useCallback(async () => {
+    const known = viewer.current;
+    if (known) await load(() => runRead(WatchList.make(), known));
+  }, [load]);
 
   useEffect(() => {
     void load(() => runCommand(WatchList.make()));
@@ -658,7 +666,13 @@ export function Watches() {
   useEffect(() => {
     if (!ready) return;
     const listener = (changes: StorageChanges) => {
-      if (STORE_KEY in changes || SCHEDULER_KEY in changes) void refresh();
+      const ledger = changes[LEDGER_KEY];
+      if (
+        STORE_KEY in changes ||
+        SCHEDULER_KEY in changes ||
+        (ledger && storedPauseUntil(ledger.oldValue) !== storedPauseUntil(ledger.newValue))
+      )
+        void refresh();
     };
     browser.storage.onChanged.addListener(listener);
     // Catches what the worker wrote while the first load waited on Instagram.
@@ -718,7 +732,9 @@ function Feed({
       {current === 'attention' && (
         <AttentionView list={list} onRun={onRun} onOpen={id => onGo({ watchId: id })} />
       )}
-      {current === 'inbox' && <AllInbox version={version} onChanged={onChanged} />}
+      {current === 'inbox' && (
+        <AllInbox viewer={list.viewer} version={version} onChanged={onChanged} />
+      )}
       {current === 'new' && (
         <>
           <h1 className="opt-h1">Add Watch</h1>
@@ -726,7 +742,13 @@ function Feed({
         </>
       )}
       {watch && (
-        <WatchDetail key={watch.watchId} watch={watch} version={version} onChanged={onChanged} />
+        <WatchDetail
+          key={watch.watchId}
+          viewer={list.viewer}
+          watch={watch}
+          version={version}
+          onChanged={onChanged}
+        />
       )}
     </section>
   );

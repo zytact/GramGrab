@@ -376,6 +376,32 @@ describe('Watches options page', () => {
     expect(instagram.state.viewerRequests).toBe(viewerRequests);
   });
 
+  it('follows another login once a background check verified it', async () => {
+    seedWatchWithProblemAndEntry();
+    render(<Watches />);
+    expect(await screen.findByText(`@${VIEWER.username}`)).toBeDefined();
+    const viewerRequests = instagram.state.viewerRequests;
+
+    instagram.state.viewer = { id: '1002', username: 'viewer.two' };
+    harness.session.write('watch-viewer', '1002');
+    await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
+
+    expect(await screen.findByText('@viewer.two')).toBeDefined();
+    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+  });
+
+  it('shows a rate-limit pause the worker starts while the page is open', async () => {
+    seedWatchWithProblemAndEntry();
+    render(<Watches />);
+    await screen.findByRole('heading', { name: 'Needs you' });
+    expect(screen.queryByText('Watches paused.')).toBeNull();
+
+    const { requestLedger } = await import('../instagram/requests.ts');
+    requestLedger.end({ kind: 'watch' }, Date.now(), 429);
+
+    expect(await screen.findByText('Watches paused.')).toBeDefined();
+  });
+
   it('shows the sign-in gate when an action finds the login gone', async () => {
     seedWatchWithProblemAndEntry();
     const user = userEvent.setup();

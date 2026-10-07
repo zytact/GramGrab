@@ -1,9 +1,7 @@
-import { Schema } from 'effect';
 import {
   ActionAttention,
   CheckAttention,
   WatchRecover,
-  WatchViewer,
   type WatchAttention,
   type ActionOutcome,
 } from '@gramgrab/protocol';
@@ -13,12 +11,7 @@ import { browser } from '../lib/browser.ts';
 import { requestLedger } from '../instagram/requests.ts';
 import type { Discovery, Watch, WatchStore } from './contracts.ts';
 import { readStore, storeHealth } from './store.ts';
-
-/**
- * The login the last viewer verification found, kept only for this browser session. The badge
- * counts its Watches, and the options page's reads reuse it instead of asking Instagram again.
- */
-const VIEWER_KEY = 'watch-viewer';
+import { verifiedViewerId } from './identity.ts';
 
 /**
  * Stable IDs of what needs the person, for one Watch. A check problem is
@@ -121,24 +114,6 @@ export async function loginAttention(store: WatchStore, viewerId: string): Promi
   return watches.length > 0 ? [...paused, ...watches.flatMap(watchAttention)] : [];
 }
 
-export async function rememberViewer(viewer: WatchViewer): Promise<void> {
-  await browser.sessionStorage
-    .set({ [VIEWER_KEY]: Schema.encodeSync(WatchViewer)(viewer) })
-    .catch(() => undefined);
-}
-
-export async function forgetViewer(): Promise<void> {
-  await browser.sessionStorage.remove(VIEWER_KEY).catch(() => undefined);
-}
-
-export async function rememberedViewer(): Promise<WatchViewer | undefined> {
-  const stored = await browser.sessionStorage
-    .get(VIEWER_KEY)
-    .catch((): Record<string, unknown> => ({}));
-  const decoded = Schema.decodeUnknownOption(WatchViewer)(stored[VIEWER_KEY]);
-  return decoded._tag === 'Some' ? decoded.value : undefined;
-}
-
 /**
  * How many things need the last verified login, as the toolbar badge and the popup show it. A
  * store that cannot be read or saved counts as one more.
@@ -146,9 +121,9 @@ export async function rememberedViewer(): Promise<WatchViewer | undefined> {
 export async function attentionCount(): Promise<number> {
   const read = await readStore();
   if (read.kind === 'failed') return 1;
-  const viewer = await rememberedViewer();
+  const viewerId = await verifiedViewerId();
   const store = (await storeHealth()) ? 1 : 0;
-  return store + (viewer ? (await loginAttention(read.store, viewer.accountId)).length : 0);
+  return store + (viewerId ? (await loginAttention(read.store, viewerId)).length : 0);
 }
 
 export async function refreshBadge(): Promise<void> {

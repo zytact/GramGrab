@@ -31,7 +31,7 @@ const PAUSE_CEILING_MS = 6 * HOUR_MS;
 const IN_WORKER_WAIT_MS = 25_000;
 const BUSY_POLL_MS = 1_000;
 
-const LEDGER_KEY = 'instagram-requests';
+export const LEDGER_KEY = 'instagram-requests';
 
 class RequestPause extends Schema.Class<RequestPause>('RequestPause')({
   until: Schema.Number,
@@ -46,6 +46,12 @@ class LedgerState extends Schema.Class<LedgerState>('LedgerState')({
   nextWatchAt: Schema.Number,
   pause: Schema.optional(RequestPause),
 }) {}
+
+/** When the 429 pause in a stored ledger ends, or undefined when it holds none. */
+export function storedPauseUntil(stored: unknown): number | undefined {
+  const decoded = Schema.decodeUnknownOption(LedgerState)(stored);
+  return decoded._tag === 'Some' ? decoded.value.pause?.until : undefined;
+}
 
 type RequestOrigin = { readonly kind: 'person' } | { readonly kind: 'watch' };
 

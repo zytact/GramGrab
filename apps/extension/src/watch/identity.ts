@@ -7,6 +7,7 @@ import {
   readCsrfToken,
 } from '../instagram/acquisition.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
+import { browser } from '../lib/browser.ts';
 import {
   GraphQLRequestFailed,
   NetworkError,
@@ -69,6 +70,21 @@ export const readJson = (response: Response, context: string) =>
     });
   });
 
+/** The account ID the last viewer query found, kept only for this browser session. */
+const VIEWER_KEY = 'watch-viewer';
+
+/**
+ * The account the last viewer query found, until one finds no signed-in viewer. The badge counts its
+ * Watches, and the options page reads as it without asking Instagram again.
+ */
+export async function verifiedViewerId(): Promise<string | undefined> {
+  const stored = await browser.sessionStorage
+    .get(VIEWER_KEY)
+    .catch((): Record<string, unknown> => ({}));
+  const decoded = Schema.decodeUnknownOption(AccountId)(stored[VIEWER_KEY]);
+  return decoded._tag === 'Some' ? decoded.value : undefined;
+}
+
 /** Identifies the signed-in viewer from the dedicated session query, never from a cookie. */
 export const fetchViewer = Effect.gen(function* () {
   const candidate = protocolConfig.operations.viewer.candidates[0]!;
@@ -86,7 +102,18 @@ export const fetchViewer = Effect.gen(function* () {
   const user = decoded.data.user;
   if (!user || (decoded.errors?.length ?? 0) > 0) return yield* Effect.fail(new ViewerMissing());
   return { accountId: user.id, username: user.username } satisfies Account;
-});
+}).pipe(
+  Effect.tap(viewer =>
+    Effect.promise(() =>
+      browser.sessionStorage.set({ [VIEWER_KEY]: viewer.accountId }).catch(() => undefined)
+    )
+  ),
+  Effect.tapError(error =>
+    error._tag === 'ViewerMissing'
+      ? Effect.promise(() => browser.sessionStorage.remove(VIEWER_KEY).catch(() => undefined))
+      : Effect.void
+  )
+);
 
 /** The username only when the response is error-free and every identity field is `targetId`. */
 function confirmedUsername(
