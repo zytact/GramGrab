@@ -44,7 +44,7 @@ Watches are the one exception to request-in-the-moment access. See
     expiry time, and discovery time
   - Avatar picture identities: the last one observed and one for each recorded change
   - one cached Avatar image per Watch: a center-cropped 80 by 80 pixel JPEG of at most 8 KiB, with
-    its picture identity and when that identity was last confirmed. It is loaded again only when the
+    its picture identity and when the image was cached. It is loaded again only when the
     identity changes, and deleting the Watch removes it. A separate lookup timestamp bounds failed
     refresh attempts. Optional image updates that exceed the store budget are skipped.
   - per-action and per-child outcomes, Watch attention items, and Watch inbox entries

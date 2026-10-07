@@ -118,7 +118,10 @@ describe('Watch Avatar images', () => {
     await checkLater(7 * DAY);
     expect(instagram.state.searches).toHaveLength(2);
     expect(pictureLoads()).toBe(1);
-    expect(avatarImage()?.checkedAt).toBeGreaterThan(START + 7 * DAY);
+    expect(
+      Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
+        ?.avatarLookupAt
+    ).toBeGreaterThan(START + 7 * DAY);
   });
 
   it('keeps the placeholder when the picture will not load, and tries again next check', async () => {
@@ -164,13 +167,58 @@ describe('Watch Avatar images', () => {
     let done = false;
     void refreshAvatarImage(watch.watchId, VIEWER.id, {
       kinds: [KindBaselineRecorded.make({ kind: 'posts' })],
+      avatarAttempted: false,
     }).then(() => (done = true));
     while (!done) await vi.advanceTimersByTimeAsync(1_000);
     expect(avatarImage()?.pictureId).toBe('PIC_A');
     expect(instagram.state.searches).toHaveLength(1);
   });
 
-  it('skips an optional image that cannot fit without marking the store as failed', async () => {
+  it.each([true, false])(
+    'distinguishes a failed profile check from an attempted Avatar search, profile fails=%s',
+    async profileFails => {
+      await run(
+        WatchAdd.make({
+          target: TARGET.username,
+          kinds: ['stories', 'avatar'],
+          actions: ['collect'],
+          acceptUnattended: true,
+        }),
+        'WatchAddResult'
+      );
+      if (profileFails)
+        instagram.state.profile = { data: { user: { id: '9999', username: TARGET.username } } };
+      else instagram.state.search = {};
+      await checkLater();
+      expect(instagram.state.searches).toHaveLength(1);
+      expect(!!avatarImage()).toBe(profileFails);
+    }
+  );
+
+  it('does not count a deferred cosmetic lookup as a refresh attempt', async () => {
+    const { watch } = await addWatch('stories');
+    const { requestLedger } = await import('../instagram/requests.ts');
+    for (let index = 0; index < 60; index++) {
+      requestLedger.begin({ kind: 'person' }, Date.now());
+      requestLedger.end({ kind: 'person' }, Date.now(), 200);
+    }
+    const { refreshAvatarImage } = await import('./avatar-image.ts');
+    await refreshAvatarImage(watch.watchId, VIEWER.id, {
+      kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
+      avatarAttempted: false,
+    });
+    expect(instagram.state.searches).toHaveLength(0);
+    expect(
+      Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
+        ?.avatarLookupAt
+    ).toBeUndefined();
+  });
+
+  it.each([
+    { observed: true, room: 64 },
+    { observed: false, room: 64 },
+    { observed: false, room: 0 },
+  ])('bounds optional cache requests and writes at capacity, %j', async ({ observed, room }) => {
     const { watch } = await addWatch('avatar');
     const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
     const first = store.watches[0]!;
@@ -186,7 +234,7 @@ describe('Watch Avatar images', () => {
       ],
     };
     const last = { ...template, id: crypto.randomUUID(), avatarImage: { ...image, jpeg: 'AAAA' } };
-    const extra = Math.floor((STORE_BUDGET_BYTES - size(filled) - size(last) - 1) / 4) * 4;
+    const extra = Math.floor((STORE_BUDGET_BYTES - size(filled) - size(last) - 1 - room) / 4) * 4;
     if (extra >= 0) {
       last.avatarImage.jpeg += 'AAAA'.repeat(extra / 4);
       filled.watches.push(last);
@@ -205,13 +253,29 @@ describe('Watch Avatar images', () => {
         }
       }
     );
-    await refreshAvatarImage(watch.watchId, VIEWER.id, {
-      kinds: [KindBaselineRecorded.make({ kind: 'avatar' })],
-      avatar: { pictureId: 'PIC_A', pictureUrl: 'https://sanitized.invalid/avatar' },
-    });
+    const refresh = async () => {
+      let done = false;
+      void refreshAvatarImage(watch.watchId, VIEWER.id, {
+        kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
+        avatarAttempted: observed,
+        ...(observed
+          ? { avatar: { pictureId: 'PIC_A', pictureUrl: 'https://sanitized.invalid/avatar' } }
+          : {}),
+      }).then(() => (done = true));
+      while (!done) await vi.advanceTimersByTimeAsync(1_000);
+    };
+    await refresh();
     expect(avatarImage()).toBeUndefined();
     expect(harness.session.read('watch-store-health')).toBeUndefined();
-    expect(harness.local.read('watch-store')).toEqual(filled);
+    if (observed || room === 0) expect(harness.local.read('watch-store')).toEqual(filled);
+    else
+      expect(
+        Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
+          ?.avatarLookupAt
+      ).toBeDefined();
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    await refresh();
+    expect(instagram.state.searches).toHaveLength(!observed && room > 0 ? 1 : 0);
   });
 
   it('shows the page only the asking login’s pictures, and its own picture from memory', async () => {

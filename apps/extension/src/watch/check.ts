@@ -130,6 +130,7 @@ export interface CheckScope {
 
 /** One kind's turn: its outcome, and whether the rest of the check must stop. */
 interface KindStep {
+  readonly avatarAttempted?: boolean;
   readonly outcome?: KindCheckOutcome;
   readonly stop?: boolean;
   readonly deferredUntil?: number;
@@ -331,7 +332,10 @@ const turn = (
 ): Effect.Effect<KindStep, never, InstagramRequests> => {
   if (!watch.enabled)
     return Effect.succeed({ outcome: KindCheckSkipped.make({ kind, reason: 'paused' }) });
-  if (kind === 'avatar') return checkAvatar(watch, scope.checkId);
+  if (kind === 'avatar')
+    return checkAvatar(watch, scope.checkId).pipe(
+      Effect.map(step => ({ ...step, avatarAttempted: true }))
+    );
   const cutoff = watch.tracking[kind]?.baselineCutoff;
   if (kind === 'posts' && cutoff !== undefined) return traversePosts(watch, cutoff, scope.checkId);
   return checkKind(watch, kind, ACQUIRERS[kind], scope);
@@ -443,12 +447,18 @@ export const checkWatch = (
     const outcomes: KindCheckOutcome[] = [];
     let blocked = false;
     let avatar: ObservedAvatar | undefined;
+    let avatarAttempted = false;
     for (const stage of STAGES) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
       const authorization = yield* authorizeStage(watch, stage, scope, only, outcomes);
       if (authorization)
-        return { ...authorization, kinds: [...outcomes, ...authorization.kinds], avatar };
+        return {
+          ...authorization,
+          kinds: [...outcomes, ...authorization.kinds],
+          avatar,
+          avatarAttempted,
+        };
       const result: StageResult = yield* runStage(watch, stage, only, { scope: shared, blocked });
       blocked = result.blocked;
       for (const step of result.steps) {
@@ -458,10 +468,12 @@ export const checkWatch = (
           yield* Effect.promise(() => Promise.resolve(scope.onKind?.(outcome)));
         }
         avatar ??= step.avatar;
-        if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil, avatar };
+        avatarAttempted ||= step.avatarAttempted === true;
+        if (step.stop)
+          return { kinds: outcomes, deferredUntil: step.deferredUntil, avatar, avatarAttempted };
       }
     }
-    return { kinds: outcomes, deferredUntil: undefined, avatar };
+    return { kinds: outcomes, deferredUntil: undefined, avatar, avatarAttempted };
   });
 
 /** The most recent check of any of the Watch's kinds. */

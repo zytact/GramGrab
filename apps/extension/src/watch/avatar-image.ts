@@ -61,22 +61,19 @@ const lookup = (watch: Watch) =>
 
 const saveImage = (watchId: string, change: Pick<Watch, 'avatarImage' | 'avatarLookupAt'>) =>
   mutateStore(store => {
-    if (!store.watches.some(watch => watch.id === watchId)) return { store, value: undefined };
+    if (!store.watches.some(watch => watch.id === watchId)) return { store, value: false };
     const next = {
       ...store,
       watches: store.watches.map(watch => (watch.id === watchId ? { ...watch, ...change } : watch)),
     };
-    return {
-      store: withinStoreBudget(next) ? next : store,
-      value: undefined,
-    };
+    const fits = withinStoreBudget(next);
+    return { store: fits ? next : store, value: fits };
   });
 
 const reachedInstagram = (outcome: KindCheckOutcome) =>
   outcome._tag === 'KindCheckSucceeded' || outcome._tag === 'KindBaselineRecorded';
 
-const lookupDue = (watch: Watch, kinds: readonly KindCheckOutcome[], now: number) =>
-  !kinds.some(outcome => outcome.kind === 'avatar') &&
+const lookupDue = (watch: Watch, now: number) =>
   (!watch.kinds.includes('avatar') || !watch.avatarImage) &&
   now - (watch.avatarLookupAt ?? watch.avatarImage?.checkedAt ?? 0) >= LOOKUP_AFTER_MS;
 
@@ -89,17 +86,12 @@ async function loadImage(watch: Watch, observed: ObservedAvatar | undefined, now
 async function cacheImage(
   watch: Watch,
   observed: ObservedAvatar | undefined,
-  now: number,
-  lookedUp: boolean
+  now: number
 ): Promise<void> {
   const unchanged = observed && observed.pictureId === watch.avatarImage?.pictureId;
-  if (unchanged && !lookedUp) return;
+  if (unchanged) return;
   const image = await loadImage(watch, observed, now);
-  if (!image && !lookedUp) return;
-  await saveImage(watch.id, {
-    ...(image ? { avatarImage: { ...image, checkedAt: now } } : {}),
-    ...(lookedUp ? { avatarLookupAt: now } : {}),
-  });
+  if (image) await saveImage(watch.id, { avatarImage: image });
 }
 
 /**
@@ -111,7 +103,11 @@ async function cacheImage(
 export async function refreshAvatarImage(
   watchId: string,
   viewerId: string,
-  run: { readonly kinds: readonly KindCheckOutcome[]; readonly avatar?: ObservedAvatar }
+  run: {
+    readonly kinds: readonly KindCheckOutcome[];
+    readonly avatar?: ObservedAvatar;
+    readonly avatarAttempted: boolean;
+  }
 ): Promise<void> {
   if (!run.kinds.some(reachedInstagram)) return;
   const read = await readStore();
@@ -121,14 +117,19 @@ export async function refreshAvatarImage(
       : undefined;
   if (!watch?.enabled) return;
   const now = Date.now();
-  const due = !run.avatar && lookupDue(watch, run.kinds, now);
+  const due = !run.avatar && !run.avatarAttempted && lookupDue(watch, now);
   let observed = run.avatar;
   if (due) {
+    const booked = await saveImage(watch.id, { avatarLookupAt: now });
+    if (booked.kind !== 'ok' || !booked.value) return;
     const result = await lookup(watch);
-    if (Either.isLeft(result) && result.left._tag === 'WatchRequestDeferred') return;
+    if (Either.isLeft(result) && result.left._tag === 'WatchRequestDeferred') {
+      await saveImage(watch.id, { avatarLookupAt: watch.avatarLookupAt });
+      return;
+    }
     observed = Either.getOrUndefined(result);
   }
-  await cacheImage(watch, observed, now, due);
+  await cacheImage(watch, observed, now);
 }
 
 /**
