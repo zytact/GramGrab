@@ -698,6 +698,8 @@ export function Watches() {
       window.removeEventListener('blur', leave);
       window.removeEventListener('focus', enter);
       document.removeEventListener('visibilitychange', visibility);
+      reverify.current = false;
+      viewer.current = undefined;
       latest.current += 1;
     };
   }, [verify]);
@@ -715,7 +717,6 @@ export function Watches() {
         void refresh();
     };
     browser.storage.onChanged.addListener(listener);
-    // Catches what the worker wrote while the first load waited on Instagram.
     void refresh();
     return () => browser.storage.onChanged.removeListener(listener);
   }, [ready, refresh]);

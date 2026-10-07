@@ -143,7 +143,6 @@ const WatchCommandMessage = Schema.Struct({
   command: WatchCommand,
 });
 
-/** The Watch commands that only read, which the options page runs again as the worker works. */
 const WatchRead = Schema.Union(WatchList, WatchShow, WatchInboxList);
 export type WatchRead = Schema.Schema.Type<typeof WatchRead>;
 

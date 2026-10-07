@@ -379,14 +379,16 @@ describe('Watches options page', () => {
   it('follows another login once a background check verified it', async () => {
     seedWatchWithProblemAndEntry();
     render(<Watches />);
-    expect(await screen.findByText(`@${VIEWER.username}`)).toBeDefined();
+    expect(
+      await screen.findByText(`@${VIEWER.username}`, { selector: '.opt-viewer' })
+    ).toBeDefined();
     const viewerRequests = instagram.state.viewerRequests;
 
-    instagram.state.viewer = { id: '1002', username: 'viewer.two' };
+    instagram.state.viewer = { id: '1002', username: 'instagram' };
     harness.session.write('watch-viewer', '1002');
     await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
 
-    expect(await screen.findByText('@viewer.two')).toBeDefined();
+    expect(await screen.findByText('@instagram', { selector: '.opt-viewer' })).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
   });
 

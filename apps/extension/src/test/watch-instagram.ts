@@ -7,8 +7,8 @@ import searchFixture from '../effect/__fixtures__/topsearch.json';
 import { shortcodeMediaId } from '../instagram/rest-shortcode.ts';
 import { json } from './extension-harness.ts';
 
-export const VIEWER = { id: '1001', username: 'viewer.one' };
-export const TARGET = { id: '2002', username: 'target.one' };
+export const VIEWER = { id: '1001', username: 'instagram' };
+export const TARGET = { id: '2002', username: 'instagram' };
 
 export interface FakeStory {
   readonly id: string;

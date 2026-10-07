@@ -27,7 +27,6 @@ const DAY_MS = 24 * 60 * 60_000;
 export const runCommand = (command: WatchCommand): Promise<WatchCommandResponse> =>
   sendMessage({ type: 'WATCH_COMMAND', command });
 
-/** Reads as `viewer` without asking Instagram while it is still the last login verified. */
 export const runRead = (command: WatchRead, viewer: WatchViewer): Promise<WatchCommandResponse> =>
   sendMessage({ type: 'WATCH_READ', command, viewer });
 

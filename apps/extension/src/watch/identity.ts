@@ -73,10 +73,6 @@ export const readJson = (response: Response, context: string) =>
 /** The account ID the last viewer query found, kept only for this browser session. */
 const VIEWER_KEY = 'watch-viewer';
 
-/**
- * The account the last viewer query found, until one finds no signed-in viewer. The badge counts its
- * Watches, and the options page reads as it without asking Instagram again.
- */
 export async function verifiedViewerId(): Promise<string | undefined> {
   const stored = await browser.sessionStorage
     .get(VIEWER_KEY)

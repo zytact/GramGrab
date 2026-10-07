@@ -113,7 +113,6 @@ const verifyViewer = (store: WatchStore | undefined) =>
     )
   );
 
-/** The viewer a page already holds while it is still the last one verified, or a fresh check. */
 const viewerFrom = (store: WatchStore | undefined, known: WatchViewer | undefined) =>
   known
     ? Effect.flatMap(Effect.promise(verifiedViewerId), viewerId =>
@@ -824,7 +823,6 @@ export const runWatchCommand = (
     )
   );
 
-/** Runs a read for the options page as the viewer it verified, while that is still the signed-in one. */
 export const runWatchRead = (
   command: WatchRead,
   viewer: WatchViewer
