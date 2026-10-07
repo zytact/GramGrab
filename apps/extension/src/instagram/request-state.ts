@@ -1,7 +1,7 @@
 import { Option, Schema } from 'effect';
 
 export const HOUR_MS = 60 * 60_000;
-export const HOURLY_REQUEST_CAP = 60;
+const HOURLY_REQUEST_CAP = 60;
 
 export const LEDGER_KEY = 'instagram-requests';
 
@@ -48,4 +48,3 @@ export function watchHold(ledger: LedgerView, now: number): WatchHold | undefine
   if (until <= now) return undefined;
   return { until, ...(pausedUntil ? { pausedUntil } : {}), capped: capacityAt > now };
 }
-

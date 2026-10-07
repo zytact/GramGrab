@@ -3,7 +3,6 @@ import { NetworkError } from '../effect/errors.ts';
 import { browser } from '../lib/browser.ts';
 import {
   HOUR_MS,
-  HOURLY_REQUEST_CAP,
   LEDGER_KEY,
   LedgerState,
   RequestPause,

@@ -27,9 +27,14 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
-import { LEDGER_KEY } from '../instagram/request-state.ts';
+import { LEDGER_KEY, decodeLedger, type LedgerView } from '../instagram/request-state.ts';
 import { STORE_KEY } from '../watch/contracts.ts';
-import { SCHEDULER_KEY } from '../watch/schedule-state.ts';
+import {
+  SCHEDULER_KEY,
+  decodeSchedulerState,
+  watchSchedule,
+  type SchedulerState,
+} from '../watch/schedule-state.ts';
 import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';
 import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox-export.tsx';
 import { RecoveryActions } from './recovery-actions.tsx';
@@ -721,23 +726,12 @@ export function Watches() {
   useEffect(() => {
     if (!ready) return;
     const listener = (changes: StorageChanges) => {
-      if (STORE_KEY in changes || SCHEDULER_KEY in changes || LEDGER_KEY in changes)
-        void refresh();
+      if (STORE_KEY in changes || SCHEDULER_KEY in changes) void refresh();
     };
     browser.storage.onChanged.addListener(listener);
     void refresh();
     return () => browser.storage.onChanged.removeListener(listener);
   }, [ready, refresh]);
-
-  const holdEnd =
-    loaded.kind === 'ready'
-      ? (loaded.list.schedule.cappedUntil ?? loaded.list.schedule.pausedUntil)
-      : undefined;
-  useEffect(() => {
-    if (holdEnd === undefined) return;
-    const timer = setTimeout(() => void refresh(), Math.max(0, holdEnd - Date.now()));
-    return () => clearTimeout(timer);
-  }, [holdEnd, refresh]);
 
   if (loaded.kind === 'loading') return <p className="opt-gate opt-meta">Loading Watches…</p>;
   if (loaded.kind === 'failed') return <LoginGate failure={loaded.failure} />;
@@ -764,6 +758,52 @@ function useWatchAvatars(viewerId: string, version: number): WatchAvatarsRespons
     };
   }, [viewerId, version]);
   return avatars;
+}
+
+function useWatchSchedule(list: WatchListResult) {
+  const viewerId = list.viewer.accountId;
+  const [records, setRecords] = useState<{
+    scheduler: SchedulerState;
+    ledger: LedgerView | undefined;
+    at: number;
+  }>();
+  useEffect(() => {
+    let active = true;
+    let latest = 0;
+    const read = () => {
+      const current = ++latest;
+      void browser.storage.get([SCHEDULER_KEY, LEDGER_KEY]).then(stored => {
+        if (!active || current !== latest) return;
+        setRecords({
+          scheduler: decodeSchedulerState(stored[SCHEDULER_KEY]),
+          ledger: decodeLedger(stored[LEDGER_KEY]),
+          at: Date.now(),
+        });
+      });
+    };
+    const listener = (changes: StorageChanges) => {
+      if (SCHEDULER_KEY in changes || LEDGER_KEY in changes) read();
+    };
+    browser.storage.onChanged.addListener(listener);
+    read();
+    return () => {
+      active = false;
+      browser.storage.onChanged.removeListener(listener);
+    };
+  }, [viewerId]);
+  const schedule = records
+    ? watchSchedule(records.scheduler, records.ledger, viewerId, records.at)
+    : list.schedule;
+  const holdEnd = schedule.cappedUntil ?? schedule.pausedUntil;
+  useEffect(() => {
+    if (holdEnd === undefined) return;
+    const timer = setTimeout(
+      () => setRecords(current => current && { ...current, at: Date.now() }),
+      Math.max(0, holdEnd - Date.now())
+    );
+    return () => clearTimeout(timer);
+  }, [holdEnd]);
+  return schedule;
 }
 
 /** Why unattended checks are not running right now, if something holds them back. */
@@ -859,7 +899,7 @@ function Console({
 }) {
   const exporter = useInboxExport(() => void refresh());
   const avatars = useWatchAvatars(list.viewer.accountId, version);
-  const schedule = list.schedule;
+  const schedule = useWatchSchedule(list);
   const [view, setView] = useState<View | undefined>(linkedView);
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
   const attention = list.attentionCount;

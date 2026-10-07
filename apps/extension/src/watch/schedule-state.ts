@@ -69,8 +69,7 @@ export function decodeSchedulerState(stored: unknown): SchedulerState {
 
 /**
  * When the login's next round starts, how much of this round is left, and what holds Watch
- * requests back at `now`. The options page derives it from storage too, so it stays current
- * without asking Instagram.
+ * requests back at `now`.
  */
 export function watchSchedule(
   state: SchedulerState,
