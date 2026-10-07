@@ -376,6 +376,19 @@ describe('Watches options page', () => {
     expect(instagram.state.viewerRequests).toBe(viewerRequests);
   });
 
+  it('shows the sign-in gate when an action finds the login gone', async () => {
+    seedWatchWithProblemAndEntry();
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(
+      await screen.findByRole('button', { name: new RegExp(`^@${TARGET.username}`) })
+    );
+    instagram.state.viewer = null;
+    await user.click(await screen.findByText('Pause checks'));
+
+    expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
+  });
+
   it('says why and until when a rate-limit pause holds Check now back', async () => {
     seedWatchWithProblemAndEntry();
     const until = Date.now() + 30 * 60_000;

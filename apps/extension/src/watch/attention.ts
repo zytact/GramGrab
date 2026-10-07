@@ -127,6 +127,10 @@ export async function rememberViewer(viewer: WatchViewer): Promise<void> {
     .catch(() => undefined);
 }
 
+export async function forgetViewer(): Promise<void> {
+  await browser.sessionStorage.remove(VIEWER_KEY).catch(() => undefined);
+}
+
 export async function rememberedViewer(): Promise<WatchViewer | undefined> {
   const stored = await browser.sessionStorage
     .get(VIEWER_KEY)

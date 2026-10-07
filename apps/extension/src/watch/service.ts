@@ -50,6 +50,7 @@ import type {
 } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
 import {
+  forgetViewer,
   loginAttention,
   refreshBadge,
   rememberViewer,
@@ -119,13 +120,16 @@ const verifyViewer = (store: WatchStore | undefined) =>
       )
     ),
     Effect.catchAll(() =>
-      reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
+      Effect.zipRight(
+        Effect.promise(forgetViewer),
+        reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
+      )
     )
   );
 
 /**
- * Where a read finds its viewer. `remembered` takes the login the last verification found, so a
- * page that already verified can follow the worker without an Instagram request.
+ * Where a read finds its viewer. `remembered` takes the login the last verification found, which
+ * a failed verification forgets, and verifies only when there is none.
  */
 type ViewerSource = 'verify' | 'remembered';
 
@@ -839,7 +843,7 @@ export const runWatchCommand = (
     )
   );
 
-/** Runs a read for the options page, which verified its viewer when it opened. */
+/** Runs a read for the options page as the last verified login. */
 export const runWatchRead = (command: WatchRead): Promise<WatchCommandResponse> =>
   runForPerson(Effect.map(read(command, 'remembered'), result => ({ result })));
 

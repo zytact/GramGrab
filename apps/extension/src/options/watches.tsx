@@ -661,6 +661,8 @@ export function Watches() {
       if (STORE_KEY in changes || SCHEDULER_KEY in changes) void refresh();
     };
     browser.storage.onChanged.addListener(listener);
+    // Catches what the worker wrote while the first load waited on Instagram.
+    void refresh();
     return () => browser.storage.onChanged.removeListener(listener);
   }, [ready, refresh]);
 

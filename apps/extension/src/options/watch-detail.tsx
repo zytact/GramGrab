@@ -26,7 +26,7 @@ const DAY_MS = 24 * 60 * 60_000;
 export const runCommand = (command: WatchCommand): Promise<WatchCommandResponse> =>
   sendMessage({ type: 'WATCH_COMMAND', command });
 
-/** Reads with the login the page verified when it opened, so reloading costs no Instagram request. */
+/** Reads as the login the worker last verified, which asks Instagram only when none is known. */
 export const runRead = (command: WatchRead): Promise<WatchCommandResponse> =>
   sendMessage({ type: 'WATCH_READ', command });
 
