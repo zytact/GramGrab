@@ -25,7 +25,7 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
-import { LEDGER_KEY, storedPauseUntil } from '../instagram/requests.ts';
+import { LEDGER_KEY, storedPauseUntil } from '../instagram/request-state.ts';
 import { STORE_KEY } from '../watch/contracts.ts';
 import { SCHEDULER_KEY } from '../watch/schedule-state.ts';
 import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';

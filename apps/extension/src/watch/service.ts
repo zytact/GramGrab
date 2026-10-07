@@ -778,15 +778,15 @@ const program = (
   onProgress: (progress: WatchCheckProgress) => void
 ): Effect.Effect<WatchResult, WatchRejection, InstagramRequests | InboxExportExecution> =>
   Match.valueTags(command, {
-    WatchList: command => read(command),
+    WatchList: () => list(),
     WatchNeeds: () => needs,
     WatchAttentionRecover: attentionRecover,
-    WatchShow: command => read(command),
+    WatchShow: command => show(command),
     WatchAdd: add,
     WatchSet: set,
     WatchLifecycle: lifecycle,
     WatchCheck: command => check(command, onProgress),
-    WatchInboxList: command => read(command),
+    WatchInboxList: command => inboxList(command),
     WatchInboxRemove: inboxRemove,
     WatchInboxExport: inboxExport,
     WatchInboxRetry: inboxExport,

@@ -85,7 +85,10 @@ export async function verifiedViewerId(): Promise<string | undefined> {
   return decoded._tag === 'Some' ? decoded.value : undefined;
 }
 
-/** Identifies the signed-in viewer from the dedicated session query, never from a cookie. */
+/**
+ * Identifies the signed-in viewer from the dedicated session query, never from a cookie, and
+ * records its account ID for `verifiedViewerId`, or drops it when no viewer is signed in.
+ */
 export const fetchViewer = Effect.gen(function* () {
   const candidate = protocolConfig.operations.viewer.candidates[0]!;
   const request = candidate.requests[0]!;
