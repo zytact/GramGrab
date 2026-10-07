@@ -231,9 +231,17 @@ it is not an Instagram response.
    The page follows `instagram-requests` and `watch-scheduler` in storage, so
    an open page picks up a cap that fills later without a reload.
 3. Open the Watch and click Check now once. The line reads `Watch requests are
-   spaced out. This check can run at HH:MM.` with the banner's time, the
+   spaced out. This check can run at HH:MM.` with the floor computed for that check, the
    button returns to `Check now`, and no Watch request starts.
-4. Run cleanup soon after. Once the seeded attempts age out the round runs for
+   The click's own viewer requests can push the banner's time later than the check's time.
+   Do not click again to make the times agree.
+4. To prove an open page clears the banner as the cap ages out, extend the
+   verification scheduler's `startupHoldUntil` before its two-minute hold ends.
+   Once person requests have finished, seed 60 identical ledger timestamps at
+   `Date.now() + 90_000 - 3_600_000` and set `nextWatchAt: 0`. Without reloading
+   or starting another request, the banner picks up the new time and disappears
+   after about 90 seconds. The sidebar returns to `Checking: 1 left this round`.
+5. Run cleanup soon after. Once the seeded attempts age out the round runs for
    real against the account.
 
 Watch checks pace requests and can take minutes. Rerunning inside five minutes
