@@ -99,6 +99,56 @@ selections. A signed-out page rechecks on return too. There is no login polling.
    browser-adapter tests own switched-login isolation and sign-out recovery;
    an unchanged real login proves foreground verification, not account switching.
 
+## Avatars
+
+The options page shows an Avatar beside the Instagram login at the top of the
+sidebar, beside each Watch in the sidebar list, and beside the username in an
+open Watch's header. Each one is an `img.opt-avatar`, or a `span.opt-avatar`
+holding the username's first letter while no picture exists.
+
+- A Watch's picture is cached on its Watch record as `avatarImage` (`pictureId`,
+  base64 `jpeg`, `checkedAt`). The JPEG is 80 by 80 pixels, capped at 8 KiB
+  decoded bytes. It is written after a check, never on page open. A
+  Watch of Avatar changes reuses the identity its check read and loads the image
+  only when that identity changes. Any other Watch spends at most one `topsearch`
+  request a week, including failed attempts, tracked by `avatarLookupAt`. An
+  initial image can use this lookup after a partial check that omitted Avatar.
+  A failed Avatar step does not repeat the same lookup. Request-cap deferrals
+  leave the timestamp unchanged. The timestamp must fit before a request starts.
+  An optional image that exceeds the 2 MiB store budget is skipped without a
+  storage warning. A check that loses login verification does not refresh images.
+  Ownership is checked after request spacing. An unspent lookup cancelled by a
+  login change leaves the cooldown unchanged.
+- The login's picture comes from successful viewer queries, is held in worker
+  memory, and is never stored. Opening the page costs no extra Instagram request
+  for it. The open page keeps its login image across empty cache reads after a
+  worker restart, until a viewer query repopulates worker memory.
+
+1. Read the store from the worker as booleans only: whether each Watch has
+   `avatarImage` and the `jpeg` length. Never print the base64 or the IDs.
+2. Open `options.html`. With no `avatarImage` yet, the row and header show the
+   initial. Run one check of a Watch with Check now and
+   wait for it to finish. Reopen the Watch: the row and header now show
+   `img.opt-avatar` with a `data:image/jpeg` source, and `avatarImage.jpeg` is at
+   most 10924 base64 characters.
+3. Reload `options.html` and compare `attempts` in `instagram-requests` before
+   and after. The reload adds one attempt, the viewer query, and nothing for
+   Avatars.
+4. A copied profile's Watch may already hold `avatarImage`, or a queued check.
+   Record that first and reuse the existing check. Do not repeat Check now,
+   clear the request ledger, or poll with commands that verify the login. On a
+   real 429 or cap deferral, stop and report it. Wait for completion through
+   worker storage events or read-only state, with a bounded timeout.
+5. To prove the render fallback, temporarily set the row image's `src` to an
+   invalid local JPEG data URL. The browser decode error reaches `onError` and
+   renders the initial. Keep the store untouched. Label this as a browser
+   image-error check, then reload to restore the normal image.
+6. Keep the options page open while stopping only this extension's worker through
+   CDP. After restart, a store-driven read keeps the displayed login image and
+   adds no request. Use `Target.closeTarget` if `ServiceWorker.stopWorker` is
+   unavailable. Delete the Watch through its confirmation UI and confirm both
+   the Watch record and its cached image are gone.
+
 ## Posts on a real grid
 
 Instagram's Posts grid is not newest first, and a collab Post can belong to another account. Unit
