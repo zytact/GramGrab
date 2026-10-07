@@ -31,6 +31,9 @@ const emptyStore: WatchStore = { version: STORE_VERSION, watches: [] };
 const storeBytes = (store: WatchStore): number =>
   new TextEncoder().encode(JSON.stringify(encodeStore(store))).length;
 
+export const withinStoreBudget = (store: WatchStore): boolean =>
+  storeBytes(store) <= STORE_BUDGET_BYTES;
+
 function decode(value: unknown): StoreRead {
   if (value === undefined) return { kind: 'ok', store: emptyStore, bytes: storeBytes(emptyStore) };
   const decoded = decodeStore(value);

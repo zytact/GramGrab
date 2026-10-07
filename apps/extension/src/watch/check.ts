@@ -43,8 +43,7 @@ import {
 } from './posts.ts';
 import { readStories, fetchStories } from './stories.ts';
 import { readInstants, sharedInstantsFeed } from './instants.ts';
-import { fetchAvatar, readAvatar } from './avatar.ts';
-import type { ObservedAvatar } from './avatar-image.ts';
+import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
 import { UsernameUnconfirmed, confirmProfile, fetchViewer } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
 

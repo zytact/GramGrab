@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
   AccountIdSelector,
+  KindBaselineRecorded,
   WatchAdd,
   WatchCheck,
   WatchLifecycle,
@@ -19,6 +20,8 @@ import {
   stubAvatarScaling,
 } from '../test/watch-instagram.ts';
 import type { WatchAvatarsResponse, WatchCommandResponse } from '../messaging/contracts.ts';
+import { Schema } from 'effect';
+import { AvatarJpeg, STORE_BUDGET_BYTES, WatchStore } from './contracts.ts';
 
 const START = Date.UTC(2026, 9, 1, 12);
 const MINUTE = 60_000;
@@ -76,11 +79,7 @@ async function checkLater(after = 5 * MINUTE) {
 }
 
 const avatarImage = () =>
-  (
-    harness.local.read('watch-store') as {
-      watches: { avatarImage?: { pictureId: string; checkedAt: number } }[];
-    }
-  ).watches[0]?.avatarImage;
+  Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]?.avatarImage;
 
 /** Picture loads from the CDN so far. */
 const pictureLoads = () =>
@@ -133,6 +132,86 @@ describe('Watch Avatar images', () => {
     stubAvatarScaling();
     await checkLater();
     expect(avatarImage()?.pictureId).toBe('PIC_A');
+  });
+
+  it('spaces failed cosmetic lookups a week apart instead of repeating them every check', async () => {
+    vi.stubGlobal('createImageBitmap', async () => {
+      throw new Error('undecodable');
+    });
+    await addWatch('stories');
+    await checkLater();
+    expect(avatarImage()).toBeUndefined();
+    await checkLater();
+    expect(instagram.state.searches).toHaveLength(1);
+
+    stubAvatarScaling();
+    await checkLater(7 * DAY);
+    expect(instagram.state.searches).toHaveLength(2);
+    expect(avatarImage()?.pictureId).toBe('PIC_A');
+  });
+
+  it('accepts exactly 8 KiB of image bytes and rejects larger or malformed base64', () => {
+    const accepts = Schema.is(AvatarJpeg);
+    expect(accepts(btoa('x'.repeat(8192)))).toBe(true);
+    expect(accepts(btoa('x'.repeat(8193)))).toBe(false);
+    expect(accepts('abc')).toBe(false);
+    expect(accepts('')).toBe(false);
+  });
+
+  it('looks up an initial image when a partial check omitted the Avatar kind', async () => {
+    const { watch } = await addWatch('avatar');
+    const { refreshAvatarImage } = await import('./avatar-image.ts');
+    let done = false;
+    void refreshAvatarImage(watch.watchId, VIEWER.id, {
+      kinds: [KindBaselineRecorded.make({ kind: 'posts' })],
+    }).then(() => (done = true));
+    while (!done) await vi.advanceTimersByTimeAsync(1_000);
+    expect(avatarImage()?.pictureId).toBe('PIC_A');
+    expect(instagram.state.searches).toHaveLength(1);
+  });
+
+  it('skips an optional image that cannot fit without marking the store as failed', async () => {
+    const { watch } = await addWatch('avatar');
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    const first = store.watches[0]!;
+    const image = { pictureId: 'PIC_A', jpeg: btoa('x'.repeat(8192)), checkedAt: START };
+    const template = { ...first, avatarImage: image };
+    const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+    const count = Math.floor((STORE_BUDGET_BYTES - size(store)) / (size(template) + 1));
+    const filled = {
+      ...store,
+      watches: [
+        first,
+        ...Array.from({ length: count }, () => ({ ...template, id: crypto.randomUUID() })),
+      ],
+    };
+    const last = { ...template, id: crypto.randomUUID(), avatarImage: { ...image, jpeg: 'AAAA' } };
+    const extra = Math.floor((STORE_BUDGET_BYTES - size(filled) - size(last) - 1) / 4) * 4;
+    if (extra >= 0) {
+      last.avatarImage.jpeg += 'AAAA'.repeat(extra / 4);
+      filled.watches.push(last);
+    }
+    expect(STORE_BUDGET_BYTES - size(filled)).toBeLessThan(8192);
+    harness.local.write('watch-store', filled);
+    const { refreshAvatarImage } = await import('./avatar-image.ts');
+    vi.stubGlobal(
+      'OffscreenCanvas',
+      class {
+        getContext() {
+          return { drawImage() {} };
+        }
+        async convertToBlob() {
+          return new Blob([new Uint8Array(8192)], { type: 'image/jpeg' });
+        }
+      }
+    );
+    await refreshAvatarImage(watch.watchId, VIEWER.id, {
+      kinds: [KindBaselineRecorded.make({ kind: 'avatar' })],
+      avatar: { pictureId: 'PIC_A', pictureUrl: 'https://sanitized.invalid/avatar' },
+    });
+    expect(avatarImage()).toBeUndefined();
+    expect(harness.session.read('watch-store-health')).toBeUndefined();
+    expect(harness.local.read('watch-store')).toEqual(filled);
   });
 
   it('shows the page only the asking login’s pictures, and its own picture from memory', async () => {

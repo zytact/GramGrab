@@ -2,20 +2,14 @@ import { Effect, Either, Schema } from 'effect';
 import type { KindCheckOutcome } from '@gramgrab/protocol';
 import { WatchRequests } from '../instagram/requests.ts';
 import type { WatchAvatarsResponse } from '../messaging/contracts.ts';
-import { AvatarJpeg, type AvatarImage, type Watch } from './contracts.ts';
-import { fetchAvatar, readAvatar } from './avatar.ts';
-import { mutateStore, readStore } from './store.ts';
+import { AvatarJpeg, type Watch } from './contracts.ts';
+import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
+import { mutateStore, readStore, withinStoreBudget } from './store.ts';
 
 /** The square side pictures are cropped and scaled to: twice the largest size the page shows. */
 const SIDE = 80;
 /** A Watch that does not track Avatar changes looks its picture up again after this long. */
 const LOOKUP_AFTER_MS = 7 * 24 * 60 * 60_000;
-
-/** What a check saw of the account's current picture. */
-export interface ObservedAvatar {
-  readonly pictureId: string;
-  readonly pictureUrl?: string;
-}
 
 const base64 = (bytes: Uint8Array) => {
   let text = '';
@@ -61,21 +55,19 @@ const lookup = (watch: Watch) =>
     fetchAvatar(watch.username).pipe(
       Effect.flatMap(raw => readAvatar(raw, watch.targetId, watch.username)),
       Effect.provide(WatchRequests),
-      Effect.either,
-      Effect.map(Either.getOrUndefined)
+      Effect.either
     )
   );
 
-const saveImage = (watchId: string, image: AvatarImage) =>
+const saveImage = (watchId: string, change: Pick<Watch, 'avatarImage' | 'avatarLookupAt'>) =>
   mutateStore(store => {
     if (!store.watches.some(watch => watch.id === watchId)) return { store, value: undefined };
+    const next = {
+      ...store,
+      watches: store.watches.map(watch => (watch.id === watchId ? { ...watch, ...change } : watch)),
+    };
     return {
-      store: {
-        ...store,
-        watches: store.watches.map(watch =>
-          watch.id === watchId ? { ...watch, avatarImage: image } : watch
-        ),
-      },
+      store: withinStoreBudget(next) ? next : store,
       value: undefined,
     };
   });
@@ -83,10 +75,38 @@ const saveImage = (watchId: string, image: AvatarImage) =>
 const reachedInstagram = (outcome: KindCheckOutcome) =>
   outcome._tag === 'KindCheckSucceeded' || outcome._tag === 'KindBaselineRecorded';
 
+const lookupDue = (watch: Watch, kinds: readonly KindCheckOutcome[], now: number) =>
+  !kinds.some(outcome => outcome.kind === 'avatar') &&
+  (!watch.kinds.includes('avatar') || !watch.avatarImage) &&
+  now - (watch.avatarLookupAt ?? watch.avatarImage?.checkedAt ?? 0) >= LOOKUP_AFTER_MS;
+
+async function loadImage(watch: Watch, observed: ObservedAvatar | undefined, now: number) {
+  if (observed?.pictureId === watch.avatarImage?.pictureId) return watch.avatarImage;
+  const jpeg = observed?.pictureUrl && (await loadJpeg(observed.pictureUrl));
+  return observed && jpeg ? { pictureId: observed.pictureId, jpeg, checkedAt: now } : undefined;
+}
+
+async function cacheImage(
+  watch: Watch,
+  observed: ObservedAvatar | undefined,
+  now: number,
+  lookedUp: boolean
+): Promise<void> {
+  const unchanged = observed && observed.pictureId === watch.avatarImage?.pictureId;
+  if (unchanged && !lookedUp) return;
+  const image = await loadImage(watch, observed, now);
+  if (!image && !lookedUp) return;
+  await saveImage(watch.id, {
+    ...(image ? { avatarImage: { ...image, checkedAt: now } } : {}),
+    ...(lookedUp ? { avatarLookupAt: now } : {}),
+  });
+}
+
 /**
  * Keeps a Watch's cached picture current after a check that reached Instagram. The picture is
  * loaded again only when its identity changes. A check of Avatar changes supplies the identity;
- * any other Watch looks it up when it has no picture yet or the last lookup is a week old.
+ * any other Watch looks it up at most once a week, including failed attempts. An omitted Avatar
+ * step can use the same lookup for an initial image, without repeating a failed Avatar step.
  */
 export async function refreshAvatarImage(
   watchId: string,
@@ -101,19 +121,14 @@ export async function refreshAvatarImage(
       : undefined;
   if (!watch?.enabled) return;
   const now = Date.now();
-  const cached = watch.avatarImage;
-  const due =
-    !run.avatar &&
-    !watch.kinds.includes('avatar') &&
-    (!cached || now - cached.checkedAt >= LOOKUP_AFTER_MS);
-  const observed = run.avatar ?? (due ? await lookup(watch) : undefined);
-  if (!observed) return;
-  if (cached?.pictureId === observed.pictureId) {
-    if (!run.avatar) await saveImage(watchId, { ...cached, checkedAt: now });
-    return;
+  const due = !run.avatar && lookupDue(watch, run.kinds, now);
+  let observed = run.avatar;
+  if (due) {
+    const result = await lookup(watch);
+    if (Either.isLeft(result) && result.left._tag === 'WatchRequestDeferred') return;
+    observed = Either.getOrUndefined(result);
   }
-  const jpeg = observed.pictureUrl && (await loadJpeg(observed.pictureUrl));
-  if (jpeg) await saveImage(watchId, { pictureId: observed.pictureId, jpeg, checkedAt: now });
+  await cacheImage(watch, observed, now, due);
 }
 
 /**

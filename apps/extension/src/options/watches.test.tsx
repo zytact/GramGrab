@@ -286,6 +286,9 @@ describe('Watches options page', () => {
       STUB_AVATAR,
     ]);
     expect(container.querySelector('.opt-viewer .opt-avatar')?.textContent).toBe('V');
+    fireEvent.error(pictures()[0]!);
+    expect(container.querySelector('.opt-item .opt-avatar')?.textContent).toBe('T');
+    expect(pictures()).toHaveLength(1);
   });
 
   it('shows only sign-in guidance and the stored count without a verified login', async () => {
