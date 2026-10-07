@@ -36,9 +36,8 @@ there, and its last finished one is in `lastManual`. `watch list --json` and
 `watch show instagram --json` expose both as `manualCheck` on the Watch summary
 (`.watches[]` and `.watch` respectively):
 `ManualCheckPending` with `remainingKinds` and `outcomes`, or
-`ManualCheckFinished` with `finishedAt` and `outcomes`. The page follows the
-storage record without calling Instagram, then refreshes once when the check
-ends.
+`ManualCheckFinished` with `finishedAt` and `outcomes`. The page follows it as
+described in Live page below.
 
 1. Clear `instagram-requests` and relaunch, as in Rate-limit pause step 1, so
    the click is not deferred. Open the `instagram` Watch and click Check now.
@@ -61,6 +60,44 @@ ends.
    in the last 5 minutes. Check again at HH:MM.` With a rate-limit pause active
    it says `Instagram rate limited a Watch request. Checks wait until HH:MM.`
    instead, and other spacing reads `Watch requests are spaced out.`
+
+## Live page
+
+An open options page reloads its list, the open Watch and the inbox whenever the
+worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, or
+changes the rate-limit pause in `instagram-requests`. Those reloads go through the
+`WATCH_READ` message with the login the page shows. The worker answers without an
+Instagram request while that login is still the last one any viewer query found,
+and verifies again otherwise. Opening the page, returning to its tab or window,
+and every action verify the login once. Tab visibility and window focus events
+for one return share a verification. Storage reloads wait for that verification,
+and changing the login clears the previous login's selected view and inbox
+selections. A signed-out page rechecks on return too. There is no login polling.
+
+1. Read `nextRoundAt`, `remaining`, each kind's `lastCheckAt`, and the length of
+   `attempts` in `instagram-requests` from the worker's storage. Open
+   `options.html`, leave it on All inbox and screenshot it.
+2. Let a round run while the page stays open. A launch on an overdue profile
+   starts one after the two-minute startup hold. Otherwise make the deadline
+   overdue as in `docs/watch-live-verification.md` step 5: set `nextRoundAt` to
+   a past time from the worker. The pump alarm runs every minute. Poll storage
+   from the worker, not the CLI, so waiting costs no request.
+3. While the round runs, the footer reads `Checking: N left this round`, and the
+   row's `Checked` time moves without a reload. When `remaining` is empty, the
+   footer reads `Next checks around` the new `nextRoundAt`. Screenshot both.
+4. Compare `attempts` with the Watch requests the round made. The page adds
+   none. Pause and then resume the Watch from the page: each action adds exactly
+   one viewer request, and the reload after it adds none.
+5. After the initial load settles, set an in-memory page marker and record the
+   request count. Activate a neutral tab, then return to `options.html` without
+   reloading. One real viewer request confirms the login; the marker survives.
+   Keep the page foregrounded briefly and confirm it adds no further requests.
+   Repeat once by moving focus to another browser window and returning, to
+   cover the window-focus path. Stop on a 429 or request-cap deferral.
+   Follow `docs/watch-live-verification.md` for account changes: use a natural
+   switch or sign-out if one occurs, otherwise report that live gap. Focused
+   browser-adapter tests own switched-login isolation and sign-out recovery;
+   an unchanged real login proves foreground verification, not account switching.
 
 ## Posts on a real grid
 

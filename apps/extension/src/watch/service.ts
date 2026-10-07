@@ -43,9 +43,13 @@ import { canonicalizeInstagramUrl } from '../workspace/contracts.ts';
 import { resolveUsernameToId } from '../instagram/acquisition.ts';
 import { PersonRequests, requestLedger, type InstagramRequests } from '../instagram/requests.ts';
 import { normalizeSourceFailure } from '../errors/normalize.ts';
-import type { WatchCommandResponse, WatchPreviewResponse } from '../messaging/contracts.ts';
+import type {
+  WatchCommandResponse,
+  WatchPreviewResponse,
+  WatchRead,
+} from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
-import { loginAttention, refreshBadge, rememberViewer, watchAttentionItems } from './attention.ts';
+import { loginAttention, refreshBadge, watchAttentionItems } from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
 import { attentionEntries, discoveries, inbox, initialized, summarize } from './summary.ts';
 import { retryNotify } from './notify.ts';
@@ -65,7 +69,7 @@ import {
   deferManual,
   pacingReason,
 } from './scheduler.ts';
-import { confirmProfile, fetchViewer, type Account } from './identity.ts';
+import { confirmProfile, fetchViewer, verifiedViewerId, type Account } from './identity.ts';
 import {
   mutateStore,
   readStore,
@@ -103,13 +107,18 @@ const save = <T>(change: (store: WatchStore) => { store: WatchStore; value: T })
  */
 const verifyViewer = (store: WatchStore | undefined) =>
   fetchViewer.pipe(
-    Effect.tap(viewer =>
-      Effect.promise(() => Promise.all([rememberViewer(viewer.accountId), resumeAfterPerson()]))
-    ),
+    Effect.tap(() => Effect.promise(resumeAfterPerson)),
     Effect.catchAll(() =>
       reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
     )
   );
+
+const viewerFrom = (store: WatchStore | undefined, known: WatchViewer | undefined) =>
+  known
+    ? Effect.flatMap(Effect.promise(verifiedViewerId), viewerId =>
+        viewerId === known.accountId ? Effect.succeed<Account>(known) : verifyViewer(store)
+      )
+    : verifyViewer(store);
 
 const owned = (store: WatchStore, viewer: Account) =>
   store.watches.filter(watch => watch.viewerId === viewer.accountId);
@@ -145,10 +154,10 @@ async function storageState(read: StoreRead): Promise<WatchStorage> {
   });
 }
 
-const list = Effect.gen(function* () {
+const list = Effect.fn(function* (known?: WatchViewer) {
   const read = yield* load;
   const store = read.kind === 'ok' ? read.store : undefined;
-  const viewer = yield* verifyViewer(store);
+  const viewer = yield* viewerFrom(store, known);
   const storage = yield* Effect.promise(() => storageState(read));
   const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
   const watches = store
@@ -463,10 +472,13 @@ const check = (
     });
   });
 
-const inboxList = (command: Extract<WatchCommand, { _tag: 'WatchInboxList' }>) =>
+const inboxList = (
+  command: Extract<WatchCommand, { _tag: 'WatchInboxList' }>,
+  known?: WatchViewer
+) =>
   Effect.gen(function* () {
     const store = yield* loadOrReject;
-    const viewer = yield* verifyViewer(store);
+    const viewer = yield* viewerFrom(store, known);
     const watches = command.watch
       ? [yield* findOwned(store, viewer, command.watch)]
       : owned(store, viewer);
@@ -641,7 +653,7 @@ const NEEDS_STORAGE_CODE = {
 } as const;
 
 const needs = Effect.gen(function* () {
-  const snapshot = yield* list;
+  const snapshot = yield* list();
   const read = yield* load;
   const items =
     read.kind === 'ok'
@@ -741,10 +753,10 @@ const attentionRecover = (command: Extract<WatchCommand, { _tag: 'WatchAttention
     });
   });
 
-const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>) =>
+const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>, known?: WatchViewer) =>
   Effect.gen(function* () {
     const store = yield* loadOrReject;
-    const viewer = yield* verifyViewer(store);
+    const viewer = yield* viewerFrom(store, known);
     const watch = yield* findOwned(store, viewer, command.watch);
     const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
     return WatchShowResult.make({
@@ -753,20 +765,27 @@ const show = (command: Extract<WatchCommand, { _tag: 'WatchShow' }>) =>
     });
   });
 
+const read = (command: WatchRead, known?: WatchViewer) =>
+  Match.valueTags(command, {
+    WatchList: () => list(known),
+    WatchShow: command => show(command, known),
+    WatchInboxList: command => inboxList(command, known),
+  });
+
 const program = (
   command: WatchCommand,
   onProgress: (progress: WatchCheckProgress) => void
 ): Effect.Effect<WatchResult, WatchRejection, InstagramRequests | InboxExportExecution> =>
   Match.valueTags(command, {
-    WatchList: () => list,
+    WatchList: () => list(),
     WatchNeeds: () => needs,
     WatchAttentionRecover: attentionRecover,
-    WatchShow: show,
+    WatchShow: command => show(command),
     WatchAdd: add,
     WatchSet: set,
     WatchLifecycle: lifecycle,
     WatchCheck: command => check(command, onProgress),
-    WatchInboxList: inboxList,
+    WatchInboxList: command => inboxList(command),
     WatchInboxRemove: inboxRemove,
     WatchInboxExport: inboxExport,
     WatchInboxRetry: inboxExport,
@@ -803,6 +822,12 @@ export const runWatchCommand = (
       Effect.provideService(InboxExportExecution, { run })
     )
   );
+
+export const runWatchRead = (
+  command: WatchRead,
+  viewer: WatchViewer
+): Promise<WatchCommandResponse> =>
+  runForPerson(Effect.map(read(command, viewer), result => ({ result })));
 
 /** Resolves an add target for the person to inspect before adding it. */
 export const previewWatchTarget = (target: string): Promise<WatchPreviewResponse> =>

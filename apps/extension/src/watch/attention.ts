@@ -1,6 +1,4 @@
-import { Schema } from 'effect';
 import {
-  AccountId,
   ActionAttention,
   CheckAttention,
   WatchRecover,
@@ -13,9 +11,7 @@ import { browser } from '../lib/browser.ts';
 import { requestLedger } from '../instagram/requests.ts';
 import type { Discovery, Watch, WatchStore } from './contracts.ts';
 import { readStore, storeHealth } from './store.ts';
-
-/** The login whose Watches the badge counts, kept only for this browser session. */
-const VIEWER_KEY = 'watch-viewer';
+import { verifiedViewerId } from './identity.ts';
 
 /**
  * Stable IDs of what needs the person, for one Watch. A check problem is
@@ -118,18 +114,6 @@ export async function loginAttention(store: WatchStore, viewerId: string): Promi
   return watches.length > 0 ? [...paused, ...watches.flatMap(watchAttention)] : [];
 }
 
-export async function rememberViewer(viewerId: string): Promise<void> {
-  await browser.sessionStorage.set({ [VIEWER_KEY]: viewerId }).catch(() => undefined);
-}
-
-async function rememberedViewer(): Promise<string | undefined> {
-  const stored = await browser.sessionStorage
-    .get(VIEWER_KEY)
-    .catch((): Record<string, unknown> => ({}));
-  const decoded = Schema.decodeUnknownOption(AccountId)(stored[VIEWER_KEY]);
-  return decoded._tag === 'Some' ? decoded.value : undefined;
-}
-
 /**
  * How many things need the last verified login, as the toolbar badge and the popup show it. A
  * store that cannot be read or saved counts as one more.
@@ -137,7 +121,7 @@ async function rememberedViewer(): Promise<string | undefined> {
 export async function attentionCount(): Promise<number> {
   const read = await readStore();
   if (read.kind === 'failed') return 1;
-  const viewerId = await rememberedViewer();
+  const viewerId = await verifiedViewerId();
   const store = (await storeHealth()) ? 1 : 0;
   return store + (viewerId ? (await loginAttention(read.store, viewerId)).length : 0);
 }

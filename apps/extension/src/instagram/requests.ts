@@ -1,6 +1,7 @@
 import { Context, Data, Effect, Layer, Schema } from 'effect';
 import { NetworkError } from '../effect/errors.ts';
 import { browser } from '../lib/browser.ts';
+import { LEDGER_KEY, LedgerState, RequestPause } from './request-state.ts';
 
 /**
  * Every Instagram API attempt goes through `InstagramRequests`, so the person's own work and Watch
@@ -30,22 +31,6 @@ const PAUSE_CEILING_MS = 6 * HOUR_MS;
 /** A Watch attempt waits in the worker up to this long; a longer wait is handed back as deferred. */
 const IN_WORKER_WAIT_MS = 25_000;
 const BUSY_POLL_MS = 1_000;
-
-const LEDGER_KEY = 'instagram-requests';
-
-class RequestPause extends Schema.Class<RequestPause>('RequestPause')({
-  until: Schema.Number,
-  level: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
-}) {}
-
-class LedgerState extends Schema.Class<LedgerState>('LedgerState')({
-  version: Schema.Literal(1),
-  /** Start times of attempts in the last hour, oldest first. */
-  attempts: Schema.Array(Schema.Number),
-  /** The earliest time the next Watch attempt may start, set when any attempt ends. */
-  nextWatchAt: Schema.Number,
-  pause: Schema.optional(RequestPause),
-}) {}
 
 type RequestOrigin = { readonly kind: 'person' } | { readonly kind: 'watch' };
 

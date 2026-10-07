@@ -5,6 +5,10 @@ import {
   HumanItemNumber,
   OperationId as ProtocolOperationId,
   WatchCommand,
+  WatchInboxList,
+  WatchList,
+  WatchShow,
+  WatchViewer,
   ExportSettings,
   MediaItem as ProtocolMediaItem,
   type CommandFailure,
@@ -139,6 +143,15 @@ const WatchCommandMessage = Schema.Struct({
   command: WatchCommand,
 });
 
+const WatchRead = Schema.Union(WatchList, WatchShow, WatchInboxList);
+export type WatchRead = Schema.Schema.Type<typeof WatchRead>;
+
+const WatchReadMessage = Schema.Struct({
+  type: Schema.Literal('WATCH_READ'),
+  command: WatchRead,
+  viewer: WatchViewer,
+});
+
 const WatchPreview = Schema.Struct({
   type: Schema.Literal('WATCH_PREVIEW'),
   target: Schema.String.pipe(Schema.nonEmptyString()),
@@ -186,6 +199,7 @@ const MessageSchema = Schema.Union(
   DebugShape,
   DownloadDebugJson,
   WatchCommandMessage,
+  WatchReadMessage,
   WatchPreview,
   RunExport,
   RunnerReady,
@@ -299,6 +313,7 @@ interface MessageResponses extends Record<MessageType, unknown> {
   DEBUG_SHAPE: { raw?: unknown; error?: string };
   DOWNLOAD_DEBUG_JSON: FailureOnlyResponse;
   WATCH_COMMAND: WatchCommandResponse;
+  WATCH_READ: WatchCommandResponse;
   WATCH_PREVIEW: WatchPreviewResponse;
   RUN_EXPORT: ExportResult;
   RUNNER_READY: void;

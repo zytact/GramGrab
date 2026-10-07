@@ -91,7 +91,7 @@ import { sendTabMessage } from './messaging/send.ts';
 import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
-import { previewWatchTarget, runWatchCommand } from './watch/service.ts';
+import { previewWatchTarget, runWatchCommand, runWatchRead } from './watch/service.ts';
 import { refreshBadge } from './watch/attention.ts';
 import {
   ALARM_NAME,
@@ -1260,6 +1260,7 @@ const messageHandlers: MessageHandlers = {
   DEBUG_SHAPE: handleDebugShape,
   DOWNLOAD_DEBUG_JSON: handleDownloadDebugJson,
   WATCH_COMMAND: message => runWatchCommand(message.command, runPreparedInDocument),
+  WATCH_READ: message => runWatchRead(message.command, message.viewer),
   WATCH_PREVIEW: message => previewWatchTarget(message.target),
 };
 

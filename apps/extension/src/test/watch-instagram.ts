@@ -7,8 +7,8 @@ import searchFixture from '../effect/__fixtures__/topsearch.json';
 import { shortcodeMediaId } from '../instagram/rest-shortcode.ts';
 import { json } from './extension-harness.ts';
 
-export const VIEWER = { id: '1001', username: 'viewer.one' };
-export const TARGET = { id: '2002', username: 'target.one' };
+export const VIEWER = { id: '1001', username: 'instagram' };
+export const TARGET = { id: '2002', username: 'instagram' };
 
 export interface FakeStory {
   readonly id: string;
@@ -198,6 +198,7 @@ export function avatarSearch(
 export function createWatchInstagram() {
   const state = {
     viewer: VIEWER as { id: string; username: string } | null,
+    viewerRequests: 0,
     profile: {
       data: { user: { id: TARGET.id, pk: TARGET.id, username: TARGET.username } },
     } as Record<string, unknown>,
@@ -238,12 +239,11 @@ export function createWatchInstagram() {
       hostname === 'sanitized.invalid'
         ? new Response(new Blob(['picture'], { type: 'image/jpeg' }))
         : undefined,
-    ({ searchParams }) =>
-      searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3'
-        ? state.viewer
-          ? json({ data: { user: state.viewer } })
-          : json({}, 401)
-        : undefined,
+    ({ searchParams }) => {
+      if (searchParams.get('query_hash') !== 'd6f4427fbe92d846298cf93df0b937d3') return undefined;
+      state.viewerRequests += 1;
+      return state.viewer ? json({ data: { user: state.viewer } }) : json({}, 401);
+    },
     ({ searchParams }) => {
       if (searchParams.get('query_hash') !== '45246d3fe16ccc6577e0bd297a5db1ab') return undefined;
       const targetId = variable(searchParams);

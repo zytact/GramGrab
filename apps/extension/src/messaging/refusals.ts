@@ -45,6 +45,7 @@ export const MESSAGE_REFUSALS: {
   DEBUG_SHAPE: () => ({ error: UNREADABLE_REQUEST }),
   DOWNLOAD_DEBUG_JSON: () => ({ failure: downloadRefusal() }),
   WATCH_COMMAND: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
+  WATCH_READ: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
   WATCH_PREVIEW: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
 };
 
