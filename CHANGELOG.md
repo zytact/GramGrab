@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.4](https://github.com/zytact/GramGrab/compare/v2.0.3...v2.0.4) (2026-10-07)
+
+
+### Bug Fixes
+
+* **watch:** refresh open Watches state and verify the login on return ([#252](https://github.com/zytact/GramGrab/issues/252)) ([e790ec7](https://github.com/zytact/GramGrab/commit/e790ec73aa1e901fd260adf155e10283c63d6f7a))
+
 ## [2.0.3](https://github.com/zytact/GramGrab/compare/v2.0.2...v2.0.3) (2026-10-06)
 
 
