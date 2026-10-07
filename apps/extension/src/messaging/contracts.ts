@@ -5,6 +5,9 @@ import {
   HumanItemNumber,
   OperationId as ProtocolOperationId,
   WatchCommand,
+  WatchInboxList,
+  WatchList,
+  WatchShow,
   ExportSettings,
   MediaItem as ProtocolMediaItem,
   type CommandFailure,
@@ -139,6 +142,15 @@ const WatchCommandMessage = Schema.Struct({
   command: WatchCommand,
 });
 
+/** The Watch commands that only read, which the options page runs again as the worker works. */
+const WatchRead = Schema.Union(WatchList, WatchShow, WatchInboxList);
+export type WatchRead = Schema.Schema.Type<typeof WatchRead>;
+
+const WatchReadMessage = Schema.Struct({
+  type: Schema.Literal('WATCH_READ'),
+  command: WatchRead,
+});
+
 const WatchPreview = Schema.Struct({
   type: Schema.Literal('WATCH_PREVIEW'),
   target: Schema.String.pipe(Schema.nonEmptyString()),
@@ -186,6 +198,7 @@ const MessageSchema = Schema.Union(
   DebugShape,
   DownloadDebugJson,
   WatchCommandMessage,
+  WatchReadMessage,
   WatchPreview,
   RunExport,
   RunnerReady,
@@ -299,6 +312,7 @@ interface MessageResponses extends Record<MessageType, unknown> {
   DEBUG_SHAPE: { raw?: unknown; error?: string };
   DOWNLOAD_DEBUG_JSON: FailureOnlyResponse;
   WATCH_COMMAND: WatchCommandResponse;
+  WATCH_READ: WatchCommandResponse;
   WATCH_PREVIEW: WatchPreviewResponse;
   RUN_EXPORT: ExportResult;
   RUNNER_READY: void;

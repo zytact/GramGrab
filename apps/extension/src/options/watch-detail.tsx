@@ -16,7 +16,7 @@ import {
   type WatchSummary,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
-import type { WatchCommandResponse, WatchFailure } from '../messaging/contracts.ts';
+import type { WatchCommandResponse, WatchFailure, WatchRead } from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { KIND_LABEL, relativeTime } from './copy.ts';
 import { useInboxSelection } from './inbox-export.tsx';
@@ -25,6 +25,10 @@ const DAY_MS = 24 * 60 * 60_000;
 
 export const runCommand = (command: WatchCommand): Promise<WatchCommandResponse> =>
   sendMessage({ type: 'WATCH_COMMAND', command });
+
+/** Reads with the login the page verified when it opened, so reloading costs no Instagram request. */
+export const runRead = (command: WatchRead): Promise<WatchCommandResponse> =>
+  sendMessage({ type: 'WATCH_READ', command });
 
 export function healthText(health: KindHealth, enabled: boolean): string {
   switch (health._tag) {
@@ -261,7 +265,7 @@ export function AllInbox({ version, onChanged }: { version: number; onChanged: (
   const [entries, setEntries] = useState<readonly DiscoverySummary[]>();
   useEffect(() => {
     let current = true;
-    void runCommand(WatchInboxList.make({})).then(response => {
+    void runRead(WatchInboxList.make({})).then(response => {
       if (current && response.result?._tag === 'WatchInboxListResult')
         setEntries(response.result.entries);
     });
@@ -336,15 +340,8 @@ function ManualCheckStatus({ check }: { check: ManualCheck }) {
  * Puts the Watch at the front of the queue; pacing may still hold it back. Whether it is checking
  * comes from the worker's record, so it survives leaving the Watch or reloading the page.
  */
-function CheckNow({
-  watch,
-  manualCheck,
-  onChecked,
-}: {
-  watch: WatchSummary;
-  manualCheck: ManualCheck | undefined;
-  onChecked: () => void;
-}) {
+function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => void }) {
+  const { manualCheck } = watch;
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [failure, setFailure] = useState<WatchFailure>();
@@ -388,12 +385,10 @@ function CheckNow({
 /** One Watch's health and what it found, reloaded whenever `version` changes. */
 export function WatchDetail({
   watch,
-  manualCheck,
   version,
   onChanged,
 }: {
   watch: WatchSummary;
-  manualCheck: ManualCheck | undefined;
   version: number;
   onChanged: () => void;
 }) {
@@ -402,7 +397,7 @@ export function WatchDetail({
   const { accountId } = watch;
   useEffect(() => {
     let current = true;
-    void runCommand(WatchShow.make({ watch: AccountIdSelector.make({ accountId }) })).then(
+    void runRead(WatchShow.make({ watch: AccountIdSelector.make({ accountId }) })).then(
       response => {
         if (current && response.result?._tag === 'WatchShowResult')
           setFound(response.result.discoveries);
@@ -420,7 +415,7 @@ export function WatchDetail({
           <span className="opt-h1">@{watch.username}</span>
           {watch.formerUsername && <span className="opt-meta">was @{watch.formerUsername}</span>}
         </div>
-        <CheckNow watch={watch} manualCheck={manualCheck} onChecked={onChanged} />
+        <CheckNow watch={watch} onChecked={onChanged} />
       </div>
       {!watch.enabled && (
         <p className="opt-banner">

@@ -330,6 +330,52 @@ describe('Watches options page', () => {
     expect(screen.getByText('Last check just now: Stories: 2 new.')).toBeDefined();
   });
 
+  it('follows an unattended round while open without asking Instagram again', async () => {
+    const now = Date.now();
+    const watch = {
+      id: WATCH_ID,
+      viewerId: VIEWER.id,
+      targetId: TARGET.id,
+      username: TARGET.username,
+      createdAt: now - 60_000,
+      enabled: true,
+      kinds: ['stories'],
+      actions: ['collect'],
+      tracking: {},
+      discoveries: [],
+    };
+    const schedule = (nextRoundAt: number, remaining: readonly string[]) => ({
+      version: 1,
+      logins: { [VIEWER.id]: { nextRoundAt, remaining, earlyRetries: [] } },
+    });
+    harness.local.write('watch-store', { version: 1, watches: [watch] });
+    harness.local.write('watch-scheduler', schedule(now, [WATCH_ID]));
+    render(<Watches />);
+    expect(await screen.findByText('First check pending')).toBeDefined();
+    expect(screen.getByText('Checking: 1 left this round')).toBeDefined();
+    const viewerRequests = instagram.state.viewerRequests;
+
+    const nextRoundAt = now + 12 * 60 * 60_000;
+    await harness.local.set({
+      'watch-store': {
+        version: 1,
+        watches: [
+          {
+            ...watch,
+            tracking: { stories: { baselineCutoff: 1, lastSuccessAt: now, lastCheckAt: now } },
+          },
+        ],
+      },
+    });
+    await harness.local.set({ 'watch-scheduler': schedule(nextRoundAt, []) });
+
+    expect(
+      await screen.findByText(`Next checks around ${new Date(nextRoundAt).toLocaleString()}`)
+    ).toBeDefined();
+    expect(screen.queryByText('First check pending')).toBeNull();
+    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+  });
+
   it('says why and until when a rate-limit pause holds Check now back', async () => {
     seedWatchWithProblemAndEntry();
     const until = Date.now() + 30 * 60_000;

@@ -1,9 +1,9 @@
 import { Schema } from 'effect';
 import {
-  AccountId,
   ActionAttention,
   CheckAttention,
   WatchRecover,
+  WatchViewer,
   type WatchAttention,
   type ActionOutcome,
 } from '@gramgrab/protocol';
@@ -14,7 +14,10 @@ import { requestLedger } from '../instagram/requests.ts';
 import type { Discovery, Watch, WatchStore } from './contracts.ts';
 import { readStore, storeHealth } from './store.ts';
 
-/** The login whose Watches the badge counts, kept only for this browser session. */
+/**
+ * The login the last viewer verification found, kept only for this browser session. The badge
+ * counts its Watches, and the options page's reads reuse it instead of asking Instagram again.
+ */
 const VIEWER_KEY = 'watch-viewer';
 
 /**
@@ -118,15 +121,17 @@ export async function loginAttention(store: WatchStore, viewerId: string): Promi
   return watches.length > 0 ? [...paused, ...watches.flatMap(watchAttention)] : [];
 }
 
-export async function rememberViewer(viewerId: string): Promise<void> {
-  await browser.sessionStorage.set({ [VIEWER_KEY]: viewerId }).catch(() => undefined);
+export async function rememberViewer(viewer: WatchViewer): Promise<void> {
+  await browser.sessionStorage
+    .set({ [VIEWER_KEY]: Schema.encodeSync(WatchViewer)(viewer) })
+    .catch(() => undefined);
 }
 
-async function rememberedViewer(): Promise<string | undefined> {
+export async function rememberedViewer(): Promise<WatchViewer | undefined> {
   const stored = await browser.sessionStorage
     .get(VIEWER_KEY)
     .catch((): Record<string, unknown> => ({}));
-  const decoded = Schema.decodeUnknownOption(AccountId)(stored[VIEWER_KEY]);
+  const decoded = Schema.decodeUnknownOption(WatchViewer)(stored[VIEWER_KEY]);
   return decoded._tag === 'Some' ? decoded.value : undefined;
 }
 
@@ -137,9 +142,9 @@ async function rememberedViewer(): Promise<string | undefined> {
 export async function attentionCount(): Promise<number> {
   const read = await readStore();
   if (read.kind === 'failed') return 1;
-  const viewerId = await rememberedViewer();
+  const viewer = await rememberedViewer();
   const store = (await storeHealth()) ? 1 : 0;
-  return store + (viewerId ? (await loginAttention(read.store, viewerId)).length : 0);
+  return store + (viewer ? (await loginAttention(read.store, viewer.accountId)).length : 0);
 }
 
 export async function refreshBadge(): Promise<void> {

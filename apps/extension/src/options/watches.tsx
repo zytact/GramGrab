@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccountIdSelector,
   UNATTENDED_DISCLOSURE,
@@ -10,22 +10,26 @@ import {
   WatchSet,
   type WatchAction,
   type WatchCommand,
-  type ManualCheck,
   type WatchKind,
   type WatchListResult,
   type WatchSummary,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
-import type { WatchFailure, WatchPreviewResponse } from '../messaging/contracts.ts';
+import type {
+  WatchCommandResponse,
+  WatchFailure,
+  WatchPreviewResponse,
+} from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
-import { SCHEDULER_KEY, decodeSchedulerState, manualChecks } from '../watch/schedule-state.ts';
+import { STORE_KEY } from '../watch/contracts.ts';
+import { SCHEDULER_KEY } from '../watch/schedule-state.ts';
 import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';
 import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox-export.tsx';
 import { RecoveryActions } from './recovery-actions.tsx';
-import { AllInbox, WatchDetail, healthText, runCommand } from './watch-detail.tsx';
+import { AllInbox, WatchDetail, healthText, runCommand, runRead } from './watch-detail.tsx';
 
 type View = 'attention' | 'inbox' | 'new' | { readonly watchId: string };
 
@@ -633,66 +637,36 @@ function Navigation({
 export function Watches() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const [version, setVersion] = useState(0);
+  const latest = useRef(0);
 
-  const refresh = useCallback(async () => {
-    const response = await runCommand(WatchList.make());
+  const load = useCallback(async (send: () => Promise<WatchCommandResponse>) => {
+    const request = ++latest.current;
+    const response = await send();
+    if (request !== latest.current) return;
     if (response.failure) setLoaded({ kind: 'failed', failure: response.failure });
     else if (response.result._tag === 'WatchListResult')
       setLoaded({ kind: 'ready', list: response.result });
     setVersion(current => current + 1);
   }, []);
+  const refresh = useCallback(() => load(() => runRead(WatchList.make())), [load]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void load(() => runCommand(WatchList.make()));
+  }, [load]);
+
+  const ready = loaded.kind === 'ready';
+  useEffect(() => {
+    if (!ready) return;
+    const listener = (changes: StorageChanges) => {
+      if (STORE_KEY in changes || SCHEDULER_KEY in changes) void refresh();
+    };
+    browser.storage.onChanged.addListener(listener);
+    return () => browser.storage.onChanged.removeListener(listener);
+  }, [ready, refresh]);
 
   if (loaded.kind === 'loading') return <p className="opt-gate opt-meta">Loading Watches…</p>;
   if (loaded.kind === 'failed') return <LoginGate failure={loaded.failure} />;
   return <Console list={loaded.list} version={version} refresh={refresh} />;
-}
-
-/**
- * Follows the worker's record of each Watch's manual check without asking Instagram, so progress
- * shows without slowing the check, and calls `onFinished` when a check this page saw running ends.
- * Until the record is read, it answers with what `list` reported.
- */
-function useManualChecks(
-  list: WatchListResult,
-  onFinished: () => void
-): ReadonlyMap<string, ManualCheck> {
-  const viewerId = list.viewer.accountId;
-  const [checks, setChecks] = useState<ReadonlyMap<string, ManualCheck>>();
-  useEffect(() => {
-    let active = true;
-    let previous: ReadonlyMap<string, ManualCheck> | undefined;
-    const apply = (stored: unknown) => {
-      const next = manualChecks(decodeSchedulerState(stored).logins[viewerId]);
-      const ended = [...(previous ?? [])].some(
-        ([watchId, check]) =>
-          check._tag === 'ManualCheckPending' && next.get(watchId)?._tag !== 'ManualCheckPending'
-      );
-      previous = next;
-      setChecks(next);
-      if (ended) onFinished();
-    };
-    const listener = (changes: StorageChanges) => {
-      if (SCHEDULER_KEY in changes) apply(changes[SCHEDULER_KEY]?.newValue);
-    };
-    browser.storage.onChanged.addListener(listener);
-    void browser.storage.get(SCHEDULER_KEY).then(stored => {
-      if (active && previous === undefined) apply(stored[SCHEDULER_KEY]);
-    });
-    return () => {
-      active = false;
-      browser.storage.onChanged.removeListener(listener);
-    };
-  }, [viewerId, onFinished]);
-  return (
-    checks ??
-    new Map(
-      list.watches.flatMap(watch => (watch.manualCheck ? [[watch.watchId, watch.manualCheck]] : []))
-    )
-  );
 }
 
 /** Why unattended checks are not running right now, if something holds them back. */
@@ -719,7 +693,6 @@ function Feed({
   list,
   current,
   watch,
-  manualChecks,
   actionFailure,
   version,
   onGo,
@@ -729,7 +702,6 @@ function Feed({
   list: WatchListResult;
   current: View;
   watch: WatchSummary | undefined;
-  manualChecks: ReadonlyMap<string, ManualCheck>;
   actionFailure: WatchFailure | undefined;
   version: number;
   onGo: (view: View) => void;
@@ -752,13 +724,7 @@ function Feed({
         </>
       )}
       {watch && (
-        <WatchDetail
-          key={watch.watchId}
-          watch={watch}
-          manualCheck={manualChecks.get(watch.watchId)}
-          version={version}
-          onChanged={onChanged}
-        />
+        <WatchDetail key={watch.watchId} watch={watch} version={version} onChanged={onChanged} />
       )}
     </section>
   );
@@ -774,7 +740,6 @@ function Console({
   refresh: () => Promise<void>;
 }) {
   const exporter = useInboxExport(() => void refresh());
-  const manualChecks = useManualChecks(list, refresh);
   const [view, setView] = useState<View | undefined>(linkedView);
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
   const attention = list.attentionCount;
@@ -817,7 +782,6 @@ function Console({
           list={list}
           current={current}
           watch={watch}
-          manualChecks={manualChecks}
           actionFailure={actionFailure}
           version={version}
           onGo={go}

@@ -9,7 +9,7 @@ import {
   type ManualCheck,
 } from '@gramgrab/protocol';
 
-/** The scheduler's persisted state. The options page reads it too, to follow manual checks. */
+/** The scheduler's persisted state. The options page reloads when it changes, to follow checks. */
 export const SCHEDULER_KEY = 'watch-scheduler';
 
 const EarlyRetry = Schema.Struct({ watchId: Schema.UUID, kind: WatchKind, at: Schema.Number });
