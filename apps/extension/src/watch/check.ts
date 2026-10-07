@@ -203,10 +203,8 @@ const failed = (watchId: string, kind: WatchKind, error: Acquisition) =>
       watch: applyKindProblem(watch, kind, code, now),
       value: KindCheckFailed.make({ kind, code }),
     }));
-    return {
-      ...written(kind, write, outcome => ({ outcome })),
-      loginVerified: !SUSPENDING.has(code),
-    };
+    const step = written(kind, write, outcome => ({ outcome }));
+    return SUSPENDING.has(code) ? { ...step, loginVerified: false, stop: true } : step;
   });
 
 const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, scope: CheckScope) =>
@@ -487,7 +485,7 @@ export const checkWatch = (
         }
         avatar ??= step.avatar;
         avatarAttempted ||= step.avatarAttempted === true;
-        if (step.stop || step.loginVerified === false)
+        if (step.stop)
           return {
             kinds: outcomes,
             deferredUntil: step.deferredUntil,
