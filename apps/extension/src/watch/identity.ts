@@ -1,3 +1,4 @@
+import { noteViewerPicture } from './viewer-avatar.ts';
 import { Data, Effect, Schema } from 'effect';
 import { AccountId, InstagramUsername } from '@gramgrab/protocol';
 import { protocolConfig } from '../instagram-protocol/config.ts';
@@ -118,9 +119,10 @@ export const fetchViewer = Effect.gen(function* () {
   } satisfies Viewer;
 }).pipe(
   Effect.tap(viewer =>
-    Effect.promise(() =>
-      browser.sessionStorage.set({ [VIEWER_KEY]: viewer.accountId }).catch(() => undefined)
-    )
+    Effect.promise(() => {
+      noteViewerPicture(viewer);
+      return browser.sessionStorage.set({ [VIEWER_KEY]: viewer.accountId }).catch(() => undefined);
+    })
   ),
   Effect.tapError(error =>
     error._tag === 'ViewerMissing'

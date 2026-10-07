@@ -47,6 +47,19 @@ import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
 import { UsernameUnconfirmed, confirmProfile, fetchViewer } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
 
+/** Failures that suspend every Watch until the person does something. */
+const SUSPENDING: ReadonlySet<FailureCode> = new Set([
+  'IG_REQUEST_REJECTED',
+  'IG_NOT_AUTHENTICATED',
+]);
+
+export const checkNeedsLogin = (outcomes: readonly KindCheckOutcome[]) =>
+  outcomes.some(outcome =>
+    outcome._tag === 'KindCheckSkipped'
+      ? outcome.reason === 'login-unverified'
+      : outcome._tag === 'KindCheckFailed' && SUSPENDING.has(outcome.code)
+  );
+
 /**
  * One Watch's check runs these stages in order. `profile` confirms the current username by
  * account ID, which the Avatar and Posts requests after it look up by.

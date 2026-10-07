@@ -102,7 +102,7 @@ export const AvatarJpeg = Schema.String.pipe(
   )
 );
 
-/** The cached picture shown beside the Watch, and when its picture identity was last confirmed. */
+/** The cached picture shown beside the Watch, and when the image was cached. */
 const AvatarImage = Schema.Struct({
   pictureId: PictureId,
   jpeg: AvatarJpeg,

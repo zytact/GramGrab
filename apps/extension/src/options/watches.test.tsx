@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UNATTENDED_DISCLOSURE } from '@gramgrab/protocol';
+import { Schema } from 'effect';
+import { WatchStore } from '../watch/contracts.ts';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
 import {
   STUB_AVATAR,
@@ -265,7 +267,7 @@ describe('Watches options page', () => {
   it('shows cached Avatars beside the login and the Watch, and an initial before one exists', async () => {
     stubAvatarScaling();
     seedWatchWithProblemAndEntry();
-    const store = harness.local.read('watch-store') as { watches: object[] };
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
     harness.local.write('watch-store', {
       ...store,
       watches: [
@@ -277,7 +279,7 @@ describe('Watches options page', () => {
     });
     const user = userEvent.setup();
     const { container } = render(<Watches />);
-    await user.click(await screen.findByText(`@${TARGET.username}`));
+    await user.click(await screen.findByRole('button', { name: /@\s*instagram/ }));
 
     const pictures = () => [...container.querySelectorAll('img.opt-avatar')];
     await waitFor(() => expect(pictures()).toHaveLength(2));
@@ -285,9 +287,9 @@ describe('Watches options page', () => {
       STUB_AVATAR,
       STUB_AVATAR,
     ]);
-    expect(container.querySelector('.opt-viewer .opt-avatar')?.textContent).toBe('V');
+    expect(container.querySelector('.opt-viewer .opt-avatar')?.textContent).toBe('I');
     fireEvent.error(pictures()[0]!);
-    expect(container.querySelector('.opt-item .opt-avatar')?.textContent).toBe('T');
+    expect(container.querySelector('.opt-item .opt-avatar')?.textContent).toBe('I');
     expect(pictures()).toHaveLength(1);
   });
 
@@ -299,6 +301,34 @@ describe('Watches options page', () => {
     expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
     expect(screen.getByText('0 Watches stored in this browser.')).toBeDefined();
     expect(screen.queryByText('+ Add Watch')).toBeNull();
+  });
+
+  it('keeps the displayed login image during cached reads after the worker restarts', async () => {
+    stubAvatarScaling();
+    seedWatchWithProblemAndEntry();
+    instagram.state.viewer = { ...VIEWER, profile_pic_url: 'https://sanitized.invalid/viewer' };
+    const { container } = render(<Watches />);
+    const login = () => container.querySelector('.opt-viewer img.opt-avatar');
+    await waitFor(() => expect(login()?.getAttribute('src')).toBe(STUB_AVATAR));
+    await harness.loadWorker();
+    const verified = instagram.state.viewerRequests;
+    harness.browser.runtime.sendMessage.mockClear();
+    await act(async () => {
+      await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
+    });
+    await waitFor(() =>
+      expect(harness.browser.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'WATCH_AVATARS',
+        viewerId: VIEWER.id,
+      })
+    );
+    await act(async () => {
+      await Promise.all(
+        harness.browser.runtime.sendMessage.mock.results.map(result => result.value)
+      );
+    });
+    expect(login()?.getAttribute('src')).toBe(STUB_AVATAR);
+    expect(instagram.state.viewerRequests).toBe(verified);
   });
 
   it('shows the check the worker is running across navigation, then the outcome it recorded', async () => {

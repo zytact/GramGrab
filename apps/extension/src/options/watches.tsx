@@ -748,7 +748,7 @@ function useWatchAvatars(viewerId: string, version: number): WatchAvatarsRespons
   useEffect(() => {
     let current = true;
     void sendMessage({ type: 'WATCH_AVATARS', viewerId }).then(next => {
-      if (current) setAvatars(next);
+      if (current) setAvatars(previous => ({ ...next, login: next.login ?? previous.login }));
     });
     return () => {
       current = false;

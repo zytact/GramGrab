@@ -16,7 +16,7 @@ import {
   type LoginSchedule,
 } from './schedule-state.ts';
 import { refreshBadge } from './attention.ts';
-import { checkWatch, type CheckScope } from './check.ts';
+import { checkWatch, checkNeedsLogin, type CheckScope } from './check.ts';
 import { notifyCheck, resumeNotifications, notificationsNeedWork } from './notify.ts';
 import { runActions, actionsNeedWork } from './auto-download.ts';
 import { refreshAvatarImage } from './avatar-image.ts';
@@ -41,19 +41,6 @@ const RETRYABLE: ReadonlySet<FailureCode> = new Set([
   'SOURCE_SERVER_FAILED',
   'IG_RESPONSE_SHAPE_UNKNOWN',
 ]);
-/** Failures that suspend every Watch until the person does something. */
-const SUSPENDING: ReadonlySet<FailureCode> = new Set([
-  'IG_REQUEST_REJECTED',
-  'IG_NOT_AUTHENTICATED',
-]);
-
-const suspends = (outcomes: readonly KindCheckOutcome[]) =>
-  outcomes.some(outcome =>
-    outcome._tag === 'KindCheckSkipped'
-      ? outcome.reason === 'login-unverified'
-      : outcome._tag === 'KindCheckFailed' && SUSPENDING.has(outcome.code)
-  );
-
 async function loadState(): Promise<SchedulerState> {
   const stored = await browser.storage
     .get(SCHEDULER_KEY)
@@ -303,7 +290,7 @@ async function runNextJob(viewerId: string): Promise<boolean> {
   const failures = run.kinds.flatMap(outcome =>
     outcome._tag === 'KindCheckFailed' ? [{ kind: outcome.kind, code: outcome.code }] : []
   );
-  if (suspends(run.kinds)) {
+  if (checkNeedsLogin(run.kinds)) {
     await updateState(current => ({ ...current, suspended: true }));
     return false;
   }
@@ -510,7 +497,7 @@ export async function finishManual(
       ? [{ watchId, kind: outcome.kind, at: Date.now() + EARLY_RETRY_MS }]
       : []
   );
-  if (suspends(outcomes)) await updateState(state => ({ ...state, suspended: true }));
+  if (checkNeedsLogin(outcomes)) await updateState(state => ({ ...state, suspended: true }));
   await setSchedule(viewerId, current => ({
     ...(current ?? { nextRoundAt: Date.now(), remaining: [], earlyRetries: [] }),
     manual: current?.manual?.filter(job => job.watchId !== watchId || job.checkId !== checkId),

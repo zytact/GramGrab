@@ -214,6 +214,48 @@ describe('Watch Avatar images', () => {
     ).toBeUndefined();
   });
 
+  it.each([true, false])(
+    'does not fetch an initial image after a later login check fails, signed out=%s',
+    async signedOut => {
+      await run(
+        WatchAdd.make({
+          target: TARGET.username,
+          kinds: ['stories', 'avatar'],
+          actions: ['collect'],
+          acceptUnattended: true,
+        }),
+        'WatchAddResult'
+      );
+      harness.setFetch((url, init) => {
+        const response = instagram.handle(url, init);
+        if (new URL(url).searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
+          instagram.state.viewer = signedOut ? null : { id: '1009', username: 'instagram' };
+        return response;
+      });
+      await checkLater();
+      expect(instagram.state.searches).toHaveLength(0);
+      expect(avatarImage()).toBeUndefined();
+      expect(
+        Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
+          ?.avatarLookupAt
+      ).toBeUndefined();
+    }
+  );
+
+  it('restores the memory-only login image from a background viewer query after restart', async () => {
+    instagram.state.viewer = { ...VIEWER, profile_pic_url: 'https://sanitized.invalid/viewer' };
+    await addWatch('avatar');
+    expect((await avatars(VIEWER.id)).login).toBe(STUB_AVATAR);
+    await harness.loadWorker();
+    expect((await avatars(VIEWER.id)).login).toBeUndefined();
+    const { fetchViewer } = await import('./identity.ts');
+    const { PersonRequests } = await import('../instagram/requests.ts');
+    const { Effect } = await import('effect');
+    await Effect.runPromise(fetchViewer.pipe(Effect.provide(PersonRequests)));
+    expect((await avatars(VIEWER.id)).login).toBe(STUB_AVATAR);
+    expect(harness.local.read('watch-store')).not.toHaveProperty('viewer');
+  });
+
   it.each([
     { observed: true, room: 64 },
     { observed: false, room: 64 },
