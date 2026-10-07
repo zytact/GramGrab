@@ -641,26 +641,66 @@ export function Watches() {
   const [version, setVersion] = useState(0);
   const latest = useRef(0);
   const viewer = useRef<WatchViewer>(undefined);
+  const verification = useRef<Promise<void>>(undefined);
+  const reverify = useRef(false);
 
   const load = useCallback(async (send: () => Promise<WatchCommandResponse>) => {
     const request = ++latest.current;
     const response = await send();
     if (request !== latest.current) return;
-    if (response.failure) setLoaded({ kind: 'failed', failure: response.failure });
-    else if (response.result._tag === 'WatchListResult') {
+    if (response.failure) {
+      viewer.current = undefined;
+      setLoaded({ kind: 'failed', failure: response.failure });
+    } else if (response.result._tag === 'WatchListResult') {
       viewer.current = response.result.viewer;
       setLoaded({ kind: 'ready', list: response.result });
     }
     setVersion(current => current + 1);
   }, []);
+  const verify = useCallback(() => {
+    reverify.current = true;
+    if (verification.current) latest.current += 1;
+    verification.current ??= (async () => {
+      do {
+        reverify.current = false;
+        await load(() => runCommand(WatchList.make()));
+      } while (reverify.current);
+    })().finally(() => {
+      verification.current = undefined;
+    });
+    return verification.current;
+  }, [load]);
   const refresh = useCallback(async () => {
+    await verification.current;
     const known = viewer.current;
     if (known) await load(() => runRead(WatchList.make(), known));
   }, [load]);
 
   useEffect(() => {
-    void load(() => runCommand(WatchList.make()));
-  }, [load]);
+    void verify();
+    let away = document.visibilityState !== 'visible' || !document.hasFocus();
+    const leave = () => {
+      away = true;
+    };
+    const enter = () => {
+      if (document.visibilityState !== 'visible' || !away) return;
+      away = false;
+      void verify();
+    };
+    const visibility = () => {
+      if (document.visibilityState === 'visible') enter();
+      else leave();
+    };
+    window.addEventListener('blur', leave);
+    window.addEventListener('focus', enter);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      window.removeEventListener('blur', leave);
+      window.removeEventListener('focus', enter);
+      document.removeEventListener('visibilitychange', visibility);
+      latest.current += 1;
+    };
+  }, [verify]);
 
   const ready = loaded.kind === 'ready';
   useEffect(() => {
@@ -682,7 +722,14 @@ export function Watches() {
 
   if (loaded.kind === 'loading') return <p className="opt-gate opt-meta">Loading Watches…</p>;
   if (loaded.kind === 'failed') return <LoginGate failure={loaded.failure} />;
-  return <Console list={loaded.list} version={version} refresh={refresh} />;
+  return (
+    <Console
+      key={loaded.list.viewer.accountId}
+      list={loaded.list}
+      version={version}
+      refresh={refresh}
+    />
+  );
 }
 
 /** Why unattended checks are not running right now, if something holds them back. */
@@ -691,7 +738,7 @@ function ScheduleNotice({ schedule }: { schedule: WatchListResult['schedule'] })
     return (
       <p className="opt-banner opt-banner-error">
         <strong>Watches stopped.</strong> Instagram refused the signed-in session. Sign in to
-        Instagram again, then reopen this page to resume checks.
+        Instagram again, then return to this page to resume checks.
       </p>
     );
   if (schedule.pausedUntil)

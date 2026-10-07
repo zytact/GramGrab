@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UNATTENDED_DISCLOSURE } from '@gramgrab/protocol';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
@@ -388,6 +388,105 @@ describe('Watches options page', () => {
 
     expect(await screen.findByText('@viewer.two')).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+  });
+
+  it('follows a login switch on window return without a Watch write or due check', async () => {
+    seedWatchWithProblemAndEntry();
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('checkbox', { name: 'Select for download' }));
+    expect(screen.getByRole('button', { name: 'Download Original (1)' })).toBeDefined();
+    const viewerRequests = instagram.state.viewerRequests;
+
+    instagram.state.viewer = { id: '1002', username: 'instagram' };
+    fireEvent(window, new Event('blur'));
+    fireEvent(window, new Event('focus'));
+
+    expect(await screen.findByText('@instagram')).toBeDefined();
+    expect(screen.getByText('Watches (0)')).toBeDefined();
+    expect(screen.queryByRole('checkbox', { name: 'Select for download' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Download Original (1)' })).toBeNull();
+    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+  });
+
+  it('finds sign-out on return and recovers on the next return after signing in', async () => {
+    seedWatchWithProblemAndEntry();
+    render(<Watches />);
+    await screen.findByRole('heading', { name: 'Needs you' });
+    instagram.state.viewer = null;
+    fireEvent(window, new Event('blur'));
+    fireEvent(window, new Event('focus'));
+
+    expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
+    expect(screen.queryByText(`@${VIEWER.username}`)).toBeNull();
+    expect(harness.badge).toBe('');
+    instagram.state.viewer = VIEWER;
+    fireEvent(window, new Event('blur'));
+    fireEvent(window, new Event('focus'));
+
+    expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeDefined();
+  });
+
+  it('coalesces foreground events and waits for verification before reading changed storage', async () => {
+    seedWatchWithProblemAndEntry();
+    const { unmount } = render(<Watches />);
+    await screen.findByRole('heading', { name: 'Needs you' });
+    const viewerRequests = instagram.state.viewerRequests;
+    let release = () => {};
+    const pending = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    harness.setFetch(async (url, init) => {
+      const response = instagram.handle(url, init);
+      if (new URL(url).searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3')
+        await pending;
+      return response;
+    });
+    instagram.state.viewer = { id: '1002', username: 'instagram' };
+    const visibility = vi.spyOn(document, 'visibilityState', 'get');
+    visibility.mockReturnValue('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('focus'));
+    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+    visibility.mockReturnValue('visible');
+    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('focus'));
+    await waitFor(() => expect(instagram.state.viewerRequests).toBe(viewerRequests + 1));
+    await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
+    release();
+
+    expect(await screen.findByText('@instagram')).toBeDefined();
+    expect(screen.getByText('Watches (0)')).toBeDefined();
+    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+    unmount();
+    fireEvent(window, new Event('blur'));
+    fireEvent(window, new Event('focus'));
+    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+  });
+
+  it('rechecks a return during the initial query instead of accepting its earlier login', async () => {
+    seedWatchWithProblemAndEntry();
+    let release = () => {};
+    const pending = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    harness.setFetch(async (url, init) => {
+      const response = instagram.handle(url, init);
+      if (new URL(url).searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3')
+        await pending;
+      return response;
+    });
+    render(<Watches />);
+    await waitFor(() => expect(instagram.state.viewerRequests).toBe(1));
+    instagram.state.viewer = { id: '1002', username: 'instagram' };
+    fireEvent(window, new Event('blur'));
+    fireEvent(window, new Event('focus'));
+    release();
+
+    expect(await screen.findByText('@instagram')).toBeDefined();
+    expect(screen.getByText('Watches (0)')).toBeDefined();
+    expect(instagram.state.viewerRequests).toBe(2);
   });
 
   it('shows a rate-limit pause the worker starts while the page is open', async () => {
