@@ -68,8 +68,11 @@ worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, or
 changes the rate-limit pause in `instagram-requests`. Those reloads go through the
 `WATCH_READ` message with the login the page shows. The worker answers without an
 Instagram request while that login is still the last one any viewer query found,
-and verifies again otherwise. Opening the page and every action still verify the
-login once.
+and verifies again otherwise. Opening the page, returning to its tab or window,
+and every action verify the login once. Tab visibility and window focus events
+for one return share a verification. Storage reloads wait for that verification,
+and changing the login clears the previous login's selected view and inbox
+selections. A signed-out page rechecks on return too. There is no login polling.
 
 1. Read `nextRoundAt`, `remaining`, each kind's `lastCheckAt`, and the length of
    `attempts` in `instagram-requests` from the worker's storage. Open
@@ -85,6 +88,16 @@ login once.
 4. Compare `attempts` with the Watch requests the round made. The page adds
    none. Pause and then resume the Watch from the page: each action adds exactly
    one viewer request, and the reload after it adds none.
+5. After the initial load settles, set an in-memory page marker and record the
+   request count. Activate a neutral tab, then return to `options.html` without
+   reloading. One real viewer request confirms the login; the marker survives.
+   Keep the page foregrounded briefly and confirm it adds no further requests.
+   Repeat once by moving focus to another browser window and returning, to
+   cover the window-focus path. Stop on a 429 or request-cap deferral.
+   Follow `docs/watch-live-verification.md` for account changes: use a natural
+   switch or sign-out if one occurs, otherwise report that live gap. Focused
+   browser-adapter tests own switched-login isolation and sign-out recovery;
+   an unchanged real login proves foreground verification, not account switching.
 
 ## Posts on a real grid
 
