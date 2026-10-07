@@ -7,6 +7,7 @@ import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
 import { mutateStore, readStore, withinStoreBudget } from './store.ts';
 import { loadJpeg, dataUrl } from './avatar-jpeg.ts';
 import { viewerJpeg } from './viewer-avatar.ts';
+import { verifiedViewerId } from './identity.ts';
 
 /** A Watch that does not track Avatar changes looks its picture up again after this long. */
 const LOOKUP_AFTER_MS = 7 * 24 * 60 * 60_000;
@@ -73,6 +74,7 @@ export async function refreshAvatarImage(
   }
 ): Promise<void> {
   if (!run.loginVerified || !run.kinds.some(reachedInstagram)) return;
+  if ((await verifiedViewerId()) !== viewerId) return;
   const read = await readStore();
   const watch =
     read.kind === 'ok'

@@ -144,6 +144,7 @@ export interface CheckScope {
 /** One kind's turn: its outcome, and whether the rest of the check must stop. */
 interface KindStep {
   readonly avatarAttempted?: boolean;
+  readonly loginVerified?: boolean;
   readonly outcome?: KindCheckOutcome;
   readonly stop?: boolean;
   readonly deferredUntil?: number;
@@ -202,7 +203,10 @@ const failed = (watchId: string, kind: WatchKind, error: Acquisition) =>
       watch: applyKindProblem(watch, kind, code, now),
       value: KindCheckFailed.make({ kind, code }),
     }));
-    return written(kind, write, outcome => ({ outcome }));
+    return {
+      ...written(kind, write, outcome => ({ outcome })),
+      loginVerified: !SUSPENDING.has(code),
+    };
   });
 
 const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, scope: CheckScope) =>
@@ -483,11 +487,11 @@ export const checkWatch = (
         }
         avatar ??= step.avatar;
         avatarAttempted ||= step.avatarAttempted === true;
-        if (step.stop)
+        if (step.stop || step.loginVerified === false)
           return {
             kinds: outcomes,
             deferredUntil: step.deferredUntil,
-            loginVerified: !checkNeedsLogin(outcomes),
+            loginVerified: step.loginVerified !== false,
             avatar,
             avatarAttempted,
           };
@@ -496,7 +500,7 @@ export const checkWatch = (
     return {
       kinds: outcomes,
       deferredUntil: undefined,
-      loginVerified: !checkNeedsLogin(outcomes),
+      loginVerified: true,
       avatar,
       avatarAttempted,
     };

@@ -257,7 +257,7 @@ async function recoverManualJob(viewerId: string, job: Extract<Job, { _tag: 'man
     await finishManual(viewerId, job.watchId, job.checkId, [...(job.outcomes ?? []), ...run.kinds]);
   else await deferManual(viewerId, job.watchId, job.checkId, run.deferredUntil);
   await refreshBadge();
-  return run.deferredUntil === undefined;
+  return run.loginVerified && run.deferredUntil === undefined;
 }
 
 function jobKinds(job: Exclude<Job, { _tag: 'manual' }>): readonly WatchKind[] | undefined {
@@ -292,10 +292,7 @@ async function runNextJob(viewerId: string): Promise<boolean> {
   const failures = run.kinds.flatMap(outcome =>
     outcome._tag === 'KindCheckFailed' ? [{ kind: outcome.kind, code: outcome.code }] : []
   );
-  if (checkNeedsLogin(run.kinds)) {
-    await updateState(current => ({ ...current, suspended: true }));
-    return false;
-  }
+  if (!run.loginVerified) return false;
   await setSchedule(viewerId, current => finishJob(current ?? schedule, job, failures, Date.now()));
   return true;
 }

@@ -10,7 +10,7 @@ import {
   type WatchKind,
   type WatchResult,
 } from '@gramgrab/protocol';
-import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
+import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
 import {
   STUB_AVATAR,
   TARGET,
@@ -261,6 +261,70 @@ describe('Watch Avatar images', () => {
       expect((await scheduleOf(VIEWER.id)).suspended).toBe(true);
     }
   );
+
+  it('does not refresh a check after another query verified a different login', async () => {
+    const { watch } = await addWatch('stories');
+    instagram.state.viewer = { id: '1009', username: 'instagram' };
+    const { fetchViewer } = await import('./identity.ts');
+    const { PersonRequests } = await import('../instagram/requests.ts');
+    const { Effect } = await import('effect');
+    await Effect.runPromise(fetchViewer.pipe(Effect.provide(PersonRequests)));
+    const { refreshAvatarImage } = await import('./avatar-image.ts');
+    await refreshAvatarImage(watch.watchId, VIEWER.id, {
+      kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
+      loginVerified: true,
+      avatarAttempted: false,
+    });
+    expect(instagram.state.searches).toHaveLength(0);
+    expect(avatarImage()).toBeUndefined();
+    expect(
+      Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
+        ?.avatarLookupAt
+    ).toBeUndefined();
+  });
+
+  it('preserves authentication failure when recording its kind outcome fails', async () => {
+    await run(
+      WatchAdd.make({
+        target: TARGET.username,
+        kinds: ['stories', 'avatar'],
+        actions: ['collect'],
+        acceptUnattended: true,
+      }),
+      'WatchAddResult'
+    );
+    harness.setFetch((url, init) =>
+      init?.body instanceof URLSearchParams && init.body.get('doc_id') === '28036671149327607'
+        ? json({}, 401)
+        : instagram.handle(url, init)
+    );
+    const set = harness.local.set.getMockImplementation()!;
+    harness.local.set.mockImplementation(async items => {
+      if (items['watch-store']) {
+        const store = Schema.decodeUnknownSync(WatchStore)(items['watch-store']);
+        if (store.watches.some(watch => watch.tracking.avatar?.problem))
+          throw new Error('write failed');
+      }
+      return set(items);
+    });
+    const result = await checkLater();
+    expect(result.outcomes[0]?.kinds).toContainEqual(
+      KindBaselineRecorded.make({ kind: 'stories' })
+    );
+    expect(result.outcomes[0]?.kinds).toContainEqual({
+      _tag: 'KindCheckSkipped',
+      kind: 'avatar',
+      reason: 'storage',
+    });
+    expect(instagram.state.searches).toHaveLength(0);
+    expect(avatarImage()).toBeUndefined();
+    expect(
+      Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
+        ?.avatarLookupAt
+    ).toBeUndefined();
+    const { scheduleOf } = await import('./scheduler.ts');
+    expect((await scheduleOf(VIEWER.id)).suspended).toBe(true);
+  });
 
   it('restores the memory-only login image from a background viewer query after restart', async () => {
     instagram.state.viewer = { ...VIEWER, profile_pic_url: 'https://sanitized.invalid/viewer' };
