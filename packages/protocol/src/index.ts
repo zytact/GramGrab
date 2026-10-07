@@ -14,7 +14,7 @@ import { WatchCommand, WatchFailureDetail, WatchResult, WatchCheckProgress } fro
 export { decodeJsonFrame, encodeFrame, encodeJsonFrame, FrameDecoder } from './framing.ts';
 export { localIpcEndpoint, type IpcEnvironment } from './ipc.ts';
 
-export const PROTOCOL_VERSION = 2 as const;
+export const PROTOCOL_VERSION = 3 as const;
 
 export const RequestId = Schema.UUID.pipe(Schema.brand('RequestId'));
 export type RequestId = Schema.Schema.Type<typeof RequestId>;

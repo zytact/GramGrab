@@ -1,6 +1,6 @@
 # CLI capability contract
 
-This document inventories the public GramGrab operations covered by protocol version 2. It is a
+This document inventories the public GramGrab operations covered by protocol version 3. It is a
 behavior contract, not a promise that the CLI transport is implemented before phase 3.
 
 ## Item identity

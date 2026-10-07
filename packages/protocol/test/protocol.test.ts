@@ -36,7 +36,7 @@ const participantRequestDecoders = [
 ];
 const participantEventDecoders = [decodeExtensionEvent, decodeCliEvent, decodeNativeHostEvent];
 
-describe('protocol version 2', () => {
+describe('protocol version 3', () => {
   it('decodes every command fixture identically in all participants', () => {
     for (const fixture of requestFixtures) {
       const expected = Schema.decodeUnknownSync(Request)(fixture);
@@ -62,16 +62,21 @@ describe('protocol version 2', () => {
   });
 
   it('rejects unsupported protocol versions and out-of-range progress', () => {
-    expect(() =>
-      Schema.decodeUnknownSync(Request)({
-        version: 1,
-        requestId,
-        command: { _tag: 'HistoryList' },
-      })
-    ).toThrow();
+    for (const version of [1, 2, 4]) {
+      for (const decode of participantRequestDecoders) {
+        expect(() =>
+          Effect.runSync(decode({ version, requestId, command: { _tag: 'HistoryList' } }))
+        ).toThrow();
+      }
+      for (const decode of participantEventDecoders) {
+        expect(() =>
+          Effect.runSync(decode({ version, requestId, event: { _tag: 'Accepted' } }))
+        ).toThrow();
+      }
+    }
     expect(() =>
       Schema.decodeUnknownSync(Event)({
-        version: 2,
+        version: 3,
         requestId,
         event: { _tag: 'Progress', phase: 'resolving', progress: 1.01 },
       })
