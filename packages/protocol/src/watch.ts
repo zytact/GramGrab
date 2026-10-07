@@ -253,6 +253,12 @@ export class WatchSchedule extends Schema.Class<WatchSchedule>('WatchSchedule')(
   roundRemaining: Count,
   /** Instagram rate limited a request; no Watch request starts before this time. */
   pausedUntil: Schema.optional(EpochMillis),
+  /**
+   * The last hour's Instagram requests, the person's included, reached the hourly cap. No Watch
+   * request starts before this time, which also counts spacing and any pause, and later requests
+   * can push it back.
+   */
+  cappedUntil: Schema.optional(EpochMillis),
   /** Instagram rejected the session; checks wait until the person acts. */
   suspended: Schema.Boolean,
 }) {}

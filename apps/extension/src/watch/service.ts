@@ -28,7 +28,6 @@ import {
   RecoveryOutcome,
   type WatchAttention,
   type AttentionOperation,
-  WatchSchedule,
   WatchSetResult,
   WatchShowResult,
   WatchStorage,
@@ -163,16 +162,9 @@ const list = Effect.fn(function* (known?: WatchViewer) {
   const watches = store
     ? owned(store, viewer).map(watch => summarize(watch, schedule.manualChecks.get(watch.id)))
     : [];
-  yield* Effect.promise(() => requestLedger.ready());
-  const pausedUntil = requestLedger.pausedUntil(Date.now());
   return WatchListResult.make({
     viewer: WatchViewer.make({ accountId: viewer.accountId, username: viewer.username }),
-    schedule: WatchSchedule.make({
-      ...(schedule.nextRoundAt === undefined ? {} : { nextRoundAt: schedule.nextRoundAt }),
-      roundRemaining: schedule.roundRemaining,
-      ...(pausedUntil ? { pausedUntil } : {}),
-      suspended: schedule.suspended,
-    }),
+    schedule: schedule.schedule,
     otherLoginWatchCount: (store?.watches.length ?? 0) - watches.length,
     storage,
     attentionCount:

@@ -6,8 +6,10 @@ import {
   ManualCheckFinished,
   ManualCheckPending,
   WatchKind,
+  WatchSchedule,
   type ManualCheck,
 } from '@gramgrab/protocol';
+import { watchHold, type LedgerView } from '../instagram/request-state.ts';
 
 /** The scheduler's persisted state. The options page reloads when it changes, to follow checks. */
 export const SCHEDULER_KEY = 'watch-scheduler';
@@ -63,6 +65,28 @@ const EMPTY: SchedulerState = { version: 1, logins: {} };
 export function decodeSchedulerState(stored: unknown): SchedulerState {
   const decoded = Schema.decodeUnknownOption(SchedulerState)(stored);
   return decoded._tag === 'Some' ? decoded.value : EMPTY;
+}
+
+/**
+ * When the login's next round starts, how much of this round is left, and what holds Watch
+ * requests back at `now`. The options page derives it from storage too, so it stays current
+ * without asking Instagram.
+ */
+export function watchSchedule(
+  state: SchedulerState,
+  ledger: LedgerView | undefined,
+  viewerId: string,
+  now: number
+): WatchSchedule {
+  const login = state.logins[viewerId];
+  const hold = ledger && watchHold(ledger, now);
+  return WatchSchedule.make({
+    ...(login ? { nextRoundAt: login.nextRoundAt } : {}),
+    roundRemaining: login?.remaining.length ?? 0,
+    ...(hold?.pausedUntil ? { pausedUntil: hold.pausedUntil } : {}),
+    ...(hold?.capped ? { cappedUntil: hold.until } : {}),
+    suspended: state.suspended ?? false,
+  });
 }
 
 /** Each Watch's queued or running manual check, or else its last finished one. */

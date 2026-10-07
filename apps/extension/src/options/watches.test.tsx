@@ -331,7 +331,7 @@ describe('Watches options page', () => {
     expect(instagram.state.viewerRequests).toBe(verified);
   });
 
-  it('shows the check the worker is running across navigation, then the outcome it recorded', async () => {
+  it('shows the check the worker holds back across navigation, then the outcome it recorded', async () => {
     seedWatchWithProblemAndEntry();
     const schedule = { nextRoundAt: Date.now() + 60 * 60_000, remaining: [], earlyRetries: [] };
     const resumeAt = Date.now() + 10 * 60_000;
@@ -359,7 +359,7 @@ describe('Watches options page', () => {
       user.click(await screen.findByRole('button', { name: new RegExp(`^@${TARGET.username}`) }));
     await openWatch();
 
-    expect(await screen.findByRole('button', { name: 'Checking…' })).toHaveProperty(
+    expect(await screen.findByRole('button', { name: 'Waiting…' })).toHaveProperty(
       'disabled',
       true
     );
@@ -370,7 +370,7 @@ describe('Watches options page', () => {
     ).toBeDefined();
     await user.click(screen.getByText(/^All inbox$/));
     await openWatch();
-    expect(await screen.findByRole('button', { name: 'Checking…' })).toBeDefined();
+    expect(await screen.findByRole('button', { name: 'Waiting…' })).toBeDefined();
 
     await harness.local.set({
       'watch-scheduler': {
@@ -606,6 +606,88 @@ describe('Watches options page', () => {
         `Instagram rate limited a Watch request. Checks wait until ${new Date(until).toLocaleTimeString()}.`
       )
     ).toBeDefined();
+  });
+
+  it('says checks wait for the hourly cap while it holds, without reloading', async () => {
+    seedWatchWithProblemAndEntry();
+    const now = Date.now();
+    harness.local.write('watch-scheduler', {
+      version: 1,
+      logins: {
+        [VIEWER.id]: {
+          nextRoundAt: now + 11 * 60 * 60_000,
+          remaining: [WATCH_ID],
+          earlyRetries: [],
+        },
+      },
+    });
+    render(<Watches />);
+    expect(await screen.findByText('Checking: 1 left this round')).toBeDefined();
+
+    const resumeAt = Date.now() + 3_000;
+    await harness.local.set({
+      'instagram-requests': {
+        version: 1,
+        attempts: Array.from({ length: 60 }, () => resumeAt - 60 * 60_000),
+        nextWatchAt: 0,
+      },
+    });
+
+    expect(await screen.findByText('Watches waiting.')).toBeDefined();
+    expect(
+      screen.getByText(`Watch checks resume around ${new Date(resumeAt).toLocaleTimeString()}`, {
+        exact: false,
+      })
+    ).toBeDefined();
+    expect(screen.getByText('Waiting: 1 left this round')).toBeDefined();
+    await waitFor(() => expect(screen.queryByText('Watches waiting.')).toBeNull(), {
+      timeout: 6_000,
+    });
+    expect(screen.getByText('Checking: 1 left this round')).toBeDefined();
+  });
+
+  it('shows when a rate-limit pause and a full hourly cap together let checks resume', async () => {
+    seedWatchWithProblemAndEntry();
+    const now = Date.now();
+    harness.local.write('instagram-requests', {
+      version: 1,
+      attempts: Array.from({ length: 60 }, () => now - 15 * 60_000),
+      nextWatchAt: 0,
+      pause: { until: now + 30 * 60_000, level: 0 },
+    });
+    await harness.loadWorker();
+    render(<Watches />);
+
+    expect(await screen.findByText('Watches paused.')).toBeDefined();
+    expect(
+      screen.getByText(`wait until ${new Date(now + 45 * 60_000).toLocaleTimeString()}`, {
+        exact: false,
+      })
+    ).toBeDefined();
+  });
+
+  it('says until when the hourly cap holds Check now back', async () => {
+    seedWatchWithProblemAndEntry();
+    const resumeAt = Date.now() + 10 * 60_000;
+    harness.local.write('instagram-requests', {
+      version: 1,
+      attempts: Array.from({ length: 60 }, () => resumeAt - 60 * 60_000),
+      nextWatchAt: 0,
+    });
+    await harness.loadWorker();
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(
+      await screen.findByRole('button', { name: new RegExp(`^@${TARGET.username}`) })
+    );
+    await user.click(await screen.findByRole('button', { name: 'Check now' }));
+
+    expect(
+      await screen.findByText(
+        `Watch requests are spaced out. This check can run at ${new Date(resumeAt).toLocaleTimeString()}.`
+      )
+    ).toBeDefined();
+    expect(screen.getByText('Watches waiting.')).toBeDefined();
   });
 
   it('stops with a red storage banner when the store cannot be read', async () => {
