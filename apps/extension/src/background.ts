@@ -92,6 +92,7 @@ import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
 import { previewWatchTarget, runWatchCommand, runWatchRead } from './watch/service.ts';
+import { watchAvatars } from './watch/avatar-image.ts';
 import { refreshBadge } from './watch/attention.ts';
 import {
   ALARM_NAME,
@@ -1262,6 +1263,7 @@ const messageHandlers: MessageHandlers = {
   WATCH_COMMAND: message => runWatchCommand(message.command, runPreparedInDocument),
   WATCH_READ: message => runWatchRead(message.command, message.viewer),
   WATCH_PREVIEW: message => previewWatchTarget(message.target),
+  WATCH_AVATARS: message => watchAvatars(message.viewerId),
 };
 
 /** Indexing the handler map with a type parameter keeps the request and its response correlated. */

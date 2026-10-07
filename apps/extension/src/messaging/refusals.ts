@@ -10,8 +10,7 @@ const UNREADABLE_REQUEST = 'GramGrab could not read this request. Reload the ext
  * What the background worker answers when it recognizes a message type but cannot read its
  * payload, which is what version skew looks like from the receiving side. Every answerable type
  * states its own refusal so the answer is a deliberate part of the contract rather than silence,
- * and every refusal reuses an existing failure code from that message's own subsystem: an
- * unreadable request is an extension boundary failure, not a new class of error.
+ * using existing subsystem failures or an empty response for cosmetic Avatar data.
  */
 export const MESSAGE_REFUSALS: {
   readonly [T in BackgroundMessageType]: () => MessageResponse<T>;
@@ -47,6 +46,7 @@ export const MESSAGE_REFUSALS: {
   WATCH_COMMAND: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
   WATCH_READ: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
   WATCH_PREVIEW: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
+  WATCH_AVATARS: () => ({ watches: {} }),
 };
 
 function sourceRefusal() {

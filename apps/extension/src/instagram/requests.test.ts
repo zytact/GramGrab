@@ -147,6 +147,34 @@ describe('Watch request admission', () => {
     expect(instagramCalls()).toHaveLength(2);
   });
 
+  it.each(['person', 'capacity'])('rechecks %s admission after a preflight', async condition => {
+    vi.useFakeTimers();
+    harness.setFetch(() => json({ ok: true }));
+    await harness.loadWorker();
+    const { requestLedger, withWatchAdmission } = await import('./requests.ts');
+    const result = await Effect.runPromise(
+      withWatchAdmission(requests =>
+        Effect.gen(function* () {
+          if (condition === 'person')
+            yield* Effect.promise(() => runPerson('https://www.instagram.com/person'));
+          else
+            for (let index = 0; index < 60; index++) {
+              requestLedger.begin({ kind: 'person' }, Date.now());
+              requestLedger.end({ kind: 'person' }, Date.now(), 200);
+            }
+          return yield* requests.fetch('https://www.instagram.com/watch');
+        })
+      ).pipe(Effect.either)
+    );
+    expect(Either.isLeft(result) && result.left._tag).toBe('WatchRequestDeferred');
+    expect(instagramCalls().map(([input]) => input)).toEqual(
+      condition === 'person' ? ['https://www.instagram.com/person'] : []
+    );
+    expect(requestLedger.admitWatch(Date.now())).not.toMatchObject({ reason: 'watch' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await ledger()).attempts).toHaveLength(condition === 'person' ? 1 : 60);
+  });
+
   it('never holds person-initiated requests behind Watch work', async () => {
     vi.useFakeTimers();
     let releaseWatch: (response: Response) => void = () => undefined;

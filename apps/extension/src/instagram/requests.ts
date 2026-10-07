@@ -55,6 +55,7 @@ class RequestLedger {
   private writing: Promise<void> = Promise.resolve();
   private personInFlight = 0;
   private watchInFlight = false;
+  private watchReserved = false;
 
   ready(): Promise<void> {
     this.loaded ??= browser.storage
@@ -98,7 +99,8 @@ class RequestLedger {
   admitWatch(now: number): WatchAdmission {
     if (this.personInFlight > 0)
       return { _tag: 'wait', until: now + BUSY_POLL_MS, reason: 'person' };
-    if (this.watchInFlight) return { _tag: 'wait', until: now + BUSY_POLL_MS, reason: 'watch' };
+    if (this.watchInFlight || this.watchReserved)
+      return { _tag: 'wait', until: now + BUSY_POLL_MS, reason: 'watch' };
     const until = this.nextWatchAllowedAt(now);
     if (until <= now) return { _tag: 'admit', probe: this.currentPause !== undefined };
     const reason =
@@ -115,6 +117,13 @@ class RequestLedger {
     else this.watchInFlight = true;
     this.attempts = [...this.attempts.filter(at => at > now - HOUR_MS), now];
     this.persist();
+  }
+
+  reserveWatch(): () => void {
+    this.watchReserved = true;
+    return () => {
+      this.watchReserved = false;
+    };
   }
 
   end(origin: RequestOrigin, now: number, status: number | 'failed', probe = false): void {
@@ -176,15 +185,33 @@ const personFetch = (url: string, init?: RequestInit) =>
     return yield* attempt(url, init, { kind: 'person' }, false);
   });
 
-const watchFetch = (url: string, init?: RequestInit) =>
+export const withWatchAdmission = <A, E, R>(
+  use: (requests: Context.Tag.Service<typeof InstagramRequests>) => Effect.Effect<A, E, R>
+) =>
   Effect.gen(function* () {
     yield* Effect.promise(() => requestLedger.ready());
     for (;;) {
       const now = Date.now();
       const admission = requestLedger.admitWatch(now);
       if (admission._tag === 'admit') {
-        requestLedger.begin({ kind: 'watch' }, now);
-        return yield* attempt(url, init, { kind: 'watch' }, admission.probe);
+        return yield* Effect.acquireUseRelease(
+          Effect.sync(() => requestLedger.reserveWatch()),
+          () =>
+            use({
+              fetch: (url, init) =>
+                Effect.gen(function* () {
+                  const now = Date.now();
+                  const until = Math.max(
+                    requestLedger.nextWatchAllowedAt(now),
+                    now + (requestLedger.personBusy ? BUSY_POLL_MS : 0)
+                  );
+                  if (until > now) return yield* Effect.fail(new WatchRequestDeferred({ until }));
+                  requestLedger.begin({ kind: 'watch' }, now);
+                  return yield* attempt(url, init, { kind: 'watch' }, admission.probe);
+                }),
+            }),
+          release => Effect.sync(release)
+        );
       }
       if (admission.until - now > IN_WORKER_WAIT_MS)
         return yield* Effect.fail(new WatchRequestDeferred({ until: admission.until }));
@@ -196,4 +223,6 @@ const watchFetch = (url: string, init?: RequestInit) =>
 export const PersonRequests = Layer.succeed(InstagramRequests, { fetch: personFetch });
 
 /** Unattended Watch requests: one at a time, spaced, capped, and stopped by their own 429 pause. */
-export const WatchRequests = Layer.succeed(InstagramRequests, { fetch: watchFetch });
+export const WatchRequests = Layer.succeed(InstagramRequests, {
+  fetch: (url, init) => withWatchAdmission(requests => requests.fetch(url, init)),
+});

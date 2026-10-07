@@ -43,9 +43,22 @@ import {
 } from './posts.ts';
 import { readStories, fetchStories } from './stories.ts';
 import { readInstants, sharedInstantsFeed } from './instants.ts';
-import { fetchAvatar, readAvatar } from './avatar.ts';
+import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
 import { UsernameUnconfirmed, confirmProfile, fetchViewer } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
+
+/** Failures that suspend every Watch until the person does something. */
+const SUSPENDING: ReadonlySet<FailureCode> = new Set([
+  'IG_REQUEST_REJECTED',
+  'IG_NOT_AUTHENTICATED',
+]);
+
+export const checkNeedsLogin = (outcomes: readonly KindCheckOutcome[]) =>
+  outcomes.some(outcome =>
+    outcome._tag === 'KindCheckSkipped'
+      ? outcome.reason === 'login-unverified'
+      : outcome._tag === 'KindCheckFailed' && SUSPENDING.has(outcome.code)
+  );
 
 /**
  * One Watch's check runs these stages in order. `profile` confirms the current username by
@@ -130,11 +143,13 @@ export interface CheckScope {
 
 /** One kind's turn: its outcome, and whether the rest of the check must stop. */
 interface KindStep {
+  readonly avatarAttempted?: boolean;
+  readonly loginVerified?: boolean;
   readonly outcome?: KindCheckOutcome;
   readonly stop?: boolean;
   readonly deferredUntil?: number;
-  /** The target's current Avatar URL, held only until this check's notification is sent. */
-  readonly pictureUrl?: string;
+  /** The target's current Avatar, its URL held only until this check's notification is sent. */
+  readonly avatar?: ObservedAvatar;
 }
 
 /**
@@ -188,7 +203,8 @@ const failed = (watchId: string, kind: WatchKind, error: Acquisition) =>
       watch: applyKindProblem(watch, kind, code, now),
       value: KindCheckFailed.make({ kind, code }),
     }));
-    return written(kind, write, outcome => ({ outcome }));
+    const step = written(kind, write, outcome => ({ outcome }));
+    return SUSPENDING.has(code) ? { ...step, loginVerified: false, stop: true } : step;
   });
 
 const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, scope: CheckScope) =>
@@ -320,7 +336,7 @@ const checkAvatar = (watch: Watch, checkId: string) =>
       const applied = applyAvatarCheck(current, result.right.pictureId, { checkId, now });
       return { watch: applied.watch, value: applied.outcome };
     });
-    return written('avatar', write, outcome => ({ outcome, pictureUrl: result.right.pictureUrl }));
+    return written('avatar', write, outcome => ({ outcome, avatar: result.right }));
   });
 
 /** A selected kind's turn in a check: skipped while paused, checked otherwise. */
@@ -331,7 +347,10 @@ const turn = (
 ): Effect.Effect<KindStep, never, InstagramRequests> => {
   if (!watch.enabled)
     return Effect.succeed({ outcome: KindCheckSkipped.make({ kind, reason: 'paused' }) });
-  if (kind === 'avatar') return checkAvatar(watch, scope.checkId);
+  if (kind === 'avatar')
+    return checkAvatar(watch, scope.checkId).pipe(
+      Effect.map(step => ({ ...step, avatarAttempted: true }))
+    );
   const cutoff = watch.tracking[kind]?.baselineCutoff;
   if (kind === 'posts' && cutoff !== undefined) return traversePosts(watch, cutoff, scope.checkId);
   return checkKind(watch, kind, ACQUIRERS[kind], scope);
@@ -442,13 +461,20 @@ export const checkWatch = (
     const shared = { ...scope, feedScope: `${viewerId}:${scope.feedScope}` };
     const outcomes: KindCheckOutcome[] = [];
     let blocked = false;
-    let pictureUrl: string | undefined;
+    let avatar: ObservedAvatar | undefined;
+    let avatarAttempted = false;
     for (const stage of STAGES) {
       const watch = yield* Effect.promise(() => findWatch(watchId, viewerId));
       if (!watch) break;
       const authorization = yield* authorizeStage(watch, stage, scope, only, outcomes);
       if (authorization)
-        return { ...authorization, kinds: [...outcomes, ...authorization.kinds], pictureUrl };
+        return {
+          ...authorization,
+          kinds: [...outcomes, ...authorization.kinds],
+          loginVerified: false,
+          avatar,
+          avatarAttempted,
+        };
       const result: StageResult = yield* runStage(watch, stage, only, { scope: shared, blocked });
       blocked = result.blocked;
       for (const step of result.steps) {
@@ -457,11 +483,25 @@ export const checkWatch = (
           outcomes.push(outcome);
           yield* Effect.promise(() => Promise.resolve(scope.onKind?.(outcome)));
         }
-        pictureUrl ??= step.pictureUrl;
-        if (step.stop) return { kinds: outcomes, deferredUntil: step.deferredUntil, pictureUrl };
+        avatar ??= step.avatar;
+        avatarAttempted ||= step.avatarAttempted === true;
+        if (step.stop)
+          return {
+            kinds: outcomes,
+            deferredUntil: step.deferredUntil,
+            loginVerified: step.loginVerified !== false,
+            avatar,
+            avatarAttempted,
+          };
       }
     }
-    return { kinds: outcomes, deferredUntil: undefined, pictureUrl };
+    return {
+      kinds: outcomes,
+      deferredUntil: undefined,
+      loginVerified: true,
+      avatar,
+      avatarAttempted,
+    };
   });
 
 /** The most recent check of any of the Watch's kinds. */

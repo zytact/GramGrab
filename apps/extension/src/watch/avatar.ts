@@ -55,6 +55,8 @@ export const readAvatar = (raw: unknown, targetId: string, username: string) =>
     return { pictureId, pictureUrl: match!.user.profile_pic_url ?? undefined };
   });
 
+export type ObservedAvatar = Effect.Effect.Success<ReturnType<typeof readAvatar>>;
+
 /** Searches the target's verified current username for its exact search record. */
 export const fetchAvatar = (username: string) =>
   Effect.gen(function* () {

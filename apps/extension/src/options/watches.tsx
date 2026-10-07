@@ -18,6 +18,7 @@ import {
 import { sendMessage } from '../messaging/send.ts';
 import type {
   WatchCommandResponse,
+  WatchAvatarsResponse,
   WatchFailure,
   WatchPreviewResponse,
 } from '../messaging/contracts.ts';
@@ -32,6 +33,7 @@ import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from '
 import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox-export.tsx';
 import { RecoveryActions } from './recovery-actions.tsx';
 import { AllInbox, WatchDetail, healthText, runCommand, runRead } from './watch-detail.tsx';
+import { Avatar } from './avatar.tsx';
 
 type View = 'attention' | 'inbox' | 'new' | { readonly watchId: string };
 
@@ -523,10 +525,12 @@ function AttentionView({
 
 function WatchRow({
   watch,
+  avatar,
   active,
   onOpen,
 }: {
   watch: WatchSummary;
+  avatar: string | undefined;
   active: boolean;
   onOpen: () => void;
 }) {
@@ -536,6 +540,7 @@ function WatchRow({
       className={`opt-item ${active ? 'active' : ''} ${watch.enabled ? '' : 'opt-dim'}`}
       onClick={onOpen}
     >
+      <Avatar src={avatar} username={watch.username} size="md" />
       <span className="opt-account-text opt-grow">
         <span>@{watch.username}</span>
         <span className="opt-meta">
@@ -579,12 +584,14 @@ function NavigationFoot({ list }: { list: WatchListResult }) {
 
 function Navigation({
   list,
+  avatars,
   current,
   attention,
   activeWatchId,
   onGo,
 }: {
   list: WatchListResult;
+  avatars: WatchAvatarsResponse;
   current: View;
   attention: number;
   activeWatchId: string | undefined;
@@ -596,6 +603,7 @@ function Navigation({
       <div className="opt-head">
         <Title />
         <span className="opt-viewer" title="Verified from your Instagram session">
+          <Avatar src={avatars.login} username={list.viewer.username} size="sm" />
           <span className="opt-meta">Instagram login</span> @{list.viewer.username}
         </span>
       </div>
@@ -620,6 +628,7 @@ function Navigation({
         <WatchRow
           key={item.watchId}
           watch={item}
+          avatar={avatars.watches[item.watchId]}
           active={item.watchId === activeWatchId}
           onOpen={() => onGo({ watchId: item.watchId })}
         />
@@ -733,6 +742,21 @@ export function Watches() {
   );
 }
 
+/** The cached Avatars of the login's Watches and the login's own, reread whenever `version` changes. */
+function useWatchAvatars(viewerId: string, version: number): WatchAvatarsResponse {
+  const [avatars, setAvatars] = useState<WatchAvatarsResponse>({ watches: {} });
+  useEffect(() => {
+    let current = true;
+    void sendMessage({ type: 'WATCH_AVATARS', viewerId }).then(next => {
+      if (current) setAvatars(previous => ({ ...next, login: next.login ?? previous.login }));
+    });
+    return () => {
+      current = false;
+    };
+  }, [viewerId, version]);
+  return avatars;
+}
+
 /** Why unattended checks are not running right now, if something holds them back. */
 function ScheduleNotice({ schedule }: { schedule: WatchListResult['schedule'] }) {
   if (schedule.suspended)
@@ -757,6 +781,7 @@ function Feed({
   list,
   current,
   watch,
+  avatars,
   actionFailure,
   version,
   onGo,
@@ -766,6 +791,7 @@ function Feed({
   list: WatchListResult;
   current: View;
   watch: WatchSummary | undefined;
+  avatars: WatchAvatarsResponse['watches'];
   actionFailure: WatchFailure | undefined;
   version: number;
   onGo: (view: View) => void;
@@ -794,6 +820,7 @@ function Feed({
           key={watch.watchId}
           viewer={list.viewer}
           watch={watch}
+          avatar={avatars[watch.watchId]}
           version={version}
           onChanged={onChanged}
         />
@@ -812,6 +839,7 @@ function Console({
   refresh: () => Promise<void>;
 }) {
   const exporter = useInboxExport(() => void refresh());
+  const avatars = useWatchAvatars(list.viewer.accountId, version);
   const [view, setView] = useState<View | undefined>(linkedView);
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
   const attention = list.attentionCount;
@@ -844,6 +872,7 @@ function Console({
       <div className="opt-console">
         <Navigation
           list={list}
+          avatars={avatars}
           current={current}
           attention={attention}
           activeWatchId={watch?.watchId}
@@ -854,6 +883,7 @@ function Console({
           list={list}
           current={current}
           watch={watch}
+          avatars={avatars.watches}
           actionFailure={actionFailure}
           version={version}
           onGo={go}

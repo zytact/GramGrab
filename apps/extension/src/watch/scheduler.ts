@@ -16,9 +16,10 @@ import {
   type LoginSchedule,
 } from './schedule-state.ts';
 import { refreshBadge } from './attention.ts';
-import { checkWatch, type CheckScope } from './check.ts';
+import { checkWatch, checkNeedsLogin, type CheckScope } from './check.ts';
 import { notifyCheck, resumeNotifications, notificationsNeedWork } from './notify.ts';
 import { runActions, actionsNeedWork } from './auto-download.ts';
+import { refreshAvatarImage } from './avatar-image.ts';
 import { fetchViewer } from './identity.ts';
 import { readStore } from './store.ts';
 
@@ -40,19 +41,6 @@ const RETRYABLE: ReadonlySet<FailureCode> = new Set([
   'SOURCE_SERVER_FAILED',
   'IG_RESPONSE_SHAPE_UNKNOWN',
 ]);
-/** Failures that suspend every Watch until the person does something. */
-const SUSPENDING: ReadonlySet<FailureCode> = new Set([
-  'IG_REQUEST_REJECTED',
-  'IG_NOT_AUTHENTICATED',
-]);
-
-const suspends = (outcomes: readonly KindCheckOutcome[]) =>
-  outcomes.some(outcome =>
-    outcome._tag === 'KindCheckSkipped'
-      ? outcome.reason === 'login-unverified'
-      : outcome._tag === 'KindCheckFailed' && SUSPENDING.has(outcome.code)
-  );
-
 async function loadState(): Promise<SchedulerState> {
   const stored = await browser.storage
     .get(SCHEDULER_KEY)
@@ -116,8 +104,11 @@ export async function runCheck(
       checkWatch(watchId, viewerId, scope, only).pipe(Effect.provide(WatchRequests))
     )
   );
+  if (!run.loginVerified && run.deferredUntil === undefined)
+    await updateState(state => ({ ...state, suspended: true }));
   await runActions(watchId, viewerId);
-  await notifyCheck(watchId, scope.checkId, startedAt, run.pictureUrl);
+  await notifyCheck(watchId, scope.checkId, startedAt, run.avatar?.pictureUrl);
+  await refreshAvatarImage(watchId, viewerId, run);
   const posts = run.kinds.find(outcome => outcome.kind === 'posts');
   if (posts) {
     const catchingUp = posts._tag === 'KindCheckSucceeded' && posts.catchUp;
@@ -266,7 +257,7 @@ async function recoverManualJob(viewerId: string, job: Extract<Job, { _tag: 'man
     await finishManual(viewerId, job.watchId, job.checkId, [...(job.outcomes ?? []), ...run.kinds]);
   else await deferManual(viewerId, job.watchId, job.checkId, run.deferredUntil);
   await refreshBadge();
-  return run.deferredUntil === undefined;
+  return run.loginVerified && run.deferredUntil === undefined;
 }
 
 function jobKinds(job: Exclude<Job, { _tag: 'manual' }>): readonly WatchKind[] | undefined {
@@ -301,10 +292,7 @@ async function runNextJob(viewerId: string): Promise<boolean> {
   const failures = run.kinds.flatMap(outcome =>
     outcome._tag === 'KindCheckFailed' ? [{ kind: outcome.kind, code: outcome.code }] : []
   );
-  if (suspends(run.kinds)) {
-    await updateState(current => ({ ...current, suspended: true }));
-    return false;
-  }
+  if (!run.loginVerified) return false;
   await setSchedule(viewerId, current => finishJob(current ?? schedule, job, failures, Date.now()));
   return true;
 }
@@ -508,7 +496,7 @@ export async function finishManual(
       ? [{ watchId, kind: outcome.kind, at: Date.now() + EARLY_RETRY_MS }]
       : []
   );
-  if (suspends(outcomes)) await updateState(state => ({ ...state, suspended: true }));
+  if (checkNeedsLogin(outcomes)) await updateState(state => ({ ...state, suspended: true }));
   await setSchedule(viewerId, current => ({
     ...(current ?? { nextRoundAt: Date.now(), remaining: [], earlyRetries: [] }),
     manual: current?.manual?.filter(job => job.watchId !== watchId || job.checkId !== checkId),

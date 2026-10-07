@@ -4,6 +4,7 @@ import {
   InstantsExport as ProtocolInstantsExport,
   HumanItemNumber,
   OperationId as ProtocolOperationId,
+  AccountId,
   WatchCommand,
   WatchInboxList,
   WatchList,
@@ -157,6 +158,11 @@ const WatchPreview = Schema.Struct({
   target: Schema.String.pipe(Schema.nonEmptyString()),
 });
 
+const WatchAvatars = Schema.Struct({
+  type: Schema.Literal('WATCH_AVATARS'),
+  viewerId: AccountId,
+});
+
 const RunExport = Schema.Struct({
   type: Schema.Literal('RUN_EXPORT'),
   sourceUrl: Schema.String,
@@ -201,6 +207,7 @@ const MessageSchema = Schema.Union(
   WatchCommandMessage,
   WatchReadMessage,
   WatchPreview,
+  WatchAvatars,
   RunExport,
   RunnerReady,
   RunnerProgress
@@ -291,6 +298,12 @@ export type WatchPreviewResponse =
     }
   | { readonly account?: undefined; readonly failure: WatchFailure };
 
+/** Avatar images as data URLs: the login's, and each of its Watches' by Watch ID. */
+export interface WatchAvatarsResponse {
+  readonly login?: string;
+  readonly watches: Readonly<Record<string, string>>;
+}
+
 interface MessageResponses extends Record<MessageType, unknown> {
   FETCH_MEDIA: SourceMediaResponse;
   FETCH_INSTANTS: InstantsMediaResponse;
@@ -315,6 +328,7 @@ interface MessageResponses extends Record<MessageType, unknown> {
   WATCH_COMMAND: WatchCommandResponse;
   WATCH_READ: WatchCommandResponse;
   WATCH_PREVIEW: WatchPreviewResponse;
+  WATCH_AVATARS: WatchAvatarsResponse;
   RUN_EXPORT: ExportResult;
   RUNNER_READY: void;
   RUNNER_PROGRESS: void;

@@ -166,7 +166,7 @@ const list = Effect.fn(function* (known?: WatchViewer) {
   yield* Effect.promise(() => requestLedger.ready());
   const pausedUntil = requestLedger.pausedUntil(Date.now());
   return WatchListResult.make({
-    viewer: WatchViewer.make(viewer),
+    viewer: WatchViewer.make({ accountId: viewer.accountId, username: viewer.username }),
     schedule: WatchSchedule.make({
       ...(schedule.nextRoundAt === undefined ? {} : { nextRoundAt: schedule.nextRoundAt }),
       roundRemaining: schedule.roundRemaining,

@@ -10,7 +10,13 @@ import {
   type WatchResult,
 } from '@gramgrab/protocol';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
-import { TARGET, createWatchInstagram, postsPage, storyResponse } from '../test/watch-instagram.ts';
+import {
+  TARGET,
+  VIEWER,
+  createWatchInstagram,
+  postsPage,
+  storyResponse,
+} from '../test/watch-instagram.ts';
 import type { WatchKind } from '@gramgrab/protocol';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
 import { WatchStore } from './contracts.ts';
@@ -137,7 +143,7 @@ describe('Watch scheduling', () => {
       })),
     });
 
-    await wake();
+    await wake(4);
     expect(storyRequests()).toEqual([OTHER.id, TARGET.id]);
   });
 
@@ -161,6 +167,37 @@ describe('Watch scheduling', () => {
     await harness.loadWorker();
     await wake();
     expect(storyRequests()).toEqual([TARGET.id]);
+  });
+
+  it.each(['round', 'manual'])('stops the active %s after loss of authorization', async job => {
+    await add(TARGET.username, ['stories', 'avatar']);
+    await add(OTHER.username);
+    if (job === 'manual') {
+      const { queueManual } = await import('./scheduler.ts');
+      const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+      const queued = await queueManual(VIEWER.id, crypto.randomUUID(), store.watches);
+      queued.release();
+    }
+    let rejectedViewerQueries = 0;
+    harness.setFetch((url, init) => {
+      if (
+        init?.body instanceof URLSearchParams &&
+        init.body.get('doc_id') === '28036671149327607'
+      ) {
+        instagram.state.viewer = { id: '4004', username: 'instagram' };
+        return json({ data: { user: { id: '9999', username: TARGET.username } } });
+      }
+      if (
+        new URL(url).searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3' &&
+        instagram.state.viewer?.id !== VIEWER.id
+      )
+        rejectedViewerQueries++;
+      return instagram.handle(url, init);
+    });
+    await wake();
+    expect(storyRequests()).toEqual([TARGET.id]);
+    expect(rejectedViewerQueries).toBe(1);
+    expect(harness.local.read('watch-scheduler')).toMatchObject({ suspended: true });
   });
 
   it.each(['changed', 'unverifiable'])(
@@ -245,7 +282,7 @@ describe('Watch scheduling', () => {
     await add(TARGET.username);
     await add(OTHER.username);
 
-    await wake();
+    await wake(4);
     expect(storyRequests()).toEqual([TARGET.id, OTHER.id]);
     const next = (await schedule()).nextRoundAt!;
     expect(next - START).toBeGreaterThanOrEqual(0.9 * 12 * HOUR);

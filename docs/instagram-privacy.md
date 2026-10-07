@@ -27,9 +27,14 @@ Watches are the one exception to request-in-the-moment access. See
   > links. You can pause or delete a Watch at any time.
 
 - **Requests.** Unattended requests are limited to the profile, Stories, Instants, and Posts requests
-  for enabled Watches. They run only while the creating Instagram login is verified, and the Watch
-  cadence and rate policy bounds them. Watch auto-downloads fetch from the CDN. Account Avatars for
-  notification icons and the options page load only into memory and are dropped after use.
+  for enabled Watches, plus a search request that looks up an initial Avatar when its check omitted
+  the Avatar kind, or refreshes a Watch that does not watch Avatar changes. These lookups run at most
+  once a week, including failed attempts. Unspent deferrals and login-change cancellations do not
+  count as attempts. They run only while the creating Instagram login is verified, and the Watch
+  cadence and rate policy bound them. Watch auto-downloads and Avatar images fetch from the CDN.
+  A notification icon loads into
+  memory and is dropped after use. The login's own Avatar comes from the viewer query that verifies
+  the login, so showing it costs no request; it is held only in memory.
 - **Stored state.** The Watch store lives in `storage.local` and holds only what its allowlisted
   Effect schema permits:
   - IDs: the creating viewer ID, the target account ID, and the target's current and previous usernames
@@ -39,11 +44,16 @@ Watches are the one exception to request-in-the-moment access. See
   - media references: shortcodes, media IDs, Sidecar child IDs, media type, publication time, Story
     expiry time, and discovery time
   - Avatar picture identities: the last one observed and one for each recorded change
+  - one cached Avatar image per Watch: a center-cropped 80 by 80 pixel JPEG of at most 8 KiB, with
+    its picture identity and when the image was cached. It is loaded again only when the
+    identity changes, and deleting the Watch removes it. A separate lookup timestamp bounds failed
+    refresh attempts. Optional image updates that exceed the store budget are skipped.
   - per-action and per-child outcomes, Watch attention items, and Watch inbox entries
 
-  It never holds media bytes, signed, preview, data, or blob URLs, thumbnails, captions, full or
-  display names, locations, cookies, or tokens. The viewer's own username and Avatar are fetched when
-  needed and are not stored. A Posts traversal cursor lives only in `storage.session`.
+  Apart from those Avatar images, it never holds media bytes or thumbnails. It never holds signed,
+  preview, data, or blob URLs, captions, full or display names, locations, cookies, or tokens. The
+  viewer's own username and Avatar are fetched when needed and are not stored. A Posts traversal
+  cursor lives only in `storage.session`.
 
 - **Ownership and lifetime.** Watch state belongs to the Instagram login that created it, and
   another login cannot see or use it. Inbox entries expire 30 days after discovery. The whole store
