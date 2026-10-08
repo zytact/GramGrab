@@ -352,6 +352,20 @@ describe('Watch scheduling', () => {
     expect(harness.badge).toBe('1');
   });
 
+  it('shows when the hourly cap holds Watch work, counting person requests, and does not pause', async () => {
+    const attempts = Array.from({ length: 60 }, (_, index) => START - 30 * MINUTE + index * 1_000);
+    harness.local.write('instagram-requests', { version: 1, attempts, nextWatchAt: 0 });
+    await harness.loadWorker();
+    await add(TARGET.username);
+
+    await wake();
+    const held = await schedule();
+
+    expect(storyRequests()).toEqual([]);
+    expect(held.cappedUntil).toBeGreaterThan(Date.now() + 20 * MINUTE);
+    expect(held.pausedUntil).toBeUndefined();
+  });
+
   it("never runs another login's Watches", async () => {
     await add(TARGET.username);
     instagram.state.viewer = { id: '4004', username: 'someone.else' };

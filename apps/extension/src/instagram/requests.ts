@@ -1,7 +1,15 @@
 import { Context, Data, Effect, Layer, Schema } from 'effect';
 import { NetworkError } from '../effect/errors.ts';
 import { browser } from '../lib/browser.ts';
-import { LEDGER_KEY, LedgerState, RequestPause } from './request-state.ts';
+import {
+  HOUR_MS,
+  LEDGER_KEY,
+  LedgerState,
+  RequestPause,
+  decodeLedger,
+  watchHold,
+  type LedgerView,
+} from './request-state.ts';
 
 /**
  * Every Instagram API attempt goes through `InstagramRequests`, so the person's own work and Watch
@@ -22,8 +30,6 @@ export class WatchRequestDeferred extends Data.TaggedError('WatchRequestDeferred
   until: number;
 }> {}
 
-const HOUR_MS = 60 * 60_000;
-const HOURLY_REQUEST_CAP = 60;
 const WATCH_SPACING_MS = 20_000;
 const WATCH_SPACING_JITTER_MS = 5_000;
 const PAUSE_BASE_MS = 30 * 60_000;
@@ -36,11 +42,7 @@ type RequestOrigin = { readonly kind: 'person' } | { readonly kind: 'watch' };
 
 type WatchAdmission =
   | { readonly _tag: 'admit'; readonly probe: boolean }
-  | {
-      readonly _tag: 'wait';
-      readonly until: number;
-      readonly reason: 'person' | 'watch' | 'spacing' | 'capacity' | 'paused';
-    };
+  | { readonly _tag: 'wait'; readonly until: number };
 
 /**
  * The browser's Instagram request ledger. One session signs in at a time, so the rolling cap,
@@ -61,11 +63,11 @@ class RequestLedger {
     this.loaded ??= browser.storage
       .get(LEDGER_KEY)
       .then(stored => {
-        const decoded = Schema.decodeUnknownOption(LedgerState)(stored[LEDGER_KEY]);
-        if (decoded._tag === 'None') return;
-        this.attempts = decoded.value.attempts;
-        this.nextWatchAt = decoded.value.nextWatchAt;
-        this.currentPause = decoded.value.pause;
+        const decoded = decodeLedger(stored[LEDGER_KEY]);
+        if (!decoded) return;
+        this.attempts = decoded.attempts;
+        this.nextWatchAt = decoded.nextWatchAt;
+        this.currentPause = decoded.pause;
       })
       .catch(() => undefined);
     return this.loaded;
@@ -73,8 +75,7 @@ class RequestLedger {
 
   /** When a 429 pause still holding Watch work ends, or undefined once it has run out. */
   pausedUntil(now: number): number | undefined {
-    const until = this.currentPause?.until;
-    return until !== undefined && until > now ? until : undefined;
+    return watchHold(this.view, now)?.pausedUntil;
   }
 
   get personBusy(): boolean {
@@ -86,30 +87,26 @@ class RequestLedger {
     return this.attempts.filter(at => at > now - HOUR_MS).length;
   }
 
+  get view(): LedgerView {
+    return {
+      attempts: this.attempts,
+      nextWatchAt: this.nextWatchAt,
+      ...(this.currentPause ? { pause: this.currentPause } : {}),
+    };
+  }
+
   /** When the next Watch attempt could start, ignoring work currently in flight. */
   nextWatchAllowedAt(now: number): number {
-    const recent = this.attempts.filter(at => at > now - HOUR_MS);
-    const capacityAt =
-      recent.length >= HOURLY_REQUEST_CAP
-        ? recent[recent.length - HOURLY_REQUEST_CAP]! + HOUR_MS
-        : now;
-    return Math.max(now, this.nextWatchAt, capacityAt, this.currentPause?.until ?? now);
+    return watchHold(this.view, now)?.until ?? now;
   }
 
   admitWatch(now: number): WatchAdmission {
-    if (this.personInFlight > 0)
-      return { _tag: 'wait', until: now + BUSY_POLL_MS, reason: 'person' };
-    if (this.watchInFlight || this.watchReserved)
-      return { _tag: 'wait', until: now + BUSY_POLL_MS, reason: 'watch' };
-    const until = this.nextWatchAllowedAt(now);
-    if (until <= now) return { _tag: 'admit', probe: this.currentPause !== undefined };
-    const reason =
-      until === this.currentPause?.until
-        ? 'paused'
-        : until === this.nextWatchAt
-          ? 'spacing'
-          : 'capacity';
-    return { _tag: 'wait', until, reason };
+    if (this.personInFlight > 0 || this.watchInFlight || this.watchReserved)
+      return { _tag: 'wait', until: now + BUSY_POLL_MS };
+    const hold = watchHold(this.view, now);
+    return hold
+      ? { _tag: 'wait', until: hold.until }
+      : { _tag: 'admit', probe: this.currentPause !== undefined };
   }
 
   begin(origin: RequestOrigin, now: number): void {

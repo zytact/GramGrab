@@ -89,6 +89,10 @@ decode a newer command. Additive and breaking wire changes both require a new pr
 updated participant decoders, shared compatibility fixtures, and an extension/native-host/CLI
 release produced from the same revision.
 
+Protocol 3 adds `WatchSchedule.cappedUntil`, the earliest time a Watch request can resume while
+the hourly request cap is full. Update the extension, native host and CLI together. Protocol 2
+participants receive `PROTOCOL_VERSION_UNSUPPORTED` instead of a partially decoded schedule.
+
 ## Troubleshooting
 
 - `IPC_UNAVAILABLE` or a connection error means no browser-started native host owns the endpoint.

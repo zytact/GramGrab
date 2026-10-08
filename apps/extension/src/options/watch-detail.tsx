@@ -322,6 +322,15 @@ const DEFERRED_TEXT: Record<DeferredReason, (at: string) => string> = {
 const deferredText = (reason: DeferredReason, until: number) =>
   DEFERRED_TEXT[reason](new Date(until).toLocaleTimeString());
 
+const CHECK_NOW_LABEL = { idle: 'Check now', checking: 'Checking…', waiting: 'Waiting…' } as const;
+
+/** A queued check is waiting while pacing holds it back, so it never reads as running. */
+function checkNowState(sending: boolean, check: ManualCheck | undefined) {
+  if (sending) return 'checking';
+  if (check?._tag !== 'ManualCheckPending') return 'idle';
+  return (check.deferredUntil ?? 0) > Date.now() ? 'waiting' : 'checking';
+}
+
 /** Where the Watch's manual check stands, as the worker records it. */
 function ManualCheckStatus({ check }: { check: ManualCheck }) {
   const done = check.outcomes.map(outcomeText).join(' · ');
@@ -354,7 +363,7 @@ function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => 
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [failure, setFailure] = useState<WatchFailure>();
-  const checking = sending || manualCheck?._tag === 'ManualCheckPending';
+  const state = checkNowState(sending, manualCheck);
   const check = async () => {
     setSending(true);
     setNotice(undefined);
@@ -377,10 +386,10 @@ function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => 
     <div className="opt-col">
       <button
         className="opt-btn"
-        disabled={checking || !watch.enabled}
+        disabled={state !== 'idle' || !watch.enabled}
         onClick={() => void check()}
       >
-        {checking ? 'Checking…' : 'Check now'}
+        {CHECK_NOW_LABEL[state]}
       </button>
       {manualCheck && <ManualCheckStatus check={manualCheck} />}
       {notice && <p className="opt-meta">{notice}</p>}

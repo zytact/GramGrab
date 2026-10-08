@@ -13,6 +13,7 @@ import {
   SchedulerState,
   decodeSchedulerState,
   manualChecks,
+  watchSchedule,
   type LoginSchedule,
 } from './schedule-state.ts';
 import { refreshBadge } from './attention.ts';
@@ -361,18 +362,13 @@ export async function resumeAfterPerson(): Promise<void> {
   if (state.suspended) await updateState(current => ({ ...current, suspended: undefined }));
 }
 
-/**
- * When the verified login's next round starts, how many Watches its current round has left, and
- * where each Watch's manual check stands.
- */
+/** The verified login's schedule, and where each of its Watches' manual check stands. */
 export async function scheduleOf(viewerId: string) {
   const state = await loadState();
-  const schedule = state.logins[viewerId];
+  await requestLedger.ready();
   return {
-    nextRoundAt: schedule?.nextRoundAt,
-    roundRemaining: schedule?.remaining.length ?? 0,
-    suspended: state.suspended ?? false,
-    manualChecks: manualChecks(schedule),
+    schedule: watchSchedule(state, requestLedger.view, viewerId, Date.now()),
+    manualChecks: manualChecks(state.logins[viewerId]),
   };
 }
 

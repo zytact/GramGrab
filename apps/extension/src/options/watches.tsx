@@ -12,6 +12,7 @@ import {
   type WatchCommand,
   type WatchKind,
   type WatchListResult,
+  type WatchSchedule,
   type WatchSummary,
   type WatchViewer,
 } from '@gramgrab/protocol';
@@ -26,9 +27,14 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
-import { LEDGER_KEY, storedPauseUntil } from '../instagram/request-state.ts';
+import { LEDGER_KEY, decodeLedger, type LedgerView } from '../instagram/request-state.ts';
 import { STORE_KEY } from '../watch/contracts.ts';
-import { SCHEDULER_KEY } from '../watch/schedule-state.ts';
+import {
+  SCHEDULER_KEY,
+  decodeSchedulerState,
+  watchSchedule,
+  type SchedulerState,
+} from '../watch/schedule-state.ts';
 import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';
 import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox-export.tsx';
 import { RecoveryActions } from './recovery-actions.tsx';
@@ -559,9 +565,10 @@ function WatchRow({
 }
 
 /** Other logins' Watches, when checks run next, and how full the store is. */
-function NavigationFoot({ list }: { list: WatchListResult }) {
+function NavigationFoot({ list, schedule }: { list: WatchListResult; schedule: WatchSchedule }) {
   const others = list.otherLoginWatchCount;
-  const { nextRoundAt, roundRemaining } = list.schedule;
+  const { nextRoundAt, roundRemaining, suspended, pausedUntil, cappedUntil } = schedule;
+  const held = suspended || pausedUntil !== undefined || cappedUntil !== undefined;
   return (
     <div className="opt-list-foot">
       {others > 0 && (
@@ -573,7 +580,7 @@ function NavigationFoot({ list }: { list: WatchListResult }) {
       {nextRoundAt && (
         <p className="opt-meta">
           {roundRemaining > 0
-            ? `Checking: ${roundRemaining} left this round`
+            ? `${held ? 'Waiting' : 'Checking'}: ${roundRemaining} left this round`
             : `Next checks around ${new Date(nextRoundAt).toLocaleString()}`}
         </p>
       )}
@@ -585,6 +592,7 @@ function NavigationFoot({ list }: { list: WatchListResult }) {
 function Navigation({
   list,
   avatars,
+  schedule,
   current,
   attention,
   activeWatchId,
@@ -592,6 +600,7 @@ function Navigation({
 }: {
   list: WatchListResult;
   avatars: WatchAvatarsResponse;
+  schedule: WatchSchedule;
   current: View;
   attention: number;
   activeWatchId: string | undefined;
@@ -639,7 +648,7 @@ function Navigation({
       >
         + Add Watch
       </button>
-      <NavigationFoot list={list} />
+      <NavigationFoot list={list} schedule={schedule} />
     </nav>
   );
 }
@@ -721,7 +730,9 @@ export function Watches() {
       if (
         STORE_KEY in changes ||
         SCHEDULER_KEY in changes ||
-        (ledger && storedPauseUntil(ledger.oldValue) !== storedPauseUntil(ledger.newValue))
+        (ledger &&
+          decodeLedger(ledger.oldValue)?.pause?.until !==
+            decodeLedger(ledger.newValue)?.pause?.until)
       )
         void refresh();
     };
@@ -757,8 +768,54 @@ function useWatchAvatars(viewerId: string, version: number): WatchAvatarsRespons
   return avatars;
 }
 
+function useWatchSchedule(list: WatchListResult) {
+  const viewerId = list.viewer.accountId;
+  const [records, setRecords] = useState<{
+    scheduler: SchedulerState;
+    ledger: LedgerView | undefined;
+    at: number;
+  }>();
+  useEffect(() => {
+    let active = true;
+    let latest = 0;
+    const read = () => {
+      const current = ++latest;
+      void browser.storage.get([SCHEDULER_KEY, LEDGER_KEY]).then(stored => {
+        if (!active || current !== latest) return;
+        setRecords({
+          scheduler: decodeSchedulerState(stored[SCHEDULER_KEY]),
+          ledger: decodeLedger(stored[LEDGER_KEY]),
+          at: Date.now(),
+        });
+      });
+    };
+    const listener = (changes: StorageChanges) => {
+      if (SCHEDULER_KEY in changes || LEDGER_KEY in changes) read();
+    };
+    browser.storage.onChanged.addListener(listener);
+    read();
+    return () => {
+      active = false;
+      browser.storage.onChanged.removeListener(listener);
+    };
+  }, [viewerId]);
+  const schedule = records
+    ? watchSchedule(records.scheduler, records.ledger, viewerId, records.at)
+    : list.schedule;
+  const holdEnd = schedule.cappedUntil ?? schedule.pausedUntil;
+  useEffect(() => {
+    if (holdEnd === undefined) return;
+    const timer = setTimeout(
+      () => setRecords(current => current && { ...current, at: Date.now() }),
+      Math.max(0, holdEnd - Date.now())
+    );
+    return () => clearTimeout(timer);
+  }, [holdEnd]);
+  return schedule;
+}
+
 /** Why unattended checks are not running right now, if something holds them back. */
-function ScheduleNotice({ schedule }: { schedule: WatchListResult['schedule'] }) {
+function ScheduleNotice({ schedule }: { schedule: WatchSchedule }) {
   if (schedule.suspended)
     return (
       <p className="opt-banner opt-banner-error">
@@ -770,8 +827,16 @@ function ScheduleNotice({ schedule }: { schedule: WatchListResult['schedule'] })
     return (
       <p className="opt-banner opt-banner-error">
         <strong>Watches paused.</strong> Instagram rate limited a Watch request, so Watch checks
-        wait until {new Date(schedule.pausedUntil).toLocaleTimeString()}. Your own downloads still
-        go first.
+        wait until {new Date(schedule.cappedUntil ?? schedule.pausedUntil).toLocaleTimeString()}.
+        Your own downloads still go first.
+      </p>
+    );
+  if (schedule.cappedUntil)
+    return (
+      <p className="opt-banner">
+        <strong>Watches waiting.</strong> Instagram requests in the last hour, your own included,
+        reached the hourly limit. Watch checks resume around{' '}
+        {new Date(schedule.cappedUntil).toLocaleTimeString()}, or later if more requests are made.
       </p>
     );
   return null;
@@ -779,6 +844,7 @@ function ScheduleNotice({ schedule }: { schedule: WatchListResult['schedule'] })
 
 function Feed({
   list,
+  schedule,
   current,
   watch,
   avatars,
@@ -789,6 +855,7 @@ function Feed({
   onChanged,
 }: {
   list: WatchListResult;
+  schedule: WatchSchedule;
   current: View;
   watch: WatchSummary | undefined;
   avatars: WatchAvatarsResponse['watches'];
@@ -801,7 +868,7 @@ function Feed({
   return (
     <section className="opt-feed">
       <StorageNotice storage={list.storage} />
-      <ScheduleNotice schedule={list.schedule} />
+      <ScheduleNotice schedule={schedule} />
       {actionFailure && <FailureNotice failure={actionFailure} />}
       {current === 'attention' && (
         <AttentionView list={list} onRun={onRun} onOpen={id => onGo({ watchId: id })} />
@@ -840,6 +907,7 @@ function Console({
 }) {
   const exporter = useInboxExport(() => void refresh());
   const avatars = useWatchAvatars(list.viewer.accountId, version);
+  const schedule = useWatchSchedule(list);
   const [view, setView] = useState<View | undefined>(linkedView);
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
   const attention = list.attentionCount;
@@ -873,6 +941,7 @@ function Console({
         <Navigation
           list={list}
           avatars={avatars}
+          schedule={schedule}
           current={current}
           attention={attention}
           activeWatchId={watch?.watchId}
@@ -881,6 +950,7 @@ function Console({
 
         <Feed
           list={list}
+          schedule={schedule}
           current={current}
           watch={watch}
           avatars={avatars.watches}
