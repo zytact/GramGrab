@@ -6,6 +6,9 @@ minute while the results stay open. `gramgrab inspect --json` includes
 `expiresAt` as an ISO 8601 UTC string when Instagram supplies
 `expiring_at_timestamp`. An unknown timestamp produces no field or label.
 Highlights, Posts, Avatars, Instants and WhatsApp Statuses have no Story expiry.
+Watches shows the recorded Story deadline in Found, each Watch's Inbox and All
+inbox before fetching. Fetched preview cards show the deadline from the fresh
+Story response through the same label component.
 
 ## Drive real results
 
@@ -58,6 +61,28 @@ continuing. Reloading clears the results, so fetch again to restore the current
 label. For workspace screenshots, scroll an `.item-info` into view so tall
 previews do not hide it.
 Redact media, filenames and the source field before attaching evidence to a PR.
+
+## Watches
+
+Use a naturally recorded Story discovery. A signed-in profile with active
+Stories but no Story discoveries cannot establish this path. Preserve the
+request ledger and follow [Watches](./watches.md) for account constraints.
+
+Open `options.html`, then All inbox. Story rows must show their expiry before
+`Fetch media`. Open the owning Watch and check the same entry in Found and
+Inbox. Select it, click `Fetch media`, and require its preview card's
+`time.item-expiry[datetime]` to agree with the recorded deadline. Compare in
+memory and retain equality booleans, without saving account or media IDs.
+
+Repeat the controlled-clock recipe on `SURFACE=options.html` with
+`PROOF=watches`. Both the selected row and its preview must refresh and reach
+`Expired` without another fetch. Restore the clock afterward. Hide the verified
+login, Watch account labels, filenames and media before screenshots.
+
+Other Watch kinds have no Story expiry. If there is no natural Story discovery,
+record that missing prerequisite. Do not insert fake discoveries or force a
+check to turn a baseline Story into a discovery. The Watches integration test
+owns the stored reference, summary and fetched-preview boundary.
 
 Fetch a non-Story source and require no `time.item-expiry` or CLI `expiresAt`.
 Current Stories may all have timestamps, and a live Highlight or Instant may

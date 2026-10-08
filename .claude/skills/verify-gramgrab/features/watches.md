@@ -14,6 +14,11 @@ below require an isolated QA account and a separately authorized run.
 
 ## Inbox preview
 
+Story entries show [expiry](./story-expiry.md) in Found and both inbox views
+before media is fetched. Preview cards show the same deadline after fetching.
+The label refreshes each minute and becomes `Expired`; the 30-day inbox
+retention notice remains a separate deadline.
+
 1. Open All inbox or a Watch's Inbox tab and select a naturally collected entry
    with `Select for download`. Click `Fetch media`. Require a rendered image or
    playable video with real dimensions, not merely a mounted media element.
