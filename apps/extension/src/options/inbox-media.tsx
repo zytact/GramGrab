@@ -17,6 +17,13 @@ import { nextRotation } from '../rotation/contracts.ts';
 
 type InboxItem = MediaItem & { entryId: string; child: number; avatar: boolean };
 
+function refusesOwner(failure: MessageResponse<'WATCH_INBOX_PREVIEW'>['failure']) {
+  return (
+    failure?._tag === 'CommandFailure' &&
+    (failure.failure.code === 'IG_NOT_AUTHENTICATED' || failure.failure.code === 'WATCH_NOT_FOUND')
+  );
+}
+
 function previewResult(
   entry: DiscoverySummary,
   response: MessageResponse<'WATCH_INBOX_PREVIEW'>,
@@ -52,7 +59,7 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
   const [frames, setFrames] = useState<Record<number, FrameExportSetting>>({});
   const [silent, setSilent] = useState<ReadonlySet<number>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [notices, setNotices] = useState<string[]>([]);
+  const [notices, setNotices] = useState<ReadonlyMap<string, readonly string[]>>(new Map());
   const generation = useRef(0);
   const videos = useRef<Record<number, HTMLVideoElement | null>>({});
   const pendingFrameDefaults = useRef(new Set<number>());
@@ -64,7 +71,7 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
   );
   useFrameSeekEffect(frames, runtimes, videos);
 
-  const clear = () => {
+  const clearPreview = () => {
     generation.current++;
     setItems([]);
     setRuntimes({});
@@ -72,38 +79,40 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
     setSilent(new Set());
     videos.current = {};
     pendingFrameDefaults.current.clear();
-    setNotices([]);
     setLoading(false);
   };
+  const clear = () => {
+    clearPreview();
+    setNotices(new Map());
+  };
   const fetch = async (entries: readonly DiscoverySummary[]) => {
-    clear();
+    clearPreview();
     const current = generation.current;
     setLoading(true);
     const found: InboxItem[] = [];
-    const reasons: string[] = [];
+    const reasons = new Map<string, readonly string[]>();
+    let activeEntry: DiscoverySummary | undefined;
     try {
       for (const entry of entries) {
+        activeEntry = entry;
         const response = await sendMessage({ type: 'WATCH_INBOX_PREVIEW', entryId: entry.entryId });
         if (current !== generation.current) return;
-        if (
-          response.failure?._tag === 'CommandFailure' &&
-          (response.failure.failure.code === 'IG_NOT_AUTHENTICATED' ||
-            response.failure.failure.code === 'WATCH_NOT_FOUND')
-        ) {
+        if (refusesOwner(response.failure)) {
           clear();
           onOwnerRefused();
           return;
         }
         const result = previewResult(entry, response, found.length);
         found.push(...result.items);
-        reasons.push(...result.notices);
+        reasons.set(entry.entryId, result.notices);
       }
     } catch {
-      reasons.push(FAILURE_PRESENTATION.SOURCE_UNEXPECTED_FAILURE.title);
+      if (activeEntry)
+        reasons.set(activeEntry.entryId, [FAILURE_PRESENTATION.SOURCE_UNEXPECTED_FAILURE.title]);
     } finally {
       if (current === generation.current) {
         setItems(found);
-        setNotices(reasons);
+        setNotices(previous => new Map([...previous, ...reasons]));
         setLoading(false);
       }
     }
@@ -221,7 +230,7 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
     frames,
     silent,
     loading,
-    notices,
+    notices: [...notices.values()].flat(),
     selections,
     canDownload:
       selections.length > 0 &&
@@ -232,6 +241,7 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
           itemRuntimeAt(runtimes, item.index).frame.status === 'ready'
       ),
     clear,
+    clearPreview,
     fetch,
     actions: {
       onToggle: (index: number) =>

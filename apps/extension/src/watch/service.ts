@@ -863,7 +863,9 @@ export const previewInboxEntry = (entryId: string): Promise<WatchInboxPreviewRes
           : []
       );
       const learned = learnedAvailability(discovery, missing, slots);
-      if (learned) yield* rememberAvailability(new Map([[discovery.id, learned]]));
+      const write = learned
+        ? yield* rememberAvailability(new Map([[discovery.id, learned]]))
+        : undefined;
       const unavailable: { child: number; code: FailureCode }[] = [];
       const media = slots.flatMap((slot, child) => {
         const knownMissing =
@@ -878,6 +880,16 @@ export const previewInboxEntry = (entryId: string): Promise<WatchInboxPreviewRes
         }
         return [{ ...slot.item, itemIndex: child }];
       });
-      return { media, unavailable };
+      return {
+        media,
+        unavailable,
+        ...(write?.kind === 'failed'
+          ? {
+              failure: CommandFailure.make({
+                failure: OperationFailure.make({ code: write.code, scope: 'batch' }),
+              }),
+            }
+          : {}),
+      };
     })
   );

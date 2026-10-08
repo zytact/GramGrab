@@ -61,7 +61,7 @@ export function useInboxExport(onChanged: () => void) {
       if (response.result?._tag === 'WatchInboxExportResult') {
         setOutcomes(new Map(response.result.outcomes.map(outcome => [outcome.entryId, outcome])));
         setSelected(new Map());
-        media.clear();
+        media.clearPreview();
       }
     } catch {
       setFailure(FAILURE_PRESENTATION.DOWNLOAD_UNEXPECTED_FAILURE.title);
@@ -101,14 +101,14 @@ export function useInboxExport(onChanged: () => void) {
     failed,
     download,
     retry,
-    active: selected.size > 0 || busy || failed.length > 0,
+    active: selected.size > 0 || busy || failed.length > 0 || media.notices.length > 0,
     clear: () => {
       media.clear();
       setSelected(new Map());
       if (!busy) setOutcomes(new Map());
     },
     toggle: (entry: DiscoverySummary) => {
-      media.clear();
+      media.clearPreview();
       const previous = entry.manualExport;
       if (previous) setOutcomes(current => new Map(current).set(entry.entryId, previous));
       setSelected(current => {

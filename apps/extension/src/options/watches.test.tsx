@@ -96,40 +96,55 @@ describe('Watches options page', () => {
     expect(screen.getByText(/leaves the inbox in 30 days/)).toBeDefined();
   });
 
-  it('keeps an expired Story reason visible and never selects an unavailable entry', async () => {
-    seedWatchWithProblemAndEntry([
-      {
-        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
-        checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
-        ref: { _tag: 'Instant', mediaId: '41_2002', mediaType: 'image', takenAt: 2 },
-        discoveredAt: Date.now() - 120_000,
-        unavailable: 'WATCH_INSTANT_NOT_IN_FEED',
-        collect: { at: Date.now() - 120_000 },
-      },
-      {
-        id: '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
-        checkId: CHECK_ID,
-        ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
-        discoveredAt: Date.now() - 180_000,
-        collect: { at: Date.now() - 180_000 },
-      },
-    ]);
-    const user = userEvent.setup();
-    render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
-    const [story, instant] = await screen.findAllByRole('checkbox', {
-      name: 'Select for download',
-    });
+  it.each([false, true])(
+    'keeps an expired Story reason visible when availability writes fail: %s',
+    async failWrite => {
+      seedWatchWithProblemAndEntry([
+        {
+          id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+          checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
+          ref: { _tag: 'Instant', mediaId: '41_2002', mediaType: 'image', takenAt: 2 },
+          discoveredAt: Date.now() - 120_000,
+          unavailable: 'WATCH_INSTANT_NOT_IN_FEED',
+          collect: { at: Date.now() - 120_000 },
+        },
+        {
+          id: '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+          checkId: CHECK_ID,
+          ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
+          discoveredAt: Date.now() - 180_000,
+          collect: { at: Date.now() - 180_000 },
+        },
+      ]);
+      const user = userEvent.setup();
+      render(<Watches />);
+      await user.click(await screen.findByText(/^All inbox$/));
+      const [story, instant] = await screen.findAllByRole('checkbox', {
+        name: 'Select for download',
+      });
 
-    expect(instant).toHaveProperty('disabled', true);
-    await user.click(story!);
-    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+      expect(instant).toHaveProperty('disabled', true);
+      await user.click(story!);
+      if (failWrite) {
+        const write = harness.local.set.getMockImplementation()!;
+        harness.local.set.mockImplementation(async items => {
+          if ('watch-store' in items) throw new Error('Storage write refused');
+          await write(items);
+        });
+      }
+      await user.click(screen.getByRole('button', { name: 'Fetch media' }));
 
-    await screen.findAllByText(/Story expired/);
-    await user.click(screen.getAllByRole('checkbox', { name: 'Select for download' })[2]!);
-    expect(screen.getByText(/Story expired/)).toBeDefined();
-    expect(harness.downloads).toEqual([]);
-  });
+      await screen.findAllByText(/Story expired/);
+      if (failWrite) await screen.findAllByText('The browser refused to save Watch data');
+      await user.click(screen.getAllByRole('checkbox', { name: 'Select for download' })[2]!);
+      expect(screen.getAllByText(/Story expired/).length).toBeGreaterThan(0);
+      if (failWrite)
+        expect(
+          screen.getAllByText('The browser refused to save Watch data').length
+        ).toBeGreaterThan(0);
+      expect(harness.downloads).toEqual([]);
+    }
+  );
 
   it('uses the export inspector and retries its frozen Frame settings after the controls change', async () => {
     seedWatchWithProblemAndEntry([
