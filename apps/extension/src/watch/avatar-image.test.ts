@@ -258,7 +258,7 @@ describe('Watch Avatar images', () => {
           ?.avatarLookupAt
       ).toBeUndefined();
       const { scheduleOf } = await import('./scheduler.ts');
-      expect((await scheduleOf(VIEWER.id)).suspended).toBe(true);
+      expect((await scheduleOf(VIEWER.id)).schedule.suspended).toBe(true);
     }
   );
 
@@ -355,7 +355,7 @@ describe('Watch Avatar images', () => {
         ?.avatarLookupAt
     ).toBeUndefined();
     const { scheduleOf } = await import('./scheduler.ts');
-    expect((await scheduleOf(VIEWER.id)).suspended).toBe(true);
+    expect((await scheduleOf(VIEWER.id)).schedule.suspended).toBe(true);
   });
 
   it('restores the memory-only login image from a background viewer query after restart', async () => {
