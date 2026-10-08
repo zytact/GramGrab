@@ -31,6 +31,11 @@ It builds `extension/chromium`, writes a native-messaging manifest pointing at
 `apps/native-host/bin/gramgrab-native-host.mjs`, and starts the browser with a
 free CDP port and a session-local `GRAMGRAB_IPC_PATH`.
 
+If the execution environment reaps background children when a command returns,
+keep the launch shell alive in a persistent terminal with `launch.sh && cat`.
+Retain that terminal until cleanup and close it afterward. Doctor must pass
+before driving; `nohup` alone does not establish that the browser survived.
+
 For browser-startup verification after a successful fresh launch, run cleanup
 and then `launch.sh --restart` with the same profile. This keeps the service
 worker registration, skips rebuilding, and refuses changed build bytes. A fresh

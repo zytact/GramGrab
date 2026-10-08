@@ -5,6 +5,47 @@ handlers. Read `docs/watch-live-verification.md` for the current observed matrix
 and account constraints, and `docs/watch-boundary-coverage.md` for the tests that
 own simulated failures and interruptions.
 
+On a shared real account, preserve `instagram-requests`, including inherited
+pauses and attempt counts. Use existing discoveries and the page's storage
+updates. A 429 or request-cap deferral is evidence to report, not a reason to
+retry or reset the ledger. Do not force scheduling deadlines into the past.
+Check-now, fault-injection and repeated-check recipes
+below require an isolated QA account and a separately authorized run.
+
+## Inbox preview
+
+1. Open All inbox or a Watch's Inbox tab and select a naturally collected entry
+   with `Select for download`. Click `Fetch media`. Require a rendered image or
+   playable video with real dimensions, not merely a mounted media element.
+   Capture a screenshot with the verified login hidden. A fresh preview must
+   leave browser downloads, History and Workspace draft/transfer state unchanged.
+2. Use the shared card's `Select item NN`, `Frame`, `Remove audio` and
+   `Rotate item NN` controls. Deselecting every card disables download. Frame and
+   Silent are mutually exclusive. Frame download waits for measured metadata;
+   its slider and video `currentTime` must agree at a nonzero timestamp. Rotate
+   and check the preview's orientation and aspect ratio before download.
+3. Download Original, Frame and Silent from the same recorded entry, fetching
+   again only when needed. Require completed, nonempty files; check the Frame
+   JPEG against its requested timestamp/rotation and the Silent MP4 with
+   `ffprobe` for video without audio. Use the actual re-encoding consent dialog
+   if offered. Compare delivered identities with the recorded reference in
+   memory, saving equality booleans rather than IDs or URLs.
+4. Learned unavailable reasons remain on the discovery row when selection
+   changes. An available Sidecar child keeps its recorded ordinal when another
+   child is missing or deselected. Avatar cards offer Original only, without
+   Frame, Silent or rotation. Use natural entries for these routes; missing
+   Avatar changes, Sidecars or expired entries are explicit live prerequisites,
+   with adapter boundaries owned by the focused tests.
+5. Navigate away and back, then reload once. Preview media and settings must
+   clear without becoming a Workspace draft. Actual downloads create ordinary
+   History receipts and keep discoveries in the inbox. A verified-login change
+   clears the previous owner's preview, including late asynchronous replies.
+   Exercise this only when a natural account switch occurs.
+
+Preserve completed files outside `.local/verify/` before cleanup if a reviewer
+must inspect their bytes. Keep evidence names free of identifiers; never save
+raw store or CLI dumps for these checks.
+
 ## Built page and CLI
 
 1. Launch the dedicated profile with the existing login, source `session.env`,
@@ -39,8 +80,8 @@ there, and its last finished one is in `lastManual`. `watch list --json` and
 `ManualCheckFinished` with `finishedAt` and `outcomes`. The page follows it as
 described in Live page below.
 
-1. Clear `instagram-requests` and relaunch, as in Rate-limit pause step 1, so
-   the click is not deferred. Open the `instagram` Watch and click Check now.
+1. Read the inherited request ledger first. If checks are deferred, preserve
+   that result and stop this recipe. Open the `instagram` Watch and click Check now once.
    The button reads `Checking…` and is disabled, and the line under it lists
    finished kinds and `Still to check: ...`. When pacing stops the check part
    way, the button reads `Waiting…` until that time, the same line adds the
@@ -51,9 +92,9 @@ described in Live page below.
    click is impossible while it is disabled. `watch check instagram --json`
    during the check returns `deferredReason: "queued"` and the `manual` array
    in `watch-scheduler` still holds one job for the Watch.
-3. Stay on All inbox until `watch show instagram --json` reports
-   `ManualCheckFinished`. Poll every 30 seconds at most, since each call makes
-   an Instagram request that also delays Watch pacing. A check took 2 to 11
+3. Stay on All inbox until storage reports `ManualCheckFinished`, using the
+   live page or a bounded worker-storage wait. CLI Watch reads verify the viewer
+   and consume requests, so they are not a polling mechanism. A check took 2 to 11
    minutes in live runs, longer while an unattended round shares the queue.
    Return to the Watch: the button reads `Check now` and the line reads
    `Last check ...:` with one outcome per kind. It survives a reload.
@@ -169,15 +210,16 @@ fixtures cannot show which accounts do this, so prove Posts against a live grid 
    the login before a screenshot leaves `.local/`.
 
 A copied profile can carry a rate-limit `pause` in `instagram-requests`, which makes every check
-report `deferredUntil` with no kinds run. Clear it as in step 1 of the next section before
-judging a check.
+report `deferredUntil` with no kinds run. Preserve and report that deferral on a shared account.
 
 ## Rate-limit pause
 
 Only a 429 on a Watch request pauses Watches. A person's own request that gets a
 429 must not, because Instagram routinely answers `web_profile_info` with 429
 and the person's flow falls back to `topsearch`. `scripts/throttle.mjs` answers
-the worker's matching requests with a status, so both sides are drivable:
+the worker's matching requests with a status, so both sides are drivable on an
+isolated QA account. This synthetic fault-injection recipe is not a live fetch
+and must not be run against a shared personal account:
 
 1. Read `instagram-requests` from the worker's `chrome.storage.local`. An
    inherited `pause` comes from earlier runs, so clear the key and relaunch
