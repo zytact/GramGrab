@@ -61,7 +61,7 @@ const storyItems = (targetId: string, nowSeconds: number) =>
     const { data } = yield* Schema.decodeUnknown(ReelsMediaResponseSchema)(raw).pipe(
       Effect.mapError(untrusted)
     );
-    return normalizeReelsMediaItems(data.reels_media);
+    return normalizeReelsMediaItems(data.reels_media, 'story');
   });
 
 const instantItems = (targetId: string, nowSeconds: number) =>

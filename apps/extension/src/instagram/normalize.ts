@@ -70,6 +70,7 @@ export interface MediaItem {
   takenAt?: number;
   filenameHint: string;
   creatorUsername?: string;
+  expiresAt?: string;
 }
 
 export function withItemIndexes(items: MediaItem[]): MediaItem[] {
@@ -209,9 +210,21 @@ export const normalizeKnownShortcodeMedia = (
   return Effect.succeed(items);
 };
 
-export function normalizeReelsMediaItems(reels: readonly ReelItem[]): MediaItem[] {
+export function normalizeReelsMediaItems(
+  reels: readonly ReelItem[],
+  kind: 'story' | 'highlight'
+): MediaItem[] {
   return reels.flatMap(reel =>
-    reel.items.flatMap(item => normalizeReelItem(String(reel.id), item))
+    reel.items.flatMap(item => {
+      const media = normalizeReelItem(String(reel.id), item);
+      const expiresAt =
+        kind === 'story' &&
+        'expiring_at_timestamp' in item &&
+        item.expiring_at_timestamp !== undefined
+          ? new Date(item.expiring_at_timestamp * 1000).toJSON()
+          : null;
+      return expiresAt ? media.map(entry => ({ ...entry, expiresAt })) : media;
+    })
   );
 }
 

@@ -182,6 +182,17 @@ export function isBusy(status: string): boolean {
   return status === 'fetching' || status === 'downloading';
 }
 
+function sanitizeMediaPreview(item: WorkspaceMediaItem) {
+  return {
+    ...(item.previewUrl && !item.previewUrl.startsWith('data:')
+      ? { previewUrl: item.previewUrl }
+      : {}),
+    ...(isPositiveFinitePair(item.width, item.height)
+      ? { width: item.width, height: item.height }
+      : {}),
+  };
+}
+
 export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot {
   return {
     ...snapshot,
@@ -195,13 +206,9 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
       filenameHint: item.filenameHint,
       selected: item.selected,
       ...(isRotation(item.rotation) ? { rotation: item.rotation } : {}),
-      ...(item.previewUrl && !item.previewUrl.startsWith('data:')
-        ? { previewUrl: item.previewUrl }
-        : {}),
-      ...(isPositiveFinitePair(item.width, item.height)
-        ? { width: item.width, height: item.height }
-        : {}),
+      ...sanitizeMediaPreview(item),
       ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
+      ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}),
     })),
     frameExportSettings: Object.fromEntries(
       Object.entries(snapshot.frameExportSettings).flatMap(([index, setting]) =>

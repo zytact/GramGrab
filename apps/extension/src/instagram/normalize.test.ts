@@ -1,6 +1,51 @@
-import { Effect } from 'effect';
+import { Effect, Schema } from 'effect';
 import { describe, expect, it } from 'vite-plus/test';
-import { normalizeInstantItems } from './normalize.ts';
+import { normalizeInstantItems, normalizeReelsMediaItems } from './normalize.ts';
+import { ReelsMediaResponseSchema } from '../effect/schemas.ts';
+
+describe('Story expiry normalization', () => {
+  function reels(expiresAt?: number, typename = 'GraphStoryImage') {
+    return Schema.decodeUnknownSync(ReelsMediaResponseSchema)({
+      data: {
+        reels_media: [
+          {
+            id: '1',
+            items: [
+              {
+                __typename: typename,
+                id: '2',
+                is_video: typename === 'GraphStoryVideo',
+                display_url: 'https://sanitized.invalid/story.jpg',
+                display_resources: [{ src: 'https://sanitized.invalid/story.jpg' }],
+                video_resources: [{ src: 'https://sanitized.invalid/story.mp4' }],
+                ...(expiresAt === undefined ? {} : { expiring_at_timestamp: expiresAt }),
+              },
+            ],
+          },
+        ],
+      },
+    }).data.reels_media;
+  }
+
+  it.each(['GraphStoryImage', 'GraphStoryVideo'])(
+    'preserves %s expiry as UTC ISO 8601',
+    typename => {
+      expect(normalizeReelsMediaItems(reels(1_700_000_000, typename), 'story')[0]).toMatchObject({
+        expiresAt: '2023-11-14T22:13:20.000Z',
+      });
+    }
+  );
+
+  it('omits expiry when Instagram does not provide it', () => {
+    expect(normalizeReelsMediaItems(reels(), 'story')[0]).not.toHaveProperty('expiresAt');
+  });
+
+  it('omits expiry on Highlights even when their Story payload has a timestamp', () => {
+    expect(normalizeReelsMediaItems(reels(1_700_000_000), 'highlight')[0]).not.toHaveProperty(
+      'expiresAt'
+    );
+  });
+});
 
 describe('normalizeInstantItems', () => {
   it('keeps creator usernames from producing hidden download filenames', async () => {

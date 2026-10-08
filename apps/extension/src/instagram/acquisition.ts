@@ -251,7 +251,7 @@ const fetchConfiguredReelsMedia = (variables: Record<string, unknown>) =>
 
 const fetchHighlightMediaItems = (highlightId: string) =>
   fetchConfiguredReelsMedia(createReelsRequestVariables('highlight', highlightId)).pipe(
-    Effect.map(normalizeReelsMediaItems)
+    Effect.map(reels => normalizeReelsMediaItems(reels, 'highlight'))
   );
 
 const fetchStoryMediaItems = (username: string) =>
@@ -264,7 +264,7 @@ const fetchStoryMediaItems = (username: string) =>
 
     const reels = yield* fetchConfiguredReelsMedia(createReelsRequestVariables('story', userId));
 
-    return normalizeReelsMediaItems(reels);
+    return normalizeReelsMediaItems(reels, 'story');
   });
 
 const fetchProfileMediaItems = (username: string) => {

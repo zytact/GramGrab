@@ -188,6 +188,7 @@ async function handleFetchMedia(
       history: historyMarker(instagramHistory, source.url, item),
       ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
       ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
+      ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}),
     })),
   };
 }
@@ -785,6 +786,7 @@ async function inspectCommand(sourceUrl: string): Promise<InspectResult> {
         filenameHint: item.filenameHint,
         ...(item.width ? { width: item.width } : {}),
         ...(item.height ? { height: item.height } : {}),
+        ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}),
         ...(item.history ? { history: ProtocolHistoryMarker.make(item.history) } : {}),
       })
     ),
