@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.1.0](https://github.com/zytact/GramGrab/compare/v3.0.0...v3.1.0) (2026-10-08)
+
+
+### Features
+
+* link Watch profiles and fix History decoding ([#265](https://github.com/zytact/GramGrab/issues/265)) ([4358b09](https://github.com/zytact/GramGrab/commit/4358b09c5c2c543d94ec24624b304bc931a14a40))
+* **stories:** show when stories expire ([#266](https://github.com/zytact/GramGrab/issues/266)) ([0524448](https://github.com/zytact/GramGrab/commit/05244489939069b402fb0b08170155c5154b5be0))
+* **watches:** clear inboxes in one action with bulk select and remove ([#271](https://github.com/zytact/GramGrab/issues/271)) ([71031a7](https://github.com/zytact/GramGrab/commit/71031a7fccf683ae275d6f0639407b5e239fe249))
+
+
+### Bug Fixes
+
+* **watch:** explain avatar placeholders ([#269](https://github.com/zytact/GramGrab/issues/269)) ([858ce74](https://github.com/zytact/GramGrab/commit/858ce746f34edf4e4ac8e07e0d5a482f758d8b62))
+* **watch:** use cached avatars in notifications ([#270](https://github.com/zytact/GramGrab/issues/270)) ([91f334d](https://github.com/zytact/GramGrab/commit/91f334da7eb51628bf6f0bb1d236432fd897aed0))
+
 ## [3.0.0](https://github.com/zytact/GramGrab/compare/v2.0.4...v3.0.0) (2026-10-08)
 
 
