@@ -178,6 +178,34 @@ describe('Watches options page', () => {
     );
   });
 
+  it('restores saved failed-export recovery when selecting all', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
+        discoveredAt: Date.now() - 120_000,
+        collect: { at: Date.now() - 120_000 },
+        manualExport: {
+          id: '4e0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+          children: [
+            {
+              operationId: '5e0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+              requested: { mode: { _tag: 'DirectExport' } },
+              state: 'failed',
+              code: 'BROWSER_DOWNLOAD_NETWORK_FAILED',
+            },
+          ],
+        },
+      },
+    ]);
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: 'Select all' }));
+    expect(screen.getByRole('button', { name: 'Retry failed exports' })).toBeDefined();
+  });
+
   it('opens on Needs you while a check problem needs attention, and lists collected entries', async () => {
     seedWatchWithProblemAndEntry();
     const user = userEvent.setup();

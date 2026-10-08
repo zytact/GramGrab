@@ -90,6 +90,14 @@ export function useInboxExport(onChanged: () => void) {
       })
     );
   };
+  const restoreOutcomes = (entries: readonly DiscoverySummary[]) =>
+    setOutcomes(current => {
+      const next = new Map(current);
+      for (const entry of entries) {
+        if (entry.manualExport) next.set(entry.entryId, entry.manualExport);
+      }
+      return next;
+    });
   const retry = (recovery?: 'original' | 'reencode') => {
     setConsent(false);
     const plans = failed
@@ -114,6 +122,7 @@ export function useInboxExport(onChanged: () => void) {
     remove: (entryIds: readonly string[]) => void execute(WatchInboxRemove.make({ entryIds })),
     selectAll: (entries: readonly DiscoverySummary[]) => {
       media.clearPreview();
+      restoreOutcomes(entries);
       setSelected(new Map(entries.map(entry => [entry.entryId, entry])));
     },
     active: selected.size > 0 || busy || failed.length > 0 || media.notices.length > 0 || !!failure,
@@ -125,8 +134,7 @@ export function useInboxExport(onChanged: () => void) {
     },
     toggle: (entry: DiscoverySummary) => {
       media.clearPreview();
-      const previous = entry.manualExport;
-      if (previous) setOutcomes(current => new Map(current).set(entry.entryId, previous));
+      restoreOutcomes([entry]);
       setSelected(current => {
         const next = new Map(current);
         if (!next.delete(entry.entryId)) next.set(entry.entryId, entry);
