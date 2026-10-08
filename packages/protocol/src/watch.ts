@@ -97,6 +97,15 @@ export class WatchInboxRemove extends Schema.TaggedClass<WatchInboxRemove>()('Wa
 export class WatchInboxExport extends Schema.TaggedClass<WatchInboxExport>()('WatchInboxExport', {
   entryIds: Schema.Array(NonEmptyString).pipe(Schema.minItems(1)),
   settings: Schema.optional(ExportSettings),
+  items: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        entryId: NonEmptyString,
+        child: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+        settings: ExportSettings,
+      })
+    ).pipe(Schema.minItems(1))
+  ),
 }) {}
 
 export class WatchInboxRetry extends Schema.TaggedClass<WatchInboxRetry>()('WatchInboxRetry', {

@@ -175,6 +175,26 @@ interface Selection {
   readonly selected: ReadonlySet<string>;
   readonly onToggle: (entryId: string) => void;
   readonly outcomes: ReadonlyMap<string, InboxExportOutcome>;
+  readonly busy: boolean;
+}
+
+function DiscoveryCheckbox({
+  entry,
+  selection,
+}: {
+  entry: DiscoverySummary;
+  selection: Selection;
+}) {
+  const selected = selection.selected.has(entry.entryId);
+  return (
+    <input
+      type="checkbox"
+      aria-label="Select for download"
+      checked={selected}
+      disabled={selection.busy || (!selected && entry.unavailable !== undefined)}
+      onChange={() => selection.onToggle(entry.entryId)}
+    />
+  );
 }
 
 function DiscoveryList({
@@ -195,15 +215,7 @@ function DiscoveryList({
         const outcome = selection?.outcomes.get(entry.entryId) ?? entry.manualExport;
         return (
           <div key={entry.entryId} className="opt-line opt-row opt-top">
-            {selection && (
-              <input
-                type="checkbox"
-                aria-label="Select for download"
-                checked={selection.selected.has(entry.entryId)}
-                disabled={entry.unavailable !== undefined}
-                onChange={() => selection.onToggle(entry.entryId)}
-              />
-            )}
+            {selection && <DiscoveryCheckbox entry={entry} selection={selection} />}
             <div className="opt-grow">
               <div>
                 {showAccount && `@${entry.username} · `}
@@ -251,6 +263,7 @@ function InboxList({
         selection={{
           selected: new Set(exporter.selected.keys()),
           outcomes: exporter.outcomes,
+          busy: exporter.busy,
           onToggle: entryId => {
             const entry = entries.find(candidate => candidate.entryId === entryId);
             if (entry) exporter.toggle(entry);

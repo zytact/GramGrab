@@ -179,7 +179,7 @@ const ManualExportPlan = Schema.Struct({
       operationId: Schema.UUID,
       requested: ExportSettings,
       recovery: Schema.optional(Schema.Literal('original', 'reencode')),
-      state: Schema.Literal('pending', 'starting', 'accepted', 'failed', 'skipped'),
+      state: Schema.Literal('pending', 'starting', 'accepted', 'failed', 'skipped', 'excluded'),
       code: Schema.optional(
         Schema.Union(FailureCodeSchema, Schema.Literal('SILENT_REENCODE_DECLINED'))
       ),

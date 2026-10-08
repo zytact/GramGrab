@@ -62,23 +62,45 @@ export function requestedPlan(
   discovery: Discovery,
   command: Fresh | Retry
 ): ManualExportPlan | undefined {
+  const selections =
+    command._tag === 'WatchInboxExport'
+      ? command.items?.filter(item => item.entryId === discovery.id)
+      : undefined;
+  const settings = requestedChildren(
+    discovery,
+    command._tag === 'WatchInboxExport'
+      ? (command.settings ?? { mode: DirectExport.make() })
+      : { mode: DirectExport.make() }
+  );
+  if (
+    selections &&
+    (selections.length === 0 ||
+      new Set(selections.map(item => item.child)).size !== selections.length ||
+      selections.some(item => item.child >= settings.length))
+  )
+    return undefined;
   if (
     command._tag === 'WatchInboxExport' &&
     discovery.ref._tag === 'Avatar' &&
-    command.settings &&
-    (command.settings.mode._tag !== 'DirectExport' || command.settings.rotation)
+    ((command.settings &&
+      (command.settings.mode._tag !== 'DirectExport' || command.settings.rotation)) ||
+      selections?.some(
+        item => item.settings.mode._tag !== 'DirectExport' || item.settings.rotation
+      ))
   )
     return undefined;
   if (command._tag === 'WatchInboxExport')
     return {
       id: crypto.randomUUID(),
-      children: requestedChildren(discovery, command.settings ?? { mode: DirectExport.make() }).map(
-        requested => ({
-          operationId: crypto.randomUUID(),
-          requested,
-          state: 'pending',
-        })
-      ),
+      children: settings.map((requested, child) => ({
+        operationId: crypto.randomUUID(),
+        requested: requestedChildren(
+          discovery,
+          selections?.find(item => item.child === child)?.settings ?? requested
+        )[child]!,
+        state:
+          selections && !selections.some(item => item.child === child) ? 'excluded' : 'pending',
+      })),
     };
   const previous = discovery.manualExport;
   const requested = command.plans.find(plan => plan.entryId === discovery.id);

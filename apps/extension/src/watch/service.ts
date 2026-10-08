@@ -46,6 +46,7 @@ import type {
   WatchCommandResponse,
   WatchPreviewResponse,
   WatchRead,
+  WatchInboxPreviewResponse,
 } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
 import { loginAttention, refreshBadge, watchAttentionItems } from './attention.ts';
@@ -55,7 +56,7 @@ import { retryNotify } from './notify.ts';
 import { inInbox } from './discoveries.ts';
 import { finishActions } from './auto-download.ts';
 import { recoverable, applyRecovery, recoveryOutcome } from './recovery.ts';
-import type { Learned } from './export.ts';
+import { reacquire, exportAuthorization, learnedAvailability, type Learned } from './export.ts';
 import { exportPlannedEntry } from './manual-export-run.ts';
 import { InboxExportExecution } from './manual-export.ts';
 import {
@@ -511,6 +512,23 @@ const inboxRemove = (command: Extract<WatchCommand, { _tag: 'WatchInboxRemove' }
     });
   });
 
+const rememberAvailability = (learned: ReadonlyMap<string, Learned>) =>
+  Effect.promise(() =>
+    mutateStore(current => ({
+      store: {
+        ...current,
+        watches: current.watches.map(watch => ({
+          ...watch,
+          discoveries: watch.discoveries.map(discovery => ({
+            ...discovery,
+            ...learned.get(discovery.id),
+          })),
+        })),
+      },
+      value: undefined,
+    }))
+  );
+
 /**
  * Exports each selected inbox entry's exact media with its frozen settings, in the order given. One entry's
  * failure never stops the others, and every entry stays in the inbox. What an Export shows to be
@@ -546,22 +564,7 @@ const inboxExport = (
       outcomes.push(result.outcome);
       if (result.learned) learned.set(id, result.learned);
     }
-    if (learned.size > 0)
-      yield* Effect.promise(() =>
-        mutateStore(current => ({
-          store: {
-            ...current,
-            watches: current.watches.map(watch => ({
-              ...watch,
-              discoveries: watch.discoveries.map(discovery => ({
-                ...discovery,
-                ...learned.get(discovery.id),
-              })),
-            })),
-          },
-          value: undefined,
-        }))
-      );
+    if (learned.size > 0) yield* rememberAvailability(learned);
     return WatchInboxExportResult.make({
       outcomes,
       unknownEntryIds: selected.filter(id => !entries.has(id)),
@@ -830,5 +833,63 @@ export const previewWatchTarget = (target: string): Promise<WatchPreviewResponse
       const account = yield* resolveTarget(target);
       const existing = owned(store, viewer).find(watch => watch.targetId === account.accountId);
       return { account, ...(existing ? { existing: summarize(existing) } : {}) };
+    })
+  );
+
+export const previewInboxEntry = (entryId: string): Promise<WatchInboxPreviewResponse> =>
+  runForPerson(
+    Effect.gen(function* () {
+      const store = yield* loadOrReject;
+      const viewer = yield* verifyViewer(store);
+      const entry = owned(store, viewer).flatMap(watch =>
+        watch.discoveries
+          .filter(discovery => discovery.id === entryId && inInbox(discovery, Date.now()))
+          .map(discovery => ({ watch, discovery }))
+      )[0];
+      if (!entry) return yield* reject('WATCH_NOT_FOUND');
+      const { watch, discovery } = entry;
+      if (discovery.unavailable) return yield* reject(discovery.unavailable);
+      const slots = yield* reacquire(watch, discovery.ref, Math.floor(Date.now() / 1000)).pipe(
+        Effect.catchAll(error => reject(normalizeSourceFailure(error).code))
+      );
+      const denied = yield* exportAuthorization(watch, discovery);
+      if (denied) return yield* reject(denied);
+      const ref = discovery.ref;
+      const missing = slots.flatMap((slot, child) =>
+        slot._tag === 'gone' &&
+        ref._tag === 'Sidecar' &&
+        !discovery.missingChildren?.includes(ref.children[child]!.mediaId)
+          ? [ref.children[child]!.mediaId]
+          : []
+      );
+      const learned = learnedAvailability(discovery, missing, slots);
+      const write = learned
+        ? yield* rememberAvailability(new Map([[discovery.id, learned]]))
+        : undefined;
+      const unavailable: { child: number; code: FailureCode }[] = [];
+      const media = slots.flatMap((slot, child) => {
+        const knownMissing =
+          ref._tag === 'Sidecar' &&
+          discovery.missingChildren?.includes(ref.children[child]!.mediaId);
+        if (slot._tag === 'gone' || knownMissing) {
+          unavailable.push({
+            child,
+            code: slot._tag === 'gone' ? slot.code : 'WATCH_MEDIA_UNAVAILABLE',
+          });
+          return [];
+        }
+        return [{ ...slot.item, itemIndex: child }];
+      });
+      return {
+        media,
+        unavailable,
+        ...(write?.kind === 'failed'
+          ? {
+              failure: CommandFailure.make({
+                failure: OperationFailure.make({ code: write.code, scope: 'batch' }),
+              }),
+            }
+          : {}),
+      };
     })
   );

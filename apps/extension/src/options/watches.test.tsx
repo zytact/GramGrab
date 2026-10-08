@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UNATTENDED_DISCLOSURE } from '@gramgrab/protocol';
 import { Schema } from 'effect';
@@ -96,31 +96,55 @@ describe('Watches options page', () => {
     expect(screen.getByText(/leaves the inbox in 30 days/)).toBeDefined();
   });
 
-  it('downloads selected inbox entries as Original but never selects an unavailable one', async () => {
-    seedWatchWithProblemAndEntry([
-      {
-        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
-        checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
-        ref: { _tag: 'Instant', mediaId: '41_2002', mediaType: 'image', takenAt: 2 },
-        discoveredAt: Date.now() - 120_000,
-        unavailable: 'WATCH_INSTANT_NOT_IN_FEED',
-        collect: { at: Date.now() - 120_000 },
-      },
-    ]);
-    const user = userEvent.setup();
-    render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
-    const [story, instant] = await screen.findAllByRole('checkbox', {
-      name: 'Select for download',
-    });
+  it.each([false, true])(
+    'keeps an expired Story reason visible when availability writes fail: %s',
+    async failWrite => {
+      seedWatchWithProblemAndEntry([
+        {
+          id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+          checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
+          ref: { _tag: 'Instant', mediaId: '41_2002', mediaType: 'image', takenAt: 2 },
+          discoveredAt: Date.now() - 120_000,
+          unavailable: 'WATCH_INSTANT_NOT_IN_FEED',
+          collect: { at: Date.now() - 120_000 },
+        },
+        {
+          id: '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+          checkId: CHECK_ID,
+          ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
+          discoveredAt: Date.now() - 180_000,
+          collect: { at: Date.now() - 180_000 },
+        },
+      ]);
+      const user = userEvent.setup();
+      render(<Watches />);
+      await user.click(await screen.findByText(/^All inbox$/));
+      const [story, instant] = await screen.findAllByRole('checkbox', {
+        name: 'Select for download',
+      });
 
-    expect(instant).toHaveProperty('disabled', true);
-    await user.click(story!);
-    await user.click(screen.getByRole('button', { name: 'Download Original (1)' }));
+      expect(instant).toHaveProperty('disabled', true);
+      await user.click(story!);
+      if (failWrite) {
+        const write = harness.local.set.getMockImplementation()!;
+        harness.local.set.mockImplementation(async items => {
+          if ('watch-store' in items) throw new Error('Storage write refused');
+          await write(items);
+        });
+      }
+      await user.click(screen.getByRole('button', { name: 'Fetch media' }));
 
-    await waitFor(() => expect(screen.getAllByText(/Story expired/)).toHaveLength(2));
-    expect(harness.downloads).toEqual([]);
-  });
+      await screen.findAllByText(/Story expired/);
+      if (failWrite) await screen.findAllByText('The browser refused to save Watch data');
+      await user.click(screen.getAllByRole('checkbox', { name: 'Select for download' })[2]!);
+      expect(screen.getAllByText(/Story expired/).length).toBeGreaterThan(0);
+      if (failWrite)
+        expect(
+          screen.getAllByText('The browser refused to save Watch data').length
+        ).toBeGreaterThan(0);
+      expect(harness.downloads).toEqual([]);
+    }
+  );
 
   it('uses the export inspector and retries its frozen Frame settings after the controls change', async () => {
     seedWatchWithProblemAndEntry([
@@ -139,25 +163,26 @@ describe('Watches options page', () => {
     await user.click(await screen.findByText(/^All inbox$/));
     const [, video] = await screen.findAllByRole('checkbox', { name: 'Select for download' });
     await user.click(video!);
-    await user.selectOptions(screen.getByLabelText('Export mode'), 'frame');
-    const timestamp = screen.getByLabelText('Frame timestamp in seconds');
-    await user.clear(timestamp);
-    await user.click(screen.getByRole('button', { name: 'Download Frame (1)' }));
-    expect(screen.getByText('Enter a frame timestamp of zero or more seconds.')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    const frame = await screen.findByRole('checkbox', { name: 'Frame' });
+    expect(document.querySelector('.media-item video')).not.toBeNull();
     expect(harness.downloads).toHaveLength(0);
-    await user.type(timestamp, '8.5');
+    expect(harness.browser.tabs.create).not.toHaveBeenCalled();
+    await user.click(frame);
+    const timestamp = screen.getByRole('slider');
+    fireEvent.change(timestamp, { target: { value: '8' } });
     harness.failDownloads(new Error('network failure'));
-    await user.click(screen.getByRole('button', { name: 'Download Frame (1)' }));
+    await user.click(screen.getByRole('button', { name: 'Download selected (1)' }));
     await screen.findByRole('button', { name: 'Retry failed exports' });
-    await user.selectOptions(screen.getByLabelText('Export mode'), 'direct');
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select for download' })[1]!);
     harness.failDownloads(undefined);
     await user.click(screen.getByRole('button', { name: 'Retry failed exports' }));
     await waitFor(() => expect(harness.downloads).toHaveLength(1));
     const history = await harness.send<MessageResponse<'GET_DOWNLOAD_HISTORY'>>({
       type: 'GET_DOWNLOAD_HISTORY',
     });
-    expect(history.entries).toMatchObject([{ exportMode: 'frame', frameTimestampSeconds: 8.5 }]);
-    expect(seek.mock.calls.every(([second]) => second === 8.5)).toBe(true);
+    expect(history.entries).toMatchObject([{ exportMode: 'frame', frameTimestampSeconds: 8 }]);
+    expect(seek.mock.calls.some(([second]) => second === 8)).toBe(true);
     expect(harness.browser.tabs.create).not.toHaveBeenCalled();
   });
 
@@ -166,7 +191,7 @@ describe('Watches options page', () => {
       {
         id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
         checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
-        ref: { _tag: 'Avatar', pictureId: 'PIC_B' },
+        ref: { _tag: 'Avatar', pictureId: 'PIC_A' },
         discoveredAt: Date.now() - 120_000,
         collect: { at: Date.now() - 120_000 },
       },
@@ -174,18 +199,55 @@ describe('Watches options page', () => {
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByText(/^All inbox$/));
-    const [story, avatar] = await screen.findAllByRole('checkbox', { name: 'Select for download' });
-    await user.click(story!);
-    await user.selectOptions(screen.getByLabelText('Export mode'), 'frame');
-    await user.selectOptions(screen.getByLabelText('Export rotation'), '90');
+    const [, avatar] = await screen.findAllByRole('checkbox', { name: 'Select for download' });
     await user.click(avatar!);
-    expect(screen.getByLabelText('Export mode')).toHaveProperty('value', 'direct');
-    expect(screen.getByLabelText('Export rotation')).toHaveProperty('value', '0');
-    expect(screen.getByLabelText('Export rotation')).toHaveProperty('disabled', true);
-    expect(screen.getByRole('option', { name: 'Frame at a timestamp' })).toHaveProperty(
-      'disabled',
-      true
-    );
+    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await screen.findByAltText('Preview');
+    expect(screen.queryByRole('checkbox', { name: 'Frame' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Remove audio' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Rotate item/ })).toBeNull();
+  });
+
+  it('previews Sidecar children and exports only the selected recorded child', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: {
+          _tag: 'Sidecar',
+          mediaId: '600',
+          shortcode: 'C600',
+          takenAt: 2,
+          children: [
+            { mediaId: '601', mediaType: 'image' },
+            { mediaId: '602', mediaType: 'video' },
+          ],
+        },
+        discoveredAt: Date.now(),
+        collect: { at: Date.now() },
+      },
+    ]);
+    instagram.state.media.C600 = restMedia({ id: '600', takenAt: 2, children: ['601', '602'] });
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText(/^All inbox$/));
+    const row = (await screen.findByText(/Carousel/)).closest('.opt-line');
+    if (!(row instanceof HTMLElement)) throw new Error('Missing Sidecar entry');
+    await user.click(within(row).getByRole('checkbox', { name: 'Select for download' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await screen.findByAltText('Preview');
+    expect(document.querySelectorAll('.media-item')).toHaveLength(2);
+    expect(harness.downloads).toHaveLength(0);
+    const second = document.querySelectorAll('.media-item')[1];
+    if (!(second instanceof HTMLElement)) throw new Error('Missing second media card');
+    await user.click(within(second).getByRole('checkbox', { name: 'Select item 02' }));
+    await user.click(screen.getByRole('button', { name: 'Download selected (1)' }));
+    await waitFor(() => expect(harness.downloads).toHaveLength(1));
+    const history = await harness.send<MessageResponse<'GET_DOWNLOAD_HISTORY'>>({
+      type: 'GET_DOWNLOAD_HISTORY',
+    });
+    expect(history.entries).toMatchObject([{ mediaId: '601', itemIndex: 0 }]);
+    expect(harness.browser.tabs.create).not.toHaveBeenCalled();
   });
 
   it('offers confirmation for uncertain files and dismissal for final download failures', async () => {
@@ -464,7 +526,7 @@ describe('Watches options page', () => {
     render(<Watches />);
     await user.click(await screen.findByText(/^All inbox$/));
     await user.click(await screen.findByRole('checkbox', { name: 'Select for download' }));
-    expect(screen.getByRole('button', { name: 'Download Original (1)' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Fetch media' })).toHaveProperty('disabled', false);
     const viewerRequests = instagram.state.viewerRequests;
 
     instagram.state.viewer = { id: '1002', username: 'instagram' };
@@ -474,7 +536,7 @@ describe('Watches options page', () => {
     expect(await screen.findByText('@instagram')).toBeDefined();
     expect(screen.getByText('Watches (0)')).toBeDefined();
     expect(screen.queryByRole('checkbox', { name: 'Select for download' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Download Original (1)' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Fetch media' })).toBeNull();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
   });
 

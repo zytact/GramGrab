@@ -97,6 +97,7 @@ export function MediaListSection({
   allowSilent = true,
   showPreview = true,
   layout = 'list',
+  canRotate = () => true,
 }: {
   model: MediaListModel;
   actions: MediaListActions;
@@ -105,6 +106,7 @@ export function MediaListSection({
   allowSilent?: boolean;
   showPreview?: boolean;
   layout?: 'list' | 'hero';
+  canRotate?: (item: MediaItem) => boolean;
 }) {
   const {
     mediaItems,
@@ -152,7 +154,7 @@ export function MediaListSection({
       runtime={itemRuntimeAt(itemRuntimes, item.index)}
       onError={() => onPreviewError(item)}
       onToggle={() => onToggle(item.index)}
-      onRotate={onRotate && (() => onRotate(item.index))}
+      onRotate={onRotate && canRotate(item) ? () => onRotate(item.index) : undefined}
       frameSetting={frameExportSettings[item.index]}
       removeAudio={allowSilent && removeAudioIndexes.has(item.index)}
       allowSilent={allowSilent}
@@ -461,6 +463,7 @@ function MediaControls({
       <input
         className="item-checkbox"
         type="checkbox"
+        aria-label={`Select item ${String(item.index + 1).padStart(2, '0')}`}
         checked={item.selected}
         onChange={onToggle}
         onClick={event => event.stopPropagation()}

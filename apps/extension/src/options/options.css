@@ -406,3 +406,10 @@ select {
   height: 40px;
   font-size: 20px;
 }
+
+.inbox-media {
+  width: 100%;
+}
+.inbox-media .ext-section {
+  padding: 12px 0;
+}

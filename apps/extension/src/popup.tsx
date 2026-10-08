@@ -1,3 +1,4 @@
+import { loadVideoMetadata } from './popup/video-metadata';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import './styles.css';
 import { browser } from './lib/browser';
@@ -17,9 +18,9 @@ import { useDownloadAttempt } from './download/use-download-attempt';
 import { ExportCandidate, planExportOperations } from './download/coordinator';
 import {
   clampFrameSecond,
-  defaultFrameSecond,
   frameFilename,
   maximumFrameSecond,
+  withClampedFrameSecond,
   type FrameExportSetting,
 } from './frame-export/timestamp';
 import { executeFrameExport } from './frame-export/executor';
@@ -59,46 +60,6 @@ type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
 /** Reassurance appended when a redownload fails: the stored history entry is left untouched. */
 const HISTORY_KEPT = 'History was kept.';
-
-const VIDEO_METADATA_UNAVAILABLE = 'Could not load video metadata. Retry.';
-
-/**
- * Fetches one video through the background worker and measures it. A failure the worker classified
- * is reported in its own words; anything the popup itself could not do stays generic.
- */
-async function loadVideoMetadata(
-  url: string
-): Promise<{ dataUrl: string; durationSeconds: number } | { error: string }> {
-  try {
-    const response = await sendMessage({ type: 'FETCH_VIDEO_BLOB', url });
-    if (!response.dataUrl)
-      return {
-        error: response.failure ? failureMessage(response.failure) : VIDEO_METADATA_UNAVAILABLE,
-      };
-    return {
-      dataUrl: response.dataUrl,
-      durationSeconds: await getVideoDuration(response.dataUrl),
-    };
-  } catch {
-    return { error: VIDEO_METADATA_UNAVAILABLE };
-  }
-}
-
-/** Holds one item's chosen frame second inside a newly measured duration. */
-function withClampedFrameSecond(
-  settings: Record<number, FrameExportSetting>,
-  index: number,
-  durationSeconds: number,
-  resetToDefault: boolean
-): Record<number, FrameExportSetting> {
-  const setting = settings[index];
-  if (!setting) return settings;
-  const requested = resetToDefault ? defaultFrameSecond(durationSeconds) : setting.timestampSeconds;
-  return {
-    ...settings,
-    [index]: { ...setting, timestampSeconds: clampFrameSecond(requested, durationSeconds) },
-  };
-}
 
 /** The one way the popup turns a failure into a sentence a person reads. */
 function failureMessage(failure: OperationFailure, suffix?: string): string {
@@ -272,22 +233,10 @@ export default function Popup() {
       patchRuntime(index, current =>
         withFrame(current, { ...current.frame, status: 'ready', durationSeconds, error: undefined })
       );
-      setFrameExportSettings(previous => {
-        const setting = previous[index];
-        if (!setting) return previous;
-        return {
-          ...previous,
-          [index]: {
-            ...setting,
-            timestampSeconds: clampFrameSecond(
-              pendingFrameDefaults.current.delete(index)
-                ? defaultFrameSecond(durationSeconds)
-                : setting.timestampSeconds,
-              durationSeconds
-            ),
-          },
-        };
-      });
+      const resetToDefault = pendingFrameDefaults.current.delete(index);
+      setFrameExportSettings(previous =>
+        withClampedFrameSecond(previous, index, durationSeconds, resetToDefault)
+      );
     },
     [patchRuntime]
   );
@@ -1720,43 +1669,4 @@ function renderInstantsButtonLabel(status: Status, acquisition: 'source' | 'inst
   ) : (
     'Load Instants'
   );
-}
-
-function createExportVideo(dataUrl: string) {
-  const exportVideo = document.createElement('video');
-  exportVideo.src = dataUrl;
-  exportVideo.muted = true;
-  exportVideo.playsInline = true;
-  exportVideo.crossOrigin = 'anonymous';
-  return exportVideo;
-}
-
-function releaseVideo(video: HTMLVideoElement) {
-  video.removeAttribute('src');
-  video.load();
-}
-
-function getVideoDuration(dataUrl: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const video = createExportVideo(dataUrl);
-    const cleanup = () => {
-      video.removeEventListener('loadedmetadata', onLoadedMetadata);
-      video.removeEventListener('error', onError);
-      window.clearTimeout(timeout);
-      releaseVideo(video);
-    };
-    const onLoadedMetadata = () => {
-      const duration = video.duration;
-      cleanup();
-      if (maximumFrameSecond(duration) === undefined) reject(new Error('duration unavailable'));
-      else resolve(duration);
-    };
-    const onError = () => {
-      cleanup();
-      reject(new Error('video metadata unavailable'));
-    };
-    const timeout = window.setTimeout(onError, 5_000);
-    video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
-    video.addEventListener('error', onError, { once: true });
-  });
 }

@@ -22,8 +22,10 @@ vp run package:tools
 ```
 
 Inspect `extension/chromium/gramgrab.crx`, `extension/firefox/gramgrab.xpi`, and
-the files under `artifacts/`; confirm each is non-empty. The browser packages
-must contain their manifest, popup, runner, background worker, controller,
+the files under `artifacts/`; confirm each is non-empty. A fresh verification
+launch rebuilds the unpacked Chromium directory and removes its earlier CRX.
+Re-run packaging after the live session before checking release artifacts.
+The browser packages must contain their manifest, popup, runner, background worker, controller,
 icons, license, and third-party notices. Run the packaged CLI against the
 verification session rather than using the source entry point for this check:
 

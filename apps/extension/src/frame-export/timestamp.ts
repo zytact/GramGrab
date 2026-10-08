@@ -18,6 +18,21 @@ export function clampFrameSecond(timestampSeconds: number, durationSeconds: numb
   return Math.max(0, Math.min(maximum, Math.round(timestampSeconds)));
 }
 
+export function withClampedFrameSecond(
+  settings: Record<number, FrameExportSetting>,
+  index: number,
+  durationSeconds: number,
+  resetToDefault: boolean
+): Record<number, FrameExportSetting> {
+  const setting = settings[index];
+  if (!setting) return settings;
+  const requested = resetToDefault ? defaultFrameSecond(durationSeconds) : setting.timestampSeconds;
+  return {
+    ...settings,
+    [index]: { ...setting, timestampSeconds: clampFrameSecond(requested, durationSeconds) },
+  };
+}
+
 export function formatFrameTimestamp(timestampSeconds: number): string {
   const seconds = Math.max(0, Math.round(timestampSeconds));
   return `${Math.floor(seconds / 60)

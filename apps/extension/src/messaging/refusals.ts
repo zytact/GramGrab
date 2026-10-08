@@ -47,6 +47,7 @@ export const MESSAGE_REFUSALS: {
   WATCH_READ: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
   WATCH_PREVIEW: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
   WATCH_AVATARS: () => ({ watches: {} }),
+  WATCH_INBOX_PREVIEW: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
 };
 
 function sourceRefusal() {

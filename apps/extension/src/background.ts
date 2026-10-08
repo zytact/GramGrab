@@ -91,7 +91,12 @@ import { sendTabMessage } from './messaging/send.ts';
 import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
-import { previewWatchTarget, runWatchCommand, runWatchRead } from './watch/service.ts';
+import {
+  previewInboxEntry,
+  previewWatchTarget,
+  runWatchCommand,
+  runWatchRead,
+} from './watch/service.ts';
 import { watchAvatars } from './watch/avatar-image.ts';
 import { refreshBadge } from './watch/attention.ts';
 import {
@@ -1264,6 +1269,7 @@ const messageHandlers: MessageHandlers = {
   WATCH_READ: message => runWatchRead(message.command, message.viewer),
   WATCH_PREVIEW: message => previewWatchTarget(message.target),
   WATCH_AVATARS: message => watchAvatars(message.viewerId),
+  WATCH_INBOX_PREVIEW: message => previewInboxEntry(message.entryId),
 };
 
 /** Indexing the handler map with a type parameter keeps the request and its response correlated. */
