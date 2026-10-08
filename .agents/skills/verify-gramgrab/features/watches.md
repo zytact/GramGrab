@@ -172,6 +172,14 @@ sidebar, beside each Watch in the sidebar list, and beside the username in an
 open Watch's header. Each one is an `img.opt-avatar`, or a `span.opt-avatar`
 holding the username's first letter while no picture exists.
 
+Initials have a muted fill and a thin dashed ring. Watch initials carry the
+tooltip and accessible image label `Initials stand in for pictures. Pictures
+update during Watch checks.` The login's hint is only `Initials stand in for
+pictures.` A sidebar footer shows the full Watch explanation once the initial
+cache read has finished and any Watch lacks a cached picture. It disappears
+when every Watch has a cached picture; an empty Watch list shows no note.
+Opening the page does not start an Avatar lookup.
+
 - A Watch's picture is cached on its Watch record as `avatarImage` (`pictureId`,
   base64 `jpeg`, `checkedAt`). The JPEG is 80 by 80 pixels, capped at 8 KiB
   decoded bytes. It is written after a check, never on page open. A
@@ -193,10 +201,28 @@ holding the username's first letter while no picture exists.
 1. Read the store from the worker as booleans only: whether each Watch has
    `avatarImage` and the `jpeg` length. Never print the base64 or the IDs.
 2. Open `options.html`. With no `avatarImage` yet, the row and header show the
-   initial. Run one check of a Watch with Check now and
-   wait for it to finish. Reopen the Watch: the row and header now show
+   initial. Open the Watch by its sidebar button and confirm its account and
+   status remain the button's accessible name. The row and header initials
+   have the full Watch hint in `title` and `aria-label`, and their computed
+   `border-style` is `dashed`. The footer explanation appears once, above the
+   next-check time. It is muted, rather than a warning. A pending initial cache
+   read shows no footer explanation; the focused Watches UI test owns that
+   delayed-response boundary.
+   Reuse an already queued check or let the natural round run. Check now
+   requires the separately authorized QA run described above. After a picture
+   arrives, the row and header show
    `img.opt-avatar` with a `data:image/jpeg` source, and `avatarImage.jpeg` is at
-   most 10924 base64 characters.
+   most 10924 base64 characters. If every Watch is now cached, the footer note
+   disappears without reloading. Images retain the solid border and have no
+   placeholder hint. For UI-only cache transitions, a temporary local fixture
+   is also valid: retain the original image in page memory, scale a packaged
+   icon into a bounded 80 by 80 JPEG, and set only the official Watch's
+   `avatarImage` with a unique synthetic picture identity. Label the proof as a
+   seeded local cache, never as Instagram acquisition. In a `finally` step,
+   restore the original image only if the current image still has that fixture
+   identity. Preserve any real replacement and read the latest store so other
+   fields stay current. Keep lookup timestamps and the request ledger unchanged.
+   The focused UI test covers this transition too.
 3. Reload `options.html` and compare `attempts` in `instagram-requests` before
    and after. The reload adds one attempt, the viewer query, and nothing for
    Avatars.
@@ -207,7 +233,9 @@ holding the username's first letter while no picture exists.
    worker storage events or read-only state, with a bounded timeout.
 5. To prove the render fallback, temporarily set the row image's `src` to an
    invalid local JPEG data URL. The browser decode error reaches `onError` and
-   renders the initial. Keep the store untouched. Label this as a browser
+   renders the initial with its dashed border, tooltip and accessible label.
+   This does not remove the cached image, so the footer still follows cache
+   availability. Keep the store untouched. Label this as a browser
    image-error check, then reload to restore the normal image.
 6. Keep the options page open while stopping only this extension's worker through
    CDP. After restart, a store-driven read keeps the displayed login image and

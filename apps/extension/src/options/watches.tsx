@@ -35,7 +35,14 @@ import {
   watchSchedule,
   type SchedulerState,
 } from '../watch/schedule-state.ts';
-import { ACTION_LABEL, ACTION_NOTE, KIND_LABEL, KIND_NOTE, relativeTime } from './copy.ts';
+import {
+  ACTION_LABEL,
+  ACTION_NOTE,
+  KIND_LABEL,
+  KIND_NOTE,
+  relativeTime,
+  WATCH_AVATAR_NOTE,
+} from './copy.ts';
 import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox-export.tsx';
 import { RecoveryActions } from './recovery-actions.tsx';
 import { AllInbox, WatchDetail, healthText, runCommand, runRead } from './watch-detail.tsx';
@@ -544,10 +551,16 @@ function WatchRow({
   return (
     <button
       className={`opt-item ${active ? 'active' : ''} ${watch.enabled ? '' : 'opt-dim'}`}
+      aria-labelledby={`watch-account-${watch.watchId}`}
       onClick={onOpen}
     >
-      <Avatar src={avatar} username={watch.username} size="md" />
-      <span className="opt-account-text opt-grow">
+      <Avatar
+        src={avatar}
+        username={watch.username}
+        size="md"
+        placeholderHint={WATCH_AVATAR_NOTE}
+      />
+      <span id={`watch-account-${watch.watchId}`} className="opt-account-text opt-grow">
         <span>@{watch.username}</span>
         <span className="opt-meta">
           {!watch.enabled
@@ -564,11 +577,30 @@ function WatchRow({
   );
 }
 
-/** Other logins' Watches, when checks run next, and how full the store is. */
-function NavigationFoot({ list, schedule }: { list: WatchListResult; schedule: WatchSchedule }) {
-  const others = list.otherLoginWatchCount;
+function NextChecks({ schedule }: { schedule: WatchSchedule }) {
   const { nextRoundAt, roundRemaining, suspended, pausedUntil, cappedUntil } = schedule;
   const held = suspended || pausedUntil !== undefined || cappedUntil !== undefined;
+  if (!nextRoundAt) return null;
+  return (
+    <p className="opt-meta">
+      {roundRemaining > 0
+        ? `${held ? 'Waiting' : 'Checking'}: ${roundRemaining} left this round`
+        : `Next checks around ${new Date(nextRoundAt).toLocaleString()}`}
+    </p>
+  );
+}
+
+/** Other logins' Watches, when checks run next, and how full the store is. */
+function NavigationFoot({
+  list,
+  schedule,
+  showAvatarNote,
+}: {
+  list: WatchListResult;
+  schedule: WatchSchedule;
+  showAvatarNote: boolean;
+}) {
+  const others = list.otherLoginWatchCount;
   return (
     <div className="opt-list-foot">
       {others > 0 && (
@@ -577,13 +609,8 @@ function NavigationFoot({ list, schedule }: { list: WatchListResult; schedule: W
           {others === 1 ? 'It is' : 'They are'} paused and hidden until that login signs in again.
         </p>
       )}
-      {nextRoundAt && (
-        <p className="opt-meta">
-          {roundRemaining > 0
-            ? `${held ? 'Waiting' : 'Checking'}: ${roundRemaining} left this round`
-            : `Next checks around ${new Date(nextRoundAt).toLocaleString()}`}
-        </p>
-      )}
+      {showAvatarNote && <p className="opt-meta">{WATCH_AVATAR_NOTE}</p>}
+      <NextChecks schedule={schedule} />
       <StorageMeter storage={list.storage} />
     </div>
   );
@@ -592,6 +619,7 @@ function NavigationFoot({ list, schedule }: { list: WatchListResult; schedule: W
 function Navigation({
   list,
   avatars,
+  avatarsLoaded,
   schedule,
   current,
   attention,
@@ -600,6 +628,7 @@ function Navigation({
 }: {
   list: WatchListResult;
   avatars: WatchAvatarsResponse;
+  avatarsLoaded: boolean;
   schedule: WatchSchedule;
   current: View;
   attention: number;
@@ -648,7 +677,13 @@ function Navigation({
       >
         + Add Watch
       </button>
-      <NavigationFoot list={list} schedule={schedule} />
+      <NavigationFoot
+        list={list}
+        schedule={schedule}
+        showAvatarNote={
+          avatarsLoaded && list.watches.some(watch => !avatars.watches[watch.watchId])
+        }
+      />
     </nav>
   );
 }
@@ -754,18 +789,18 @@ export function Watches() {
 }
 
 /** The cached Avatars of the login's Watches and the login's own, reread whenever `version` changes. */
-function useWatchAvatars(viewerId: string, version: number): WatchAvatarsResponse {
-  const [avatars, setAvatars] = useState<WatchAvatarsResponse>({ watches: {} });
+function useWatchAvatars(viewerId: string, version: number) {
+  const [avatars, setAvatars] = useState<WatchAvatarsResponse>();
   useEffect(() => {
     let current = true;
     void sendMessage({ type: 'WATCH_AVATARS', viewerId }).then(next => {
-      if (current) setAvatars(previous => ({ ...next, login: next.login ?? previous.login }));
+      if (current) setAvatars(previous => ({ ...next, login: next.login ?? previous?.login }));
     });
     return () => {
       current = false;
     };
   }, [viewerId, version]);
-  return avatars;
+  return { images: avatars ?? { watches: {} }, loaded: avatars !== undefined };
 }
 
 function useWatchSchedule(list: WatchListResult) {
@@ -906,7 +941,10 @@ function Console({
   refresh: () => Promise<void>;
 }) {
   const exporter = useInboxExport(() => void refresh());
-  const avatars = useWatchAvatars(list.viewer.accountId, version);
+  const { images: avatars, loaded: avatarsLoaded } = useWatchAvatars(
+    list.viewer.accountId,
+    version
+  );
   const schedule = useWatchSchedule(list);
   const [view, setView] = useState<View | undefined>(linkedView);
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
@@ -941,6 +979,7 @@ function Console({
         <Navigation
           list={list}
           avatars={avatars}
+          avatarsLoaded={avatarsLoaded}
           schedule={schedule}
           current={current}
           attention={attention}

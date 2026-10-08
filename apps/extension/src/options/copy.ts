@@ -1,5 +1,8 @@
 import type { WatchAction, WatchKind } from '@gramgrab/protocol';
 
+export const WATCH_AVATAR_NOTE =
+  'Initials stand in for pictures. Pictures update during Watch checks.';
+
 export const KIND_LABEL: Record<WatchKind, string> = {
   posts: 'Posts',
   stories: 'Stories',
