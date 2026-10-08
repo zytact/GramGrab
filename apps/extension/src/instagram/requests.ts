@@ -13,7 +13,7 @@ import {
 
 /**
  * Every Instagram API attempt goes through `InstagramRequests`, so the person's own work and Watch
- * work share one ledger of real attempts. CDN media and Avatar icon fetches do not use it.
+ * work share one ledger of real attempts. CDN media and Avatar image fetches do not use it.
  */
 export class InstagramRequests extends Context.Tag('InstagramRequests')<
   InstagramRequests,

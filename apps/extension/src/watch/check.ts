@@ -148,7 +148,7 @@ interface KindStep {
   readonly outcome?: KindCheckOutcome;
   readonly stop?: boolean;
   readonly deferredUntil?: number;
-  /** The target's current Avatar, its URL held only until this check's notification is sent. */
+  /** The target's current Avatar, its URL held only while this check refreshes the cached image. */
   readonly avatar?: ObservedAvatar;
 }
 

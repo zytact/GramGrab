@@ -32,8 +32,8 @@ Watches are the one exception to request-in-the-moment access. See
   once a week, including failed attempts. Unspent deferrals and login-change cancellations do not
   count as attempts. They run only while the creating Instagram login is verified, and the Watch
   cadence and rate policy bound them. Watch auto-downloads and Avatar images fetch from the CDN.
-  A notification icon loads into
-  memory and is dropped after use. The login's own Avatar comes from the viewer query that verifies
+  Notifications use the cached Watch Avatar without another CDN request.
+  The login's own Avatar comes from the viewer query that verifies
   the login, so showing it costs no request; it is held only in memory.
 - **Stored state.** The Watch store lives in `storage.local` and holds only what its allowlisted
   Effect schema permits:
