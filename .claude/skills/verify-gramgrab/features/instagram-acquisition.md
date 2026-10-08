@@ -6,9 +6,11 @@ here.
 
 ## Sub-features
 
-- Source acquisition: a post, reel, story, highlight, or profile URL. A bare
-  username targets that account's active Stories. A profile URL resolves the
-  account avatar.
+- Source acquisition: a post, reel, story, highlight, or profile URL. The popup
+  and workspace require a URL. The CLI also accepts a bare username for that
+  account's active Stories. A profile URL resolves its Avatar and Highlight covers.
+- [Story expiry](./story-expiry.md): relative time on Story results and an
+  absolute UTC `expiresAt` in CLI inspection.
 - URL canonicalisation on blur, and auto-detection from the active tab, which
   pre-fills the field and shows `Instagram URL detected - ready to fetch.`
 - Instants: the signed-in account's own feed, fetched without a URL. Reads the

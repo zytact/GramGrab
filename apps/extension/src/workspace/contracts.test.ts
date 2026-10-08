@@ -90,6 +90,15 @@ describe('workspace contracts', () => {
     expect(item).toMatchObject({ width: 1080, height: 1920 });
   });
 
+  it('keeps Story expiry when transferring results to the workspace', () => {
+    const expiresAt = '2026-10-08T12:00:00.000Z';
+    const transferred = sanitizeSnapshot({
+      ...snapshot,
+      mediaItems: [{ ...snapshot.mediaItems[0]!, expiresAt }],
+    });
+    expect(transferred.mediaItems[0]?.expiresAt).toBe(expiresAt);
+  });
+
   it('keeps older geometry-free snapshots valid', () => {
     const olderSnapshot = sanitizeSnapshot({
       ...snapshot,

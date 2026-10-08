@@ -206,6 +206,7 @@ export const MediaItem = Schema.Struct({
   height: Schema.optional(Schema.Number),
   history: Schema.optional(HistoryMarker),
   creatorUsername: Schema.optional(Schema.String),
+  expiresAt: Schema.optional(Schema.String),
 });
 export type MediaItem = Schema.Schema.Type<typeof MediaItem>;
 
@@ -220,6 +221,7 @@ export class InspectedMedia extends Schema.Class<InspectedMedia>('InspectedMedia
   height: Schema.optional(Schema.Number.pipe(Schema.positive())),
   history: Schema.optional(HistoryMarker),
   creatorUsername: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
+  expiresAt: Schema.optional(Schema.String),
 }) {}
 
 export class InspectResult extends Schema.TaggedClass<InspectResult>()('InspectResult', {

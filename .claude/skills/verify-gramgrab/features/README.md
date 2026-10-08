@@ -15,6 +15,7 @@ for that.
 | --------------------------------------------------- | ------------------------ | -------------------------- |
 | [CLI bridge](./cli-bridge.md)                       | CLI, native host, worker | no                         |
 | [Instagram acquisition](./instagram-acquisition.md) | popup, workspace, CLI    | yes                        |
+| [Story expiry](./story-expiry.md)                   | popup, workspace, Watches, CLI | yes, with active Stories |
 | [Workspace and context menus](./workspace.md)       | popup, workspace, browser menu | yes, to fetch         |
 | [Export modes](./export-modes.md)                   | popup, workspace, Watches, CLI | yes, for real media   |
 | [Download history](./download-history.md)           | popup, CLI               | no, to read; yes, to fill  |

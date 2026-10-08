@@ -24,6 +24,7 @@ import {
   Request,
 } from '@gramgrab/protocol';
 import { protocolConfig } from './instagram-protocol/config.ts';
+import { ReelsMediaResponseSchema } from './effect/schemas.ts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -1154,9 +1155,9 @@ describe('background dispatcher', () => {
   });
 
   describe('FETCH_MEDIA — story', () => {
-    const storyUrl = 'https://www.instagram.com/stories/someuser/';
+    const storyUrl = 'https://www.instagram.com/stories/instagram/';
     const topSearchHit = {
-      users: [{ user: { username: 'someuser', pk: '4242' } }],
+      users: [{ user: { username: 'instagram', pk: '4242' } }],
     };
 
     function storyFetchMock(topSearch: () => Response, reels: () => Response) {
@@ -1168,6 +1169,54 @@ describe('background dispatcher', () => {
         return reels();
       });
     }
+
+    it.each([undefined, 1_700_000_000])(
+      'returns Story expiry through native inspect: %s',
+      async timestamp => {
+        const raw: unknown = JSON.parse(
+          readFileSync(join(import.meta.dirname, 'effect/__fixtures__/story.json'), 'utf8')
+        );
+        const decoded = Schema.decodeUnknownSync(ReelsMediaResponseSchema)(raw);
+        const payload = {
+          data: {
+            reels_media: decoded.data.reels_media.map(reel => ({
+              ...reel,
+              items: reel.items.map(item => ({ ...item, expiring_at_timestamp: timestamp })),
+            })),
+          },
+        };
+        globalThis.fetch = storyFetchMock(
+          () => jsonResponse(topSearchHit),
+          () => jsonResponse(payload)
+        );
+        await loadBackground();
+        const request = Schema.decodeUnknownSync(Request)({
+          version: PROTOCOL_VERSION,
+          requestId: crypto.randomUUID(),
+          command: Inspect.make({ sourceUrl: storyUrl }),
+        });
+        fakeBrowserObj.getNativeMessageListener()?.(Schema.encodeSync(Request)(request));
+        await vi.waitFor(() => {
+          const terminal = fakeBrowserObj.nativeMessages
+            .map(message => Schema.decodeUnknownSync(Event)(message))
+            .find(({ event }) => event._tag === 'Completed');
+          expect(terminal?.event._tag).toBe('Completed');
+          if (
+            terminal?.event._tag !== 'Completed' ||
+            terminal.event.result._tag !== 'InspectResult'
+          )
+            throw new Error('Expected an inspect result');
+          expect(terminal.event.result.items.length).toBeGreaterThan(0);
+          for (const item of terminal.event.result.items) {
+            const encoded = Schema.encodeSync(Event)(terminal).event;
+            expect(JSON.stringify(encoded).includes('expiresAt')).toBe(timestamp !== undefined);
+            expect(item.expiresAt).toBe(
+              timestamp === undefined ? undefined : '2023-11-14T22:13:20.000Z'
+            );
+          }
+        });
+      }
+    );
 
     it('preserves a username lookup rate limit', async () => {
       globalThis.fetch = fetchMock(async () => jsonResponse({}, 429));

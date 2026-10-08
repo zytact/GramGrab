@@ -15,6 +15,7 @@ import { distributeMasonryItems } from '../workspace/masonry';
 import { resolveMediaRatio } from '../workspace/media-ratio';
 import { swapsAxes } from '../rotation/contracts';
 import { itemRuntimeAt, type ItemRuntime, type ItemRuntimes, type MediaItem } from './media-item';
+import { StoryExpiry } from './story-expiry';
 
 export type MediaListModel = {
   mediaItems: MediaItem[];
@@ -533,6 +534,7 @@ function MediaItemRow(props: MediaItemRowProps) {
         )}
         <span className="item-filename">{item.filenameHint}</span>
         {item.creatorUsername && <span className="item-creator">@{item.creatorUsername}</span>}
+        <StoryExpiry expiresAt={item.expiresAt} />
         {attemptEntry?.outcome.status === 'pending' && (
           <span className="download-item-status pending">
             {attemptEntry.outcome.phase

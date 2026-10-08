@@ -257,6 +257,7 @@ export function summarizeDiscovery(
 ): DiscoverySummary {
   const { ref } = discovery;
   const download = downloadOutcome(discovery);
+  const expiresAt = ref._tag === 'Story' ? new Date(ref.expiresAt * SECOND_MS).toJSON() : null;
   return DiscoverySummary.make({
     entryId: discovery.id,
     ...(discovery.manualExport
@@ -270,6 +271,7 @@ export function summarizeDiscovery(
       ref._tag === 'Sidecar' ? 'sidecar' : ref._tag === 'Avatar' ? 'avatar' : ref.mediaType,
     ...(ref._tag === 'Sidecar' ? { childCount: ref.children.length } : {}),
     discoveredAt: discovery.discoveredAt,
+    ...(expiresAt ? { expiresAt } : {}),
     ...(inInbox(discovery, now)
       ? {
           inboxUntil: discovery.discoveredAt + RETENTION_MS,

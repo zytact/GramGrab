@@ -298,7 +298,8 @@ input:focus-visible {
   border-bottom: none;
 }
 
-.item-creator {
+.item-creator,
+.item-expiry {
   color: var(--text-muted);
   font-size: 12px;
 }
