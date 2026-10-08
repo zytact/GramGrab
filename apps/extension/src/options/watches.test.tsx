@@ -15,7 +15,8 @@ import {
   stubAvatarScaling,
 } from '../test/watch-instagram.ts';
 import { processingBrowser } from '../test/processing-browser.ts';
-import type { MessageResponse } from '../messaging/contracts.ts';
+import type { MessageResponse, WatchAvatarsResponse } from '../messaging/contracts.ts';
+import { WATCH_AVATAR_NOTE } from './copy.ts';
 import { Watches } from './watches.tsx';
 
 const WATCH_ID = '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f';
@@ -378,9 +379,62 @@ describe('Watches options page', () => {
       STUB_AVATAR,
     ]);
     expect(container.querySelector('.opt-viewer .opt-avatar')?.textContent).toBe('I');
+    expect(screen.queryByText(WATCH_AVATAR_NOTE)).toBeNull();
     fireEvent.error(pictures()[0]!);
     expect(container.querySelector('.opt-item .opt-avatar')?.textContent).toBe('I');
+    expect(container.querySelector('.opt-item .opt-avatar')?.getAttribute('title')).toBe(
+      WATCH_AVATAR_NOTE
+    );
+    expect(container.querySelector('.opt-item .opt-avatar')?.getAttribute('aria-label')).toBe(
+      WATCH_AVATAR_NOTE
+    );
     expect(pictures()).toHaveLength(1);
+  });
+
+  it('explains missing pictures after the cache read and clears the note when a picture arrives', async () => {
+    seedWatchWithProblemAndEntry();
+    const send = harness.browser.runtime.sendMessage.getMockImplementation()!;
+    const reads: ((value: WatchAvatarsResponse) => void)[] = [];
+    harness.browser.runtime.sendMessage.mockImplementation(message => {
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        'type' in message &&
+        message.type === 'WATCH_AVATARS'
+      )
+        return new Promise<WatchAvatarsResponse>(resolve => reads.push(resolve));
+      return send(message);
+    });
+    const { container } = render(<Watches />);
+    await screen.findByRole('button', { name: /@\s*instagram/ });
+    await waitFor(() => expect(reads.length).toBeGreaterThan(0));
+    expect(screen.queryByText(WATCH_AVATAR_NOTE)).toBeNull();
+
+    await act(async () => {
+      reads.forEach(resolve => resolve({ watches: {} }));
+    });
+    expect(await screen.findByText(WATCH_AVATAR_NOTE)).toBeDefined();
+    expect(container.querySelector('.opt-item .opt-avatar')?.getAttribute('title')).toBe(
+      WATCH_AVATAR_NOTE
+    );
+
+    harness.browser.runtime.sendMessage.mockImplementation(send);
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    await act(async () => {
+      await harness.local.set({
+        'watch-store': {
+          ...store,
+          watches: store.watches.map(watch => ({
+            ...watch,
+            avatarImage: { pictureId: 'PIC_A', jpeg: '/9j/2Q==', checkedAt: Date.now() },
+          })),
+        },
+      });
+    });
+    await waitFor(() => expect(screen.queryByText(WATCH_AVATAR_NOTE)).toBeNull());
+    expect(container.querySelector('.opt-item img.opt-avatar')?.getAttribute('src')).toBe(
+      STUB_AVATAR
+    );
   });
 
   it('shows only sign-in guidance and the stored count without a verified login', async () => {

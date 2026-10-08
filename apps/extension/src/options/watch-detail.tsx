@@ -20,7 +20,7 @@ import { sendMessage } from '../messaging/send.ts';
 import type { WatchCommandResponse, WatchFailure, WatchRead } from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { StoryExpiry } from '../popup/story-expiry.tsx';
-import { KIND_LABEL, relativeTime } from './copy.ts';
+import { KIND_LABEL, relativeTime, WATCH_AVATAR_NOTE } from './copy.ts';
 import { useInboxSelection } from './inbox-export.tsx';
 import { Avatar } from './avatar.tsx';
 
@@ -448,7 +448,12 @@ export function WatchDetail({
   return (
     <>
       <div className="opt-row opt-between">
-        <Avatar src={avatar} username={watch.username} size="lg" />
+        <Avatar
+          src={avatar}
+          username={watch.username}
+          size="lg"
+          placeholderHint={WATCH_AVATAR_NOTE}
+        />
         <div className="opt-account-text opt-grow">
           <a
             className="opt-h1 opt-profile-link"

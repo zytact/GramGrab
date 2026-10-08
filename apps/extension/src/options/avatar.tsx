@@ -5,10 +5,12 @@ export function Avatar({
   src,
   username,
   size,
+  placeholderHint = 'Initials stand in for pictures.',
 }: {
   src: string | undefined;
   username: string;
   size: 'sm' | 'md' | 'lg';
+  placeholderHint?: string;
 }) {
   const [failedSrc, setFailedSrc] = useState<string>();
   return src && src !== failedSrc ? (
@@ -19,7 +21,12 @@ export function Avatar({
       onError={() => setFailedSrc(src)}
     />
   ) : (
-    <span className={`opt-avatar opt-avatar-${size}`} aria-hidden="true">
+    <span
+      className={`opt-avatar opt-avatar-${size} opt-avatar-placeholder`}
+      role="img"
+      aria-label={placeholderHint}
+      title={placeholderHint}
+    >
       {username.charAt(0).toUpperCase()}
     </span>
   );

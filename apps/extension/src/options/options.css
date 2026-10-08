@@ -409,6 +409,9 @@ select {
   height: 20px;
   font-size: 11px;
 }
+.opt-avatar-placeholder {
+  border-style: dashed;
+}
 .opt-avatar-md {
   width: 28px;
   height: 28px;
