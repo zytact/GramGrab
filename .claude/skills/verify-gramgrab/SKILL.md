@@ -196,6 +196,10 @@ as an ordinary tab instead. Opened plain it is the popup surface; opened with
 URL ends with the match wins, so `popup.html` selects the plain popup and
 `popup.html?surface` the workspace even when both tabs are open.
 
+`click` supplies a CDP user gesture so a button can request optional notification
+permission. Accept the browser's permission prompt if it appears. A plain `eval`
+does not supply that gesture.
+
 CSS uppercases much of the chrome. `drive.mjs text` and `wait` read `innerText`,
 so they see `HISTORY` and `FETCH MEDIA`, while `textContent` in an `eval`
 selector still reads `History`. Select on `textContent`, wait on the uppercase

@@ -84,12 +84,13 @@ async function send(target, method, params = {}) {
   }
 }
 
-async function evaluate(match, expression) {
+async function evaluate(match, expression, userGesture = false) {
   const target = await findTarget(match);
   const result = await send(target, 'Runtime.evaluate', {
     expression,
     awaitPromise: true,
     returnByValue: true,
+    userGesture,
   });
   if (result.exceptionDetails)
     fail(result.exceptionDetails.exception?.description ?? 'Evaluation threw.');
@@ -141,7 +142,8 @@ if (command === 'targets') {
   if (!match || !selector) fail('Usage: drive.mjs click <match> <selector>');
   await evaluate(
     match,
-    `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!(element instanceof HTMLElement)) throw new Error('Clickable element not found.'); element.click(); })()`
+    `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!(element instanceof HTMLElement)) throw new Error('Clickable element not found.'); element.click(); })()`,
+    true
   );
   process.stdout.write(`${selector}\n`);
 } else if (command === 'key') {

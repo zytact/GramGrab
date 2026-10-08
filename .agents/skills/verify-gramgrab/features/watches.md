@@ -215,6 +215,39 @@ holding the username's first letter while no picture exists.
    unavailable. Delete the Watch through its confirmation UI and confirm both
    the Watch record and its cached image are gone.
 
+## Notification Avatar
+
+Every Watch notification uses the same cached Avatar as the Watches page,
+including retries and pending delivery after a worker restart. Notifications do
+not fetch an image. A check refreshes the cache before notifying, so a picture
+cached by that check can appear immediately. A Watch without Avatar tracking
+keeps the existing weekly refresh limit. No cached picture, or a picture the
+browser rejects, uses GramGrab's packaged icon instead.
+
+1. Use an existing enabled Watch with notifications and a cached Avatar. It
+   need not track Avatar changes. Read cache presence and notification states
+   as booleans only, and preserve the request ledger.
+2. Let a natural discovery notify, or open Needs you and click an existing
+   notification's Retry button. Accept the optional permission prompt if
+   offered. Compare the icon sent to `notifications.create` with the cached
+   JPEG in memory, retain an equality boolean, and require browser acceptance.
+   A read-only probe must forward calls to the real API. Capture the Avatar
+   and notification with the login hidden.
+3. For a pending notification, restart the worker and let its normal pump
+   resume delivery. Require the same cached icon without an image fetch.
+   Missing natural notification states are a prerequisite to report. Seeding
+   states for existing discoveries in an isolated profile needs explicit user
+   authorization; it does not authorize new media, identity changes or ledger
+   resets.
+4. Prove the packaged-icon fallback when an actual cached image is absent or
+   rejected. Controlled cache states belong only in the isolated profile;
+   restore its original cache afterward. Focused tests own cases that cannot
+   be reached live, including a newly populated cache in the same check.
+
+Desktop rendering is separate from API acceptance. When desktop screenshots
+are unavailable, attach a clearly labeled capture of the icons forwarded to
+the real browser API and report the desktop-rendering gap.
+
 ## Posts on a real grid
 
 Instagram's Posts grid is not newest first, and a collab Post can belong to another account. Unit
