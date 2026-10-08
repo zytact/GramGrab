@@ -30,6 +30,20 @@ below require an isolated QA account and a separately authorized run.
    and destination to follow that Watch. Record a missing second Watch as a
    live prerequisite rather than changing stored usernames to simulate one.
 
+## Sidebar heading
+
+The `WATCHES (N)` heading above the sidebar's Watch rows is a
+`.opt-label.opt-section` span. It is smaller than the 12px rows and uses
+`--text-mid`, which reads at about 5.4:1 on the dark `--surface` sidebar and
+5.8:1 in the light theme. WCAG AA needs 4.5:1 at this size.
+
+1. Open `options.html`. Read the heading's computed `color` and `font-size`,
+   and the `background-color` of `nav.opt-list`, and compute the contrast ratio
+   from those values. Require at least 4.5:1 and N equal to the Watch count.
+2. Screenshot the page and crop the full sidebar width to the heading's
+   bounding box plus a small margin, so no username or Avatar is in frame.
+   That crop may leave `.local/`.
+
 ## Inbox preview
 
 Story entries show [expiry](./story-expiry.md) in Found and both inbox views
