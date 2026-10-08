@@ -1,4 +1,4 @@
-import { Schema } from 'effect';
+import { Either, Option, Schema } from 'effect';
 import { ExportSettings } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
@@ -6,6 +6,7 @@ import {
   DOWNLOAD_HISTORY_KEY,
   DOWNLOAD_HISTORY_LIMIT,
   DOWNLOAD_HISTORY_VERSION,
+  decodeWhatsAppHistoryReceipt,
   isWhatsAppHistoryReceipt,
   type DownloadHistoryEntry,
   type DownloadHistoryStoreV4,
@@ -26,30 +27,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function validInstagramEntry(value: unknown): value is DownloadHistoryEntry {
-  const item = value as Partial<DownloadHistoryEntry> | null;
-  return Boolean(
-    item &&
-    hasValidIdentity(item) &&
-    hasValidMedia(item) &&
-    hasValidOutcome(item) &&
-    hasValidExportPlan(item)
+type HistoryMetadata = Omit<DownloadHistoryEntry, 'requestedExport'> & {
+  requestedExport?: unknown;
+};
+
+function validInstagramMetadata(value: unknown): value is HistoryMetadata {
+  const item = value as Partial<HistoryMetadata> | null;
+  return Boolean(item && hasValidIdentity(item) && hasValidMedia(item) && hasValidOutcome(item));
+}
+
+function decodeInstagramEntry(value: unknown): DownloadHistoryEntry | undefined {
+  if (!isRecord(value) || !validInstagramMetadata(value)) return undefined;
+  const requestedExport = Schema.decodeUnknownOption(Schema.UndefinedOr(ExportSettings))(
+    value.requestedExport
   );
+  return Option.isSome(requestedExport)
+    ? { ...value, requestedExport: requestedExport.value }
+    : undefined;
 }
 
-function hasValidExportPlan(item: Partial<DownloadHistoryEntry>): boolean {
-  return (
-    (item.requestedExport === undefined ||
-      Schema.decodeUnknownOption(ExportSettings)(item.requestedExport)._tag === 'Some') &&
-    (item.recovery === undefined || item.recovery === 'original' || item.recovery === 'reencode')
-  );
-}
-
-function validHistoryEntry(value: unknown): value is HistoryEntry {
-  return isWhatsAppHistoryReceipt(value) || validInstagramEntry(value);
-}
-
-function hasValidIdentity(item: Partial<DownloadHistoryEntry>): boolean {
+function hasValidIdentity(item: Partial<HistoryMetadata>): boolean {
   if (typeof item.id !== 'string' || !item.origin) return false;
   if (item.origin.kind === 'instants') return true;
   const source = historySource(item.origin.sourceUrl);
@@ -57,7 +54,7 @@ function hasValidIdentity(item: Partial<DownloadHistoryEntry>): boolean {
 }
 
 // fallow-ignore-next-line complexity
-function hasValidMedia(item: Partial<DownloadHistoryEntry>): boolean {
+function hasValidMedia(item: Partial<HistoryMetadata>): boolean {
   return Boolean(
     (item.origin?.kind === 'instants' || validKinds.has(item.origin?.sourceKind ?? '')) &&
     Number.isSafeInteger(item.itemIndex) &&
@@ -76,8 +73,12 @@ function hasValidMedia(item: Partial<DownloadHistoryEntry>): boolean {
   );
 }
 
-function hasValidOutcome(item: Partial<DownloadHistoryEntry>): boolean {
-  return Number.isFinite(item.downloadedAt) && item.outcome === 'accepted';
+function hasValidOutcome(item: Partial<HistoryMetadata>): boolean {
+  return (
+    Number.isFinite(item.downloadedAt) &&
+    item.outcome === 'accepted' &&
+    (item.recovery === undefined || item.recovery === 'original' || item.recovery === 'reencode')
+  );
 }
 
 function migrateLegacyEntry(entry: unknown): DownloadHistoryEntry | undefined {
@@ -92,12 +93,15 @@ function migrateLegacyEntry(entry: unknown): DownloadHistoryEntry | undefined {
       sourceKind,
     },
   };
-  return validInstagramEntry(migrated) ? migrated : undefined;
+  return decodeInstagramEntry(migrated);
 }
 
 function decodeEntry(entry: unknown, version: number): HistoryEntry | undefined {
-  if (version === DOWNLOAD_HISTORY_VERSION) return validHistoryEntry(entry) ? entry : undefined;
-  if (version === 3) return validInstagramEntry(entry) ? entry : undefined;
+  if (version === DOWNLOAD_HISTORY_VERSION) {
+    const receipt = decodeWhatsAppHistoryReceipt(entry);
+    return Either.isRight(receipt) ? receipt.right : decodeInstagramEntry(entry);
+  }
+  if (version === 3) return decodeInstagramEntry(entry);
   return migrateLegacyEntry(entry);
 }
 
