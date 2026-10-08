@@ -311,6 +311,7 @@ export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoveryS
   mediaType: Schema.Literal('image', 'video', 'sidecar', 'avatar'),
   childCount: Schema.optional(Count),
   discoveredAt: EpochMillis,
+  expiresAt: Schema.optional(Schema.String),
   /** When the entry leaves the inbox; absent when it was never collected or was removed. */
   inboxUntil: Schema.optional(EpochMillis),
   remainingRetentionMs: Schema.optional(Count),

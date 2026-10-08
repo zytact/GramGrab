@@ -11,6 +11,7 @@ import {
   VIEWER,
   createWatchInstagram,
   restMedia,
+  storyResponse,
   stubAvatarScaling,
 } from '../test/watch-instagram.ts';
 import { processingBrowser } from '../test/processing-browser.ts';
@@ -46,7 +47,7 @@ async function addWatch(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /** A stored Watch whose Stories check failed and which collected one Story. */
-function seedWatchWithProblemAndEntry(extra: readonly object[] = []) {
+function seedWatchWithProblemAndEntry(extra: readonly object[] = [], expiresAt = 3) {
   const now = Date.now();
   harness.local.write('watch-store', {
     version: 1,
@@ -72,7 +73,7 @@ function seedWatchWithProblemAndEntry(extra: readonly object[] = []) {
           {
             id: '0b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e',
             checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
-            ref: { _tag: 'Story', mediaId: '31', mediaType: 'video', takenAt: 2, expiresAt: 3 },
+            ref: { _tag: 'Story', mediaId: '31', mediaType: 'video', takenAt: 2, expiresAt },
             discoveredAt: now - 60_000,
             collect: { at: now - 60_000 },
           },
@@ -94,6 +95,32 @@ describe('Watches options page', () => {
     await user.click(screen.getByText(/^All inbox$/));
     expect(await screen.findByText(`@${TARGET.username} · Video`)).toBeDefined();
     expect(screen.getByText(/leaves the inbox in 30 days/)).toBeDefined();
+    expect(screen.getByText('Expired')).toBeDefined();
+  });
+
+  it('shows Story expiry in Found, Inbox and fetched preview cards', async () => {
+    const expiresAt = Math.floor(Date.now() / 1000) + 3 * 3600 + 30;
+    seedWatchWithProblemAndEntry([], expiresAt);
+    instagram.state.stories[TARGET.id] = storyResponse(TARGET.id, [
+      { id: '31', takenAt: 2, expiresAt },
+    ]);
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText(/^All inbox$/));
+    expect(await screen.findByText('Expires in 3h')).toBeDefined();
+    await user.click(await screen.findByRole('button', { name: /@instagram/ }));
+    expect(await screen.findByText('Expires in 3h')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: /^Inbox \(/ }));
+    expect(await screen.findByText('Expires in 3h')).toBeDefined();
+    await user.click(screen.getByRole('checkbox', { name: 'Select for download' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await waitFor(() => expect(document.querySelectorAll('time.item-expiry')).toHaveLength(2));
+    const deadline = new Date(expiresAt * 1000).toISOString();
+    for (const label of document.querySelectorAll('time.item-expiry')) {
+      expect(label.getAttribute('datetime')).toBe(deadline);
+      expect(label.textContent).toBe('Expires in 3h');
+    }
+    expect(harness.downloads).toEqual([]);
   });
 
   it.each([false, true])(
@@ -206,6 +233,7 @@ describe('Watches options page', () => {
     expect(screen.queryByRole('checkbox', { name: 'Frame' })).toBeNull();
     expect(screen.queryByRole('checkbox', { name: 'Remove audio' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Rotate item/ })).toBeNull();
+    expect(document.querySelector('.inbox-media time.item-expiry')).toBeNull();
   });
 
   it('previews Sidecar children and exports only the selected recorded child', async () => {

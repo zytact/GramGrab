@@ -19,6 +19,7 @@ import {
 import { sendMessage } from '../messaging/send.ts';
 import type { WatchCommandResponse, WatchFailure, WatchRead } from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
+import { StoryExpiry } from '../popup/story-expiry.tsx';
 import { KIND_LABEL, relativeTime } from './copy.ts';
 import { useInboxSelection } from './inbox-export.tsx';
 import { Avatar } from './avatar.tsx';
@@ -223,6 +224,7 @@ function DiscoveryList({
                 {entry.childCount ? ` of ${entry.childCount}` : ''}
               </div>
               <EntryMeta entry={entry} />
+              <StoryExpiry expiresAt={entry.expiresAt} />
               <OutcomeChips entry={entry} />
               {outcome && <ExportResult entry={entry} outcome={outcome} />}
             </div>
