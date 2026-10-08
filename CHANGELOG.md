@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.0.0](https://github.com/zytact/GramGrab/compare/v2.0.4...v3.0.0) (2026-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **watch:** show when the hourly request cap holds checks ([#259](https://github.com/zytact/GramGrab/issues/259))
+
+### Features
+
+* **watch:** preview recorded inbox media ([#260](https://github.com/zytact/GramGrab/issues/260)) ([11f6896](https://github.com/zytact/GramGrab/commit/11f6896bfd7fd3c3144b4a1b673ceb3c075e7863))
+* **watch:** show Avatars beside the login and Watches ([#257](https://github.com/zytact/GramGrab/issues/257)) ([0e226b2](https://github.com/zytact/GramGrab/commit/0e226b244ab49f46633ac5ac4bcd1c5bc742d5f6))
+
+
+### Bug Fixes
+
+* **watch:** show when the hourly request cap holds checks ([#259](https://github.com/zytact/GramGrab/issues/259)) ([98749ef](https://github.com/zytact/GramGrab/commit/98749ef13dcb4fbbb0c5dcd77dcfb58b194e41cc))
+
 ## [2.0.4](https://github.com/zytact/GramGrab/compare/v2.0.3...v2.0.4) (2026-10-07)
 
 
