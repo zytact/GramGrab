@@ -46,7 +46,7 @@ function previewResult(
   return { items, notices };
 }
 
-export function useInboxMedia() {
+export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [runtimes, setRuntimes] = useState<ItemRuntimes>({});
   const [frames, setFrames] = useState<Record<number, FrameExportSetting>>({});
@@ -85,6 +85,15 @@ export function useInboxMedia() {
       for (const entry of entries) {
         const response = await sendMessage({ type: 'WATCH_INBOX_PREVIEW', entryId: entry.entryId });
         if (current !== generation.current) return;
+        if (
+          response.failure?._tag === 'CommandFailure' &&
+          (response.failure.failure.code === 'IG_NOT_AUTHENTICATED' ||
+            response.failure.failure.code === 'WATCH_NOT_FOUND')
+        ) {
+          clear();
+          onOwnerRefused();
+          return;
+        }
         const result = previewResult(entry, response, found.length);
         found.push(...result.items);
         reasons.push(...result.notices);

@@ -37,7 +37,11 @@ export function useInboxExport(onChanged: () => void) {
   const [selected, setSelected] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, InboxExportOutcome>>(new Map());
   const [busy, setBusy] = useState(false);
-  const media = useInboxMedia();
+  const media = useInboxMedia(() => {
+    setSelected(new Map());
+    setOutcomes(new Map());
+    onChanged();
+  });
   const [failure, setFailure] = useState<string>();
   const [consent, setConsent] = useState(false);
   const entries = [...selected.values()];

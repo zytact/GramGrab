@@ -1,20 +1,23 @@
 import { beforeEach, expect, it, vi } from 'vite-plus/test';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { DiscoverySummary } from '@gramgrab/protocol';
+import { CommandFailure, DiscoverySummary, OperationFailure } from '@gramgrab/protocol';
 import { resetBrowserMocks, setMockMessageHandler } from '../test/setup.ts';
 import { loadVideoMetadata } from '../popup/video-metadata.ts';
 import { useInboxMedia } from './inbox-media.tsx';
 
 vi.mock('../popup/video-metadata.ts', () => ({ loadVideoMetadata: vi.fn() }));
 
-const entry = DiscoverySummary.make({
-  entryId: '0b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e',
+const entryDetails = {
   watchId: 'watch',
   accountId: '1',
   username: 'instagram',
-  kind: 'stories',
-  mediaType: 'video',
+  kind: 'stories' as const,
+  mediaType: 'video' as const,
   discoveredAt: 1,
+};
+const entry = DiscoverySummary.make({
+  ...entryDetails,
+  entryId: '0b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e',
 });
 const item = {
   itemIndex: 0,
@@ -67,3 +70,28 @@ it('falls back for a failed remote Story-image preview without refetching a data
   act(() => result.current.actions.onPreviewError(result.current.items[0]!));
   expect(fallback).toHaveBeenCalledTimes(1);
 });
+
+it.each(['WATCH_NOT_FOUND', 'IG_NOT_AUTHENTICATED'] as const)(
+  'discards a partial preview batch and reconciles its owner after %s',
+  async code => {
+    const preview = vi
+      .fn()
+      .mockReturnValueOnce({ media: [item] })
+      .mockReturnValueOnce({
+        failure: CommandFailure.make({ failure: OperationFailure.make({ code, scope: 'batch' }) }),
+      });
+    setMockMessageHandler('WATCH_INBOX_PREVIEW', preview);
+    const reconcileOwner = vi.fn();
+    const { result } = renderHook(() => useInboxMedia(reconcileOwner));
+    const second = DiscoverySummary.make({
+      ...entryDetails,
+      entryId: '2b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e',
+    });
+    await act(() => result.current.fetch([entry, second]));
+    expect(preview).toHaveBeenCalledTimes(2);
+    expect(reconcileOwner).toHaveBeenCalledOnce();
+    expect(result.current.items).toEqual([]);
+    expect(result.current.selections).toEqual([]);
+    expect(result.current.canDownload).toBe(false);
+  }
+);
