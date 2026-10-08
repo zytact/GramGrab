@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { FrameExport } from '@gramgrab/protocol';
 import { getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
 import {
   appendHistory,
@@ -125,6 +126,55 @@ describe('download history origin migration', () => {
     });
 
     await expect(getHistory()).resolves.toEqual({ kind: 'ok', entries: [], repaired: true });
+  });
+
+  it.each([2, 3, 4])('decodes export settings in version %i History', async version => {
+    const origin =
+      version === 2
+        ? { sourceUrl: 'https://www.instagram.com/p/example/', sourceKind: 'post' }
+        : {
+            origin: {
+              kind: 'source',
+              sourceUrl: 'https://www.instagram.com/p/example/',
+              sourceKind: 'post',
+            },
+          };
+    const entry = {
+      ...origin,
+      itemIndex: 0,
+      mediaType: 'video',
+      filenameHint: 'instagram',
+      downloadedAt: 1,
+      outcome: 'accepted',
+    };
+    vi.mocked(getMockBrowser().storage.get).mockResolvedValue({
+      'download-history': {
+        version,
+        entries: [
+          {
+            ...entry,
+            id: 'valid',
+            requestedExport: { mode: { _tag: 'FrameExport', timestampSeconds: 1.5 }, rotation: 90 },
+          },
+          {
+            ...entry,
+            id: 'invalid',
+            requestedExport: { mode: { _tag: 'FrameExport', timestampSeconds: -1 } },
+          },
+        ],
+      },
+    });
+
+    const history = await getHistory();
+    expect(history).toMatchObject({ kind: 'ok', repaired: true, entries: [{ id: 'valid' }] });
+    if (history.kind !== 'ok') throw new Error('Expected supported History.');
+    const saved = history.entries.find(entry => 'id' in entry && entry.id === 'valid');
+    if (!saved || !('id' in saved)) throw new Error('Expected the valid History entry.');
+    expect(saved.requestedExport?.mode).toBeInstanceOf(FrameExport);
+    expect(saved.requestedExport).toMatchObject({
+      mode: { timestampSeconds: 1.5 },
+      rotation: 90,
+    });
   });
 });
 

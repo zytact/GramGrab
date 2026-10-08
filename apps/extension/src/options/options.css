@@ -10,6 +10,19 @@ body.opt-body {
   font: 400 30px/1.1 var(--font-display);
   margin: 8px 0 12px;
 }
+.opt-profile-link {
+  align-self: flex-start;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.opt-profile-link:hover {
+  color: var(--text);
+}
+.opt-profile-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
 .opt-h2 {
   font: 400 20px/1.2 var(--font-display);
   margin: 18px 0 8px;

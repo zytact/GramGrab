@@ -93,6 +93,13 @@ on a non-verification profile.
   reload.
 - A malformed supported store reports `repaired: true`. A future store version
   remains untouched and produces the surface-specific failures above.
+- List entries saved with direct, frame, and silent export settings after a
+  browser restart. `history list --json` must succeed and retain each entry's
+  `requestedExport` mode, frame timestamp, re-encode policy, and rotation. Match
+  the CLI entry count to the UI and require `repaired: false` for a valid store.
+  Keep identifiers and media URLs out of shared evidence. Use synthetic entries
+  in a scratch profile if those export modes are unavailable, then restore its
+  original store.
 - A WhatsApp receipt shows no display name and no re-download button. Its only
   control is `Remove WhatsApp receipt from history`. That absence is the
   feature, so capture it.

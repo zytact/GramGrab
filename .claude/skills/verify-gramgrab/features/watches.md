@@ -12,6 +12,24 @@ retry or reset the ledger. Do not force scheduling deadlines into the past.
 Check-now, fault-injection and repeated-check recipes
 below require an isolated QA account and a separately authorized run.
 
+## Profile link
+
+1. Open `options.html` and select the existing `instagram` Watch in the sidebar.
+   The username heading is an underlined `a.opt-profile-link` whose `href` is
+   `https://www.instagram.com/instagram/`. Capture the heading with the verified
+   login hidden.
+2. Click the heading. Require a new Instagram profile tab and an unchanged
+   options-page URL with the Watch still selected. Close only the new tab.
+3. Return to the options page. Use `node $D key options.html Tab` until
+   `document.activeElement.matches('a.opt-profile-link')`. Require
+   `:focus-visible` and a visible outline, then capture the focused heading.
+   `node $D key options.html Enter` must open the same profile in a new tab.
+   Close the new tab afterward.
+4. Switch to All inbox and back. The link returns with the selected username's
+   profile URL. If another Watch exists, select it and require both the heading
+   and destination to follow that Watch. Record a missing second Watch as a
+   live prerequisite rather than changing stored usernames to simulate one.
+
 ## Inbox preview
 
 1. Open All inbox or a Watch's Inbox tab and select a naturally collected entry

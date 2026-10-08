@@ -182,6 +182,7 @@ node $D activate "popup.html?surface"             # bring a page to the front
 node $D type  "popup.html" "#source-url" "https://www.instagram.com/p/SHORTCODE/"
 node $D blur  "popup.html" "#source-url"
 node $D click "popup.html" ".fetch-row button"
+node $D key   "options.html" Tab                  # browser keyboard input: Tab or Enter
 node $D text  "popup.html"                        # innerText of the first match
 node $D wait  "popup.html" "No media yet." 15000  # poll until text appears
 node $D eval  "popup.html" "document.querySelector('.url-input').value"
@@ -210,6 +211,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Platform switch      | `nav[aria-label="Download platform"] button`       |
 | History toggle       | button text `History` / `Results`                  |
 | Failure code readout | `.download-attempt-summary code`                   |
+| Watch profile link   | `a.opt-profile-link`                              |
 | Diagnostics dialog   | `#diagnostics-dialog-title`                        |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 

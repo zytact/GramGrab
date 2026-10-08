@@ -144,6 +144,20 @@ if (command === 'targets') {
     `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!(element instanceof HTMLElement)) throw new Error('Clickable element not found.'); element.click(); })()`
   );
   process.stdout.write(`${selector}\n`);
+} else if (command === 'key') {
+  const [match, key] = rest;
+  const keyCode = key === 'Tab' ? 9 : key === 'Enter' ? 13 : undefined;
+  if (!match || !keyCode) fail('Usage: drive.mjs key <match> Tab|Enter');
+  const target = await findTarget(match);
+  await send(target, 'Page.bringToFront');
+  const params = { key, code: key, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
+  await send(target, 'Input.dispatchKeyEvent', {
+    ...params,
+    type: 'keyDown',
+    ...(key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {}),
+  });
+  await send(target, 'Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
+  process.stdout.write(`${key}\n`);
 } else if (command === 'type') {
   const [match, selector, value] = rest;
   if (!match || !selector || value === undefined)
@@ -195,5 +209,5 @@ if (command === 'targets') {
   }
   process.stdout.write(`${needle}\n`);
 } else {
-  fail('Usage: drive.mjs targets|open|activate|click|type|blur|eval|text|shot|wait ...');
+  fail('Usage: drive.mjs targets|open|activate|click|key|type|blur|eval|text|shot|wait ...');
 }
