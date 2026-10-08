@@ -86,6 +86,98 @@ function seedWatchWithProblemAndEntry(extra: readonly object[] = [], expiresAt =
 }
 
 describe('Watches options page', () => {
+  it.each(['Watch inbox', 'All inbox'])(
+    'selects every entry, clears selection and removes only selected items in %s',
+    async surface => {
+      const unavailableId = '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a';
+      const photoId = '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a';
+      seedWatchWithProblemAndEntry([
+        {
+          id: unavailableId,
+          checkId: CHECK_ID,
+          ref: { _tag: 'Instant', mediaId: '41_2002', mediaType: 'image', takenAt: 2 },
+          discoveredAt: Date.now() - 120_000,
+          unavailable: 'WATCH_INSTANT_NOT_IN_FEED',
+          collect: { at: Date.now() - 120_000 },
+        },
+        {
+          id: photoId,
+          checkId: CHECK_ID,
+          ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
+          discoveredAt: Date.now() - 180_000,
+          collect: { at: Date.now() - 180_000 },
+        },
+      ]);
+      const user = userEvent.setup();
+      render(<Watches />);
+      if (surface === 'Watch inbox') {
+        await user.click(await screen.findByRole('button', { name: /@instagram/ }));
+        await user.click(await screen.findByRole('button', { name: /^Inbox \(/ }));
+      } else await user.click(await screen.findByText(/^All inbox$/));
+
+      const checkboxes = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
+      expect(screen.getByRole('button', { name: 'Remove selected (0)' })).toHaveProperty(
+        'disabled',
+        true
+      );
+      await user.click(screen.getByRole('button', { name: 'Select all' }));
+      expect(
+        checkboxes.every(checkbox => checkbox instanceof HTMLInputElement && checkbox.checked)
+      ).toBe(true);
+      await user.click(screen.getByRole('button', { name: 'Clear selection' }));
+      expect(
+        checkboxes.every(checkbox => checkbox instanceof HTMLInputElement && !checkbox.checked)
+      ).toBe(true);
+      await user.click(screen.getByRole('button', { name: 'Select all' }));
+      await user.click(checkboxes[0]!);
+      await user.click(checkboxes[2]!);
+      expect(screen.getByRole('button', { name: 'Fetch media' })).toHaveProperty('disabled', true);
+      await user.click(checkboxes[2]!);
+      await user.click(screen.getByRole('button', { name: 'Remove selected (2)' }));
+
+      await waitFor(() =>
+        expect(screen.getAllByRole('checkbox', { name: 'Select inbox item' })).toHaveLength(1)
+      );
+      const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+      expect(store.watches[0]?.enabled).toBe(true);
+      expect(store.watches[0]?.discoveries).toHaveLength(3);
+      expect(
+        store.watches[0]?.discoveries.find(entry => entry.id === unavailableId)?.collect
+      ).toHaveProperty('removedAt');
+      expect(harness.browser.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'WATCH_COMMAND',
+        command: { _tag: 'WatchInboxRemove', entryIds: [unavailableId, photoId] },
+      });
+      expect(screen.getByRole('button', { name: 'Remove selected (0)' })).toHaveProperty(
+        'disabled',
+        true
+      );
+      await user.click(screen.getByRole('button', { name: 'Select all' }));
+      await user.click(screen.getByRole('button', { name: 'Remove selected (1)' }));
+      await screen.findByText('Nothing here yet.');
+      expect(harness.downloads).toEqual([]);
+    }
+  );
+
+  it('keeps the selection and shows a failure when bulk removal cannot save', async () => {
+    seedWatchWithProblemAndEntry();
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: 'Select all' }));
+    harness.local.set.mockRejectedValue(new Error('Storage write refused'));
+    await user.click(screen.getByRole('button', { name: 'Remove selected (1)' }));
+    await screen.findByText('The browser refused to save Watch data');
+    expect(screen.getByRole('checkbox', { name: 'Select inbox item' })).toHaveProperty(
+      'checked',
+      true
+    );
+    expect(screen.getByRole('button', { name: 'Remove selected (1)' })).toHaveProperty(
+      'disabled',
+      false
+    );
+  });
+
   it('opens on Needs you while a check problem needs attention, and lists collected entries', async () => {
     seedWatchWithProblemAndEntry();
     const user = userEvent.setup();
@@ -113,7 +205,7 @@ describe('Watches options page', () => {
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
     await user.click(screen.getByRole('button', { name: /^Inbox \(/ }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
-    await user.click(screen.getByRole('checkbox', { name: 'Select for download' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select inbox item' }));
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
     await waitFor(() => expect(document.querySelectorAll('time.item-expiry')).toHaveLength(2));
     const deadline = new Date(expiresAt * 1000).toISOString();
@@ -148,10 +240,10 @@ describe('Watches options page', () => {
       render(<Watches />);
       await user.click(await screen.findByText(/^All inbox$/));
       const [story, instant] = await screen.findAllByRole('checkbox', {
-        name: 'Select for download',
+        name: 'Select inbox item',
       });
 
-      expect(instant).toHaveProperty('disabled', true);
+      expect(instant).toHaveProperty('disabled', false);
       await user.click(story!);
       if (failWrite) {
         const write = harness.local.set.getMockImplementation()!;
@@ -164,7 +256,7 @@ describe('Watches options page', () => {
 
       await screen.findAllByText(/Story expired/);
       if (failWrite) await screen.findAllByText('The browser refused to save Watch data');
-      await user.click(screen.getAllByRole('checkbox', { name: 'Select for download' })[2]!);
+      await user.click(screen.getAllByRole('checkbox', { name: 'Select inbox item' })[2]!);
       expect(screen.getAllByText(/Story expired/).length).toBeGreaterThan(0);
       if (failWrite)
         expect(
@@ -189,7 +281,7 @@ describe('Watches options page', () => {
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByText(/^All inbox$/));
-    const [, video] = await screen.findAllByRole('checkbox', { name: 'Select for download' });
+    const [, video] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
     await user.click(video!);
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
     const frame = await screen.findByRole('checkbox', { name: 'Frame' });
@@ -202,7 +294,7 @@ describe('Watches options page', () => {
     harness.failDownloads(new Error('network failure'));
     await user.click(screen.getByRole('button', { name: 'Download selected (1)' }));
     await screen.findByRole('button', { name: 'Retry failed exports' });
-    await user.click(screen.getAllByRole('checkbox', { name: 'Select for download' })[1]!);
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select inbox item' })[1]!);
     harness.failDownloads(undefined);
     await user.click(screen.getByRole('button', { name: 'Retry failed exports' }));
     await waitFor(() => expect(harness.downloads).toHaveLength(1));
@@ -227,7 +319,7 @@ describe('Watches options page', () => {
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByText(/^All inbox$/));
-    const [, avatar] = await screen.findAllByRole('checkbox', { name: 'Select for download' });
+    const [, avatar] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
     await user.click(avatar!);
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
     await screen.findByAltText('Preview');
@@ -262,7 +354,7 @@ describe('Watches options page', () => {
     await user.click(await screen.findByText(/^All inbox$/));
     const row = (await screen.findByText(/Carousel/)).closest('.opt-line');
     if (!(row instanceof HTMLElement)) throw new Error('Missing Sidecar entry');
-    await user.click(within(row).getByRole('checkbox', { name: 'Select for download' }));
+    await user.click(within(row).getByRole('checkbox', { name: 'Select inbox item' }));
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
     await screen.findByAltText('Preview');
     expect(document.querySelectorAll('.media-item')).toHaveLength(2);
@@ -607,7 +699,7 @@ describe('Watches options page', () => {
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByText(/^All inbox$/));
-    await user.click(await screen.findByRole('checkbox', { name: 'Select for download' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Select inbox item' }));
     expect(screen.getByRole('button', { name: 'Fetch media' })).toHaveProperty('disabled', false);
     const viewerRequests = instagram.state.viewerRequests;
 
@@ -617,7 +709,7 @@ describe('Watches options page', () => {
 
     expect(await screen.findByText('@instagram')).toBeDefined();
     expect(screen.getByText('Watches (0)')).toBeDefined();
-    expect(screen.queryByRole('checkbox', { name: 'Select for download' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Fetch media' })).toBeNull();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
   });
