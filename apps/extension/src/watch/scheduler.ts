@@ -108,8 +108,8 @@ export async function runCheck(
   if (!run.loginVerified && run.deferredUntil === undefined)
     await updateState(state => ({ ...state, suspended: true }));
   await runActions(watchId, viewerId);
-  await notifyCheck(watchId, scope.checkId, startedAt, run.avatar?.pictureUrl);
   await refreshAvatarImage(watchId, viewerId, run);
+  await notifyCheck(watchId, scope.checkId, startedAt);
   const posts = run.kinds.find(outcome => outcome.kind === 'posts');
   if (posts) {
     const catchingUp = posts._tag === 'KindCheckSucceeded' && posts.catchUp;

@@ -18,12 +18,14 @@ import {
 } from '@gramgrab/protocol';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
 import {
+  STUB_AVATAR,
   TARGET,
   avatarSearch,
   createWatchInstagram,
   instantsFeed,
   postsPage,
   storyResponse,
+  stubAvatarScaling,
   type FakeInstant,
   type FakePost,
   type FakeStory,
@@ -618,7 +620,17 @@ describe('Avatar checks', () => {
 });
 
 describe('Watch notifications', () => {
+  beforeEach(stubAvatarScaling);
+  afterEach(() => vi.unstubAllGlobals());
+
   const allowNotifications = () => harness.grantedPermissions.add('notifications');
+  const pictureLoads = () =>
+    vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(
+        ([input]) =>
+          new URL(input instanceof Request ? input.url : input).hostname === 'sanitized.invalid'
+      ).length;
 
   /** A Watch of Stories that notifies and collects, past its baseline. */
   async function notifying(kinds: readonly WatchKind[] = ['stories']) {
@@ -655,6 +667,31 @@ describe('Watch notifications', () => {
     ]);
   });
 
+  it('uses the picture cached by the same check without tracking Avatar changes', async () => {
+    allowNotifications();
+    await notifying();
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    await harness.local.set({
+      'watch-store': {
+        ...store,
+        watches: store.watches.map(watch => ({
+          ...watch,
+          avatarImage: undefined,
+          avatarLookupAt: undefined,
+        })),
+      },
+    });
+    newStories('103');
+    vi.mocked(globalThis.fetch).mockClear();
+
+    await checkLater();
+
+    expect([...harness.notifications.values()]).toEqual([
+      expect.objectContaining({ iconUrl: STUB_AVATAR }),
+    ]);
+    expect(pictureLoads()).toBe(1);
+  });
+
   it('keeps a refused notification in Needs you until it is retried', async () => {
     await notifying();
     newStories('201');
@@ -672,8 +709,57 @@ describe('Watch notifications', () => {
     );
 
     expect(retried.recoveredEntryIds).toEqual([entry!.entryId]);
-    expect(harness.notifications.size).toBe(1);
+    expect([...harness.notifications.values()]).toEqual([
+      expect.objectContaining({ iconUrl: STUB_AVATAR }),
+    ]);
     expect((await list()).attentionEntries).toEqual([]);
+  });
+
+  it('resumes a pending notification with the cached Avatar after a worker restart', async () => {
+    allowNotifications();
+    await notifying();
+    newStories('202');
+    await checkLater();
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    await harness.local.set({
+      'watch-store': {
+        ...store,
+        watches: store.watches.map(watch => ({
+          ...watch,
+          discoveries: watch.discoveries.map(discovery => ({
+            ...discovery,
+            notify: { status: 'pending' },
+          })),
+        })),
+      },
+    });
+    harness.notifications.clear();
+    vi.mocked(globalThis.fetch).mockClear();
+
+    await harness.loadWorker();
+    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+    harness.fireAlarm('watch-pump');
+    await vi.advanceTimersByTimeAsync(MINUTE);
+
+    expect([...harness.notifications.values()]).toEqual([
+      expect.objectContaining({ iconUrl: STUB_AVATAR }),
+    ]);
+    expect(pictureLoads()).toBe(0);
+  });
+
+  it('uses the packaged icon when no Avatar could be cached', async () => {
+    allowNotifications();
+    vi.stubGlobal('createImageBitmap', async () => {
+      throw new Error('undecodable');
+    });
+    await notifying();
+    newStories('203');
+
+    await checkLater();
+
+    expect([...harness.notifications.values()]).toEqual([
+      expect.objectContaining({ iconUrl: 'chrome-extension://test/icons/icon-96.png' }),
+    ]);
   });
 
   it('dismisses a failed delivery once, and refuses or reports anything else', async () => {
@@ -718,7 +804,7 @@ describe('Watch notifications', () => {
     ]);
   });
 
-  it('uses the Avatar as the icon, and GramGrab’s icon when the browser refuses it', async () => {
+  it("uses the cached Avatar, and GramGrab's icon when the browser refuses it", async () => {
     allowNotifications();
     harness.failNotificationIcons(true);
     await notifying(['avatar']);
@@ -728,7 +814,7 @@ describe('Watch notifications', () => {
 
     expect(harness.browser.notifications.create).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ iconUrl: expect.stringMatching(/^data:/) })
+      expect.objectContaining({ iconUrl: STUB_AVATAR })
     );
     expect([...harness.notifications.values()]).toEqual([
       expect.objectContaining({

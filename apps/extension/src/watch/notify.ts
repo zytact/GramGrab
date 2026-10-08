@@ -1,13 +1,13 @@
 import { Effect } from 'effect';
 import type { FailureCode, WatchKind } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
-import { fetchBlobAsDataUrl } from '../effect/instagram.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import type { ChildDownload, Discovery, Watch } from './contracts.ts';
 import { KIND_OF_REF } from './discoveries.ts';
 import { mutateStore, readStore } from './store.ts';
 import { fetchViewer } from './identity.ts';
 import { PersonRequests, WatchRequests } from '../instagram/requests.ts';
+import { dataUrl } from './avatar-jpeg.ts';
 
 const PREFIX = 'watch|';
 
@@ -58,20 +58,13 @@ function foundLine(discoveries: readonly Discovery[]): string | undefined {
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-/** The account's current Avatar as a data URL, or GramGrab's icon when it will not load. */
-const iconFor = (pictureUrl: string | undefined) =>
-  pictureUrl
-    ? Effect.runPromise(fetchBlobAsDataUrl(pictureUrl).pipe(Effect.orElseSucceed(() => undefined)))
-    : Promise.resolve(undefined);
-
 /**
  * Shows one notification and reports how it went. An Avatar icon that the browser refuses is
  * dropped for GramGrab's own icon rather than costing the notification.
  */
 async function show(
   watch: Watch,
-  message: string,
-  pictureUrl: string | undefined
+  message: string
 ): Promise<'WATCH_NOTIFY_PERMISSION_DENIED' | 'WATCH_NOTIFY_FAILED' | undefined> {
   const allowed = await browser.permissions
     .contains({ permissions: ['notifications'] })
@@ -80,7 +73,7 @@ async function show(
   const id = `${PREFIX}${watch.id}|${crypto.randomUUID()}`;
   const packaged = browser.runtime.getURL('icons/icon-96.png');
   const options = { type: 'basic' as const, title: `@${watch.username}`, message };
-  const icon = await iconFor(pictureUrl);
+  const icon = watch.avatarImage && dataUrl(watch.avatarImage.jpeg);
   try {
     await browser.notifications.create(id, { ...options, iconUrl: icon ?? packaged });
     return undefined;
@@ -168,8 +161,7 @@ const findWatch = async (watchId: string) => {
 export async function notifyCheck(
   watchId: string,
   checkId: string,
-  startedAt: number,
-  pictureUrl: string | undefined
+  startedAt: number
 ): Promise<void> {
   const watch = await findWatch(watchId);
   if (!watch?.enabled) return;
@@ -196,7 +188,7 @@ export async function notifyCheck(
     fetchViewer.pipe(Effect.either, Effect.provide(WatchRequests))
   );
   if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) return;
-  const code = await show(watch, message, pictureUrl);
+  const code = await show(watch, message);
   if (affected.length > 0) await record(watchId, affected, code);
 }
 
@@ -219,7 +211,7 @@ export async function retryNotify(
     ]
       .filter(Boolean)
       .join('\n');
-    if (message) await record(watchId, chosen, await show(watch, message, undefined));
+    if (message) await record(watchId, chosen, await show(watch, message));
   }
 }
 
@@ -235,7 +227,7 @@ export async function resumeNotifications(watchId: string): Promise<void> {
       firstNotification.length > 0
         ? Math.min(...firstNotification.map(entry => entry.discoveredAt))
         : Date.now();
-    await notifyCheck(watchId, checkId, startedAt, undefined);
+    await notifyCheck(watchId, checkId, startedAt);
   }
 }
 
