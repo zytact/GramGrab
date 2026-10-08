@@ -337,6 +337,9 @@ select {
 .opt-section {
   padding: 0 12px;
   margin-top: 16px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mid);
 }
 .opt-add-item {
   color: var(--accent);
