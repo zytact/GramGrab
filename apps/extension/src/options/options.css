@@ -150,14 +150,23 @@ select {
 /* Three panes */
 .opt-console {
   display: grid;
-  grid-template-columns: 220px 1fr 280px;
-  min-height: 100vh;
+  grid-template-columns: 220px minmax(0, 1fr) 280px;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100dvh;
 }
 .opt-list {
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
   border-right: 1px solid var(--rule-strong);
   background: var(--surface);
+}
+.opt-watch-list {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 120px;
+  overflow-y: auto;
 }
 .opt-item {
   display: flex;
@@ -191,6 +200,7 @@ select {
   border-left: 1px solid var(--rule-strong);
   padding: 16px;
   background: var(--surface);
+  overflow: auto;
 }
 .opt-account-text {
   display: flex;
