@@ -1,6 +1,7 @@
 import { createContext, useContext, useState } from 'react';
 import {
   WatchInboxExport,
+  WatchInboxRemove,
   WatchInboxRetry,
   type DiscoverySummary,
   type InboxExportOutcome,
@@ -44,7 +45,7 @@ export function useInboxExport(onChanged: () => void) {
   });
   const [failure, setFailure] = useState<string>();
   const [consent, setConsent] = useState(false);
-  const entries = [...selected.values()];
+  const entries = [...selected.values()].filter(entry => entry.unavailable === undefined);
   const failed = [...outcomes.values()].filter(
     outcome =>
       outcome.planId &&
@@ -61,6 +62,15 @@ export function useInboxExport(onChanged: () => void) {
       if (response.result?._tag === 'WatchInboxExportResult') {
         setOutcomes(new Map(response.result.outcomes.map(outcome => [outcome.entryId, outcome])));
         setSelected(new Map());
+        media.clearPreview();
+      }
+      if (response.result?._tag === 'WatchInboxRemoveResult') {
+        const removed = new Set([
+          ...response.result.removedEntryIds,
+          ...response.result.unknownEntryIds,
+        ]);
+        setSelected(current => new Map([...current].filter(([id]) => !removed.has(id))));
+        setOutcomes(current => new Map([...current].filter(([id]) => !removed.has(id))));
         media.clearPreview();
       }
     } catch {
@@ -80,6 +90,14 @@ export function useInboxExport(onChanged: () => void) {
       })
     );
   };
+  const restoreOutcomes = (entries: readonly DiscoverySummary[]) =>
+    setOutcomes(current => {
+      const next = new Map(current);
+      for (const entry of entries) {
+        if (entry.manualExport) next.set(entry.entryId, entry.manualExport);
+      }
+      return next;
+    });
   const retry = (recovery?: 'original' | 'reencode') => {
     setConsent(false);
     const plans = failed
@@ -101,16 +119,22 @@ export function useInboxExport(onChanged: () => void) {
     failed,
     download,
     retry,
-    active: selected.size > 0 || busy || failed.length > 0 || media.notices.length > 0,
+    remove: (entryIds: readonly string[]) => void execute(WatchInboxRemove.make({ entryIds })),
+    selectAll: (entries: readonly DiscoverySummary[]) => {
+      media.clearPreview();
+      restoreOutcomes(entries);
+      setSelected(new Map(entries.map(entry => [entry.entryId, entry])));
+    },
+    active: selected.size > 0 || busy || failed.length > 0 || media.notices.length > 0 || !!failure,
     clear: () => {
       media.clear();
       setSelected(new Map());
+      setFailure(undefined);
       if (!busy) setOutcomes(new Map());
     },
     toggle: (entry: DiscoverySummary) => {
       media.clearPreview();
-      const previous = entry.manualExport;
-      if (previous) setOutcomes(current => new Map(current).set(entry.entryId, previous));
+      restoreOutcomes([entry]);
       setSelected(current => {
         const next = new Map(current);
         if (!next.delete(entry.entryId)) next.set(entry.entryId, entry);
@@ -179,7 +203,7 @@ export function InboxExportControls({ value }: { value: ExportState }) {
       <p className="opt-note">Downloads the exact recorded media. Entries stay in the inbox.</p>
       <button
         className="opt-btn"
-        disabled={value.busy || value.selected.size === 0}
+        disabled={value.busy || value.entries.length === 0}
         onClick={() => void value.media.fetch(value.entries)}
       >
         {value.media.loading ? 'Fetching media…' : 'Fetch media'}

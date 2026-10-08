@@ -3,7 +3,6 @@ import {
   AccountIdSelector,
   WatchCheck,
   WatchInboxList,
-  WatchInboxRemove,
   WatchShow,
   type ActionOutcome,
   type DeferredReason,
@@ -190,9 +189,9 @@ function DiscoveryCheckbox({
   return (
     <input
       type="checkbox"
-      aria-label="Select for download"
+      aria-label="Select inbox item"
       checked={selected}
-      disabled={selection.busy || (!selected && entry.unavailable !== undefined)}
+      disabled={selection.busy}
       onChange={() => selection.onToggle(entry.entryId)}
     />
   );
@@ -229,7 +228,11 @@ function DiscoveryList({
               {outcome && <ExportResult entry={entry} outcome={outcome} />}
             </div>
             {onRemove && entry.inboxUntil !== undefined && (
-              <button className="opt-btn opt-ghost" onClick={() => onRemove(entry.entryId)}>
+              <button
+                className="opt-btn opt-ghost"
+                disabled={selection?.busy}
+                onClick={() => onRemove(entry.entryId)}
+              >
                 Remove
               </button>
             )}
@@ -240,28 +243,51 @@ function DiscoveryList({
   );
 }
 
-const removeEntry = (entryId: string) => runCommand(WatchInboxRemove.make({ entryIds: [entryId] }));
-
 /**
- * Inbox entries a person can select and download. Exporting keeps every entry in the
- * inbox; an entry already known to be gone cannot be selected.
+ * Inbox entries a person can select, download or remove. Exporting keeps entries in the inbox.
  */
 function InboxList({
   entries,
   showAccount,
-  onChanged,
 }: {
   entries: readonly DiscoverySummary[];
   showAccount: boolean;
-  onChanged: () => void;
 }) {
   const exporter = useInboxSelection();
+  const selectedIds = entries
+    .filter(entry => exporter.selected.has(entry.entryId))
+    .map(entry => entry.entryId);
   return (
     <>
+      {entries.length > 0 && (
+        <div className="opt-row opt-line" role="group" aria-label="Inbox selection">
+          <button
+            className="opt-btn"
+            disabled={exporter.busy || selectedIds.length === entries.length}
+            onClick={() => exporter.selectAll(entries)}
+          >
+            Select all
+          </button>
+          <button
+            className="opt-btn opt-ghost"
+            disabled={exporter.busy || selectedIds.length === 0}
+            onClick={exporter.clear}
+          >
+            Clear selection
+          </button>
+          <button
+            className="opt-btn opt-danger"
+            disabled={exporter.busy || selectedIds.length === 0}
+            onClick={() => exporter.remove(selectedIds)}
+          >
+            Remove selected ({selectedIds.length})
+          </button>
+        </div>
+      )}
       <DiscoveryList
         entries={entries}
         showAccount={showAccount}
-        onRemove={entryId => void removeEntry(entryId).then(onChanged)}
+        onRemove={entryId => exporter.remove([entryId])}
         selection={{
           selected: new Set(exporter.selected.keys()),
           outcomes: exporter.outcomes,
@@ -277,15 +303,7 @@ function InboxList({
 }
 
 /** Every collected entry of the verified login, reloaded whenever `version` changes. */
-export function AllInbox({
-  viewer,
-  version,
-  onChanged,
-}: {
-  viewer: WatchViewer;
-  version: number;
-  onChanged: () => void;
-}) {
+export function AllInbox({ viewer, version }: { viewer: WatchViewer; version: number }) {
   const [entries, setEntries] = useState<readonly DiscoverySummary[]>();
   useEffect(() => {
     let current = true;
@@ -304,11 +322,7 @@ export function AllInbox({
         Everything your Watches collected. Entries stay 30 days from when they were found, but
         Instagram can remove media sooner.
       </p>
-      {entries ? (
-        <InboxList entries={entries} showAccount onChanged={onChanged} />
-      ) : (
-        <p className="opt-meta">Loading…</p>
-      )}
+      {entries ? <InboxList entries={entries} showAccount /> : <p className="opt-meta">Loading…</p>}
     </>
   );
 }
@@ -485,7 +499,7 @@ export function WatchDetail({
         tab === 'found' ? (
           <DiscoveryList entries={found} showAccount={false} />
         ) : (
-          <InboxList entries={inbox} showAccount={false} onChanged={onChanged} />
+          <InboxList entries={inbox} showAccount={false} />
         )
       ) : (
         <p className="opt-meta">Loading…</p>

@@ -37,8 +37,8 @@ before media is fetched. Preview cards show the same deadline after fetching.
 The label refreshes each minute and becomes `Expired`; the 30-day inbox
 retention notice remains a separate deadline.
 
-1. Open All inbox or a Watch's Inbox tab and select a naturally collected entry
-   with `Select for download`. Click `Fetch media`. Require a rendered image or
+1. Open All inbox or a Watch's Inbox tab and tick a naturally collected entry's
+   `Select inbox item` checkbox. Click `Fetch media`. Require a rendered image or
    playable video with real dimensions, not merely a mounted media element.
    Capture a screenshot with the verified login hidden. A fresh preview must
    leave browser downloads, History and Workspace draft/transfer state unchanged.
@@ -68,6 +68,26 @@ retention notice remains a separate deadline.
 Preserve completed files outside `.local/verify/` before cleanup if a reviewer
 must inspect their bytes. Keep evidence names free of identifiers; never save
 raw store or CLI dumps for these checks.
+
+## Bulk removal
+
+Removal deletes inbox metadata only. The discovery stays, so its media is never
+found again, and the Watch stays enabled. Natural entries are precious on a
+shared account, so drive this on synthetic entries only with the user's
+authorization, and label any screenshot as synthetic.
+
+1. In All inbox and in a Watch's Inbox tab, `Remove selected (0)` starts
+   disabled. `Select all` ticks every `Select inbox item` checkbox, including
+   unavailable entries. `Clear selection` unticks them all.
+2. Select all, untick one entry, click `Remove selected (N)`. Require exactly
+   the ticked entries gone, the unticked one still listed, and the Watch's
+   `enabled` flag unchanged in `watch-store`.
+3. With only unavailable entries ticked, `Fetch media` is disabled while
+   `Remove selected (N)` stays enabled.
+4. A Select all over an entry with a saved failed export shows
+   `Retry failed exports`, the same as ticking it alone.
+
+Storage-write failures keeping the selection belong to `watches.test.tsx`.
 
 ## Built page and CLI
 

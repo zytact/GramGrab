@@ -908,9 +908,7 @@ function Feed({
       {current === 'attention' && (
         <AttentionView list={list} onRun={onRun} onOpen={id => onGo({ watchId: id })} />
       )}
-      {current === 'inbox' && (
-        <AllInbox viewer={list.viewer} version={version} onChanged={onChanged} />
-      )}
+      {current === 'inbox' && <AllInbox viewer={list.viewer} version={version} />}
       {current === 'new' && (
         <>
           <h1 className="opt-h1">Add Watch</h1>

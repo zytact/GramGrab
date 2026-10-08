@@ -47,7 +47,7 @@ node $D open "chrome-extension://$GRAMGRAB_EXT_ID/popup.html"
 node $D eval "popup.html" \
   "document.querySelector('nav[aria-label=\"Download platform\"] button:nth-of-type(2)').click(), 'switched'"
 node $D wait "popup.html" "Open WhatsApp Web"
-node $D shot "popup.html" "\$EV/whatsapp-ineligible.png"
+node $D shot "popup.html" "$EV/whatsapp-ineligible.png"
 ```
 
 **The eligible state is not reachable from the harness at all**, and this was
