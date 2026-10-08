@@ -448,7 +448,14 @@ export function WatchDetail({
       <div className="opt-row opt-between">
         <Avatar src={avatar} username={watch.username} size="lg" />
         <div className="opt-account-text opt-grow">
-          <span className="opt-h1">@{watch.username}</span>
+          <a
+            className="opt-h1 opt-profile-link"
+            href={`https://www.instagram.com/${watch.username}/`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            @{watch.username}
+          </a>
           {watch.formerUsername && <span className="opt-meta">was @{watch.formerUsername}</span>}
         </div>
         <CheckNow watch={watch} onChecked={onChanged} />
