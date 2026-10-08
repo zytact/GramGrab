@@ -170,9 +170,10 @@ describe('Watch request admission', () => {
     expect(instagramCalls().map(([input]) => input)).toEqual(
       condition === 'person' ? ['https://www.instagram.com/person'] : []
     );
-    expect(requestLedger.admitWatch(Date.now())).not.toMatchObject({ reason: 'watch' });
     await vi.advanceTimersByTimeAsync(0);
     expect((await ledger()).attempts).toHaveLength(condition === 'person' ? 1 : 60);
+    vi.setSystemTime(Date.now() + 60 * 60_000);
+    expect(requestLedger.admitWatch(Date.now())).toMatchObject({ _tag: 'admit' });
   });
 
   it('never holds person-initiated requests behind Watch work', async () => {
