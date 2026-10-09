@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.2.0](https://github.com/zytact/GramGrab/compare/v3.1.1...v3.2.0) (2026-10-09)
+
+
+### Features
+
+* **watches:** open a Watch on its Inbox tab ([#277](https://github.com/zytact/GramGrab/issues/277)) ([ab7fa2d](https://github.com/zytact/GramGrab/commit/ab7fa2d75b86fc407a36c9b5749fdd579dfd119d))
+
+
+### Bug Fixes
+
+* **watch:** drop an open Watches page to sign-in when the CLI finds the login gone ([#279](https://github.com/zytact/GramGrab/issues/279)) ([f77b14a](https://github.com/zytact/GramGrab/commit/f77b14af211324157a88d2894f8d3283eb31f696))
+* **watches:** keep Check now in place when its status line appears ([#280](https://github.com/zytact/GramGrab/issues/280)) ([752068f](https://github.com/zytact/GramGrab/commit/752068fb31c0b07b20f74dce44c5004575e9fc69))
+* **watches:** line up the media controls on fetched Inbox items ([#281](https://github.com/zytact/GramGrab/issues/281)) ([7374a41](https://github.com/zytact/GramGrab/commit/7374a4164e3b0d745b6bc331205c55f168b31b03))
+
 ## [3.1.1](https://github.com/zytact/GramGrab/compare/v3.1.0...v3.1.1) (2026-10-09)
 
 
