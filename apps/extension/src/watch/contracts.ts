@@ -24,6 +24,8 @@ export const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}
 const MediaType = Schema.Literal('image', 'video');
 
 export const STORE_KEY = 'watch-store';
+/** The `storage.session` key holding the account ID the last viewer query found. */
+export const VIEWER_KEY = 'watch-viewer';
 export const STORE_VERSION = 1;
 export const STORE_BUDGET_BYTES = 2 * 1024 * 1024;
 /** Inbox entries and the discoveries behind them last this long after discovery. */

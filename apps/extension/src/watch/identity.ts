@@ -9,6 +9,7 @@ import {
 } from '../instagram/acquisition.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
+import { VIEWER_KEY } from './contracts.ts';
 import {
   GraphQLRequestFailed,
   NetworkError,
@@ -81,9 +82,6 @@ export const readJson = (response: Response, context: string) =>
           : new NetworkError({ cause }),
     });
   });
-
-/** The account ID the last viewer query found, kept only for this browser session. */
-const VIEWER_KEY = 'watch-viewer';
 
 export async function verifiedViewerId(): Promise<string | undefined> {
   const stored = await browser.sessionStorage
