@@ -58,6 +58,16 @@ body.opt-body {
   gap: 6px;
   align-items: flex-start;
 }
+.opt-check-now {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  align-self: flex-start;
+  max-width: 50%;
+  margin-left: auto;
+  text-align: right;
+}
 .opt-between {
   justify-content: space-between;
 }
