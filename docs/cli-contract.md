@@ -82,7 +82,7 @@ kind's first check only records a baseline. Lifecycle commands report unknown se
 
 With notify selected, each Watch check that found something, or whose kind just started failing,
 sends one notification. A problem that continues is not announced again. Clicking it opens the
-Watch's Found tab in the options page, only for the verified login that owns it. Notifications are
+Watch's Inbox tab in the options page, only for the verified login that owns it. Notifications are
 an optional browser permission the options page asks for. When it is missing, or the browser does
 not show a notification, that entry's notify outcome fails with `WATCH_NOTIFY_PERMISSION_DENIED`
 or `WATCH_NOTIFY_FAILED` and appears in Needs you. Later checks never resend it.

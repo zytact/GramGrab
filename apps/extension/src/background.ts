@@ -1210,7 +1210,7 @@ browser.alarms.onAlarm.addListener(alarm => {
 });
 browser.runtime.onStartup.addListener(() => void holdForStartup().then(ensureAlarm));
 browser.runtime.onInstalled.addListener(() => void ensureAlarm());
-// A Watch notification opens that Watch's Found tab; the page shows it only to its own login.
+// A Watch notification opens that Watch's Inbox tab; the page shows it only to its own login.
 browser.notifications.onClicked.addListener(id => {
   const watchId = notifiedWatch(id);
   if (!watchId) return;

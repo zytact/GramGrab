@@ -443,7 +443,7 @@ export function WatchDetail({
   version: number;
   onChanged: () => void;
 }) {
-  const [tab, setTab] = useState<'found' | 'inbox'>('found');
+  const [tab, setTab] = useState<'found' | 'inbox'>('inbox');
   const [found, setFound] = useState<readonly DiscoverySummary[]>();
   const { accountId } = watch;
   useEffect(() => {
@@ -488,18 +488,18 @@ export function WatchDetail({
       )}
       <KindHealthList watch={watch} />
       <div className="opt-tabs">
-        <button className={tab === 'found' ? 'active' : ''} onClick={() => setTab('found')}>
-          Found ({found?.length ?? 0})
-        </button>
         <button className={tab === 'inbox' ? 'active' : ''} onClick={() => setTab('inbox')}>
           Inbox ({inbox?.length ?? 0})
         </button>
+        <button className={tab === 'found' ? 'active' : ''} onClick={() => setTab('found')}>
+          Found ({found?.length ?? 0})
+        </button>
       </div>
       {found && inbox ? (
-        tab === 'found' ? (
-          <DiscoveryList entries={found} showAccount={false} />
-        ) : (
+        tab === 'inbox' ? (
           <InboxList entries={inbox} showAccount={false} />
+        ) : (
+          <DiscoveryList entries={found} showAccount={false} />
         )
       ) : (
         <p className="opt-meta">Loading…</p>
