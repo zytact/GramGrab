@@ -44,6 +44,25 @@ The `WATCHES (N)` heading above the sidebar's Watch rows is a
    bounding box plus a small margin, so no username or Avatar is in frame.
    That crop may leave `.local/`.
 
+## Watch tabs
+
+An open Watch has two tabs in `.opt-tabs`: `Inbox (N)` first and selected,
+then `Found (N)`. Inbox lists collected entries with `Select inbox item`
+checkboxes. Found lists every discovery and its action history, without
+checkboxes. A notification click opens `options.html#watch=<id>`, which lands
+on the same Inbox tab.
+
+1. Open `options.html` and select the `instagram` Watch. Read the `.opt-tabs`
+   button texts in order and which has class `active`. Require Inbox first and
+   active.
+2. Click `Found`. It becomes active and shows no `Select inbox item`
+   checkbox. Switch to All inbox and back to the Watch: Inbox is active again.
+3. In the worker, read the `instagram` Watch's `id` from `watch-store` and open
+   `options.html#watch=<id>` in a new tab with `chrome.tabs.create`, so the ID
+   stays in memory. Require Inbox active there. `drive.mjs targets` prints that
+   tab's URL with the ID, so match it as `options.html#watch` instead. Close it
+   from the worker with `chrome.tabs.remove`, since `drive.mjs` has no close.
+
 ## Inbox preview
 
 Story entries show [expiry](./story-expiry.md) in Found and both inbox views
