@@ -80,6 +80,12 @@ retention notice remains a separate deadline.
    Silent are mutually exclusive. Frame download waits for measured metadata;
    its slider and video `currentTime` must agree at a nonzero timestamp. Rotate
    and check the preview's orientation and aspect ratio before download.
+   With Frame on, read each control's `getBoundingClientRect()`. `Frame`,
+   `Remove audio` and the rotate button are one height, and every row they
+   wrap into starts at the controls' left edge and fills its width. The
+   timestamp row spans that width below them, and `Select item NN` stays
+   inside the card. The inspector column is a fixed width, so check a wider
+   card in the popup workspace, which shares this layout.
 3. Download Original, Frame and Silent from the same recorded entry, fetching
    again only when needed. Require completed, nonempty files; check the Frame
    JPEG against its requested timestamp/rotation and the Silent MP4 with
