@@ -342,3 +342,5 @@ All are executable and take no arguments beyond what is shown above.
 
 For Watches, `scripts/watch-smoke.mjs` drives the packaged CLI and options page.
 Its arguments and evidence rules live in [features/watches.md](features/watches.md).
+`scripts/watch-fixtures.mjs seed [COUNT] | remove` adds or removes paused local
+fixture Watches for the long-list layout recipe in the same file.
