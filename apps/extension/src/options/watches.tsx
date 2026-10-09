@@ -662,15 +662,17 @@ function Navigation({
         <span className="opt-count">{inboxCount}</span>
       </button>
       <span className="opt-label opt-section">Watches ({list.watches.length})</span>
-      {list.watches.map(item => (
-        <WatchRow
-          key={item.watchId}
-          watch={item}
-          avatar={avatars.watches[item.watchId]}
-          active={item.watchId === activeWatchId}
-          onOpen={() => onGo({ watchId: item.watchId })}
-        />
-      ))}
+      <div className="opt-watch-list">
+        {list.watches.map(item => (
+          <WatchRow
+            key={item.watchId}
+            watch={item}
+            avatar={avatars.watches[item.watchId]}
+            active={item.watchId === activeWatchId}
+            onOpen={() => onGo({ watchId: item.watchId })}
+          />
+        ))}
+      </div>
       <button
         className={`opt-item opt-add-item ${current === 'new' ? 'active' : ''}`}
         onClick={() => onGo('new')}
@@ -901,7 +903,7 @@ function Feed({
   onChanged: () => void;
 }) {
   return (
-    <section className="opt-feed">
+    <section key={typeof current === 'object' ? current.watchId : current} className="opt-feed">
       <StorageNotice storage={list.storage} />
       <ScheduleNotice schedule={schedule} />
       {actionFailure && <FailureNotice failure={actionFailure} />}

@@ -89,6 +89,35 @@ authorization, and label any screenshot as synthetic.
 
 Storage-write failures keeping the selection belong to `watches.test.tsx`.
 
+## Long Watch list
+
+The options page is three fixed-height panes. The Watch list, the feed and the
+inspector each scroll on their own, and the document itself never scrolls. The
+header, Needs you, All inbox, the Watches label and `+ Add Watch` stay in place
+however long the list is. Below about 500px of height the list keeps a 120px
+floor and the whole sidebar scrolls instead.
+
+1. A long list needs more Watches than a shared account should check. Seed
+   paused local fixtures on the verification profile only:
+   `node .agents/skills/verify-gramgrab/scripts/watch-fixtures.mjs seed 12`.
+   They copy the first Watch's viewer, are disabled, and are never checked.
+   Run `watch-fixtures.mjs remove` in a `finally` step. It deletes only Watches
+   whose target ID has the fixture prefix, so it works after a relaunch.
+2. Open `options.html`, select a Watch, and wheel over `.opt-watch-list` with
+   CDP `Input.dispatchMouseEvent`. Require `document.scrollingElement.scrollTop`
+   to stay `0` with `scrollHeight === innerHeight`, `.opt-watch-list` to scroll,
+   and `.opt-head` and `.opt-add-item` to keep their positions.
+3. Click `+ Add Watch` while the list is scrolled. The `Add Watch` heading, the
+   account input and `Find account` must sit inside the viewport with no scroll.
+4. Select a fixture Watch, which has 40 discoveries, and wheel over
+   `.opt-feed`. The feed scrolls and the sidebar does not move.
+
+Use the window's own viewport. In this environment
+`Emulation.setDeviceMetricsOverride` makes wheel events hang, and so does a
+window shorter than about 500px, so read short-height layout from element
+metrics rather than wheel input. A `hidden` page also hangs input and
+screenshots. Run `drive.mjs activate options.html` first.
+
 ## Built page and CLI
 
 1. Launch the dedicated profile with the existing login, source `session.env`,
