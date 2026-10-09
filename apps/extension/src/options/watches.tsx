@@ -724,16 +724,20 @@ function useWatchList() {
   const load = useCallback(async (send: () => Promise<WatchCommandResponse>) => {
     const request = ++latest.current;
     setPending(count => count + 1);
-    const response = await send().finally(() => setPending(count => count - 1));
-    if (request !== latest.current) return;
-    if (response.failure) {
-      viewer.current = undefined;
-      setLoaded({ kind: 'failed', failure: response.failure });
-    } else if (response.result._tag === 'WatchListResult') {
-      viewer.current = response.result.viewer;
-      setLoaded({ kind: 'ready', list: response.result });
+    try {
+      const response = await send();
+      if (request !== latest.current) return;
+      if (response.failure) {
+        viewer.current = undefined;
+        setLoaded({ kind: 'failed', failure: response.failure });
+      } else if (response.result._tag === 'WatchListResult') {
+        viewer.current = response.result.viewer;
+        setLoaded({ kind: 'ready', list: response.result });
+      }
+      setVersion(current => current + 1);
+    } finally {
+      setPending(count => count - 1);
     }
-    setVersion(current => current + 1);
   }, []);
   const verify = useCallback(() => {
     reverify.current = true;
@@ -758,8 +762,8 @@ function useWatchList() {
     const listener = (changes: StorageChanges) => {
       const change = changes[VIEWER_KEY];
       if (!change) return;
-      if (change.newValue !== undefined) return setObserved({ accountId: change.newValue });
-      if (!viewer.current) return;
+      setObserved(change.newValue === undefined ? undefined : { accountId: change.newValue });
+      if (change.newValue !== undefined || !viewer.current) return;
       latest.current += 1;
       viewer.current = undefined;
       setLoaded(signedOut);
