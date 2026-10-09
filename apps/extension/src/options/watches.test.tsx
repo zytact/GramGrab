@@ -231,6 +231,10 @@ describe('Watches options page', () => {
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
     await user.click(await screen.findByRole('button', { name: /@instagram/ }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
+    expect(screen.getByRole('button', { name: /^Inbox \(/ }).className).toBe('active');
+    await user.click(screen.getByRole('button', { name: /^Found \(/ }));
+    expect(await screen.findByText('Expires in 3h')).toBeDefined();
+    expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
     await user.click(screen.getByRole('button', { name: /^Inbox \(/ }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
     await user.click(screen.getByRole('checkbox', { name: 'Select inbox item' }));
