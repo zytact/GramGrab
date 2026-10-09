@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { UNATTENDED_DISCLOSURE } from '@gramgrab/protocol';
+import { UNATTENDED_DISCLOSURE, WatchList } from '@gramgrab/protocol';
 import { Schema } from 'effect';
 import { WatchStore } from '../watch/contracts.ts';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
@@ -762,6 +762,69 @@ describe('Watches options page', () => {
     fireEvent(window, new Event('focus'));
 
     expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeDefined();
+  });
+
+  it('drops to the sign-in gate when a CLI command finds the login gone, then follows its recovery', async () => {
+    seedWatchWithProblemAndEntry();
+    render(<Watches />);
+    await screen.findByRole('heading', { name: 'Needs you' });
+    instagram.state.viewer = null;
+    expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Rejected' });
+    const viewerRequests = instagram.state.viewerRequests;
+
+    expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
+    expect(screen.getByText('1 Watch stored in this browser.')).toBeDefined();
+    expect(screen.queryByText(`@${VIEWER.username}`)).toBeNull();
+    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+
+    instagram.state.viewer = VIEWER;
+    expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Completed' });
+    expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeDefined();
+    expect(instagram.state.viewerRequests).toBe(viewerRequests + 2);
+  });
+
+  it('follows another login a CLI command verified, asking Instagram once', async () => {
+    seedWatchWithProblemAndEntry();
+    render(<Watches />);
+    await screen.findByRole('heading', { name: 'Needs you' });
+    instagram.state.viewer = { id: '1002', username: 'instagram' };
+    expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Completed' });
+    const viewerRequests = instagram.state.viewerRequests;
+
+    expect(await screen.findByText('Watches (0)')).toBeDefined();
+    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+  });
+
+  it('keeps the sign-in gate when a reply started before the CLI lost the login arrives later', async () => {
+    seedWatchWithProblemAndEntry();
+    render(<Watches />);
+    await screen.findByRole('heading', { name: 'Needs you' });
+    let release = () => {};
+    const pending = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    let held = false;
+    harness.setFetch(async (url, init) => {
+      const response = instagram.handle(url, init);
+      if (!held) {
+        held = true;
+        await pending;
+      }
+      return response;
+    });
+    fireEvent(window, new Event('blur'));
+    fireEvent(window, new Event('focus'));
+    await waitFor(() => expect(held).toBe(true));
+    instagram.state.viewer = null;
+    expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Rejected' });
+    expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
+
+    await act(async () => {
+      release();
+      await pending;
+    });
+    expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
+    expect(screen.queryByText(`@${VIEWER.username}`)).toBeNull();
   });
 
   it('coalesces foreground events and waits for verification before reading changed storage', async () => {

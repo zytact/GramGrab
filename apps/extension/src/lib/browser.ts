@@ -22,7 +22,7 @@ export type OnMessageCallback = (
   sendResponse: (response: unknown) => void
 ) => boolean | void;
 
-/** What `storage.local.onChanged` reports for each changed key. */
+/** What a storage area's `onChanged` reports for each changed key. */
 export type StorageChanges = Record<
   string,
   { readonly oldValue?: unknown; readonly newValue?: unknown }
@@ -114,6 +114,7 @@ export interface BrowserShim {
     get: (keys?: unknown) => Promise<Record<string, unknown>>;
     set: (items: Record<string, unknown>) => Promise<void>;
     remove: (keys: string | string[]) => Promise<void>;
+    onChanged: PortEvent<(changes: StorageChanges) => void>;
   };
   cookies: {
     get: (details: { url: string; name: string }) => Promise<{ value: string } | null>;
@@ -254,6 +255,7 @@ interface ChromeGlobal extends Partial<PromisedApis> {
       get: (keys: unknown, cb: (result: Record<string, unknown>) => void) => void;
       set: (items: Record<string, unknown>, cb?: () => void) => void;
       remove: (keys: string | string[], cb?: () => void) => void;
+      onChanged: PortEvent<(changes: StorageChanges) => void>;
     };
   };
   cookies: {
@@ -316,6 +318,7 @@ interface NativeBrowserGlobal extends Partial<PromisedApis> {
       get: (keys?: unknown) => Promise<Record<string, unknown>>;
       set: (items: Record<string, unknown>) => Promise<void>;
       remove: (keys: string | string[]) => Promise<void>;
+      onChanged: PortEvent<(changes: StorageChanges) => void>;
     };
   };
   cookies: {
@@ -499,6 +502,7 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
             }),
           set: items => callbackPromise(chrome, callback => session.set(items, callback)),
           remove: keys => callbackPromise(chrome, callback => session.remove(keys, callback)),
+          onChanged: session.onChanged,
         }
       : unavailableSessionStorage,
     cookies: {
@@ -706,6 +710,7 @@ const unavailableSessionStorage: BrowserShim['sessionStorage'] = {
   get: () => Promise.reject(new Error('Session storage is unavailable.')),
   set: () => Promise.reject(new Error('Session storage is unavailable.')),
   remove: () => Promise.reject(new Error('Session storage is unavailable.')),
+  onChanged: { addListener: () => {}, removeListener: () => {} },
 };
 
 const noopStorage: BrowserShim['storage'] = {

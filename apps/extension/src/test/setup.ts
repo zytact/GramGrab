@@ -124,6 +124,7 @@ type MockBrowser = {
     get: ReturnType<typeof vi.fn>;
     set: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
+    onChanged: { addListener: () => void; removeListener: () => void };
   };
   windows: { update: ReturnType<typeof vi.fn> };
 };
@@ -200,6 +201,7 @@ const mockBrowserInstance: MockBrowser = {
     get: vi.fn().mockResolvedValue({}),
     set: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
+    onChanged: { addListener: () => {}, removeListener: () => {} },
   },
   windows: { update: vi.fn().mockResolvedValue(undefined) },
 };

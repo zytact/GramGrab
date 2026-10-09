@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccountIdSelector,
+  CommandFailure,
+  OperationFailure,
+  StoredWatchCount,
   UNATTENDED_DISCLOSURE,
   WATCH_ACTIONS,
   WATCH_KINDS,
@@ -28,7 +31,7 @@ import { watchFailure } from '../errors/contracts.ts';
 import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
 import { LEDGER_KEY, decodeLedger, type LedgerView } from '../instagram/request-state.ts';
-import { STORE_KEY } from '../watch/contracts.ts';
+import { STORE_KEY, VIEWER_KEY } from '../watch/contracts.ts';
 import {
   SCHEDULER_KEY,
   decodeSchedulerState,
@@ -690,10 +693,29 @@ function Navigation({
   );
 }
 
-/** The Watches console: navigation, the selected view, and the selected Watch's settings. */
-export function Watches() {
+/** The sign-in gate for a console whose login the browser session no longer verifies. */
+const signedOut = (loaded: Loaded): Loaded =>
+  loaded.kind === 'ready'
+    ? {
+        kind: 'failed',
+        failure: CommandFailure.make({
+          failure: OperationFailure.make({ code: 'IG_NOT_AUTHENTICATED', scope: 'batch' }),
+          detail: StoredWatchCount.make({
+            count: loaded.list.watches.length + loaded.list.otherLoginWatchCount,
+          }),
+        }),
+      }
+    : loaded;
+
+/**
+ * The verified Watch list. `verify` asks Instagram who is signed in, `refresh` rereads the known
+ * login's Watches, and a viewer change another surface records in the browser session is followed.
+ */
+function useWatchList() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const [version, setVersion] = useState(0);
+  const [pending, setPending] = useState(0);
+  const [observed, setObserved] = useState<{ readonly accountId: unknown }>();
   const latest = useRef(0);
   const viewer = useRef<WatchViewer>(undefined);
   const verification = useRef<Promise<void>>(undefined);
@@ -701,16 +723,21 @@ export function Watches() {
 
   const load = useCallback(async (send: () => Promise<WatchCommandResponse>) => {
     const request = ++latest.current;
-    const response = await send();
-    if (request !== latest.current) return;
-    if (response.failure) {
-      viewer.current = undefined;
-      setLoaded({ kind: 'failed', failure: response.failure });
-    } else if (response.result._tag === 'WatchListResult') {
-      viewer.current = response.result.viewer;
-      setLoaded({ kind: 'ready', list: response.result });
+    setPending(count => count + 1);
+    try {
+      const response = await send();
+      if (request !== latest.current) return;
+      if (response.failure) {
+        viewer.current = undefined;
+        setLoaded({ kind: 'failed', failure: response.failure });
+      } else if (response.result._tag === 'WatchListResult') {
+        viewer.current = response.result.viewer;
+        setLoaded({ kind: 'ready', list: response.result });
+      }
+      setVersion(current => current + 1);
+    } finally {
+      setPending(count => count - 1);
     }
-    setVersion(current => current + 1);
   }, []);
   const verify = useCallback(() => {
     reverify.current = true;
@@ -730,6 +757,37 @@ export function Watches() {
     const known = viewer.current;
     if (known) await load(() => runRead(WatchList.make(), known));
   }, [load]);
+
+  useEffect(() => {
+    const listener = (changes: StorageChanges) => {
+      const change = changes[VIEWER_KEY];
+      if (!change) return;
+      setObserved(change.newValue === undefined ? undefined : { accountId: change.newValue });
+      if (change.newValue !== undefined || !viewer.current) return;
+      latest.current += 1;
+      viewer.current = undefined;
+      setLoaded(signedOut);
+    };
+    browser.sessionStorage.onChanged.addListener(listener);
+    return () => {
+      browser.sessionStorage.onChanged.removeListener(listener);
+      reverify.current = false;
+      viewer.current = undefined;
+      latest.current += 1;
+    };
+  }, []);
+  useEffect(() => {
+    if (pending > 0 || !observed) return;
+    setObserved(undefined);
+    if (observed.accountId !== viewer.current?.accountId) void verify();
+  }, [pending, observed, verify]);
+
+  return { loaded, version, verify, refresh };
+}
+
+/** The Watches console: navigation, the selected view, and the selected Watch's settings. */
+export function Watches() {
+  const { loaded, version, verify, refresh } = useWatchList();
 
   useEffect(() => {
     void verify();
@@ -753,9 +811,6 @@ export function Watches() {
       window.removeEventListener('blur', leave);
       window.removeEventListener('focus', enter);
       document.removeEventListener('visibilitychange', visibility);
-      reverify.current = false;
-      viewer.current = undefined;
-      latest.current += 1;
     };
   }, [verify]);
 

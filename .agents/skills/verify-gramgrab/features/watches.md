@@ -221,6 +221,11 @@ and every action verify the login once. Tab visibility and window focus events
 for one return share a verification. Storage reloads wait for that verification,
 and changing the login clears the previous login's selected view and inbox
 selections. A signed-out page rechecks on return too. There is no login polling.
+The page also follows the `watch-viewer` key in `chrome.storage.session`, which
+every viewer query writes, including the CLI's. When the key is removed, the page
+drops to the sign-in gate without a request. When it names another login, the
+page verifies once. Chromium fires no change event when a query rewrites the
+same login.
 
 1. Read `nextRoundAt`, `remaining`, each kind's `lastCheckAt`, and the length of
    `attempts` in `instagram-requests` from the worker's storage. Open
@@ -246,6 +251,15 @@ selections. A signed-out page rechecks on return too. There is no login polling.
    switch or sign-out if one occurs, otherwise report that live gap. Focused
    browser-adapter tests own switched-login isolation and sign-out recovery;
    an unchanged real login proves foreground verification, not account switching.
+6. With a page marker set, record the request count and run
+   `gramgrab watch list` once. The count grows by exactly the CLI's one request,
+   and the page keeps its marker and console. To drive the page's login-loss
+   path without signing out, run
+   `chrome.storage.session.remove('watch-viewer')` from the worker, which is
+   what a viewer query that finds no login does. The page shows `Sign in to
+   Instagram` with the stored count, keeps its marker, and adds no request.
+   Return to the tab: one viewer request restores the console. This injects
+   session state only. A real sign-out stays a reported live gap.
 
 ## Avatars
 
