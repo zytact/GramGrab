@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.1](https://github.com/zytact/GramGrab/compare/v3.1.0...v3.1.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **watches:** make the sidebar heading readable at 5.4:1 contrast ([#275](https://github.com/zytact/GramGrab/issues/275)) ([0ce4ddd](https://github.com/zytact/GramGrab/commit/0ce4ddd580254fb0dbc711b8d64fc8096259758a))
+* **watch:** keep Add Watch and the header in view with long Watch lists ([#273](https://github.com/zytact/GramGrab/issues/273)) ([3efe407](https://github.com/zytact/GramGrab/commit/3efe4079f2fbad72f561bdf897cb9209b76b564b))
+
 ## [3.1.0](https://github.com/zytact/GramGrab/compare/v3.0.0...v3.1.0) (2026-10-08)
 
 
