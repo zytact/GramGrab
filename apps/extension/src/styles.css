@@ -1318,10 +1318,23 @@ body:has(.workspace-container) {
   grid-column: 2;
   grid-row: 3;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   padding-top: 8px;
+}
+.workspace-media-list .frame-export-control {
+  display: contents;
+}
+.workspace-media-list .frame-toggle {
+  flex: 1 1 auto;
+  justify-content: center;
+  margin: 0;
+  white-space: nowrap;
+}
+.workspace-media-list .frame-timestamp-row {
+  order: 1;
+  flex-basis: 100%;
 }
 .workspace-container .workspace-action-bar {
   position: sticky;
