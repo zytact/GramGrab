@@ -190,6 +190,23 @@ described in Live page below.
    instead, and other spacing, the hourly cap included, reads `Watch requests
    are spaced out.`
 
+## Check now placement
+
+Check now sits at the right end of the Watch header row, top-aligned. Its
+progress, result and failure lines stack right-aligned under it, at most half
+the row wide, so the button keeps its place whatever the line says.
+
+1. Reach a line under the button without a new Watch request: an inherited held
+   manual check (`Waiting…` with `Still to check:`), a `Last check` line, or
+   the single click in Request cap. Do not click Check now only to make a line.
+2. Read the rects of `.opt-check-now > button` and its header row, the
+   `.opt-check-now` parent. Require `rowRight - buttonRight` under 1px, the
+   button's top equal to the row's top, and the column on the same line as the
+   `@username` heading rather than wrapped below it. Read the same values
+   before the line appears when the recipe passes through that state.
+3. Crop the header row plus a small margin, with the verified login out of
+   frame.
+
 ## Live page
 
 An open options page reloads its list, the open Watch and the inbox whenever the
@@ -419,9 +436,12 @@ it is not an Instagram response.
    the viewer as the person, which adds one attempt and can move that time.
    The page follows `instagram-requests` and `watch-scheduler` in storage, so
    an open page picks up a cap that fills later without a reload.
-3. Open the Watch and click Check now once. The line reads `Watch requests are
-   spaced out. This check can run at HH:MM.` with the floor computed for that check, the
-   button returns to `Check now`, and no Watch request starts.
+3. If the Watch already holds a manual check, the button stays disabled and
+   reads `Checking…`, or `Waiting…` once the check itself records a deferral
+   time. Record that state and do not wait it out. Otherwise open the Watch and click Check now once. The line reads
+   `Watch requests are spaced out. This check can run at HH:MM.` with the floor
+   computed for that check, the button returns to `Check now`, and no Watch
+   request starts.
    The click's own viewer requests can push the banner's time later than the check's time.
    Do not click again to make the times agree.
 4. To prove an open page clears the banner as the cap ages out, extend the
