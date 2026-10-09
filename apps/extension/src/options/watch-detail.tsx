@@ -412,7 +412,7 @@ function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => 
     onChecked();
   };
   return (
-    <div className="opt-col">
+    <div className="opt-check-now">
       <button
         className="opt-btn"
         disabled={state !== 'idle' || !watch.enabled}
