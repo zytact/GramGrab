@@ -187,6 +187,7 @@ node $D text  "popup.html"                        # innerText of the first match
 node $D wait  "popup.html" "No media yet." 15000  # poll until text appears
 node $D eval  "popup.html" "document.querySelector('.url-input').value"
 node $D shot  "popup.html" .local/verify-evidence/run/workspace.png
+node $D shot  "options.html" .local/verify-evidence/run/row.png ".opt-health-row"  # cropped to one element
 ```
 
 The toolbar popup itself closes as soon as focus moves, so drive `popup.html`
@@ -217,6 +218,8 @@ Prefer these handles, which the source owns and tests already depend on:
 | Failure code readout | `.download-attempt-summary code`                   |
 | Watch profile link   | `a.opt-profile-link`                              |
 | Diagnostics dialog   | `#diagnostics-dialog-title`                        |
+| Watch check problem  | `.opt-health-row.opt-health-problem`               |
+| Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 
 One limit worth knowing before planning a run: anything gated on the _active
@@ -344,3 +347,6 @@ For Watches, `scripts/watch-smoke.mjs` drives the packaged CLI and options page.
 Its arguments and evidence rules live in [features/watches.md](features/watches.md).
 `scripts/watch-fixtures.mjs seed [COUNT] | remove` adds or removes paused local
 fixture Watches for the long-list layout recipe in the same file.
+`scripts/watch-problem.mjs hold | seed CODE [REASON] | remove | quiet | release`
+holds Watch work and seeds a Posts check problem on the `instagram` Watch for the
+Check problem recipe.
