@@ -163,9 +163,26 @@ export class KindOff extends Schema.TaggedClass<KindOff>()('KindOff', {
   baselineKept: Schema.Boolean,
 }) {}
 
+/**
+ * Which rule stopped a check as `WATCH_CHECK_INCOMPLETE`. It names the rule only, never the
+ * account or media that broke it.
+ */
+export const CheckIncompleteReason = Schema.Literal(
+  'not-json',
+  'graphql-errors',
+  'foreign-owner',
+  'future-timestamp',
+  'inexact-identity',
+  'inexact-sidecar',
+  'inconsistent-page',
+  'repeated-traversal'
+);
+export type CheckIncompleteReason = Schema.Schema.Type<typeof CheckIncompleteReason>;
+
 export class KindProblem extends Schema.TaggedClass<KindProblem>()('KindProblem', {
   kind: WatchKind,
   code: FailureCodeSchema,
+  reason: Schema.optional(CheckIncompleteReason),
   since: EpochMillis,
   lastSuccessAt: Schema.optional(EpochMillis),
 }) {}

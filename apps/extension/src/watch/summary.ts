@@ -12,7 +12,7 @@ import {
 import type { Watch } from './contracts.ts';
 import { watchAttention } from './attention.ts';
 import { lastCheckAt } from './check.ts';
-import { needsPerson, summarizeDiscovery } from './discoveries.ts';
+import { needsPerson, summarizeDiscovery, type KindProblemCause } from './discoveries.ts';
 
 /** Whether `kind` has a committed baseline, which pausing or deselecting it keeps. */
 export function initialized(watch: Watch, kind: WatchKind): boolean {
@@ -26,17 +26,24 @@ export function initialized(watch: Watch, kind: WatchKind): boolean {
 const catchingUp = (watch: Watch, kind: WatchKind) =>
   kind === 'posts' && watch.tracking.posts?.catchingUp === true;
 
+const problemHealth = (
+  kind: WatchKind,
+  problem: KindProblemCause & { readonly at: number },
+  lastSuccessAt: number | undefined
+) =>
+  KindProblem.make({
+    kind,
+    code: problem.code,
+    ...(problem.reason ? { reason: problem.reason } : {}),
+    since: problem.at,
+    ...(lastSuccessAt === undefined ? {} : { lastSuccessAt }),
+  });
+
 function kindHealth(watch: Watch, kind: WatchKind) {
   const tracking = watch.tracking[kind];
   if (!watch.kinds.includes(kind))
     return KindOff.make({ kind, baselineKept: initialized(watch, kind) });
-  if (tracking?.problem)
-    return KindProblem.make({
-      kind,
-      code: tracking.problem.code,
-      since: tracking.problem.at,
-      ...(tracking.lastSuccessAt === undefined ? {} : { lastSuccessAt: tracking.lastSuccessAt }),
-    });
+  if (tracking?.problem) return problemHealth(kind, tracking.problem, tracking.lastSuccessAt);
   if (initialized(watch, kind) && tracking?.lastSuccessAt !== undefined)
     return KindChecked.make({
       kind,

@@ -5,6 +5,7 @@ import {
   InvalidInstagramUrl,
   NetworkError,
   ResponseShapeUnknown,
+  AnswerUntrusted,
 } from '../effect/errors.ts';
 import {
   historyFailure,
@@ -29,6 +30,7 @@ describe('operation failure normalization', () => {
     [new GraphQLRequestFailed({ status: 403 }), 'IG_ACCESS_FORBIDDEN'],
     [new GraphQLRequestFailed({ status: 503 }), 'SOURCE_SERVER_FAILED'],
     [new ResponseShapeUnknown({ context: 'shortcode' }), 'IG_RESPONSE_SHAPE_UNKNOWN'],
+    [new AnswerUntrusted({ reason: 'not-json' }), 'SOURCE_SERVER_FAILED'],
   ])('normalizes typed source causes', (cause, code) => {
     const failure = normalizeSourceFailure(cause);
 

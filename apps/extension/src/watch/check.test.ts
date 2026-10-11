@@ -349,6 +349,7 @@ describe('Posts checks', () => {
     expect(await postsHealth()).toMatchObject({
       _tag: 'KindProblem',
       code: 'WATCH_CHECK_INCOMPLETE',
+      reason: 'repeated-traversal',
       lastSuccessAt: expect.any(Number),
     });
   });
@@ -373,18 +374,54 @@ describe('Posts checks', () => {
   });
 
   it.each([
-    ['another owner', [{ ...posts(9)[0]!, owner: '9999' }]],
+    ['another owner', [{ ...posts(9)[0]!, owner: '9999' }], 'foreign-owner'],
     [
       'another owner and only other co-authors',
       [{ ...posts(9)[0]!, owner: '9999', coauthors: ['8888'] }],
+      'foreign-owner',
     ],
-    ['a Sidecar missing its declared children', [{ ...posts(9)[0]!, children: [] }]],
-    ['a non-numeric media ID', [{ ...posts(9)[0]!, id: '9x' }]],
-  ])('rejects a page with %s', async (_case, page) => {
+    [
+      'a Post published in the future',
+      [{ id: '9', takenAt: seconds(START) + DAY / 1000 }],
+      'future-timestamp',
+    ],
+    [
+      'a Sidecar missing its declared children',
+      [{ ...posts(9)[0]!, children: [] }],
+      'inexact-sidecar',
+    ],
+    ['a non-numeric media ID', [{ ...posts(9)[0]!, id: '9x' }], 'inexact-identity'],
+  ] as const)(
+    'stops incomplete on a page with %s and records the rule',
+    async (_case, page, reason) => {
+      await baselined();
+      setPosts(page);
+
+      expect((await checkLater()).kinds[0]).toMatchObject({ code: 'WATCH_CHECK_INCOMPLETE' });
+      expect(await postsHealth()).toMatchObject({ code: 'WATCH_CHECK_INCOMPLETE', reason });
+    }
+  );
+
+  it.each([
+    ['GraphQL errors', { data: null, errors: [{ message: 'failed' }] }, 'graphql-errors'],
+    ['a body that is not JSON', new Response('<html>'), 'not-json'],
+  ] as const)(
+    'stops incomplete on an answer with %s and records the rule',
+    async (_case, answer, reason) => {
+      await baselined();
+      instagram.state.posts = { '': answer };
+
+      expect((await checkLater()).kinds[0]).toMatchObject({ code: 'WATCH_CHECK_INCOMPLETE' });
+      expect(await postsHealth()).toMatchObject({ code: 'WATCH_CHECK_INCOMPLETE', reason });
+    }
+  );
+
+  it('reports a format change only for a page that does not decode', async () => {
     await baselined();
-    setPosts(page);
+    instagram.state.posts = { '': { data: {} } };
 
     expect((await checkLater()).kinds[0]).toMatchObject({ code: 'IG_RESPONSE_SHAPE_UNKNOWN' });
+    expect(await postsHealth()).not.toHaveProperty('reason');
   });
 
   it('catches up three pages per turn within a frozen window, then completes', async () => {

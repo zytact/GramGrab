@@ -219,6 +219,37 @@ describe('Watches options page', () => {
     expect(screen.getByText('Expired')).toBeDefined();
   });
 
+  it('shows an incomplete Posts check without update copy and previews the rule it broke', async () => {
+    seedWatchWithProblemAndEntry();
+    const store = harness.local.read('watch-store') as { watches: [object] };
+    const now = Date.now();
+    harness.local.write('watch-store', {
+      ...store,
+      watches: [
+        {
+          ...store.watches[0],
+          kinds: ['posts'],
+          tracking: {
+            posts: {
+              baselineCutoff: 1,
+              lastCheckAt: now,
+              problem: { code: 'WATCH_CHECK_INCOMPLETE', reason: 'not-json', at: now },
+            },
+          },
+        },
+      ],
+    });
+    harness.browser.runtime.getManifest.mockReturnValue({ version: '3.2.0' });
+    const user = userEvent.setup();
+    render(<Watches />);
+
+    await user.click(await screen.findByRole('button', { name: /@instagram/ }));
+    await user.click(await screen.findByRole('button', { name: 'Preview diagnostics' }));
+
+    expect(screen.getByText(/"reason": "not-json"/)).toBeDefined();
+    expect(screen.queryByText(/Instagram's format has changed/)).toBeNull();
+  });
+
   it('shows Story expiry in Found, Inbox and fetched preview cards', async () => {
     const expiresAt = Math.floor(Date.now() / 1000) + 3 * 3600 + 30;
     seedWatchWithProblemAndEntry([], expiresAt);

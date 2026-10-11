@@ -65,5 +65,5 @@ export const fetchAvatar = (username: string) =>
       `https://www.instagram.com/web/search/topsearch/?context=blended&query=${encodeURIComponent(username)}`,
       { credentials: 'include', headers: IG_HEADERS }
     );
-    return yield* readJson(response, 'watch_avatar');
+    return yield* readJson(response);
   });

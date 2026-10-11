@@ -338,6 +338,19 @@ describe('Watch scheduling', () => {
     expect(storyRequests()).toHaveLength(retried);
   });
 
+  it('retries a Posts check that one bad answer left incomplete, an hour later', async () => {
+    await add(TARGET.username, ['posts']);
+    instagram.state.posts = { '': new Response('<html>') };
+
+    await wake();
+    const failed = instagram.state.postRequests.length;
+    await vi.advanceTimersByTimeAsync(HOUR);
+    await wake();
+
+    expect(failed).toBe(1);
+    expect(instagram.state.postRequests).toHaveLength(2);
+  });
+
   it('pauses every Watch after a 429 and shows one attention item with the pause end', async () => {
     await add(TARGET.username);
     await add(OTHER.username);

@@ -22,6 +22,7 @@ import { StoryExpiry } from '../popup/story-expiry.tsx';
 import { KIND_LABEL, relativeTime, WATCH_AVATAR_NOTE } from './copy.ts';
 import { useInboxSelection } from './inbox-export.tsx';
 import { Avatar } from './avatar.tsx';
+import { DiagnosticsPreview } from './diagnostics-preview.tsx';
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -70,6 +71,19 @@ function KindHealthList({ watch }: { watch: WatchSummary }) {
         <div key={health.kind} className={`opt-health-row ${HEALTH_CLASS[health._tag]}`}>
           <strong>{KIND_LABEL[health.kind]}</strong>
           <span>{healthText(health, watch.enabled)}</span>
+          {health._tag === 'KindProblem' &&
+            FAILURE_PRESENTATION[health.code].actions.includes('copy-diagnostics') && (
+              <DiagnosticsPreview
+                key={`${health.code}:${health.reason}`}
+                failure={{
+                  code: health.code,
+                  phase: 'resolving',
+                  scope: 'batch',
+                  mediaKind: health.kind,
+                  ...(health.reason ? { reason: health.reason } : {}),
+                }}
+              />
+            )}
         </div>
       ))}
     </div>

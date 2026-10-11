@@ -1,4 +1,5 @@
 import { Schema } from 'effect';
+import { CheckIncompleteReason } from '@gramgrab/protocol';
 import type { AttemptOutcome, DownloadAttempt } from '../download/attempt.ts';
 import {
   FailurePhaseSchema,
@@ -149,10 +150,14 @@ class WatchDiagnosticFailure extends Schema.Class<WatchDiagnosticFailure>('Watch
     phase: FailurePhaseSchema,
     scope: Schema.Literal('batch', 'item'),
     mediaKind: Schema.optionalWith(WatchKindSchema, { exact: true }),
+    reason: Schema.optionalWith(CheckIncompleteReason, { exact: true }),
   }
 ) {}
 
-/** A Watch report holds the failure's code, phase, scope, and media kind, and nothing else. */
+/**
+ * A Watch report holds the failure's code, phase, scope, media kind, and the rule an incomplete
+ * check broke, and nothing else.
+ */
 class WatchDiagnosticsReport extends Schema.Class<WatchDiagnosticsReport>('WatchDiagnosticsReport')(
   {
     diagnosticsVersion: Schema.Literal(2),
@@ -432,6 +437,7 @@ export interface WatchDiagnosticsInput {
     readonly phase: FailurePhase;
     readonly scope: 'batch' | 'item';
     readonly mediaKind?: WatchKind;
+    readonly reason?: CheckIncompleteReason;
   };
 }
 
@@ -440,7 +446,7 @@ export function buildWatchDiagnostics(
   input: WatchDiagnosticsInput,
   capturedAt = new Date()
 ): string {
-  const { code, phase, scope, mediaKind } = input.failure;
+  const { code, phase, scope, mediaKind, reason } = input.failure;
   return encodeDiagnostics(
     WatchDiagnosticsReport.make({
       diagnosticsVersion: 2,
@@ -453,6 +459,7 @@ export function buildWatchDiagnostics(
         phase,
         scope,
         ...(mediaKind ? { mediaKind } : {}),
+        ...(reason ? { reason } : {}),
       }),
     })
   );

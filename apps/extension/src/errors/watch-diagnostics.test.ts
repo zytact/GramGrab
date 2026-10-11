@@ -44,6 +44,24 @@ describe('Watch diagnostic privacy and failure contracts', () => {
     expect(report.failure).toEqual({ code, phase, scope, mediaKind: 'posts' });
   });
 
+  it('names the rule an incomplete check broke, and only from the closed list', () => {
+    const failure = {
+      code: 'WATCH_CHECK_INCOMPLETE',
+      phase: 'resolving',
+      scope: 'batch',
+      mediaKind: 'posts',
+      reason: 'not-json',
+    } as const;
+    const report = JSON.parse(buildWatchDiagnostics({ ...input, failure }, capturedAt));
+
+    expect(report.failure).toMatchObject({ code: 'WATCH_CHECK_INCOMPLETE', reason: 'not-json' });
+    expect(decodeDiagnostics(report)._tag).toBe('Right');
+    expect(
+      decodeDiagnostics({ ...report, failure: { ...report.failure, reason: 'account-secret' } })
+        ._tag
+    ).toBe('Left');
+  });
+
   it('projects caller data onto structural fields and rejects contaminated reports', () => {
     const secret = 'account-media-session-secret';
     const enriched = {

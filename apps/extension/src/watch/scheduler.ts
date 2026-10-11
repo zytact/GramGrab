@@ -41,6 +41,7 @@ const RETRYABLE: ReadonlySet<FailureCode> = new Set([
   'SOURCE_NETWORK_FAILED',
   'SOURCE_SERVER_FAILED',
   'IG_RESPONSE_SHAPE_UNKNOWN',
+  'WATCH_CHECK_INCOMPLETE',
 ]);
 async function loadState(): Promise<SchedulerState> {
   const stored = await browser.storage

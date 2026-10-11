@@ -99,7 +99,10 @@ continues from its cursor after the round's other Watches, within the eligibilit
 with. The cursor lives only in the browser session, so a browser restart starts the traversal again
 from the first page, and discoveries already recorded are not repeated. A Post repeated between
 pages, a repeated cursor, or a page that claims more without a cursor fail the check with
-`WATCH_CHECK_INCOMPLETE` and keep the baseline and last success. A new Post sitting below a whole
+`WATCH_CHECK_INCOMPLETE` and keep the baseline and last success. So do a body that is not JSON, a
+GraphQL `errors` answer, a Post of another account, a publication time in the future, and an
+inexact media identity or Sidecar. The kind's `KindProblem` in `watch list` and `watch show` names
+which one in `reason`. Only a page that does not decode is `IG_RESPONSE_SHAPE_UNKNOWN`. A new Post sitting below a whole
 page of older media, or an item missing beyond the stopping page, is an accepted limit, not a
 guarantee of a complete snapshot.
 

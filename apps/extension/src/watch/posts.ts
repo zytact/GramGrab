@@ -1,15 +1,12 @@
-import { Data, Effect, Schema } from 'effect';
-import { InstagramUsername } from '@gramgrab/protocol';
+import { Effect, Either, Schema } from 'effect';
+import { InstagramUsername, type CheckIncompleteReason } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
 import { IG_API_GRAPHQL_HEADERS, readCsrfToken } from '../instagram/acquisition.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
-import { ResponseShapeUnknown } from '../effect/errors.ts';
+import { AnswerUntrusted, ResponseShapeUnknown } from '../effect/errors.ts';
 import { MediaId, Shortcode, type TimedRef } from './contracts.ts';
 import { readJson } from './identity.ts';
-
-/** Instagram's answer was valid but cannot be trusted as a complete, ordered traversal. */
-export class PostsIncomplete extends Data.TaggedError('PostsIncomplete') {}
 
 const PAGE_SIZE = 12;
 /** A Watch turn reads at most this many Posts pages; a longer traversal continues later. */
@@ -45,8 +42,10 @@ export const PostsResponse = Schema.Struct({
       }),
     }),
   }),
-  errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
+
+/** A GraphQL answer that reports errors, which Instagram sends with or without `data`. */
+const isErrored = Schema.is(Schema.Struct({ errors: Schema.NonEmptyArray(Schema.Unknown) }));
 
 export interface PostsPage {
   readonly refs: readonly TimedRef[];
@@ -59,36 +58,47 @@ const MEDIA_TYPE = { 1: 'image', 2: 'video' } as const;
 const isMediaId = Schema.is(MediaId);
 const isShortcode = Schema.is(Shortcode);
 
-/**
- * A node's exact reference, or undefined when its identity is not exact. A Sidecar keeps its
- * complete, distinct child set, which must match its declared count.
- */
-function toRef(node: PostNode): TimedRef | undefined {
-  const { pk: mediaId, code: shortcode } = node;
-  if (!isMediaId(mediaId) || !isShortcode(shortcode)) return undefined;
-  const base = { mediaId, shortcode, takenAt: node.taken_at };
-  if (node.media_type !== 8)
-    return { _tag: 'Post', ...base, mediaType: MEDIA_TYPE[node.media_type] };
-  const children = node.carousel_media ?? [];
-  if (children.length === 0 || children.length !== node.carousel_media_count) return undefined;
-  if (!children.every(child => isMediaId(child.pk))) return undefined;
-  if (new Set(children.map(child => child.pk)).size !== children.length) return undefined;
-  return {
-    _tag: 'Sidecar',
-    ...base,
-    children: children.map(child => ({
-      mediaId: child.pk,
-      mediaType: MEDIA_TYPE[child.media_type],
-    })),
-  };
-}
-
 /** A collab Post lists the target as a co-author while another account owns it. */
 const belongsTo = (node: PostNode, targetId: string) =>
   node.user.pk === targetId ||
   (node.coauthor_producers ?? []).some(coauthor => coauthor.pk === targetId);
 
-const untrusted = () => new ResponseShapeUnknown({ context: 'watch_posts' });
+/** A Sidecar's complete, distinct child set, or undefined when it does not match its count. */
+function exactChildren(node: PostNode) {
+  const children = node.carousel_media ?? [];
+  const exact =
+    children.length > 0 &&
+    children.length === node.carousel_media_count &&
+    children.every(child => isMediaId(child.pk)) &&
+    new Set(children.map(child => child.pk)).size === children.length;
+  return exact
+    ? children.map(child => ({ mediaId: child.pk, mediaType: MEDIA_TYPE[child.media_type] }))
+    : undefined;
+}
+
+/**
+ * A node's exact reference, or the rule it breaks: another account's Post, a publication time in
+ * the future, an inexact identity, or a Sidecar whose children are not exact.
+ */
+function toRef(
+  node: PostNode,
+  targetId: string,
+  nowSeconds: number
+): Either.Either<TimedRef, CheckIncompleteReason> {
+  if (!belongsTo(node, targetId)) return Either.left('foreign-owner');
+  if (node.taken_at > nowSeconds + CLOCK_SKEW_SECONDS) return Either.left('future-timestamp');
+  const { pk: mediaId, code: shortcode } = node;
+  if (!isMediaId(mediaId) || !isShortcode(shortcode)) return Either.left('inexact-identity');
+  const base = { mediaId, shortcode, takenAt: node.taken_at };
+  if (node.media_type !== 8)
+    return Either.right({ _tag: 'Post', ...base, mediaType: MEDIA_TYPE[node.media_type] });
+  const children = exactChildren(node);
+  return children
+    ? Either.right({ _tag: 'Sidecar', ...base, children })
+    : Either.left('inexact-sidecar');
+}
+
+const incomplete = (reason: CheckIncompleteReason) => new AnswerUntrusted({ reason });
 
 /**
  * Whether a page reads as part of one list: distinct items, and a cursor whenever it claims more.
@@ -99,25 +109,23 @@ const consistent = (refs: readonly TimedRef[], next: string | undefined) =>
   (next === undefined || (next !== '' && refs.length > 0));
 
 /**
- * Reads one Posts page of `targetId`. Every node must be authored or co-authored by the target,
- * and carry trustworthy identity and timing; any GraphQL error fails the page.
+ * Reads one Posts page of `targetId`. Only an answer that does not decode is an unknown format.
+ * A GraphQL error, or a node that is not the target's with trustworthy identity and timing,
+ * leaves the check incomplete and names the rule that stopped it.
  */
 export const readPostsPage = (raw: unknown, targetId: string, nowSeconds: number) =>
   Effect.gen(function* () {
+    if (isErrored(raw)) return yield* Effect.fail(incomplete('graphql-errors'));
     const decoded = yield* Schema.decodeUnknown(PostsResponse)(raw).pipe(
-      Effect.mapError(untrusted)
+      Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_posts' }))
     );
-    if ((decoded.errors?.length ?? 0) > 0) return yield* Effect.fail(untrusted());
     const connection = decoded.data.xdt_api__v1__feed__user_timeline_graphql_connection;
-    const nodes = connection.edges.map(edge => edge.node);
-    const trusted = nodes.every(
-      node => belongsTo(node, targetId) && node.taken_at <= nowSeconds + CLOCK_SKEW_SECONDS
-    );
-    const refs = nodes.map(toRef).filter(ref => ref !== undefined);
-    if (!trusted || refs.length !== nodes.length) return yield* Effect.fail(untrusted());
+    const refs = yield* Either.all(
+      connection.edges.map(edge => toRef(edge.node, targetId, nowSeconds))
+    ).pipe(Either.mapLeft(incomplete));
     const { end_cursor: cursor, has_next_page: more } = connection.page_info;
     const next = more ? (cursor ?? '') : undefined;
-    if (!consistent(refs, next)) return yield* Effect.fail(new PostsIncomplete());
+    if (!consistent(refs, next)) return yield* Effect.fail(incomplete('inconsistent-page'));
     return { refs, next } satisfies PostsPage;
   });
 
@@ -180,7 +188,7 @@ export const fetchPostsPage = (username: string, after: string | undefined) =>
         variables: JSON.stringify(variables),
       }),
     });
-    return yield* readJson(response, 'watch_posts');
+    return yield* readJson(response);
   });
 
 const TRAVERSALS_KEY = 'watch-posts-traversals';

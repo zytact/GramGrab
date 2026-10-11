@@ -1,4 +1,5 @@
 import { Data, Match, pipe } from 'effect';
+import type { CheckIncompleteReason } from '@gramgrab/protocol';
 
 // URL parsing
 export class InvalidInstagramUrl extends Data.TaggedError('InvalidInstagramUrl')<{ url: string }> {}
@@ -26,6 +27,10 @@ export class GraphQLRequestFailed extends Data.TaggedError('GraphQLRequestFailed
 export class MediaNotFound extends Data.TaggedError('MediaNotFound')<{ hint: string }> {}
 export class ResponseShapeUnknown extends Data.TaggedError('ResponseShapeUnknown')<{
   context: string;
+}> {}
+/** Instagram answered, but not with something to trust as complete and consistent. */
+export class AnswerUntrusted extends Data.TaggedError('AnswerUntrusted')<{
+  readonly reason: CheckIncompleteReason;
 }> {}
 export class MediaDashOnlyUnsupported extends Data.TaggedError('MediaDashOnlyUnsupported')<{
   mediaId: string;

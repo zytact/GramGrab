@@ -19,6 +19,7 @@ import {
   NetworkError,
   RateLimited,
   ResponseShapeUnknown,
+  AnswerUntrusted,
   UsernameUnresolved,
 } from '../effect/errors.ts';
 
@@ -36,6 +37,13 @@ function failure(
   });
 }
 
+function statusCode(status: number) {
+  if (status === 401) return 'IG_NOT_AUTHENTICATED';
+  if (status === 403) return 'IG_ACCESS_FORBIDDEN';
+  if (status >= 500) return 'SOURCE_SERVER_FAILED';
+  return 'IG_REQUEST_REJECTED';
+}
+
 export function normalizeSourceFailure(cause: unknown): OperationFailure {
   if (cause instanceof InvalidInstagramUrl)
     return failure('INPUT_INVALID_SOURCE_URL', 'input', cause, 'batch');
@@ -50,12 +58,10 @@ export function normalizeSourceFailure(cause: unknown): OperationFailure {
     return failure('IG_RESPONSE_SHAPE_UNKNOWN', 'source', cause, 'batch');
   if (cause instanceof NetworkError)
     return failure('SOURCE_NETWORK_FAILED', 'source', cause, 'batch');
-  if (cause instanceof GraphQLRequestFailed || cause instanceof HttpError) {
-    if (cause.status === 401) return failure('IG_NOT_AUTHENTICATED', 'source', cause, 'batch');
-    if (cause.status === 403) return failure('IG_ACCESS_FORBIDDEN', 'source', cause, 'batch');
-    if (cause.status >= 500) return failure('SOURCE_SERVER_FAILED', 'source', cause, 'batch');
-    return failure('IG_REQUEST_REJECTED', 'source', cause, 'batch');
-  }
+  if (cause instanceof AnswerUntrusted)
+    return failure('SOURCE_SERVER_FAILED', 'source', cause, 'batch');
+  if (cause instanceof GraphQLRequestFailed || cause instanceof HttpError)
+    return failure(statusCode(cause.status), 'source', cause, 'batch');
   return failure('SOURCE_UNEXPECTED_FAILURE', 'source', cause, 'batch');
 }
 
