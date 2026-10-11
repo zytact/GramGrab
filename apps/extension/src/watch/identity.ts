@@ -11,6 +11,7 @@ import { InstagramRequests } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
 import { VIEWER_KEY } from './contracts.ts';
 import {
+  AnswerUntrusted,
   GraphQLRequestFailed,
   NetworkError,
   RateLimited,
@@ -69,7 +70,8 @@ const ProfileResponse = Schema.Struct({
   errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
 
-export const readJson = (response: Response, context: string) =>
+/** The JSON body of a successful response. A body that is not JSON is one bad answer. */
+export const readJson = (response: Response) =>
   Effect.gen(function* () {
     if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
     if (!response.ok)
@@ -78,7 +80,7 @@ export const readJson = (response: Response, context: string) =>
       try: (): Promise<unknown> => response.json(),
       catch: cause =>
         cause instanceof SyntaxError
-          ? new ResponseShapeUnknown({ context })
+          ? new AnswerUntrusted({ reason: 'not-json' })
           : new NetworkError({ cause }),
     });
   });
@@ -105,9 +107,9 @@ export const fetchViewer = Effect.gen(function* () {
     headers: IG_GRAPHQL_HEADERS,
   });
   if (response.status === 401) return yield* Effect.fail(new ViewerMissing());
-  const decoded = yield* Schema.decodeUnknown(ViewerResponse)(
-    yield* readJson(response, 'watch_viewer')
-  ).pipe(Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' })));
+  const decoded = yield* Schema.decodeUnknown(ViewerResponse)(yield* readJson(response)).pipe(
+    Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' }))
+  );
   const user = decoded.data.user;
   if (!user || (decoded.errors?.length ?? 0) > 0) return yield* Effect.fail(new ViewerMissing());
   return {
@@ -175,9 +177,9 @@ export const confirmProfile = (targetId: string) =>
       },
       body,
     });
-    const decoded = yield* Schema.decodeUnknown(ProfileResponse)(
-      yield* readJson(response, 'watch_profile')
-    ).pipe(Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_profile' })));
+    const decoded = yield* Schema.decodeUnknown(ProfileResponse)(yield* readJson(response)).pipe(
+      Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_profile' }))
+    );
     const username = confirmedUsername(decoded, targetId);
     if (!username) return yield* Effect.fail(new UsernameUnconfirmed());
     return { accountId: targetId, username } satisfies Account;

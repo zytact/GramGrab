@@ -79,7 +79,7 @@ causes are never ordinary UI copy or serialized report data.
 | `WATCH_INSTANT_NOT_IN_FEED`            | item  | never                                   | none                                                                     | structural                             | watch media              |
 | `WATCH_MEDIA_UNAVAILABLE`              | item  | never                                   | `open-in-instagram`                                                      | structural                             | watch media              |
 | `WATCH_USERNAME_UNCONFIRMED`           | batch | after next check                        | none                                                                     | structural                             | watch identity           |
-| `WATCH_CHECK_INCOMPLETE`               | batch | after next check                        | none                                                                     | structural                             | watch acquisition        |
+| `WATCH_CHECK_INCOMPLETE`               | batch | after next check                        | `copy-diagnostics`                                                       | structural, copy offered               | watch acquisition        |
 | `WATCH_STORE_CAPACITY_EXCEEDED`        | batch | after user action                       | `free-watch-storage`                                                     | structural                             | watch store              |
 | `WATCH_STORE_FAILED`                   | batch | after user action                       | `retry-operation`                                                        | structural                             | watch store              |
 | `WATCH_STORE_VERSION_UNSUPPORTED`      | batch | never                                   | none                                                                     | structural                             | watch store version      |
@@ -118,7 +118,15 @@ presentations offer re-capture rather than the Instagram path's cached-original 
 Watch failures use `phase: "watch"` for the store and command codes and `phase: "resolving"` for
 check problems and final unavailable items. The four unavailable codes are final for the exact
 recorded item: GramGrab never substitutes newer media. Check problems clear on the next successful
-check of that kind and are never retried through action recovery. Store failures keep saved Watch
+check of that kind and are never retried through action recovery. A Posts check problem
+records `IG_RESPONSE_SHAPE_UNKNOWN` only when the page does not decode. A page that decodes but
+cannot be trusted is `WATCH_CHECK_INCOMPLETE` with a `reason` from a closed list: `graphql-errors`,
+`foreign-owner`, `future-timestamp`, `inexact-identity`, `inexact-sidecar`, `inconsistent-page` or
+`repeated-traversal`. A body that is not JSON is `not-json` for Posts, Avatar and username
+confirmation alike. Stories, Instants and Avatar still record `IG_RESPONSE_SHAPE_UNKNOWN` for their
+own untrusted answers. Outside a check, a body that is not JSON is `SOURCE_SERVER_FAILED`.
+`WATCH_CHECK_INCOMPLETE` now gets the same single early retry an hour later that
+`IG_RESPONSE_SHAPE_UNKNOWN` has. Store failures keep saved Watch
 state exactly as it was; an unreadable or newer-version store is never reset. Command rejections
 answer the options page and `gramgrab watch` alike, and a missing acknowledgement carries the full
 disclosure text. Watch failures carry no diagnostic cause.
@@ -138,7 +146,7 @@ URLs, filenames, operation or request IDs, arbitrary causes, or full user-agent 
 produce a parse-status descriptor and never fall back to the input value.
 
 Watch reports are a separate `platform: "watch"` branch with only the structural code, phase, scope,
-and a closed media-kind field. They never contain Watch store contents, account or media identifiers,
+a closed media-kind field, and the closed `reason` of an incomplete check. They never contain Watch store contents, account or media identifiers,
 usernames, shortcodes, cursors, timestamps, or URLs.
 
 Diagnostics never include cookies, request headers, browser storage contents, or unrelated session

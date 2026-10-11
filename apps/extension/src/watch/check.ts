@@ -14,12 +14,13 @@ import {
   type InstagramRequests,
   type WatchRequestDeferred,
 } from '../instagram/requests.ts';
-import type {
-  GraphQLRequestFailed,
-  HttpError,
-  NetworkError,
-  RateLimited,
-  ResponseShapeUnknown,
+import {
+  AnswerUntrusted,
+  type GraphQLRequestFailed,
+  type HttpError,
+  type NetworkError,
+  type RateLimited,
+  type ResponseShapeUnknown,
 } from '../effect/errors.ts';
 import type { TimedRef, TimedTracking, Watch } from './contracts.ts';
 import {
@@ -29,10 +30,10 @@ import {
   discoverNew,
   eligible,
   windowStartAt,
+  type KindProblemCause,
 } from './discoveries.ts';
 import {
   PAGES_PER_TURN,
-  PostsIncomplete,
   advance,
   continues,
   fetchPostsPage,
@@ -81,7 +82,7 @@ type Acquisition =
   | RateLimited
   | ResponseShapeUnknown
   | WatchRequestDeferred
-  | PostsIncomplete
+  | AnswerUntrusted
   | UsernameUnconfirmed;
 
 type Acquirer = (
@@ -118,10 +119,12 @@ function deferral(
   return undefined;
 }
 
-const failureCode = (error: Acquisition): FailureCode => {
-  if (error._tag === 'PostsIncomplete') return 'WATCH_CHECK_INCOMPLETE';
-  if (error._tag === 'UsernameUnconfirmed') return 'WATCH_USERNAME_UNCONFIRMED';
-  return normalizeSourceFailure(error).code;
+/** The problem a failed acquisition records: its code, and the rule an incomplete check broke. */
+const kindProblem = (error: Acquisition): KindProblemCause => {
+  if (error._tag === 'AnswerUntrusted')
+    return { code: 'WATCH_CHECK_INCOMPLETE', reason: error.reason };
+  if (error._tag === 'UsernameUnconfirmed') return { code: 'WATCH_USERNAME_UNCONFIRMED' };
+  return { code: normalizeSourceFailure(error).code };
 };
 
 const findWatch = async (watchId: string, viewerId: string) => {
@@ -198,13 +201,13 @@ const failed = (watchId: string, kind: WatchKind, error: Acquisition) =>
         stop: true,
         deferredUntil: until,
       } satisfies KindStep;
-    const code = failureCode(error);
+    const problem = kindProblem(error);
     const write = yield* update(watchId, (watch, now) => ({
-      watch: applyKindProblem(watch, kind, code, now),
-      value: KindCheckFailed.make({ kind, code }),
+      watch: applyKindProblem(watch, kind, problem, now),
+      value: KindCheckFailed.make({ kind, code: problem.code }),
     }));
     const step = written(kind, write, outcome => ({ outcome }));
-    return SUSPENDING.has(code) ? { ...step, loginVerified: false, stop: true } : step;
+    return SUSPENDING.has(problem.code) ? { ...step, loginVerified: false, stop: true } : step;
   });
 
 const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, scope: CheckScope) =>
@@ -240,7 +243,7 @@ const readNext = (watch: Watch, traversal: Traversal | undefined) =>
   readPage(watch, traversal?.next, Math.floor(Date.now() / 1000)).pipe(
     Effect.filterOrFail(
       page => continues(traversal, page),
-      () => new PostsIncomplete()
+      () => new AnswerUntrusted({ reason: 'repeated-traversal' })
     )
   );
 

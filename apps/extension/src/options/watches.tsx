@@ -28,7 +28,6 @@ import type {
 } from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
-import { buildWatchDiagnostics } from '../errors/diagnostics.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
 import { LEDGER_KEY, decodeLedger, type LedgerView } from '../instagram/request-state.ts';
 import { STORE_KEY, VIEWER_KEY } from '../watch/contracts.ts';
@@ -50,6 +49,7 @@ import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox
 import { RecoveryActions } from './recovery-actions.tsx';
 import { AllInbox, WatchDetail, healthText, runCommand, runRead } from './watch-detail.tsx';
 import { Avatar } from './avatar.tsx';
+import { DiagnosticsPreview } from './diagnostics-preview.tsx';
 
 type View = 'attention' | 'inbox' | 'new' | { readonly watchId: string };
 
@@ -163,41 +163,6 @@ const STORAGE_CODE = {
   unsupported: 'WATCH_STORE_VERSION_UNSUPPORTED',
 } as const;
 
-/** Shows the structural-only report before the person copies it. */
-function DiagnosticsPreview({ code }: { code: (typeof STORAGE_CODE)[keyof typeof STORAGE_CODE] }) {
-  const [json, setJson] = useState<string>();
-  if (!json)
-    return (
-      <button
-        className="opt-btn"
-        onClick={() =>
-          setJson(
-            buildWatchDiagnostics({
-              extensionVersion: browser.runtime.getManifest().version ?? '0.0.0',
-              userAgent: navigator.userAgent,
-              failure: watchFailure(code),
-            })
-          )
-        }
-      >
-        Preview diagnostics
-      </button>
-    );
-  return (
-    <div className="opt-col">
-      <p className="opt-note">
-        This contains only the extension version, capture time, normalized browser details, and the
-        structured failure code. It excludes accounts, usernames, media, and anything saved in your
-        Watches.
-      </p>
-      <pre className="diagnostics-preview">{json}</pre>
-      <button className="opt-btn" onClick={() => void navigator.clipboard.writeText(json)}>
-        Copy diagnostics
-      </button>
-    </div>
-  );
-}
-
 function StorageNotice({ storage }: { storage: WatchListResult['storage'] }) {
   if (storage.status === 'ok') return null;
   const code = STORAGE_CODE[storage.status];
@@ -206,7 +171,9 @@ function StorageNotice({ storage }: { storage: WatchListResult['storage'] }) {
     <div className="opt-banner opt-banner-error">
       <strong>Watches stopped.</strong> {copy.title}. {copy.explanation} Saved Watch data was not
       dropped or reset.
-      {copy.actions.includes('copy-diagnostics') && <DiagnosticsPreview code={code} />}
+      {copy.actions.includes('copy-diagnostics') && (
+        <DiagnosticsPreview failure={watchFailure(code)} />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { Schema } from 'effect';
 import {
   ExportSettings,
   AccountId,
+  CheckIncompleteReason,
   FailureCodeSchema,
   InstagramUsername,
   WatchActions,
@@ -31,7 +32,12 @@ export const STORE_BUDGET_BYTES = 2 * 1024 * 1024;
 /** Inbox entries and the discoveries behind them last this long after discovery. */
 export const RETENTION_MS = 30 * 24 * 60 * 60_000;
 
-const KindProblemRecord = Schema.Struct({ code: FailureCodeSchema, at: EpochMillis });
+const KindProblemRecord = Schema.Struct({
+  code: FailureCodeSchema,
+  /** The rule an incomplete check broke. A closed literal, so it cannot hold an identifier. */
+  reason: Schema.optional(CheckIncompleteReason),
+  at: EpochMillis,
+});
 
 const TimedTracking = Schema.Struct({
   /** Publication second at or before which media is part of the baseline. Absent means pending. */

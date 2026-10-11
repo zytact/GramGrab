@@ -10,7 +10,7 @@
 //   drive.mjs blur <match> <selector>      blur an element
 //   drive.mjs eval <match> <expression>    evaluate in the target whose url ends with <match>, else the first containing it
 //   drive.mjs text <match>                 print document.body.innerText
-//   drive.mjs shot <match> <file>          save a PNG screenshot
+//   drive.mjs shot <match> <file> [sel]    save a PNG screenshot, cropped to <sel> when given
 //   drive.mjs wait <match> <needle> [ms]   poll innerText until <needle> appears
 //
 // The port comes from GRAMGRAB_CDP_PORT, or --port as the first argument.
@@ -187,13 +187,23 @@ if (command === 'targets') {
   if (!match) fail('Usage: drive.mjs text <match>');
   process.stdout.write(`${await evaluate(match, 'document.body.innerText')}\n`);
 } else if (command === 'shot') {
-  const [match, file] = rest;
-  if (!match || !file) fail('Usage: drive.mjs shot <match> <file>');
+  const [match, file, selector] = rest;
+  if (!match || !file) fail('Usage: drive.mjs shot <match> <file> [selector]');
   const target = await findTarget(match);
   // Chromium stalls captureScreenshot on a tab that is not rendering, which by
   // this point in a run is most of them. Raise it first.
   await send(target, 'Page.bringToFront').catch(() => {});
-  const { data } = await send(target, 'Page.captureScreenshot', { format: 'png' });
+  // A crop keeps the rest of the page, account names included, out of the file.
+  const clip = selector
+    ? await evaluate(
+        match,
+        `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) throw new Error('Element not found.'); element.scrollIntoView({ block: 'center' }); const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, scale: 1 }; })()`
+      )
+    : undefined;
+  const { data } = await send(target, 'Page.captureScreenshot', {
+    format: 'png',
+    ...(clip ? { clip } : {}),
+  });
   const { writeFile, mkdir } = await import('node:fs/promises');
   const { dirname } = await import('node:path');
   await mkdir(dirname(file), { recursive: true });

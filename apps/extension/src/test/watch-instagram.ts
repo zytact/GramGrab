@@ -207,7 +207,10 @@ export function createWatchInstagram() {
     /** The raw Story answer per target ID; absent targets get Instagram's no-reel answer. */
     stories: {} as Record<string, unknown>,
     storyStatus: 200,
-    /** Posts answers by the cursor that requests them; the first page is under ''. */
+    /**
+     * Posts answers by the cursor that requests them; the first page is under ''. A `Response` is
+     * served as it is, for a body that is not JSON.
+     */
     posts: { '': postsPage([]) } as Record<string, unknown>,
     /** The cursor of every Posts page requested, '' for the first page. */
     postRequests: [] as string[],
@@ -230,6 +233,8 @@ export function createWatchInstagram() {
     const body = init?.body as URLSearchParams;
     const cursor = cursorPage ? String(JSON.parse(body.get('variables') ?? '{}').after) : '';
     state.postRequests.push(cursor);
+    const answer = state.posts[cursor];
+    if (answer instanceof Response) return answer.clone();
     return json(state.posts[cursor] ?? {}, cursor in state.posts ? 200 : 404);
   };
 

@@ -279,6 +279,9 @@ select {
   color: var(--text);
   font-weight: 500;
 }
+.opt-health-row .opt-btn {
+  align-self: flex-start;
+}
 .opt-health-problem {
   border-color: var(--error);
   background: var(--error-dim);

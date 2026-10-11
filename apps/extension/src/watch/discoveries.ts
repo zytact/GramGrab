@@ -5,6 +5,7 @@ import {
   DiscoverySummary,
   KindBaselineRecorded,
   KindCheckSucceeded,
+  type CheckIncompleteReason,
   type FailureCode,
   type KindCheckOutcome,
   type WatchKind,
@@ -186,20 +187,26 @@ export function applyAvatarCheck(
   };
 }
 
+/** A kind's failure code, with the rule it broke when the check stopped incomplete. */
+export interface KindProblemCause {
+  readonly code: FailureCode;
+  readonly reason?: CheckIncompleteReason;
+}
+
 /** Records a kind's failed check, keeping its baseline, last success, and the problem's start. */
 export function applyKindProblem(
   watch: Watch,
   kind: WatchKind,
-  code: FailureCode,
+  problem: KindProblemCause,
   now: number
 ): Watch {
   const tracking = watch.tracking[kind] ?? {};
-  const since = tracking.problem?.code === code ? tracking.problem.at : now;
+  const since = tracking.problem?.code === problem.code ? tracking.problem.at : now;
   return {
     ...watch,
     tracking: {
       ...watch.tracking,
-      [kind]: { ...tracking, lastCheckAt: now, problem: { code, at: since } },
+      [kind]: { ...tracking, lastCheckAt: now, problem: { ...problem, at: since } },
     },
   };
 }

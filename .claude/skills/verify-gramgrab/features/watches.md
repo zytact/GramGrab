@@ -408,12 +408,56 @@ fixtures cannot show which accounts do this, so prove Posts against a live grid 
 2. `gramgrab watch add TARGET --kinds posts --actions collect --accept-unattended --json`, then
    `watch check TARGET --json`. The first check records `KindBaselineRecorded`. A check five
    minutes later runs the page traversal and should report `KindCheckSucceeded` for `posts`, not
-   `IG_RESPONSE_SHAPE_UNKNOWN` (collab ownership) or `WATCH_CHECK_INCOMPLETE` (grid order).
+   `WATCH_CHECK_INCOMPLETE`. A failure names its rule in the kind's `reason` in `watch show --json`:
+   `foreign-owner` for collab ownership, `inconsistent-page` or `repeated-traversal` for grid order.
 3. Screenshot the Watch on the options page, then `watch delete TARGET`. Redact the target and
    the login before a screenshot leaves `.local/`.
 
 A copied profile can carry a rate-limit `pause` in `instagram-requests`, which makes every check
 report `deferredUntil` with no kinds run. Preserve and report that deferral on a shared account.
+
+## Check problem
+
+A kind whose check failed shows its problem in the Watch's health row and in Needs you. The stored
+record is `tracking.<kind>.problem` with a `code`, a time, and for `WATCH_CHECK_INCOMPLETE` a
+`reason` naming the rule the answer broke. Only an answer that does not decode is
+`IG_RESPONSE_SHAPE_UNKNOWN`, which reads `Instagram's format has changed`. A body that is not JSON,
+a GraphQL `errors` answer, another account's Post, a future publication time and an inexact
+identity or Sidecar are `WATCH_CHECK_INCOMPLETE`, which reads `Check stopped before it finished`.
+Both codes offer `Preview diagnostics` in the health row, then `Copy diagnostics`.
+
+Instagram does not produce these answers on request, and answering for Instagram is fault
+injection. So this recipe seeds the stored record on the official `instagram` Watch and proves what
+the page does with it. Say in evidence that the record is a seeded local state. The readers that
+produce each code and reason belong to `watch/check.test.ts`.
+
+1. Launch, then within the two-minute startup hold run
+   `node .agents/skills/verify-gramgrab/scripts/watch-problem.mjs hold 60`. It must print
+   `"held":true`. No Watch work starts while the hold lasts, so the seeded record is not checked
+   away and no round spends requests.
+2. `watch-problem.mjs seed WATCH_CHECK_INCOMPLETE not-json`, open `options.html` and select the
+   `instagram` Watch. `.opt-health-row.opt-health-problem` reads `Check stopped before it finished`
+   and never `format has changed`. Click its `Preview diagnostics` button. The
+   `pre.diagnostics-preview` JSON has `code`, `phase: "resolving"`, `scope: "batch"`,
+   `mediaKind: "posts"` and `reason: "not-json"`, and no other failure field. Parse it and check its
+   key set rather than reading it by eye.
+3. `watch-problem.mjs seed IG_RESPONSE_SHAPE_UNKNOWN`. The open page follows the store, so the row
+   changes to `Instagram's format has changed` without a reload, and its preview has no `reason`.
+4. Needs you lists `@instagram · Posts` with the same copy as the health row.
+5. `watch-problem.mjs remove` in a `finally` step. It removes only a record it seeded, which it
+   knows by a fixed timestamp, and refuses to seed over a real problem.
+6. To prove a successful check clears a problem, seed one, then run `watch-problem.mjs quiet` and
+   `release`, and click Check now once. `quiet` moves the round and early retries six hours ahead so
+   only that check runs. When storage reports `ManualCheckFinished`, the Posts outcome is
+   `KindCheckSucceeded` and the row reads `Checked just now`. This spends one real check of the
+   official account, so it needs the same authorization as Check now, and a seeded problem's time
+   is not a real one. Run cleanup right after. A copied profile can already hold a queued manual
+   check: the button reads `Checking…` and `watch-scheduler` has a `manual` job. Reuse it instead
+   of clicking. After `quiet` and `release` it resumes on the next pump alarm, within a minute or
+   two, and checks only its remaining kinds.
+
+Crop screenshots to the row: `drive.mjs shot options.html FILE ".opt-health-row.opt-health-problem"`
+keeps the sidebar and its usernames out of the file.
 
 ## Rate-limit pause
 

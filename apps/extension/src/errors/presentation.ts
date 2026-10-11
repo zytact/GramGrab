@@ -360,7 +360,7 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
   WATCH_CHECK_INCOMPLETE: policy(
     'Check stopped before it finished',
     "Instagram's answer was not complete or consistent enough to trust. The baseline is kept and the next check starts again.",
-    [],
+    ['copy-diagnostics'],
     'after-next-check'
   ),
   WATCH_STORE_CAPACITY_EXCEEDED: policy(
