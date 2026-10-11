@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.1](https://github.com/zytact/GramGrab/compare/v3.2.0...v3.2.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **watch:** stop blaming Instagram's format when one Posts answer is bad ([#284](https://github.com/zytact/GramGrab/issues/284)) ([2c2f3da](https://github.com/zytact/GramGrab/commit/2c2f3da25e393e31c841eec441acd61448ced188))
+
 ## [3.2.0](https://github.com/zytact/GramGrab/compare/v3.1.1...v3.2.0) (2026-10-09)
 
 
