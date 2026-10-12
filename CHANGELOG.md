@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.0](https://github.com/zytact/GramGrab/compare/v3.2.1...v3.3.0) (2026-10-12)
+
+
+### Features
+
+* **watches:** move Watches between installs with export and import ([#287](https://github.com/zytact/GramGrab/issues/287)) ([bd5582d](https://github.com/zytact/GramGrab/commit/bd5582d51498185c3b5109249c254413e7d5dffb))
+
 ## [3.2.1](https://github.com/zytact/GramGrab/compare/v3.2.0...v3.2.1) (2026-10-11)
 
 
