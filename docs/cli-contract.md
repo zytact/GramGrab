@@ -150,6 +150,7 @@ transport failure.
 | Add a Watch                                                              | `WatchAdd`                                                | Requires the per-call disclosure acknowledgement; duplicates return or point to the existing one |
 | Change a Watch's kinds or actions                                        | `WatchSet`                                                | Replaces the supplied sets; initialized baselines are kept                                       |
 | Pause, resume, or delete Watches                                         | `WatchLifecycle`                                          | Unknown selectors are reported per Watch; deletion keeps files and History                       |
+| Export and import Watches                                                | `WatchesExport`, `WatchesImport`                          | Options page only, no CLI verb yet; import needs the disclosure and confirms each added account  |
 | Popup layout, workspace layout, navigation, selection controls           | UI-only                                                   | No protocol operation because these present operations rather than define new behavior           |
 
 ## Event and failure semantics

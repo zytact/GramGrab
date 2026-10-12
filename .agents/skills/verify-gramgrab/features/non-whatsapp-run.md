@@ -33,7 +33,7 @@ mark that source kind unverified rather than silently shrinking the run.
 node .agents/skills/verify-gramgrab/scripts/doctor.mjs
 
 D=.agents/skills/verify-gramgrab/scripts/drive.mjs
-CLI='node apps/cli/bin/gramgrab.mjs'
+gramgrab() { node apps/cli/bin/gramgrab.mjs "$@"; }
 EV=.local/verify-evidence/$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$EV"
 ```
@@ -73,13 +73,13 @@ with injected clocks. Do not wait 30 minutes in a live run.
 Inspect each source through the CLI and save the terminal JSON:
 
 ```bash
-$CLI inspect "$GG_POST_URL" --json > "$EV/post.json" 2> "$EV/post.progress.jsonl"
-$CLI inspect "$GG_REEL_URL" --json > "$EV/reel.json" 2> "$EV/reel.progress.jsonl"
-$CLI inspect "$GG_STORY_URL" --json > "$EV/story.json" 2> "$EV/story.progress.jsonl"
-$CLI inspect "$GG_HIGHLIGHT_URL" --json > "$EV/highlight.json" 2> "$EV/highlight.progress.jsonl"
-$CLI inspect "$GG_PROFILE_URL" --json > "$EV/profile-avatar.json" 2> "$EV/profile-avatar.progress.jsonl"
-$CLI inspect "$GG_STORIES_USERNAME" --json > "$EV/username-stories.json" 2> "$EV/username-stories.progress.jsonl"
-$CLI instants inspect --json > "$EV/instants.json" 2> "$EV/instants.progress.jsonl"
+gramgrab inspect "$GG_POST_URL" --json > "$EV/post.json" 2> "$EV/post.progress.jsonl"
+gramgrab inspect "$GG_REEL_URL" --json > "$EV/reel.json" 2> "$EV/reel.progress.jsonl"
+gramgrab inspect "$GG_STORY_URL" --json > "$EV/story.json" 2> "$EV/story.progress.jsonl"
+gramgrab inspect "$GG_HIGHLIGHT_URL" --json > "$EV/highlight.json" 2> "$EV/highlight.progress.jsonl"
+gramgrab inspect "$GG_PROFILE_URL" --json > "$EV/profile-avatar.json" 2> "$EV/profile-avatar.progress.jsonl"
+gramgrab inspect "$GG_STORIES_USERNAME" --json > "$EV/username-stories.json" 2> "$EV/username-stories.progress.jsonl"
+gramgrab instants inspect --json > "$EV/instants.json" 2> "$EV/instants.progress.jsonl"
 ```
 
 Every command must exit 0 with at least one item. Check that `itemNumber` starts

@@ -50,22 +50,15 @@ import { RecoveryActions } from './recovery-actions.tsx';
 import { AllInbox, WatchDetail, healthText, runCommand, runRead } from './watch-detail.tsx';
 import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
+import { WatchTransfer } from './watch-transfer.tsx';
+import { askToNotify } from './notify-permission.ts';
 
-type View = 'attention' | 'inbox' | 'new' | { readonly watchId: string };
+type View = 'attention' | 'inbox' | 'new' | 'transfer' | { readonly watchId: string };
 
 /** A notification opens `#watch=<id>`; the Watch shows only if this login owns it. */
 const linkedView = (): View | undefined => {
   const watchId = new URLSearchParams(location.hash.slice(1)).get('watch');
   return watchId ? { watchId } : undefined;
-};
-
-/**
- * Asks for notification permission when notify is chosen. It must run inside the click, before
- * any other await. A refusal is not an error here: delivery records it on the entries it affects.
- */
-const askToNotify = (actions: readonly WatchAction[]) => {
-  if (actions.includes('notify'))
-    void browser.permissions.request({ permissions: ['notifications'] }).catch(() => false);
 };
 
 type Loaded =
@@ -649,6 +642,12 @@ function Navigation({
       >
         + Add Watch
       </button>
+      <button
+        className={`opt-item opt-add-item ${current === 'transfer' ? 'active' : ''}`}
+        onClick={() => onGo('transfer')}
+      >
+        Export or import
+      </button>
       <NavigationFoot
         list={list}
         schedule={schedule}
@@ -911,6 +910,7 @@ function Feed({
   version,
   onGo,
   onRun,
+  onSend,
   onChanged,
 }: {
   list: WatchListResult;
@@ -922,6 +922,7 @@ function Feed({
   version: number;
   onGo: (view: View) => void;
   onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
+  onSend: (command: WatchCommand) => Promise<WatchCommandResponse>;
   onChanged: () => void;
 }) {
   return (
@@ -939,6 +940,7 @@ function Feed({
           <AddWatchFlow onRun={onRun} onOpen={id => onGo({ watchId: id })} />
         </>
       )}
+      {current === 'transfer' && <WatchTransfer watches={list.watches} onSend={onSend} />}
       {watch && (
         <WatchDetail
           key={watch.watchId}
@@ -986,10 +988,14 @@ function Console({
     setActionFailure(undefined);
     setView(next);
   };
-  const run = async (command: WatchCommand) => {
+  const send = async (command: WatchCommand) => {
     const response = await runCommand(command);
     setActionFailure(response.failure);
     await refresh();
+    return response;
+  };
+  const run = async (command: WatchCommand) => {
+    const response = await send(command);
     if (!response.failure && response.result._tag === 'WatchAddResult')
       setView({ watchId: response.result.watch.watchId });
     return response.failure;
@@ -1019,6 +1025,7 @@ function Console({
           version={version}
           onGo={go}
           onRun={run}
+          onSend={send}
           onChanged={() => void refresh()}
         />
 

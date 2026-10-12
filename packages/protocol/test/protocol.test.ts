@@ -20,6 +20,7 @@ import {
   OperationId,
   Request,
   RequestId,
+  WatchesFile,
 } from '../src/index.ts';
 import {
   eventFixtures,
@@ -81,6 +82,23 @@ describe('protocol version 3', () => {
         event: { _tag: 'Progress', phase: 'resolving', progress: 1.01 },
       })
     ).toThrow();
+  });
+
+  it('reads a Watches file only at its own version, with each account once and no other field', () => {
+    const watch = {
+      accountId: '2002',
+      username: 'instagram',
+      enabled: true,
+      kinds: ['posts'],
+      actions: ['collect'],
+    };
+    const decode = Schema.decodeUnknownSync(WatchesFile);
+    const file = { format: 'gramgrab-watches', version: 1, watches: [watch] };
+
+    expect(decode(file)).toEqual(file);
+    expect(() => decode({ ...file, version: 2 })).toThrow();
+    expect(() => decode({ ...file, watches: [watch, watch] })).toThrow();
+    expect(() => decode({ ...file, watches: [{ ...watch, baselineCutoff: 1 }] })).toThrow();
   });
 
   it('preserves operation identity while transport retries receive fresh request identities', () => {

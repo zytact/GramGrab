@@ -5,6 +5,20 @@ export const operationId = 'ad7a60ff-5e9f-470f-b036-f116e32fda41';
 const mediaIdentity = { itemIndex: 0, mediaId: 'stable-media-id' };
 const itemFailure = { code: 'MEDIA_NETWORK_FAILED', scope: 'item' };
 
+const watchesFile = {
+  format: 'gramgrab-watches',
+  version: 1,
+  watches: [
+    {
+      accountId: '2002',
+      username: 'instagram',
+      enabled: false,
+      kinds: ['posts', 'stories'],
+      actions: ['notify', 'collect'],
+    },
+  ],
+};
+
 export const requestFixtures: readonly unknown[] = [
   { version: 3, requestId, command: { _tag: 'WatchNeeds' } },
   {
@@ -109,6 +123,12 @@ export const requestFixtures: readonly unknown[] = [
       watch: { _tag: 'UsernameSelector', username: 'example' },
       actions: ['download'],
     },
+  },
+  { version: 3, requestId, command: { _tag: 'WatchesExport' } },
+  {
+    version: 3,
+    requestId,
+    command: { _tag: 'WatchesImport', file: watchesFile, acceptUnattended: true },
   },
   { version: 3, requestId, command: { _tag: 'WatchCheck' } },
   {
@@ -381,6 +401,13 @@ const resultFixtures: readonly unknown[] = [
   },
   { _tag: 'WatchAddResult', created: false, watch: watchSummary },
   { _tag: 'WatchSetResult', watch: watchSummary, baselineKinds: ['stories'] },
+  { _tag: 'WatchesExportResult', file: watchesFile },
+  {
+    _tag: 'WatchesImportResult',
+    added: [watchSummary],
+    unconfirmed: ['3003'],
+    stopped: { code: 'IG_RATE_LIMITED', remaining: 2 },
+  },
   {
     _tag: 'WatchLifecycleResult',
     operation: 'pause',

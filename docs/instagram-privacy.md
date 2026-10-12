@@ -17,8 +17,8 @@ requested GramGrab operation or a consented Watch check, not unrelated browsing 
 Watches are the one exception to request-in-the-moment access. See
 [ADR 0005](./adr/0005-unattended-instagram-access-for-watches.md).
 
-- **Consent.** The person acknowledges this disclosure every time they add a Watch, on the options page
-  or with `gramgrab watch add --accept-unattended`:
+- **Consent.** The person acknowledges this disclosure every time they add a Watch on the options
+  page or with `gramgrab watch add --accept-unattended`, and once for each file they import:
 
   > Watches check Instagram for you about twice a day while your browser is open, using your
   > signed-in Instagram session, even when you are not using GramGrab. Instagram may treat this
@@ -54,6 +54,14 @@ Watches are the one exception to request-in-the-moment access. See
   preview, data, or blob URLs, captions, full or display names, locations, cookies, or tokens. The
   viewer's own username and Avatar are fetched when needed and are not stored. A Posts traversal
   cursor lives only in `storage.session`.
+
+- **Export and import.** The options page can save the verified login's Watches to a file and add
+  the Watches in such a file to the verified login. The file holds each target account ID and
+  username, its kinds and actions, and whether it is paused. It holds no viewer ID, baseline, media
+  reference, outcome, or Avatar image, and GramGrab sends it nowhere. Import shows what it will add,
+  requires the disclosure above, and confirms each account it adds with one ID-keyed profile request.
+  See
+  [ADR 0006](./adr/0006-watches-file-carries-definitions-only.md).
 
 - **Ownership and lifetime.** Watch state belongs to the Instagram login that created it, and
   another login cannot see or use it. Inbox entries expire 30 days after discovery. The whole store

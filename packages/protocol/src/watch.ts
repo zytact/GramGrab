@@ -80,6 +80,45 @@ export class WatchLifecycle extends Schema.TaggedClass<WatchLifecycle>()('WatchL
   watches: Schema.Array(WatchSelector).pipe(Schema.minItems(1)),
 }) {}
 
+/** One Watch as a Watches file carries it: the account and its settings, nothing a check found. */
+export const WatchDefinition = Schema.Struct({
+  accountId: AccountId,
+  username: InstagramUsername,
+  enabled: Schema.Boolean,
+  kinds: WatchKinds,
+  actions: WatchActions,
+});
+export type WatchDefinition = Schema.Schema.Type<typeof WatchDefinition>;
+
+/**
+ * The file a person exports Watches to and imports them from. It names no Instagram login and
+ * holds no baseline, discovery, or check state, so an import always starts fresh. Every decode
+ * rejects a field it does not name.
+ */
+export const WatchesFile = Schema.Struct({
+  format: Schema.Literal('gramgrab-watches'),
+  version: Schema.Literal(1),
+  watches: Schema.Array(WatchDefinition).pipe(
+    Schema.filter(
+      watches => new Set(watches.map(watch => watch.accountId)).size === watches.length,
+      { message: () => 'must not repeat an account' }
+    )
+  ),
+}).annotations({ parseOptions: { onExcessProperty: 'error' } });
+export type WatchesFile = Schema.Schema.Type<typeof WatchesFile>;
+
+/** Reads the verified login's Watches as a Watches file. */
+export class WatchesExport extends Schema.TaggedClass<WatchesExport>()('WatchesExport', {}) {}
+
+/**
+ * Adds each Watch in the file to the verified login, skipping accounts it already watches. Each
+ * added account is confirmed by its ID first, and the Watch takes the username Instagram gives.
+ */
+export class WatchesImport extends Schema.TaggedClass<WatchesImport>()('WatchesImport', {
+  file: WatchesFile,
+  acceptUnattended: Schema.Boolean,
+}) {}
+
 /** Checks the selected Watches now, or every enabled Watch of the login when none are given. */
 export class WatchCheck extends Schema.TaggedClass<WatchCheck>()('WatchCheck', {
   watches: Schema.optional(Schema.Array(WatchSelector).pipe(Schema.minItems(1))),
@@ -131,6 +170,8 @@ export const WatchCommand = Schema.Union(
   WatchAdd,
   WatchSet,
   WatchLifecycle,
+  WatchesExport,
+  WatchesImport,
   WatchCheck,
   WatchInboxList,
   WatchInboxRemove,
@@ -482,6 +523,22 @@ export class WatchLifecycleResult extends Schema.TaggedClass<WatchLifecycleResul
   }
 ) {}
 
+export class WatchesExportResult extends Schema.TaggedClass<WatchesExportResult>()(
+  'WatchesExportResult',
+  { file: WatchesFile }
+) {}
+
+export class WatchesImportResult extends Schema.TaggedClass<WatchesImportResult>()(
+  'WatchesImportResult',
+  {
+    added: Schema.Array(WatchSummary),
+    /** Accounts Instagram did not confirm. They were left out. */
+    unconfirmed: Schema.Array(AccountId),
+    /** A failed request ended the import early, with this many accounts not yet tried. */
+    stopped: Schema.optional(Schema.Struct({ code: FailureCodeSchema, remaining: Count })),
+  }
+) {}
+
 export class WatchInboxExportResult extends Schema.TaggedClass<WatchInboxExportResult>()(
   'WatchInboxExportResult',
   {
@@ -513,6 +570,8 @@ export const WatchResult = Schema.Union(
   WatchAddResult,
   WatchSetResult,
   WatchLifecycleResult,
+  WatchesExportResult,
+  WatchesImportResult,
   WatchCheckResult,
   WatchInboxListResult,
   WatchInboxRemoveResult,

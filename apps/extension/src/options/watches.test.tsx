@@ -495,6 +495,62 @@ describe('Watches options page', () => {
     });
   });
 
+  it('previews a Watches file, then imports only the accounts not yet watched', async () => {
+    seedWatchWithProblemAndEntry();
+    const watch = { enabled: true, kinds: ['posts'], actions: ['collect'] };
+    const file = new File(
+      [
+        JSON.stringify({
+          format: 'gramgrab-watches',
+          version: 1,
+          watches: [
+            { ...watch, accountId: TARGET.id, username: TARGET.username },
+            { ...watch, accountId: '4004', username: 'instagram', enabled: false },
+          ],
+        }),
+      ],
+      'watches.json',
+      { type: 'application/json' }
+    );
+    instagram.state.profile = { data: { user: { id: '4004', pk: '4004', username: 'instagram' } } };
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText('Export or import'));
+    await user.upload(screen.getByLabelText('Watches file'), file);
+
+    expect(await screen.findByText('Will be added (1)')).toBeDefined();
+    expect(screen.getByText(/^Account ID 4004 /)).toBeDefined();
+    expect(screen.getByText('Already watched, skipped (1)')).toBeDefined();
+    expect(screen.getByText(/Paused$/)).toBeDefined();
+    const add = screen.getByRole('button', { name: 'Import 1 Watch' });
+    expect(add).toHaveProperty('disabled', true);
+    expect(harness.local.read('watch-store')).toMatchObject({ watches: [{}] });
+
+    await user.click(screen.getByText(UNATTENDED_DISCLOSURE));
+    await user.click(add);
+
+    expect(await screen.findByText('Added 1 Watch.')).toBeDefined();
+    expect(harness.local.read('watch-store')).toMatchObject({
+      watches: [
+        { targetId: TARGET.id, kinds: ['stories'] },
+        { targetId: '4004', enabled: false },
+      ],
+    });
+  });
+
+  it('refuses a file that is not a Watches file of a version it knows', async () => {
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText('Export or import'));
+    await user.upload(
+      screen.getByLabelText('Watches file'),
+      new File([JSON.stringify({ format: 'gramgrab-watches', version: 2, watches: [] })], 'w.json')
+    );
+
+    expect(await screen.findByText(/not a Watches file this version/)).toBeDefined();
+    expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull();
+  });
+
   it('opens the existing Watch instead of adding a duplicate', async () => {
     const user = userEvent.setup();
     render(<Watches />);
