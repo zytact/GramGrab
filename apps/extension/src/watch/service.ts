@@ -19,6 +19,8 @@ import {
   WatchInboxRemoveResult,
   WatchRecoverResult,
   WatchLifecycleResult,
+  WatchesExportResult,
+  WatchesImportResult,
   WatchListResult,
   WatchNeedsResult,
   WatchAttentionRecoverResult,
@@ -34,6 +36,7 @@ import {
   WatchViewer,
   type FailureCode,
   type WatchCommand,
+  type WatchDefinition,
   type WatchFailureDetail,
   type WatchResult,
   type WatchSelector,
@@ -49,6 +52,7 @@ import type {
   WatchInboxPreviewResponse,
 } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
+import { definitionOf, newWatch } from './definition.ts';
 import { loginAttention, refreshBadge, watchAttentionItems } from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
 import { attentionEntries, discoveries, inbox, initialized, summarize } from './summary.ts';
@@ -189,6 +193,16 @@ function targetUsername(target: string): string | undefined {
   return parsed?.type === 'profile' ? parsed.username : undefined;
 }
 
+/** The account `accountId` names with its current username, or the rejection that says why not. */
+const confirmTarget = (accountId: string) =>
+  confirmProfile(accountId).pipe(
+    Effect.catchAll(error => {
+      if (error._tag === 'UsernameUnconfirmed') return reject('WATCH_USERNAME_UNCONFIRMED');
+      if (error._tag === 'WatchRequestDeferred') return reject('SOURCE_UNEXPECTED_FAILURE');
+      return reject(normalizeSourceFailure(error).code);
+    })
+  );
+
 /** Resolves a typed target to the account it names, confirmed through its stable ID. */
 const resolveTarget = (target: string) =>
   Effect.gen(function* () {
@@ -203,25 +217,24 @@ const resolveTarget = (target: string) =>
     );
     if (!accountId || !Schema.is(AccountId)(accountId))
       return yield* reject('SOURCE_USERNAME_UNRESOLVED');
-    return yield* confirmProfile(accountId).pipe(
-      Effect.catchAll(error => {
-        if (error._tag === 'UsernameUnconfirmed') return reject('WATCH_USERNAME_UNCONFIRMED');
-        if (error._tag === 'WatchRequestDeferred') return reject('SOURCE_UNEXPECTED_FAILURE');
-        return reject(normalizeSourceFailure(error).code);
-      })
-    );
+    return yield* confirmTarget(accountId);
   });
 
 const sameSet = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every(value => right.includes(value));
 
-const add = (command: Extract<WatchCommand, { _tag: 'WatchAdd' }>) =>
-  Effect.gen(function* () {
-    if (!command.acceptUnattended)
-      return yield* reject(
+/** Refuses to create Watches until the person has acknowledged the unattended disclosure. */
+const requireDisclosure = (accepted: boolean) =>
+  accepted
+    ? Effect.void
+    : reject(
         'WATCH_UNATTENDED_NOT_ACCEPTED',
         UnattendedDisclosure.make({ text: UNATTENDED_DISCLOSURE })
       );
+
+const add = (command: Extract<WatchCommand, { _tag: 'WatchAdd' }>) =>
+  Effect.gen(function* () {
+    yield* requireDisclosure(command.acceptUnattended);
     const viewer = yield* verifyViewer(yield* loadOrReject);
     const target = yield* resolveTarget(command.target);
     return yield* save<{
@@ -237,18 +250,12 @@ const add = (command: Extract<WatchCommand, { _tag: 'WatchAdd' }>) =>
               ? { _tag: 'existing', watch: existing }
               : { _tag: 'conflict', watch: existing },
         };
-      const watch: Watch = {
-        id: decodeUuid(crypto.randomUUID()),
-        viewerId: viewer.accountId,
-        targetId: target.accountId,
-        username: target.username,
-        createdAt: Date.now(),
+      const watch = newWatch(viewer.accountId, {
+        ...target,
         enabled: true,
         kinds: command.kinds,
         actions: command.actions,
-        tracking: {},
-        discoveries: [],
-      };
+      });
       return {
         store: { ...store, watches: [...store.watches, watch] },
         value: { _tag: 'created', watch },
@@ -271,6 +278,57 @@ const add = (command: Extract<WatchCommand, { _tag: 'WatchAdd' }>) =>
             )
       )
     );
+  });
+
+const exportWatches = Effect.gen(function* () {
+  const store = yield* loadOrReject;
+  const viewer = yield* verifyViewer(store);
+  return WatchesExportResult.make({
+    file: {
+      format: 'gramgrab-watches',
+      version: 1,
+      watches: owned(store, viewer).map(definitionOf),
+    },
+  });
+});
+
+const importWatches = (command: Extract<WatchCommand, { _tag: 'WatchesImport' }>) =>
+  Effect.gen(function* () {
+    yield* requireDisclosure(command.acceptUnattended);
+    const store = yield* loadOrReject;
+    const viewer = yield* verifyViewer(store);
+    const watched = (current: WatchStore, accountId: string) =>
+      owned(current, viewer).some(watch => watch.targetId === accountId);
+    const candidates = command.file.watches.filter(
+      definition => !watched(store, definition.accountId)
+    );
+    const confirmed: WatchDefinition[] = [];
+    const unconfirmed: string[] = [];
+    let stopped: WatchesImportResult['stopped'];
+    for (const [index, definition] of candidates.entries()) {
+      const account = yield* Effect.either(confirmTarget(definition.accountId));
+      if (Either.isRight(account)) confirmed.push({ ...definition, ...account.right });
+      else if (account.left.code === 'WATCH_USERNAME_UNCONFIRMED')
+        unconfirmed.push(definition.accountId);
+      else {
+        stopped = { code: account.left.code, remaining: candidates.length - index };
+        break;
+      }
+    }
+    return yield* save(current => {
+      const added = confirmed
+        .filter(definition => !watched(current, definition.accountId))
+        .map(definition => newWatch(viewer.accountId, definition));
+      return {
+        store:
+          added.length === 0 ? current : { ...current, watches: [...current.watches, ...added] },
+        value: WatchesImportResult.make({
+          added: added.map(watch => summarize(watch)),
+          unconfirmed,
+          ...(stopped ? { stopped } : {}),
+        }),
+      };
+    });
   });
 
 /** Replaces one owned Watch through `change`, failing if it disappeared meanwhile. */
@@ -779,6 +837,8 @@ const program = (
     WatchAdd: add,
     WatchSet: set,
     WatchLifecycle: lifecycle,
+    WatchesExport: () => exportWatches,
+    WatchesImport: importWatches,
     WatchCheck: command => check(command, onProgress),
     WatchInboxList: command => inboxList(command),
     WatchInboxRemove: inboxRemove,

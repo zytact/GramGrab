@@ -10,7 +10,10 @@ import {
   WatchList,
   WatchSet,
   WatchShow,
+  WatchesExport,
+  WatchesImport,
   type CommandFailure,
+  type WatchDefinition,
   type WatchCommand,
 } from '@gramgrab/protocol';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
@@ -236,6 +239,134 @@ describe('editing a Watch', () => {
     expect(storedWatches()).toEqual([]);
     const readded = await addTarget();
     expect(readded.result?._tag === 'WatchAddResult' && readded.result.created).toBe(true);
+  });
+});
+
+describe('moving Watches to another install', () => {
+  const definition = (overrides: Partial<WatchDefinition> = {}): WatchDefinition => ({
+    accountId: TARGET.id,
+    username: TARGET.username,
+    enabled: true,
+    kinds: ['stories', 'posts'],
+    actions: ['collect'],
+    ...overrides,
+  });
+  const importFile = (watches: readonly WatchDefinition[], acceptUnattended = true) =>
+    run(
+      WatchesImport.make({
+        file: { format: 'gramgrab-watches', version: 1, watches },
+        acceptUnattended,
+      })
+    );
+
+  it('exports only the account and settings of each Watch the login owns', async () => {
+    await addTarget();
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    const mine = store.watches[0]!;
+    harness.local.write('watch-store', {
+      ...store,
+      watches: [
+        {
+          ...mine,
+          enabled: false,
+          tracking: { stories: { baselineCutoff: 5, lastSuccessAt: 6, lastCheckAt: 6 } },
+          avatarImage: { pictureId: 'PIC_A', jpeg: '/9j/2Q==', checkedAt: 1 },
+          discoveries: [
+            {
+              id: '0b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e',
+              checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
+              ref: { _tag: 'Avatar', pictureId: 'PIC_A' },
+              discoveredAt: 6,
+              collect: { at: 6 },
+            },
+          ],
+        },
+        { ...mine, id: '00000000-0000-4000-8000-000000000001', viewerId: '3003' },
+      ],
+    });
+
+    const exported = await run(WatchesExport.make());
+
+    expect(exported.result).toEqual({
+      _tag: 'WatchesExportResult',
+      file: {
+        format: 'gramgrab-watches',
+        version: 1,
+        watches: [definition({ enabled: false })],
+      },
+    });
+  });
+
+  it('requires the disclosure acknowledgement before importing, before any request', async () => {
+    const response = await importFile([definition()], false);
+
+    expect(failureOf(response)?.failure.code).toBe('WATCH_UNATTENDED_NOT_ACCEPTED');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  /** Answers the ID-keyed profile query per account: a username confirms it, a status fails it. */
+  function answerProfiles(answers: Record<string, string | number>) {
+    const requested: string[] = [];
+    harness.setFetch((url, init) => {
+      const body = init?.body;
+      if (!(body instanceof URLSearchParams) || body.get('doc_id') !== '28036671149327607')
+        return instagram.handle(url, init);
+      const id = String(JSON.parse(body.get('variables') ?? '{}').id);
+      requested.push(id);
+      const answer = answers[id];
+      return typeof answer === 'number'
+        ? json({}, answer)
+        : json({ data: { user: answer ? { id, pk: id, username: answer } : null } });
+    });
+    return requested;
+  }
+
+  it('imports confirmed accounts with a fresh baseline and leaves a Watch it has alone', async () => {
+    await addTarget();
+    const before = storedWatches();
+    const requested = answerProfiles({ '4004': 'instagram.renamed' });
+
+    const imported = await importFile([
+      definition({ kinds: ['avatar'], actions: ['notify'] }),
+      definition({ accountId: '4004', enabled: false, kinds: ['instants'] }),
+      definition({ accountId: '5005' }),
+    ]);
+
+    expect(imported.result).toMatchObject({
+      _tag: 'WatchesImportResult',
+      added: [{ accountId: '4004', username: 'instagram.renamed', enabled: false }],
+      unconfirmed: ['5005'],
+    });
+    expect(storedWatches()).toEqual([
+      before[0],
+      expect.objectContaining({
+        viewerId: VIEWER.id,
+        targetId: '4004',
+        username: 'instagram.renamed',
+        enabled: false,
+        kinds: ['instants'],
+        actions: ['collect'],
+        tracking: {},
+        discoveries: [],
+      }),
+    ]);
+    expect(requested).toEqual(['4004', '5005']);
+  });
+
+  it('stops at a failed request, keeps what it confirmed, and says how many are left', async () => {
+    const requested = answerProfiles({ '4004': 'instagram', '5005': 429, '6006': 'instagram' });
+
+    const imported = await importFile(
+      ['4004', '5005', '6006'].map(accountId => definition({ accountId }))
+    );
+
+    expect(imported.result).toMatchObject({
+      added: [{ accountId: '4004' }],
+      unconfirmed: [],
+      stopped: { code: 'IG_RATE_LIMITED', remaining: 2 },
+    });
+    expect(storedWatches()).toMatchObject([{ targetId: '4004' }]);
+    expect(requested).not.toContain('6006');
   });
 });
 

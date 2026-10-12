@@ -455,3 +455,23 @@ select {
 .inbox-media .ext-section {
   padding: 12px 0;
 }
+
+.opt-add input[type='file'] {
+  margin-top: 8px;
+  color: var(--text-mid);
+  font: 500 11px/1 var(--font-mono);
+}
+.opt-add input[type='file']::file-selector-button {
+  margin-right: 10px;
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--text);
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.opt-add input[type='file']::file-selector-button:hover {
+  background: var(--brand-dim);
+  border-color: var(--brand);
+}
