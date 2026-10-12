@@ -8,6 +8,7 @@
 //   drive.mjs click <match> <selector>     click an element
 //   drive.mjs type <match> <selector> <v>  replace an input value and dispatch input
 //   drive.mjs blur <match> <selector>      blur an element
+//   drive.mjs upload <match> <selector> <file>  choose a file in a file input
 //   drive.mjs eval <match> <expression>    evaluate in the target whose url ends with <match>, else the first containing it
 //   drive.mjs text <match>                 print document.body.innerText
 //   drive.mjs shot <match> <file> [sel]    save a PNG screenshot, cropped to <sel> when given
@@ -55,18 +56,14 @@ async function findTarget(match) {
   }
 }
 
-// One command/response round trip against a single target. Kept short-lived so a
-// failed drive step never leaves a socket attached to the browser.
-async function send(target, method, params = {}) {
+// Runs `steps` over one socket to a single target, then closes it, so a failed
+// drive step never leaves a socket attached to the browser. Remote object IDs
+// live only as long as the socket, so commands that share one go in one call.
+async function session(target, steps) {
   const socket = new WebSocket(target.webSocketDebuggerUrl);
-  try {
-    await new Promise((resolve, reject) => {
-      socket.addEventListener('open', resolve, { once: true });
-      socket.addEventListener('error', () => reject(new Error('CDP socket failed')), {
-        once: true,
-      });
-    });
-    const id = 1;
+  let nextId = 0;
+  const call = (method, params = {}) => {
+    const id = ++nextId;
     const result = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`${method} timed out`)), 30_000);
       socket.addEventListener('message', event => {
@@ -78,11 +75,22 @@ async function send(target, method, params = {}) {
       });
     });
     socket.send(JSON.stringify({ id, method, params }));
-    return await result;
+    return result;
+  };
+  try {
+    await new Promise((resolve, reject) => {
+      socket.addEventListener('open', resolve, { once: true });
+      socket.addEventListener('error', () => reject(new Error('CDP socket failed')), {
+        once: true,
+      });
+    });
+    return await steps(call);
   } finally {
     socket.close();
   }
 }
+
+const send = (target, method, params = {}) => session(target, call => call(method, params));
 
 async function evaluate(match, expression, userGesture = false) {
   const target = await findTarget(match);
@@ -177,6 +185,21 @@ if (command === 'targets') {
     `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!(element instanceof HTMLElement)) throw new Error('Element not found.'); element.blur(); element.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); })()`
   );
   process.stdout.write(`${selector}\n`);
+} else if (command === 'upload') {
+  const [match, selector, file] = rest;
+  if (!match || !selector || !file) fail('Usage: drive.mjs upload <match> <selector> <file>');
+  const { resolve } = await import('node:path');
+  await session(await findTarget(match), async call => {
+    const found = await call('Runtime.evaluate', {
+      expression: `document.querySelector(${JSON.stringify(selector)})`,
+    });
+    if (found.result.subtype !== 'node') fail('File input not found.');
+    await call('DOM.setFileInputFiles', {
+      files: [resolve(file)],
+      objectId: found.result.objectId,
+    });
+  });
+  process.stdout.write(`${file}\n`);
 } else if (command === 'eval') {
   const [match, expression] = rest;
   if (!match || !expression) fail('Usage: drive.mjs eval <match> <expression>');
@@ -221,5 +244,5 @@ if (command === 'targets') {
   }
   process.stdout.write(`${needle}\n`);
 } else {
-  fail('Usage: drive.mjs targets|open|activate|click|key|type|blur|eval|text|shot|wait ...');
+  fail('Usage: drive.mjs targets|open|activate|click|key|type|blur|upload|eval|text|shot|wait ...');
 }

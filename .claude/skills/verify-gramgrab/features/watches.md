@@ -132,8 +132,8 @@ Storage-write failures keeping the selection belong to `watches.test.tsx`.
 
 The options page is three fixed-height panes. The Watch list, the feed and the
 inspector each scroll on their own, and the document itself never scrolls. The
-header, Needs you, All inbox, the Watches label and `+ Add Watch` stay in place
-however long the list is. Below about 500px of height the list keeps a 120px
+header, Needs you, All inbox, the Watches label, `+ Add Watch` and
+`Export or import` stay in place however long the list is. Below about 500px of height the list keeps a 120px
 floor and the whole sidebar scrolls instead.
 
 1. A long list needs more Watches than a shared account should check. Seed
@@ -145,7 +145,7 @@ floor and the whole sidebar scrolls instead.
 2. Open `options.html`, select a Watch, and wheel over `.opt-watch-list` with
    CDP `Input.dispatchMouseEvent`. Require `document.scrollingElement.scrollTop`
    to stay `0` with `scrollHeight === innerHeight`, `.opt-watch-list` to scroll,
-   and `.opt-head` and `.opt-add-item` to keep their positions.
+   and `.opt-head` and both `.opt-add-item` buttons to keep their positions.
 3. Click `+ Add Watch` while the list is scrolled. The `Add Watch` heading, the
    account input and `Find account` must sit inside the viewport with no scroll.
 4. Select a fixture Watch, which has 40 discoveries, and wheel over
@@ -156,6 +156,47 @@ Use the window's own viewport. In this environment
 window shorter than about 500px, so read short-height layout from element
 metrics rather than wheel input. A `hidden` page also hangs input and
 screenshots. Run `drive.mjs activate options.html` first.
+
+## Export and import
+
+`Export or import` in the sidebar saves the verified login's Watches to a file
+and adds the Watches in such a file. The file holds each account ID and
+username, its kinds and actions, and whether it is paused. It holds no login,
+baseline, discovery or Avatar image. `docs/adr/0006` records why. There is no
+CLI verb.
+
+Import spends one viewer request and one profile request per account it adds.
+An account already watched costs none, so steps 1 to 3 are safe on a shared
+account. Step 4 adds a Watch and needs the same authorization as Check now.
+
+1. Open `options.html` and click the `Export or import` sidebar button. The feed
+   shows `Export and import` with an `Export N Watches` button, where N is the
+   sidebar count. Click it. A `gramgrab-watches-YYYY-MM-DD.json` file lands in
+   `$GRAMGRAB_VERIFY_DOWNLOADS` with no Save As dialog. Require
+   `format: "gramgrab-watches"`, `version: 1`, one entry per sidebar Watch, and
+   exactly the keys `accountId`, `username`, `enabled`, `kinds`, `actions` on
+   each entry.
+2. Choose that file: `node $D upload options.html 'input[aria-label="Watches
+   file"]' FILE`. Every account is listed under `Already watched, skipped (N)`
+   with its account ID, kinds and actions, the page says `Nothing to add`, and
+   no Import button or disclosure appears. `watch-store` is unchanged.
+3. Copy the file, change `version` to `2`, and choose the copy. The page says
+   `This is not a Watches file this version of GramGrab can read. Nothing was
+   imported.` and shows no preview. Repeat with an extra key on one entry.
+4. With authorization, write a file with one account the login does not watch,
+   `enabled: false` so nothing checks it, and a deliberately wrong `username`.
+   Choose it. `Will be added (1)` lists it as `Paused` under the file's
+   username, and `Import 1 Watch` stays disabled until the disclosure is
+   ticked. Read `watch-store` before importing: it has not changed. Tick the
+   disclosure and import. The page says `Added 1 Watch.`, the file input
+   empties, and the sidebar gains a `Paused` Watch under the username Instagram
+   returned, not the file's. In `watch-store` it has `tracking: {}` and
+   `discoveries: []`. Delete it through its confirmation UI afterward.
+5. Choose a second file while a preview with a ticked disclosure is showing.
+   The new preview's disclosure must start unticked.
+
+Focused tests own an account Instagram does not confirm and an import a failed
+request stops early. Do not induce either on a real account.
 
 ## Built page and CLI
 

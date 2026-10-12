@@ -183,6 +183,7 @@ node $D type  "popup.html" "#source-url" "https://www.instagram.com/p/SHORTCODE/
 node $D blur  "popup.html" "#source-url"
 node $D click "popup.html" ".fetch-row button"
 node $D key   "options.html" Tab                  # browser keyboard input: Tab or Enter
+node $D upload "options.html" 'input[type=file]' .local/verify/watches.json  # choose a file
 node $D text  "popup.html"                        # innerText of the first match
 node $D wait  "popup.html" "No media yet." 15000  # poll until text appears
 node $D eval  "popup.html" "document.querySelector('.url-input').value"
@@ -220,6 +221,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Diagnostics dialog   | `#diagnostics-dialog-title`                        |
 | Watch check problem  | `.opt-health-row.opt-health-problem`               |
 | Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
+| Watches file import  | `input[aria-label="Watches file"]`, button text `Export or import` |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 
 One limit worth knowing before planning a run: anything gated on the _active
@@ -339,7 +341,7 @@ All are executable and take no arguments beyond what is shown above.
 | `scripts/launch.sh`  | Build and start the browser; `--restart` preserves an unchanged build                     |
 | `scripts/signin.sh`  | Launch with Instagram and WhatsApp Web open for a one-time sign-in     |
 | `scripts/doctor.mjs` | Six read-only health checks, non-zero exit on any failure              |
-| `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, reading, and capturing pages |
+| `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, choosing files, reading, and capturing pages |
 | `scripts/throttle.mjs` | Answer the worker's matching Instagram requests with a status such as 429 |
 | `scripts/cleanup.sh` | Close the browser, remove run state, keep the profile and evidence     |
 
