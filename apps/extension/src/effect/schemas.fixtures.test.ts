@@ -202,13 +202,14 @@ describe('fixtures: topsearch.json', () => {
     expect(result.users?.length).toBeGreaterThan(0);
   });
 
-  it('exposes a username and id for the exact-match lookup', async () => {
+  it('exposes a username, id and Avatar for the exact-match lookup', async () => {
     const json = loadFixture('topsearch.json');
     const result = await Effect.runPromise(Schema.decodeUnknown(TopSearchResponseSchema)(json));
     const user = result.users?.[0]?.user;
     expect(typeof user?.username).toBe('string');
     const id = user?.pk ?? user?.pk_id;
     expect(typeof id === 'string' || typeof id === 'number').toBe(true);
+    expect(typeof user?.profile_pic_url).toBe('string');
   });
 });
 

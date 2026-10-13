@@ -272,7 +272,6 @@ const fetchDecodedJson = <A, I>(
 
 export const fetchWebProfileInfoUser = (
   url: string,
-  credentials: RequestCredentials,
   headers: Record<string, string>
 ): Effect.Effect<
   WebProfileInfoUser | undefined,
@@ -281,17 +280,20 @@ export const fetchWebProfileInfoUser = (
 > =>
   fetchDecodedJson(
     url,
-    { credentials, headers },
+    { credentials: 'include', headers },
     WebProfileInfoResponseSchema,
     'web_profile_info'
   ).pipe(Effect.map(decoded => decoded.data?.user));
 
-/** Resolves a username to its numeric id through topsearch, matching the exact username. */
-export const fetchTopSearchUserId = (
+/**
+ * Looks a username up through topsearch, matching the exact username. Its record carries the id
+ * and a small Avatar, in the shape `web_profile_info` gives them.
+ */
+export const fetchTopSearchUser = (
   username: string,
   headers: Record<string, string>
 ): Effect.Effect<
-  string | undefined,
+  WebProfileInfoUser | undefined,
   HttpError | NetworkError | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
   InstagramRequests
 > =>
@@ -307,7 +309,8 @@ export const fetchTopSearchUserId = (
         entry => entry.user.username.toLowerCase() === wanted
       )?.user;
       const id = match?.pk ?? match?.pk_id;
-      return id == null ? undefined : String(id);
+      if (id == null) return undefined;
+      return { id, ...(match?.profile_pic_url ? { profile_pic_url: match.profile_pic_url } : {}) };
     })
   );
 

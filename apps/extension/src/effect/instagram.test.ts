@@ -2,7 +2,7 @@ import { Effect } from 'effect';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import {
   fetchBlobAsDataUrl,
-  fetchTopSearchUserId,
+  fetchTopSearchUser,
   fetchWebProfileInfoUser,
   graphqlFetch,
   graphqlPost,
@@ -439,7 +439,7 @@ describe('fetchWebProfileInfoUser', () => {
       }),
     }) as unknown as typeof fetch;
 
-    const user = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}));
+    const user = await run(fetchWebProfileInfoUser(TEST_URL, {}));
     expect(user?.id).toBe('42');
     expect(user?.profile_pic_url_hd).toBe('https://cdn.example.com/hd.jpg');
   });
@@ -451,7 +451,7 @@ describe('fetchWebProfileInfoUser', () => {
       json: async () => ({}),
     }) as unknown as typeof fetch;
 
-    const user = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}));
+    const user = await run(fetchWebProfileInfoUser(TEST_URL, {}));
     expect(user).toBeUndefined();
   });
 
@@ -462,7 +462,7 @@ describe('fetchWebProfileInfoUser', () => {
       statusText: 'Not Found',
     }) as unknown as typeof fetch;
 
-    const result = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either));
+    const result = await run(fetchWebProfileInfoUser(TEST_URL, {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(HttpError);
@@ -475,7 +475,7 @@ describe('fetchWebProfileInfoUser', () => {
       .fn()
       .mockRejectedValue(new TypeError('Failed to fetch')) as unknown as typeof fetch;
 
-    const result = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either));
+    const result = await run(fetchWebProfileInfoUser(TEST_URL, {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(NetworkError);
@@ -489,7 +489,7 @@ describe('fetchWebProfileInfoUser', () => {
       json: async () => ({ data: { user: { id: { nested: 'bad' } } } }),
     }) as unknown as typeof fetch;
 
-    const result = await run(fetchWebProfileInfoUser(TEST_URL, 'include', {}).pipe(Effect.either));
+    const result = await run(fetchWebProfileInfoUser(TEST_URL, {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(ResponseShapeUnknown);
@@ -498,7 +498,7 @@ describe('fetchWebProfileInfoUser', () => {
   });
 });
 
-describe('fetchTopSearchUserId', () => {
+describe('fetchTopSearchUser', () => {
   const topSearchResponse = (usernames: readonly string[]) => ({
     ok: true,
     status: 200,
@@ -516,8 +516,29 @@ describe('fetchTopSearchUserId', () => {
         topSearchResponse(['personabc', 'PersonA', 'persona'])
       ) as unknown as typeof fetch;
 
-    const result = await run(fetchTopSearchUserId('persona', {}));
-    expect(result).toBe('2');
+    const result = await run(fetchTopSearchUser('persona', {}));
+    expect(result).toEqual({ id: '2' });
+  });
+
+  it("carries the matching record's Avatar", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        users: [
+          {
+            user: {
+              username: 'instagram',
+              pk: '1',
+              profile_pic_url: 'https://sanitized.invalid/avatar.jpg',
+            },
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const result = await run(fetchTopSearchUser('instagram', {}));
+    expect(result).toEqual({ id: '1', profile_pic_url: 'https://sanitized.invalid/avatar.jpg' });
   });
 
   it('returns undefined when no result matches the username', async () => {
@@ -525,7 +546,7 @@ describe('fetchTopSearchUserId', () => {
       .fn()
       .mockResolvedValue(topSearchResponse(['someoneelse'])) as unknown as typeof fetch;
 
-    const result = await run(fetchTopSearchUserId('persona', {}));
+    const result = await run(fetchTopSearchUser('persona', {}));
     expect(result).toBeUndefined();
   });
 
@@ -535,7 +556,7 @@ describe('fetchTopSearchUserId', () => {
       status: 429,
     }) as unknown as typeof fetch;
 
-    const result = await run(fetchTopSearchUserId('persona', {}).pipe(Effect.either));
+    const result = await run(fetchTopSearchUser('persona', {}).pipe(Effect.either));
     expect(result._tag).toBe('Left');
     if (result._tag === 'Left') expect(result.left).toBeInstanceOf(RateLimited);
   });
