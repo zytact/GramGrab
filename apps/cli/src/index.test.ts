@@ -68,6 +68,8 @@ function runCliProcess(
   });
 }
 
+const SPAWNS_CLI = { timeout: 30_000 };
+
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -456,7 +458,7 @@ describe('CLI watch grammar', () => {
   });
 });
 
-describe('CLI watch process', () => {
+describe('CLI watch process', SPAWNS_CLI, () => {
   it('prints every kind progress on stderr and a single unsuccessful terminal result on stdout', async () => {
     const endpoint = await testEndpoint();
     const watchId = 'ad7a60ff-5e9f-470f-b036-f116e32fda41';
@@ -624,41 +626,49 @@ describe('CLI output', () => {
     expect(HELP).toContain('--accept-unattended');
   });
 
-  it.each([false, true])('rejects invalid source input with exit code 2 (%s JSON)', async json => {
-    const result = await runCliProcess([
-      'inspect',
-      'not-an-instagram-url',
-      ...(json ? ['--json'] : []),
-    ]);
+  it.each([false, true])(
+    'rejects invalid source input with exit code 2 (%s JSON)',
+    SPAWNS_CLI,
+    async json => {
+      const result = await runCliProcess([
+        'inspect',
+        'not-an-instagram-url',
+        ...(json ? ['--json'] : []),
+      ]);
 
-    expect(result.code).toBe(2);
-    expect(result.stdout).toBe('');
-    if (json) {
-      expect(JSON.parse(result.stderr)).toEqual({
-        type: 'error',
-        message: expect.stringContaining('Invalid SOURCE: expected an Instagram URL'),
-      });
-    } else {
-      expect(result.stderr).toContain('Invalid SOURCE: expected an Instagram URL');
+      expect(result.code).toBe(2);
+      expect(result.stdout).toBe('');
+      if (json) {
+        expect(JSON.parse(result.stderr)).toEqual({
+          type: 'error',
+          message: expect.stringContaining('Invalid SOURCE: expected an Instagram URL'),
+        });
+      } else {
+        expect(result.stderr).toContain('Invalid SOURCE: expected an Instagram URL');
+      }
     }
-  });
+  );
 
-  it('prints the release version from the root package.json', async () => {
+  it('prints the release version from the root package.json', SPAWNS_CLI, async () => {
     const result = await runCliProcess(['--version']);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(`${packageJson.version}\n`);
   });
 
-  it('rejects WhatsApp Status input with its browser-extension boundary message and exit code 2', async () => {
-    const result = await runCliProcess(['inspect', 'https://web.whatsapp.com/status/123']);
+  it(
+    'rejects WhatsApp Status input with its browser-extension boundary message and exit code 2',
+    SPAWNS_CLI,
+    async () => {
+      const result = await runCliProcess(['inspect', 'https://web.whatsapp.com/status/123']);
 
-    expect(result.code).toBe(2);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toBe(
-      'WhatsApp Status downloads are only available in the browser extension.\n'
-    );
-  });
+      expect(result.code).toBe(2);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toBe(
+        'WhatsApp Status downloads are only available in the browser extension.\n'
+      );
+    }
+  );
 
   it('bounds JSON progress while preserving phase transitions and completion', () => {
     const lines: string[] = [];
@@ -840,7 +850,7 @@ describe('CLI Watch attention and inbox grammar', () => {
   ])('rejects invalid grammar %j', (...args) => expect(() => command(...args)).toThrow());
 });
 
-describe('CLI Watch partial terminal results', () => {
+describe('CLI Watch partial terminal results', SPAWNS_CLI, () => {
   it.each([
     {
       args: ['needs'],

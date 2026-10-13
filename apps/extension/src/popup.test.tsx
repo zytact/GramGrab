@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

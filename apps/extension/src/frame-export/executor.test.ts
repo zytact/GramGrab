@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { Either, Schema } from 'effect';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { AttemptOperationSchema } from '../download/attempt.ts';

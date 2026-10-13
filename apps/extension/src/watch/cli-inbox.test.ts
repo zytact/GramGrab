@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { createHash, webcrypto } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { Schema } from 'effect';

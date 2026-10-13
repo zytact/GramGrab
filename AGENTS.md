@@ -56,7 +56,9 @@ This project vendors external repositories under `.repos/`.
 
 ## Testing
 
-- Vitest config is `vitest.config.ts` at the repo root: jsdom, globals, v8 coverage, tests matched under `apps/**` and `packages/**`.
+- Vitest config is `vitest.config.ts` at the repo root: node environment, globals, v8 coverage, tests matched under `apps/**` and `packages/**`.
+- A test that needs a DOM opens with `// @vitest-environment jsdom`. Leave it off everything else, since jsdom costs about 2s per file.
+- A test that spawns a process or waits on a real timer sets its own timeout. Do not raise the global 5s default.
 - Setup is `apps/extension/src/test/setup.ts` (polyfills `Blob.arrayBuffer`, installs a mock `globalThis.browser`). Helpers: `resetBrowserMocks()`, `setMockMessageHandler(type, handler)`, `getDownloadCalls()`.
 - Background tests dynamically import `background.ts` to capture the registered listener.
 - Use `instagram`, Instagram's own public account, wherever a test, fixture, or doc needs a username. Keep real people's handles out of the repo.

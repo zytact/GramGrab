@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { Either } from 'effect';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { VideoFrameExtractionFailed } from '../effect/errors.ts';

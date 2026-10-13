@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { Effect } from 'effect';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import {

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { Either } from 'effect';
 import { getDownloadCalls, getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
