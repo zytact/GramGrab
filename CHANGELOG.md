@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.1](https://github.com/zytact/GramGrab/compare/v3.3.0...v3.3.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **instagram:** stop telling signed-in people to sign in on a profile URL ([#291](https://github.com/zytact/GramGrab/issues/291)) ([2b7ae8e](https://github.com/zytact/GramGrab/commit/2b7ae8ef881f572965a529275201a248ff87db53))
+
 ## [3.3.0](https://github.com/zytact/GramGrab/compare/v3.2.1...v3.3.0) (2026-10-12)
 
 
