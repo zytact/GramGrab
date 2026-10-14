@@ -99,19 +99,17 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
 - `inspect` and `export` hit real Instagram. Rate limits are a real outcome and
   a real failure code, not a flaky test. `docs/instagram-protocol.md` covers
   what to do when the request shape itself stopped working.
-- Instagram answers `web_profile_info` with 429 for an ordinary signed-in
-  session, so a story or profile username is resolved through `topsearch`
-  instead (#164). That 429 is the person's own and never pauses Watches; see
-  [Watches](./watches.md#rate-limit-pause). A story run that fails at `SOURCE_USERNAME_UNRESOLVED` for an
-  account that plainly exists means both lookups are refusing; check them by
-  hand from the service worker before treating it as a code bug.
-- The profile path's two `i.instagram.com` requests, the HD Avatar
-  (`users/{id}/info/`) and the Highlights tray, answered 403 for the
-  verification session in October 2026. The code swallows both, so the result
-  is the 150px Avatar from the `topsearch` record and no covers. Read
-  `instagram-requests` from the worker before and after: four new `attempts`
-  and one item is this refusal, not a bug in the lookup. Covers stay unproven
-  live until those requests answer again.
+- Read _Known server behavior_ in `docs/instagram-protocol.md` before calling
+  an Instagram failure a bug. It covers the routine `web_profile_info` 429 and
+  its `topsearch` fallback (#164), the profile path's `i.instagram.com` 403s,
+  and the Instants query on the web host. That 429 never pauses Watches; see
+  [Watches](./watches.md#rate-limit-pause).
+- `SOURCE_USERNAME_UNRESOLVED` or `IG_RATE_LIMITED` for an account that plainly
+  exists means both username lookups refused. Check them by hand from the
+  service worker before treating it as a code bug.
+- On a profile run, read `instagram-requests` from the worker before and after:
+  four new `attempts` and one item is the 403 refusal, not a bug in the lookup.
+  Covers stay unproven live until those requests answer again.
 
   ```bash
   node $D eval "background.js" \

@@ -23,6 +23,42 @@ The configuration contains only:
 It must never contain cookies, CSRF or LSD tokens, usernames, account IDs, media identifiers,
 request bodies, GraphQL variables, or fixture responses.
 
+## Known server behavior
+
+Instagram answers some requests in ways that look like GramGrab bugs. Each item below was observed
+live. Check this list before debugging an Instagram failure.
+
+- **`web_profile_info` answers 429 for an ordinary signed-in session.** Story and profile username
+  lookups fall back to `topsearch` (`lookupAccount` in `apps/extension/src/instagram/acquisition.ts`).
+  When `topsearch` also refuses, the original `web_profile_info` failure surfaces. So
+  `IG_RATE_LIMITED` on a username or profile source usually means both lookups refused, not that
+  GramGrab sent too many requests. That 429 never pauses Watches; only a 429 on a Watch request does.
+- **The profile path's `i.instagram.com` requests answered 403 in October 2026.** Both the HD Avatar
+  (`users/{id}/info/`) and the Highlights tray refused a signed-in session. GramGrab swallows both,
+  so a profile resolves to the 150px `topsearch` Avatar and no Highlight covers.
+- **The web GraphQL host answers the Instants query with `null`.** Since October 2026,
+  `www.instagram.com/graphql/query` returns HTTP 200, no `errors`, and a `null`
+  `xdt_get_quick_snaps` for every `client_doc_id` and app ID tried. `i.instagram.com/graphql_www`
+  with the Moonshot app ID still returns the feed ([#295](https://github.com/zytact/GramGrab/issues/295)).
+- **Instagram Web never sends the Instants query.** `IGQuickSnapGetQuickSnapsQuery` comes only from
+  the mobile apps, so its `client_doc_id` cannot be captured from instagram.com. Its persisted ID
+  changes with most Instagram app releases; take the current one from
+  [Reference sources](#reference-sources).
+
+## Reference sources
+
+These outside sources cover what instagram.com cannot show. They change with every Instagram
+release, so read them live instead of vendoring them under `.repos/`.
+
+| Source                                                                                                      | What GramGrab takes from it                                                                                                                                                                                       | Reach for it when                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| [`Nader-abdi/instagram-persisted-query-diff`](https://github.com/Nader-abdi/instagram-persisted-query-diff) | Persisted `client_doc_id` values per Instagram Android build. `index.json` lists every build-to-build diff; each `diff.json` names the operations that were added, removed, or changed.                           | An operation that Instagram Web never sends, such as `instantsFeed`, needs a current ID. Take the newest diff that touches the operation. |
+| [`williamcachamwri/quicksnapins-api`](https://github.com/williamcachamwri/quicksnapins-api)                 | Unofficial client built from the decompiled Instants iOS app (`com.burbn.moonshot`). Source of the Moonshot app ID `124024574287414`, the `i.instagram.com/graphql_www` endpoint, and the QuickSnap request body. | The Instants request itself, not just its ID, stops working.                                                                              |
+| [`subzeroid/instagrapi`](https://github.com/subzeroid/instagrapi)                                           | Widely used unofficial Python client for Instagram's private mobile API. `instagrapi/mixins/quicksnap.py` confirms the QuickSnap request pattern.                                                                 | A second, independent reading of a mobile request is needed.                                                                              |
+
+QuickSnap is Instagram's internal name for Instants. Search these sources for `QuickSnap`, not
+`Instant`.
+
 ## Operation names
 
 The updater requires an explicit operation because it does not classify captured traffic:
@@ -49,12 +85,13 @@ Use a browser profile that is already logged in to Instagram:
 2. Trigger the GramGrab request family that needs updating:
    - open a Post, Reel, or sidecar for `mediaByShortcode`
    - open a Story or Highlight for `reelsMedia`
-   - open the active Instants feed for `instantsFeed`
    - open an account's profile for `profilePosts` (the `PolarisProfilePostsQuery` request)
    - scroll that profile's grid for `profilePostsPage` (the
      `PolarisProfilePostsTabContentQuery_connection` request)
 3. Select the relevant Instagram GraphQL request.
 4. Choose **Copy** > **Copy as fetch**.
+
+`instantsFeed` has no web request to capture; see [Update the configuration](#update-the-configuration).
 
 One relevant copied request is enough for each operation being refreshed. If both request families
 need updating, repeat the updater once for each operation. You do not need separate requests for
@@ -77,11 +114,9 @@ For Stories and Highlights, run:
 vp run update:ig-protocol --operation reelsMedia
 ```
 
-For active Instants, run:
-
-```bash
-vp run update:ig-protocol --operation instantsFeed
-```
+Active Instants have no captured request to paste. Put the newest `client_doc_id` from
+[Reference sources](#reference-sources) first in the `instantsFeed` candidates of `config.json` by
+hand, keeping the older candidates behind it.
 
 For a Watch operation, pass its name the same way, for example
 `vp run update:ig-protocol --operation profilePosts`. After refreshing one, rerun the affected Watch
