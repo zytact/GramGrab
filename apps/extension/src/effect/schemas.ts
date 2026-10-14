@@ -220,14 +220,16 @@ export type WebProfileInfoUser = Schema.Schema.Type<typeof WebProfileInfoUserSch
 
 // ---------------------------------------------------------------------------
 // topsearch — www.instagram.com/web/search/topsearch/
-// Username-to-id fallback for when web_profile_info is throttled. Results are
-// fuzzy, so the caller matches the username rather than taking the first hit.
+// Account fallback for when web_profile_info is throttled: the id and a small
+// Avatar. Results are fuzzy, so the caller matches the username rather than
+// taking the first hit.
 // ---------------------------------------------------------------------------
 
 const TopSearchUserSchema = Schema.Struct({
   username: Schema.String,
   pk: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   pk_id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  profile_pic_url: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 export const TopSearchResponseSchema = Schema.Struct({

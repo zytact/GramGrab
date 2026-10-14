@@ -62,19 +62,34 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/p/SHORTCODE/ --
 node apps/cli/bin/gramgrab.mjs instants inspect --json
 ```
 
+A profile URL is its own path, so drive it on its own. It spends three or four
+requests: the account lookup, `topsearch` when that is refused, then the HD
+Avatar and the Highlights tray together.
+
+```bash
+node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --json
+```
+
 ## What proves it works
 
 - The media list replaces `No media yet.` with one card per item, the count
   label reports the number found, and `SELECT ALL` becomes meaningful.
 - `inspect --json` exits 0 and prints an `InspectResult` whose `items` carry an
   `itemNumber` and a `mediaIdentity`.
+- A profile URL exits 0 with the Avatar as item 1, `mediaIdentity.mediaId`
+  `profile-avatar:<username>` and `filenameHint` `<username>_profile`, then one
+  item per Highlight cover. The workspace reads `1 ITEM FOUND` for an Avatar
+  alone. Zero items is
+  a failure of this path, not an account with nothing to show. An Avatar with no
+  covers means Instagram refused the tray; see the gotcha below before calling
+  it a regression.
 - On failure, the UI shows the code from `docs/error-model.md` in
   `.download-attempt-summary code` and offers only the recoveries that failure
   allows. Capture the code, not a paraphrase of the message.
 
 ## Gotchas
 
-- Story, highlight, and Instants requests need a session. Against a profile
+- Story, highlight, profile, and Instants requests need a session. Against a profile
   that was never signed in they fail, or sit on `resolving` until the acceptance
   window and then the terminal deadline apply. Run `scripts/signin.sh` once
   before calling any of this verified, and check `document.cookie` on
@@ -90,6 +105,25 @@ node apps/cli/bin/gramgrab.mjs instants inspect --json
   [Watches](./watches.md#rate-limit-pause). A story run that fails at `SOURCE_USERNAME_UNRESOLVED` for an
   account that plainly exists means both lookups are refusing; check them by
   hand from the service worker before treating it as a code bug.
+- The profile path's two `i.instagram.com` requests, the HD Avatar
+  (`users/{id}/info/`) and the Highlights tray, answered 403 for the
+  verification session in October 2026. The code swallows both, so the result
+  is the 150px Avatar from the `topsearch` record and no covers. Read
+  `instagram-requests` from the worker before and after: four new `attempts`
+  and one item is this refusal, not a bug in the lookup. Covers stay unproven
+  live until those requests answer again.
+
+  ```bash
+  node $D eval "background.js" \
+    "new Promise(r=>chrome.storage.local.get(['instagram-requests'],v=>r(JSON.stringify(v))))"
+  ```
+
+- Image thumbnails are `loading="lazy"` and can sit unloaded in a driven tab for
+  the whole wait, with `img.complete` false and no failure placeholder, even
+  while `document.visibilityState` reads `visible`. Run
+  `node $D activate "popup.html?surface"` right before the `shot`; that pair
+  captured the loaded thumbnail where a bare `shot` captured a blank one. A
+  blank thumbnail without `.thumb-placeholder` is this, not a failed preview.
 - `ResponseShapeUnknown` means Instagram changed a payload. That is a fixture
   and schema task (`vp run generate:ig-fixtures`), not something to work around
   in the harness.

@@ -12,7 +12,7 @@ import {
   fetchHighlightsTray,
   fetchInstantsFeed,
   fetchReelsMedia,
-  fetchTopSearchUserId,
+  fetchTopSearchUser,
   fetchWebProfileInfoUser,
   graphqlFetch as graphqlFetchEffect,
   graphqlPost as graphqlPostEffect,
@@ -59,24 +59,29 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
   return canonicalizeInstagramUrl(url)?.target ?? null;
 }
 
-export function resolveUsernameToId(username: string) {
+/**
+ * Looks an account up by username with the person's session. The record comes from
+ * `web_profile_info`, or from topsearch when Instagram refuses that.
+ */
+function lookupAccount(username: string) {
   const url = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
   const headers = { ...IG_HEADERS, Origin: 'https://www.instagram.com' };
-  return fetchWebProfileInfoUser(url, 'include', headers).pipe(
+  return fetchWebProfileInfoUser(url, headers).pipe(
+    // Instagram refuses web_profile_info often enough, usually with a 429 for an ordinary signed-in
+    // session, that topsearch answers instead. Its own failure surfaces the original one, which
+    // carries the recovery the person actually needs.
+    Effect.catchAll(profileError =>
+      fetchTopSearchUser(username, headers).pipe(Effect.catchAll(() => Effect.fail(profileError)))
+    ),
     Effect.map(user => {
       const userId = user?.id ?? user?.pk;
-      return userId != null ? String(userId) : null;
-    }),
-    // Instagram throttles web_profile_info hard enough to 429 an ordinary signed-in session, so
-    // topsearch resolves the id instead. Its own failure surfaces the original one, which carries
-    // the recovery the person actually needs.
-    Effect.catchAll(profileError =>
-      fetchTopSearchUserId(username, headers).pipe(
-        Effect.map(userId => userId ?? null),
-        Effect.catchAll(() => Effect.fail(profileError))
-      )
-    )
+      return { user, userId: userId != null ? String(userId) : null };
+    })
   );
+}
+
+export function resolveUsernameToId(username: string) {
+  return lookupAccount(username).pipe(Effect.map(account => account.userId));
 }
 
 // ---------------------------------------------------------------------------
@@ -267,36 +272,29 @@ const fetchStoryMediaItems = (username: string) =>
     return normalizeReelsMediaItems(reels, 'story');
   });
 
-const fetchProfileMediaItems = (username: string) => {
-  const profileInfoUrl = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
+const fetchProfileMediaItems = (username: string) =>
+  lookupAccount(username).pipe(
+    Effect.flatMap(({ user, userId }) => {
+      if (!userId) return Effect.fail(new UsernameUnresolved({ username }));
 
-  return fetchWebProfileInfoUser(profileInfoUrl, 'omit', IG_GRAPHQL_HEADERS).pipe(
-    Effect.flatMap(user => {
-      const rawUserId = user?.id ?? user?.pk;
-      const userId = rawUserId != null ? String(rawUserId) : undefined;
-      const avatarEffect = userId
-        ? fetchHdAvatarUser(userId, IG_HEADERS).pipe(
-            Effect.map(hdUser => normalizeProfilePicture(user, username, hdUser))
-          )
-        : Effect.succeed(normalizeProfilePicture(user, username));
-      const coversEffect = userId
-        ? fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
-            Effect.map(tray => normalizeHighlightCovers(tray, username)),
-            Effect.catchAll(err =>
-              Effect.sync(() => {
-                console.warn('highlights_tray failed:', err);
-                return [] as MediaItem[];
-              })
-            )
-          )
-        : Effect.succeed([] as MediaItem[]);
+      const avatarEffect = fetchHdAvatarUser(userId, IG_HEADERS).pipe(
+        Effect.map(hdUser => normalizeProfilePicture(user, username, hdUser))
+      );
+      const coversEffect = fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
+        Effect.map(tray => normalizeHighlightCovers(tray, username)),
+        Effect.catchAll(err =>
+          Effect.sync(() => {
+            console.warn('highlights_tray failed:', err);
+            return [] as MediaItem[];
+          })
+        )
+      );
 
       return Effect.all([avatarEffect, coversEffect], { concurrency: 'unbounded' }).pipe(
         Effect.map(([avatar, covers]) => [...avatar, ...covers])
       );
     })
   );
-};
 
 /** Reads `csrftoken` for an Instagram request that sends it straight back; never stored. */
 export const readCsrfToken = Effect.tryPromise({

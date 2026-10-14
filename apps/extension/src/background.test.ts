@@ -1297,6 +1297,7 @@ describe('background dispatcher', () => {
 
     function classifyProfileFetchUrl(url: string) {
       if (url.includes('/api/v1/users/web_profile_info/')) return 'web-profile';
+      if (url.includes('/web/search/topsearch/')) return 'top-search';
       if (url.includes('/highlights_tray/')) return 'tray';
       if (url.includes('/users/') && url.includes('/info/')) return 'user-info';
       return 'default';
@@ -1328,25 +1329,32 @@ describe('background dispatcher', () => {
       );
     }
 
-    function buildUserInfoResponse(opts: { userInfoOk?: boolean }) {
-      return mockJsonResponse({}, opts.userInfoOk ?? false, 200, 'OK');
+    function buildUserInfoResponse(opts: { userInfo?: unknown }) {
+      return mockJsonResponse(opts.userInfo ?? {}, opts.userInfo !== undefined, 200, 'OK');
     }
 
-    function resolveProfileFetchResponse(
-      url: string,
-      opts: {
-        webProfile?: unknown;
-        webProfileOk?: boolean;
-        webProfileStatus?: number;
-        tray?: unknown;
-        trayOk?: boolean;
-        trayStatus?: number;
-        userInfoOk?: boolean;
-      }
-    ) {
+    interface ProfileFetchOptions {
+      webProfile?: unknown;
+      webProfileOk?: boolean;
+      webProfileStatus?: number;
+      topSearch?: unknown;
+      topSearchStatus?: number;
+      tray?: unknown;
+      trayOk?: boolean;
+      trayStatus?: number;
+      userInfo?: unknown;
+    }
+
+    function resolveProfileFetchResponse(url: string, opts: ProfileFetchOptions) {
       switch (classifyProfileFetchUrl(url)) {
         case 'web-profile':
           return buildWebProfileResponse(opts);
+        case 'top-search':
+          return mockJsonResponse(
+            opts.topSearch ?? {},
+            opts.topSearchStatus === undefined,
+            opts.topSearchStatus ?? 200
+          );
         case 'tray':
           return buildHighlightsTrayResponse(opts);
         case 'user-info':
@@ -1356,20 +1364,14 @@ describe('background dispatcher', () => {
       }
     }
 
-    function mockProfileFetch(opts: {
-      webProfile?: unknown;
-      webProfileOk?: boolean;
-      webProfileStatus?: number;
-      tray?: unknown;
-      trayOk?: boolean;
-      trayStatus?: number;
-      userInfoOk?: boolean;
-    }) {
-      globalThis.fetch = vi
+    function mockProfileFetch(opts: ProfileFetchOptions) {
+      const fetchSpy = vi
         .fn()
         .mockImplementation(async (input: RequestInfo | URL) =>
           resolveProfileFetchResponse(toFetchUrl(input), opts)
-        ) as unknown as typeof fetch;
+        );
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+      return fetchSpy;
     }
 
     it('returns avatar + highlight covers in one response', async () => {
@@ -1461,15 +1463,106 @@ describe('background dispatcher', () => {
       warnSpy.mockRestore();
     });
 
-    it('returns { error } when profile fetch returns non-ok status', async () => {
+    it('looks the account up with the signed-in session', async () => {
+      const fetchSpy = mockProfileFetch({ webProfile: { data: { user: { id: '999' } } } });
+
+      const listener = await loadBackground();
+      await invoke(listener, { type: 'FETCH_MEDIA', url: 'https://www.instagram.com/instagram/' });
+
+      const lookup = fetchSpy.mock.calls.find(([input]) =>
+        toFetchUrl(input).includes('/web_profile_info/')
+      );
+      expect(lookup?.[1]).toMatchObject({ credentials: 'include' });
+    });
+
+    it('resolves the Avatar and covers through topsearch when web_profile_info is refused', async () => {
+      mockProfileFetch({
+        webProfileOk: false,
+        webProfileStatus: 429,
+        topSearch: { users: [{ user: { username: 'instagram', pk: '4242' } }] },
+        userInfo: {
+          user: { hd_profile_pic_url_info: { url: 'https://sanitized.invalid/avatar.jpg' } },
+        },
+        tray: {
+          tray: [
+            {
+              id: 'highlight:17900123',
+              cover_media: {
+                cropped_image_version: { url: 'https://sanitized.invalid/cover.jpg' },
+              },
+            },
+          ],
+        },
+      });
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/instagram/',
+      });
+
+      expect(result).not.toHaveProperty('failure.code');
+      expect(result).toMatchObject({
+        media: [
+          { url: 'https://sanitized.invalid/avatar.jpg' },
+          { url: 'https://sanitized.invalid/cover.jpg' },
+        ],
+      });
+    });
+
+    it("returns the topsearch record's Avatar when the HD Avatar and covers are refused too", async () => {
+      mockProfileFetch({
+        webProfileOk: false,
+        webProfileStatus: 429,
+        topSearch: {
+          users: [
+            {
+              user: {
+                username: 'instagram',
+                pk: '4242',
+                profile_pic_url: 'https://sanitized.invalid/search-avatar.jpg',
+              },
+            },
+          ],
+        },
+        trayOk: false,
+        trayStatus: 403,
+      });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/instagram/',
+      });
+
+      expect(result).not.toHaveProperty('failure.code');
+      expect(result).toMatchObject({
+        media: [{ url: 'https://sanitized.invalid/search-avatar.jpg' }],
+      });
+      warnSpy.mockRestore();
+    });
+
+    it('reports the refusal when topsearch also fails', async () => {
+      mockProfileFetch({ webProfileOk: false, webProfileStatus: 404, topSearchStatus: 500 });
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/instagram/',
+      });
+      expect(result).toMatchObject({ failure: { code: 'IG_REQUEST_REJECTED' } });
+    });
+
+    it('reports an unresolved username when neither lookup knows the account', async () => {
       mockProfileFetch({ webProfileOk: false, webProfileStatus: 404 });
 
       const listener = await loadBackground();
       const result = await invoke(listener, {
         type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/someuser/',
+        url: 'https://www.instagram.com/instagram/',
       });
-      expect(result).toMatchObject({ failure: { code: 'IG_REQUEST_REJECTED' } });
+      expect(result).toMatchObject({ failure: { code: 'SOURCE_USERNAME_UNRESOLVED' } });
     });
   });
 
