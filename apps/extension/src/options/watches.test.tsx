@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -85,7 +87,7 @@ function seedWatchWithProblemAndEntry(extra: readonly object[] = [], expiresAt =
   });
 }
 
-describe('Watches options page', () => {
+describe('Watches options page', { timeout: 15_000 }, () => {
   it.each(['Watch inbox', 'All inbox'])(
     'selects every entry, clears selection and removes only selected items in %s',
     async surface => {

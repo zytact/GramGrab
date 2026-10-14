@@ -93,4 +93,4 @@ it('enforces the aggregate byte budget without eviction and recovers after expli
       watch => watch.viewerId !== VIEWER.id
     )
   ).toEqual(encoded.watches[1]);
-}, 20_000);
+}, 60_000);

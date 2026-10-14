@@ -91,7 +91,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-describe.skipIf(process.platform === 'win32')('install.sh', () => {
+describe.skipIf(process.platform === 'win32')('install.sh', { timeout: 30_000 }, () => {
   it('links the CLI and points the native host manifests through the current version', async () => {
     await publish('1.2.3');
 

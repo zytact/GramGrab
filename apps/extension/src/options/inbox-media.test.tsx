@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { beforeEach, expect, it, vi } from 'vite-plus/test';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { CommandFailure, DiscoverySummary, OperationFailure } from '@gramgrab/protocol';

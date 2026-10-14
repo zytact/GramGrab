@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 /**
  * Integration tests: user drives the popup UI and we assert on real side-effects
  * (browser.downloads.download calls, rendered DOM). The background dispatcher runs

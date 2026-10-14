@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { readFile } from 'node:fs/promises';
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny';
 import { describe, expect, it } from 'vite-plus/test';
