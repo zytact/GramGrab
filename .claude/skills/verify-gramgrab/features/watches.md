@@ -504,6 +504,31 @@ produce each code and reason belong to `watch/check.test.ts`.
 Crop screenshots to the row: `drive.mjs shot options.html FILE ".opt-health-row.opt-health-problem"`
 keeps the sidebar and its usernames out of the file.
 
+## Problem after an update
+
+When GramGrab updates, `runtime.onInstalled` with reason `update` books an early retry due at once for
+every enabled Watch kind whose problem is `IG_RESPONSE_SHAPE_UNKNOWN` or `WATCH_CHECK_INCOMPLETE`.
+The retry runs after the worker's fresh two-minute startup hold, and a successful check clears the
+problem. Other problem codes keep their normal schedule.
+
+1. Launch, then within the startup hold run `watch-problem.mjs hold 60`,
+   `seed IG_RESPONSE_SHAPE_UNKNOWN` and `quiet`. Count the enabled kinds that already hold a real
+   problem with either code: each one also gets a retry, which spends a real check.
+2. Reload the unpacked extension the way the Reload button on `chrome://extensions` does: open that
+   page and eval `chrome.developerPrivate.reload(EXT_ID, {failQuietly: true})` there. Chromium
+   reports this as `update`. The extension can come back `DISABLED`; re-enable it from the same page
+   with `chrome.management.setEnabled(EXT_ID, true)` and run doctor before driving on. Never use
+   `chrome.runtime.reload()`.
+3. Read `watch-scheduler` at once. `earlyRetries` holds the Posts retry of the `instagram` Watch,
+   while the round stays six hours out. Without the update path it holds none. The worker that
+   booked it also set the fresh startup hold, so `startupHoldUntil - at` is 120 seconds. Judge
+   timing by that, not by the reload time: a reload that came back `DISABLED` books the retry only
+   when the re-enabled worker starts, minutes later.
+4. About four minutes later the retry has run one real Posts check. The stored Posts problem is gone
+   and `earlyRetries` is empty. The reload closed every extension page, so open `options.html` again
+   and select the Watch: the Posts health row reads `Checked ... ago` with no format change. Run `watch-problem.mjs remove` in a `finally` step;
+   it finds nothing to remove once the check cleared the seeded problem.
+
 ## Rate-limit pause
 
 Only a 429 on a Watch request pauses Watches. A person's own request that gets a
