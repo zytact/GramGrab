@@ -47,7 +47,7 @@ type WatchAdmission =
 /**
  * The browser's Instagram request ledger. One session signs in at a time, so the rolling cap,
  * spacing, and 429 pause belong to whichever login is signed in. Only a Watch request's 429 starts
- * the pause: person-initiated work hits endpoints that 429 alone and recovers through fallbacks.
+ * the pause: person-initiated work can hit an endpoint that answers 429 on its own.
  */
 class RequestLedger {
   private attempts: readonly number[] = [];

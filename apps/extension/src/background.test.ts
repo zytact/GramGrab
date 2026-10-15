@@ -1316,7 +1316,10 @@ describe('background dispatcher', () => {
     });
 
     it('reports an unresolved username when no lookup knows the account', async () => {
-      globalThis.fetch = lookupFetchMock({ posts: () => jsonResponse(postsOf()) });
+      globalThis.fetch = lookupFetchMock({
+        posts: () =>
+          jsonResponse({ data: null, errors: [{ description: 'User lookup returned null' }] }),
+      });
 
       const listener = await loadBackground();
       const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });

@@ -76,12 +76,18 @@ const ProfileResponse = Schema.Struct({
   errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
 
-/** The JSON body of a successful response. A body that is not JSON is one bad answer. */
-export const readJson = (response: Response) =>
+/** Fails a refused response: a 429 as a rate limit, any other error status as a failed request. */
+export const requireOk = (response: Response) =>
   Effect.gen(function* () {
     if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
     if (!response.ok)
       return yield* Effect.fail(new GraphQLRequestFailed({ status: response.status }));
+  });
+
+/** The JSON body of a successful response. A body that is not JSON is one bad answer. */
+export const readJson = (response: Response) =>
+  Effect.gen(function* () {
+    yield* requireOk(response);
     return yield* Effect.tryPromise({
       try: (): Promise<unknown> => response.json(),
       catch: cause =>

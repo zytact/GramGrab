@@ -23,7 +23,7 @@ import {
   UsernameUnresolved,
 } from '../effect/errors.ts';
 import { fetchPostsPage } from '../watch/posts.ts';
-import { confirmProfile, WireAccountId } from '../watch/identity.ts';
+import { confirmProfile, requireOk, WireAccountId } from '../watch/identity.ts';
 import { fetchRestShortcodeMedia } from './rest-shortcode.ts';
 import {
   normalizeHighlightCovers,
@@ -45,18 +45,21 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
   return canonicalizeInstagramUrl(url)?.target ?? null;
 }
 
+/** Owners of a Posts page. Instagram answers `data: null` with `errors` for an unknown username. */
 const PostOwners = Schema.Struct({
-  data: Schema.Struct({
-    xdt_api__v1__feed__user_timeline_graphql_connection: Schema.Struct({
-      edges: Schema.Array(
-        Schema.Struct({
-          node: Schema.Struct({
-            user: Schema.Struct({ pk: WireAccountId, username: Schema.String }),
-          }),
-        })
-      ),
-    }),
-  }),
+  data: Schema.NullOr(
+    Schema.Struct({
+      xdt_api__v1__feed__user_timeline_graphql_connection: Schema.Struct({
+        edges: Schema.Array(
+          Schema.Struct({
+            node: Schema.Struct({
+              user: Schema.Struct({ pk: WireAccountId, username: Schema.String }),
+            }),
+          })
+        ),
+      }),
+    })
+  ),
 });
 
 /** The account ID on `username`'s own Posts. A collab Post can belong to another account. */
@@ -69,7 +72,7 @@ const idFromPosts = (username: string) =>
     ),
     Effect.map(
       ({ data }) =>
-        data.xdt_api__v1__feed__user_timeline_graphql_connection.edges.find(
+        data?.xdt_api__v1__feed__user_timeline_graphql_connection.edges.find(
           ({ node }) => node.user.username.toLowerCase() === username.toLowerCase()
         )?.node.user.pk
     )
@@ -86,9 +89,7 @@ const idFromProfilePage = (username: string) =>
       { credentials: 'include' }
     );
     if (response.status === 404) return undefined;
-    if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
-    if (!response.ok)
-      return yield* Effect.fail(new GraphQLRequestFailed({ status: response.status }));
+    yield* requireOk(response);
     const page = yield* Effect.tryPromise({
       try: () => response.text(),
       catch: cause => new NetworkError({ cause }),
