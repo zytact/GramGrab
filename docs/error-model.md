@@ -127,8 +127,8 @@ confirmation alike. Stories, Instants and Avatar still record `IG_RESPONSE_SHAPE
 own untrusted answers. Outside a check, a body that is not JSON is `SOURCE_SERVER_FAILED`.
 `WATCH_CHECK_INCOMPLETE` now gets the same single early retry an hour later that
 `IG_RESPONSE_SHAPE_UNKNOWN` has. When GramGrab updates, every enabled Watch kind whose problem is one of
-these two codes gets an early retry due at once, so a problem an older version recorded does not
-outlive the version that fixed it. Store failures keep saved Watch
+these two codes gets an early retry that runs once the startup hold and request pacing allow, so a
+problem an older version recorded does not outlive the version that fixed it. Store failures keep saved Watch
 state exactly as it was; an unreadable or newer-version store is never reset. Command rejections
 answer the options page and `gramgrab watch` alike, and a missing acknowledgement carries the full
 disclosure text. Watch failures carry no diagnostic cause.
