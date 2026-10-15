@@ -69,9 +69,11 @@ All Instagram API responses are decoded through Effect `Schema` tagged unions, n
 
 Sanitized fixtures live in `apps/extension/src/effect/__fixtures__/` (see the README there) and are decoded by `schemas.fixtures.test.ts`. Handwritten tests in `schemas.test.ts` cover edge cases only: missing required fields, null variants, Unknown passthrough, union dispatch.
 
+Before debugging any Instagram failure (`IG_RATE_LIMITED`, `ResponseShapeUnknown`, a 403), read _Known server behavior_ in `docs/instagram-protocol.md`. Its _Reference sources_ name where to find request values instagram.com never sends.
+
 When `ResponseShapeUnknown` fires in the wild:
 
-1. If the request itself stopped working (App ID, ASBD ID, GraphQL doc ID, endpoint, transport), follow `docs/instagram-protocol.md` first.
+1. If the request itself stopped working (App ID, ASBD ID, GraphQL doc ID, endpoint, transport), follow `docs/instagram-protocol.md` first. A changed endpoint, transport, or body also changes the fixture capture script and recaptures fixtures; that doc's fixture section says how.
 2. `vp run generate:ig-fixtures`, then paste `.local/capture-ig-fixtures.mjs` into DevTools on a logged-in `instagram.com`.
 3. Download raw JSON into `.local/raw-fixtures/`, review `vp run sanitize:ig-fixtures`, then install with `vp run sanitize:ig-fixtures -- --write`. The sanitizer is the privacy boundary for committed captures.
 4. `vp test run`. Failing fixture tests show exactly what changed.
