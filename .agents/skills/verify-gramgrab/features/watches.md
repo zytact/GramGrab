@@ -340,12 +340,16 @@ cache read has finished and any Watch lacks a cached picture. It disappears
 when every Watch has a cached picture; an empty Watch list shows no note.
 Opening the page does not start an Avatar lookup.
 
+- A Watch's picture identity is the asset name in its picture URL, read from the
+  ID-keyed profile. Watch store version 1 held topsearch picture IDs; reading it
+  drops those baselines and cached pictures, so the next check records a fresh
+  baseline instead of a change.
 - A Watch's picture is cached on its Watch record as `avatarImage` (`pictureId`,
   base64 `jpeg`, `checkedAt`). The JPEG is 80 by 80 pixels, capped at 8 KiB
   decoded bytes. It is written after a check, never on page open. A
   Watch of Avatar changes reuses the identity its check read and loads the image
-  only when that identity changes. Any other Watch spends at most one `topsearch`
-  request a week, including failed attempts, tracked by `avatarLookupAt`. An
+  only when that identity changes. Any other Watch spends at most one ID-keyed
+  profile request a week, including failed attempts, tracked by `avatarLookupAt`. An
   initial image can use this lookup after a partial check that omitted Avatar.
   A failed Avatar step does not repeat the same lookup. Request-cap deferrals
   leave the timestamp unchanged. The timestamp must fit before a request starts.
@@ -503,8 +507,8 @@ keeps the sidebar and its usernames out of the file.
 ## Rate-limit pause
 
 Only a 429 on a Watch request pauses Watches. A person's own request that gets a
-429 must not, because Instagram routinely answers `web_profile_info` with 429
-and the person's flow falls back to `topsearch`. `scripts/throttle.mjs` answers
+429 must not, because a person's request can hit an endpoint that answers 429 on
+its own, such as the Highlights tray. `scripts/throttle.mjs` answers
 the worker's matching requests with a status, so both sides are drivable on an
 isolated QA account. This synthetic fault-injection recipe is not a live fetch
 and must not be run against a shared personal account:
@@ -513,9 +517,10 @@ and must not be run against a shared personal account:
    inherited `pause` comes from earlier runs, so clear the key and relaunch
    before judging, and only on the verification profile.
 2. Start `node .agents/skills/verify-gramgrab/scripts/throttle.mjs
-   web_profile_info 429` in the background and keep its output.
-3. Run `gramgrab inspect instagram --json`. The throttle log shows a 429 for
-   `web_profile_info`, the inspect still resolves through `topsearch`, and
+   highlights_tray 429` in the background and keep its output.
+3. Run `gramgrab inspect https://www.instagram.com/instagram/ --json`. The
+   throttle log shows a 429 for `highlights_tray`, the inspect still exits 0
+   with the Avatar, and
    `watch list --json` has no `schedule.pausedUntil`. `watch needs` has no
    `PauseAttention`, and the options page shows no `Watches paused` banner.
 4. Stop the throttle. A manual check verifies the viewer once as the person and

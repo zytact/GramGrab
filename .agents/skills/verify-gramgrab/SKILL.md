@@ -140,7 +140,8 @@ running browser that already holds a profile takes the launch over instead of
 starting a second instance, so `launch.sh` refuses a profile whose
 `SingletonLock` names a live process.
 
-A git worktree starts with no `.local/verify-profile/`. To reuse another
+A git worktree starts with no `node_modules`, so run `vp install` before
+`launch.sh`. It also starts with no `.local/verify-profile/`. To reuse another
 checkout's sign-ins, copy that profile into this worktree while no browser holds
 it, leaving out its lock files:
 
