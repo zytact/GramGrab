@@ -117,8 +117,9 @@ vp run update:ig-protocol --operation reelsMedia
 ```
 
 Active Instants have no captured request to paste, so the updater does not accept `instantsFeed`.
-Put the newest `client_doc_id` from [Reference sources](#reference-sources) first in the
-`instantsFeed` candidates of `config.json` by hand, keeping the older candidates behind it.
+Replace the `client_doc_id` in the `instantsFeed` candidate of `config.json` by hand with the
+newest one from [Reference sources](#reference-sources). GramGrab sends only the first Instants
+candidate, so an older one is never tried.
 
 For a Watch operation, pass its name the same way, for example
 `vp run update:ig-protocol --operation profilePosts`. After refreshing one, rerun the affected Watch

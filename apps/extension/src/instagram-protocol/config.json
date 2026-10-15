@@ -84,16 +84,6 @@
               "transport": "form"
             }
           ]
-        },
-        {
-          "kind": "client_doc_id",
-          "id": "13779138904809319315782061537",
-          "requests": [
-            {
-              "endpoint": "https://i.instagram.com/graphql_www",
-              "transport": "form"
-            }
-          ]
         }
       ]
     },

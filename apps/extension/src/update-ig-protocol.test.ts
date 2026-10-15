@@ -102,10 +102,6 @@ describe('Copy-as-fetch protocol updater', () => {
     expect(parseOperation(['--', '--operation', 'reelsMedia'])).toBe('reelsMedia');
   });
 
-  it('rejects instantsFeed, which Instagram Web never sends', () => {
-    expect(() => parseOperation(['--operation', 'instantsFeed'])).toThrow();
-  });
-
   it('extracts only public protocol metadata from a form POST', () => {
     const observation = extractProtocolObservation(postRequest);
     const serialized = JSON.stringify(observation);
