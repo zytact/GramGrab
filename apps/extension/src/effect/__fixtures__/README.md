@@ -5,22 +5,22 @@ captures are local-only sensitive data and must never be committed.
 
 ## Files
 
-| File                        | Endpoint                                                          | What it covers                                                                                                        |
-| --------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `highlights.json`           | `graphql/query/?query_hash=452...` with `highlight_reel_ids`      | `ReelsMediaResponseSchema` — `GraphHighlightReel` envelope, `GraphStoryVideo` items                                   |
-| `story.json`                | `graphql/query/?query_hash=452...` with `reel_ids`                | `ReelsMediaResponseSchema` — `GraphReel` envelope, `GraphStoryVideo` items                                            |
-| `avatar.json`               | `i.instagram.com/api/v1/users/{id}/info/`                         | `HdAvatarResponseSchema` — current empty `user` response; usable avatar URL falls back to `web_profile_info`          |
-| `highlights-tray.json`      | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/`         | `HighlightsTrayResponseSchema` — `tray[]` listing with `cover_media`                                                  |
-| `web-profile-info.json`     | `api/v1/users/web_profile_info/?username=`                        | `WebProfileInfoResponseSchema` — `data.user.id` used to bridge username → user-id                                     |
-| `topsearch.json`            | `web/search/topsearch/?context=blended&query=`                    | `TopSearchResponseSchema` — `users[].user` exact-username id and Avatar fallback when `web_profile_info` is throttled |
-| `shortcode-image.json`      | `graphql/query/?doc_id=8845...` with `{ shortcode }` (image post) | `ShortcodeMediaResponseSchema` — `GraphImage` / `XDTGraphImage` branch                                                |
-| `shortcode-video.json`      | `graphql/query/?doc_id=8845...` with `{ shortcode }` (video reel) | `ShortcodeMediaResponseSchema` — `GraphVideo` / `XDTGraphVideo` branch                                                |
-| `shortcode-rest-video.json` | `api/v1/media/{id}/info/` (video reel)                            | `RestShortcodeResponseSchema` - captured REST video shape with only structural media fields and replacement URLs      |
-| `shortcode-sidecar.json`    | `graphql/query/?doc_id=8845...` with `{ shortcode }` (carousel)   | `ShortcodeMediaResponseSchema` — `GraphSidecar` / `XDTGraphSidecar` branch with mixed image/video children            |
-| `instants-photo.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - active photo shape and image candidates                                                    |
-| `instants-video.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - video nullability, posters, duplicate progressive URLs, and DASH metadata                  |
-| `instants-empty.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - successful empty active feed                                                               |
-| `profile-posts.json`        | `graphql/query` with the `profilePosts` document ID               | Watch `PostsResponse` - one Posts grid page, trimmed to the fields a Watch reads, with mixed Sidecars                 |
+| File                        | Endpoint                                                           | What it covers                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `highlights.json`           | `graphql/query/?query_hash=452...` with `highlight_reel_ids`       | `ReelsMediaResponseSchema` — `GraphHighlightReel` envelope, `GraphStoryVideo` items                                   |
+| `story.json`                | `graphql/query/?query_hash=452...` with `reel_ids`                 | `ReelsMediaResponseSchema` — `GraphReel` envelope, `GraphStoryVideo` items                                            |
+| `avatar.json`               | `i.instagram.com/api/v1/users/{id}/info/`                          | `HdAvatarResponseSchema` — current empty `user` response; usable avatar URL falls back to `web_profile_info`          |
+| `highlights-tray.json`      | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/`          | `HighlightsTrayResponseSchema` — `tray[]` listing with `cover_media`                                                  |
+| `web-profile-info.json`     | `api/v1/users/web_profile_info/?username=`                         | `WebProfileInfoResponseSchema` — `data.user.id` used to bridge username → user-id                                     |
+| `topsearch.json`            | `web/search/topsearch/?context=blended&query=`                     | `TopSearchResponseSchema` — `users[].user` exact-username id and Avatar fallback when `web_profile_info` is throttled |
+| `shortcode-image.json`      | `graphql/query/?doc_id=8845...` with `{ shortcode }` (image post)  | `ShortcodeMediaResponseSchema` — `GraphImage` / `XDTGraphImage` branch                                                |
+| `shortcode-video.json`      | `graphql/query/?doc_id=8845...` with `{ shortcode }` (video reel)  | `ShortcodeMediaResponseSchema` — `GraphVideo` / `XDTGraphVideo` branch                                                |
+| `shortcode-rest-video.json` | `api/v1/media/{id}/info/` (video reel)                             | `RestShortcodeResponseSchema` - captured REST video shape with only structural media fields and replacement URLs      |
+| `shortcode-sidecar.json`    | `graphql/query/?doc_id=8845...` with `{ shortcode }` (carousel)    | `ShortcodeMediaResponseSchema` — `GraphSidecar` / `XDTGraphSidecar` branch with mixed image/video children            |
+| `instants-photo.json`       | `i.instagram.com/graphql_www` with the Instants client document ID | `InstantsResponseSchema` - active photo shape and image candidates                                                    |
+| `instants-video.json`       | `i.instagram.com/graphql_www` with the Instants client document ID | `InstantsResponseSchema` - video nullability, posters, duplicate progressive URLs, and DASH metadata                  |
+| `instants-empty.json`       | `i.instagram.com/graphql_www` with the Instants client document ID | `InstantsResponseSchema` - successful empty active feed                                                               |
+| `profile-posts.json`        | `graphql/query` with the `profilePosts` document ID                | Watch `PostsResponse` - one Posts grid page, trimmed to the fields a Watch reads, with mixed Sidecars                 |
 
 ## Notes
 

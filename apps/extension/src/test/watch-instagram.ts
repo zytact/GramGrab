@@ -276,9 +276,8 @@ export function createWatchInstagram() {
       formDocument(init) === '28991540097136703' ? postsAnswer(init, false) : undefined,
     (_url, init) =>
       formDocument(init) === '29240983615539641' ? postsAnswer(init, true) : undefined,
-    (_url, init) => {
-      if (!(init?.body instanceof URLSearchParams)) return undefined;
-      if (init.body.get('client_doc_id') !== '13779138904809319315782061537') return undefined;
+    ({ pathname }) => {
+      if (pathname !== '/graphql_www') return undefined;
       state.instantsRequests += 1;
       return json(state.instants);
     },

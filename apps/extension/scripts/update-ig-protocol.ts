@@ -21,7 +21,6 @@ const defaultConfigPath = resolve(
 const OperationName = Schema.Literal(
   'mediaByShortcode',
   'reelsMedia',
-  'instantsFeed',
   'viewer',
   'profileById',
   'profilePosts',
@@ -32,7 +31,6 @@ export type OperationName = Schema.Schema.Type<typeof OperationName>;
 export class ProtocolObservation extends Schema.Class<ProtocolObservation>('ProtocolObservation')({
   appId: Schema.NonEmptyString,
   asbdId: Schema.optional(Schema.NonEmptyString),
-  friendlyName: Schema.optional(Schema.NonEmptyString),
   candidate: ProtocolCandidate,
 }) {}
 
@@ -169,10 +167,6 @@ export function extractProtocolObservation(source: string): ProtocolObservation 
   return decodeObservation({
     appId: requiredHeader(headers, 'x-ig-app-id'),
     asbdId: headers.get('x-asbd-id')?.trim() || undefined,
-    friendlyName:
-      headers.get('x-fb-friendly-name')?.trim() ||
-      parameters.get('fb_api_req_friendly_name')?.trim() ||
-      undefined,
     candidate: {
       ...identifier,
       requests: [request],
@@ -209,39 +203,21 @@ function mergeCandidates(
   ];
 }
 
-function mergedOperations(
-  config: ProtocolConfig,
-  operation: OperationName,
-  observation: ProtocolObservation,
-  candidates: ReturnType<typeof mergeCandidates>
-) {
-  return {
-    ...config.operations,
-    [operation]:
-      operation === 'instantsFeed'
-        ? { appId: observation.appId, friendlyName: observation.friendlyName, candidates }
-        : { candidates },
-  };
-}
-
 function mergeObservation(
   config: ProtocolConfig,
   operation: OperationName,
   observation: ProtocolObservation
 ): ProtocolConfig {
-  const candidates = mergeCandidates(config, operation, observation);
-  const client =
-    operation === 'instantsFeed'
-      ? config.client
-      : {
-          appId: observation.appId,
-          asbdId: observation.asbdId ?? config.client.asbdId,
-        };
-
   return decodeProtocolConfig({
     schemaVersion: config.schemaVersion,
-    client,
-    operations: mergedOperations(config, operation, observation, candidates),
+    client: {
+      appId: observation.appId,
+      asbdId: observation.asbdId ?? config.client.asbdId,
+    },
+    operations: {
+      ...config.operations,
+      [operation]: { candidates: mergeCandidates(config, operation, observation) },
+    },
   });
 }
 
@@ -275,7 +251,7 @@ export function parseOperation(arguments_: readonly string[]): OperationName {
   const normalizedArguments = arguments_[0] === '--' ? arguments_.slice(1) : arguments_;
   if (normalizedArguments.length !== 2 || normalizedArguments[0] !== '--operation') {
     throw new Error(
-      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|instantsFeed|viewer|profileById|profilePosts|profilePostsPage>'
+      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|viewer|profileById|profilePosts|profilePostsPage>'
     );
   }
   return Schema.decodeUnknownSync(OperationName)(normalizedArguments[1]);
