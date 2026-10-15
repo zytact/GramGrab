@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.3](https://github.com/zytact/GramGrab/compare/v3.3.2...v3.3.3) (2026-10-15)
+
+
+### Bug Fixes
+
+* **instagram:** fetch profiles and Stories again without the retired username lookups ([#302](https://github.com/zytact/GramGrab/issues/302)) ([dbc1219](https://github.com/zytact/GramGrab/commit/dbc1219fecf64643e46153e1563dcef10a64ce61))
+
 ## [3.3.2](https://github.com/zytact/GramGrab/compare/v3.3.1...v3.3.2) (2026-10-15)
 
 
