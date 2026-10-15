@@ -164,7 +164,11 @@ shape:
 5. Update the Effect response schemas and rerun the validation commands.
 
 The generated fixture script embeds the same decoded protocol configuration, so it automatically
-uses the newly captured candidate order.
+uses the newly captured candidate order. It builds each request body and header set itself, though.
+A changed endpoint, transport, or request body also needs the matching `*Fetch` function in
+`apps/extension/scripts/capture-ig-fixtures.mjs` and the Endpoint column of the
+[fixtures README](../apps/extension/src/effect/__fixtures__/README.md) updated, then a recapture of
+that operation's fixtures, even when the response shape still decodes.
 
 ## Troubleshooting
 
