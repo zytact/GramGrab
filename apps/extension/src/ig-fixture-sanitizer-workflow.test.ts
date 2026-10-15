@@ -66,7 +66,7 @@ describe('IG fixture sanitizer workflow', () => {
   it('aggregates value-free JSON and policy diagnostics across files', async () => {
     const { paths } = await makeWorkspace();
     await copyBatch(paths.raw);
-    await writeFile(join(paths.raw, 'avatar.json'), '{synthetic-invalid-json');
+    await writeFile(join(paths.raw, 'shortcode-rest-video.json'), '{synthetic-invalid-json');
     await writeFile(
       join(paths.raw, 'highlights-tray.json'),
       JSON.stringify({ synthetic_unknown: 'synthetic-secret-that-must-not-appear' })
@@ -89,9 +89,9 @@ describe('IG fixture sanitizer workflow', () => {
     expect(Either.isRight(successful)).toBe(true);
     expect((await readdir(paths.staging)).sort()).toEqual([...FIXTURE_FILENAMES].sort());
 
-    await writeFile(join(paths.raw, 'avatar.json'), JSON.stringify({ status: 'ok' }));
+    await writeFile(join(paths.raw, 'shortcode-rest-video.json'), JSON.stringify({ status: 'ok' }));
     await writeFile(join(paths.raw, 'highlights-tray.json'), JSON.stringify({ status: 'ok' }));
-    const before = await readFile(join(paths.staging, 'avatar.json'), 'utf8');
+    const before = await readFile(join(paths.staging, 'shortcode-rest-video.json'), 'utf8');
     const failed = await run(paths, false);
     expect(Either.isLeft(failed)).toBe(true);
     if (Either.isLeft(failed)) {
@@ -103,7 +103,7 @@ describe('IG fixture sanitizer workflow', () => {
         );
       }
     }
-    expect(await readFile(join(paths.staging, 'avatar.json'), 'utf8')).toBe(before);
+    expect(await readFile(join(paths.staging, 'shortcode-rest-video.json'), 'utf8')).toBe(before);
   });
 
   it('installs all fixtures transactionally while preserving non-fixture files', async () => {
@@ -132,7 +132,10 @@ describe('IG fixture sanitizer workflow', () => {
     await writeFile(join(paths.staging, 'staging-note.txt'), 'safe old staging marker');
     await copyBatch(paths.destination);
     await writeFile(join(paths.destination, 'operator-note.txt'), 'safe rollback marker');
-    const originalAvatar = await readFile(join(paths.destination, 'avatar.json'), 'utf8');
+    const originalRestVideo = await readFile(
+      join(paths.destination, 'shortcode-rest-video.json'),
+      'utf8'
+    );
     let renameCount = 0;
     const failingLayer = Layer.succeed(FixtureFileSystem)({
       ...fixtureFileSystemLive,
@@ -156,7 +159,9 @@ describe('IG fixture sanitizer workflow', () => {
     expect(await readFile(join(paths.destination, 'operator-note.txt'), 'utf8')).toBe(
       'safe rollback marker'
     );
-    expect(await readFile(join(paths.destination, 'avatar.json'), 'utf8')).toBe(originalAvatar);
+    expect(await readFile(join(paths.destination, 'shortcode-rest-video.json'), 'utf8')).toBe(
+      originalRestVideo
+    );
     expect(await readFile(join(paths.staging, 'staging-note.txt'), 'utf8')).toBe(
       'safe old staging marker'
     );

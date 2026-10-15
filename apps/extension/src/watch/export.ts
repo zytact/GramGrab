@@ -11,7 +11,7 @@ import {
 } from '../instagram/normalize.ts';
 import { fetchRestShortcodeMedia } from '../instagram/rest-shortcode.ts';
 import type { Discovery, MediaRef, Watch } from './contracts.ts';
-import { fetchAvatar, readAvatar } from './avatar.ts';
+import { fetchAvatar } from './avatar.ts';
 import { readInstants } from './instants.ts';
 import { fetchStories, readStories } from './stories.ts';
 import { fetchViewer } from './identity.ts';
@@ -73,17 +73,15 @@ const instantItems = (targetId: string, nowSeconds: number) =>
 
 const avatarSlot = (watch: Watch, pictureId: string) =>
   Effect.gen(function* () {
-    const raw = yield* fetchAvatar(watch.username);
-    const current = yield* readAvatar(raw, watch.targetId, watch.username);
+    const current = yield* fetchAvatar(watch.targetId);
     if (current.pictureId !== pictureId) return gone('WATCH_AVATAR_CHANGED');
-    if (!current.pictureUrl) return yield* Effect.fail(untrusted());
     return {
       _tag: 'found',
       item: {
         itemIndex: 0,
         mediaId: `profile-avatar:${watch.username}`,
         type: 'image',
-        url: current.pictureUrl,
+        url: current.hdPictureUrl,
         filenameHint: `${watch.username}_profile`,
       },
     } satisfies Slot;

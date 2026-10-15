@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import { MediaDashOnlyUnsupported, ResponseShapeUnknown } from '../effect/errors.ts';
 import type {
-  HdAvatarUser,
   HighlightsTrayItem,
   InstantItem,
   InstantPhoto,
@@ -13,7 +12,6 @@ import type {
   ShortcodeVideo,
   StoryImageItem,
   StoryVideoItem,
-  WebProfileInfoUser,
 } from '../effect/schemas.ts';
 
 const SHORTCODE_VIDEO_TYPENAMES = new Set([
@@ -77,33 +75,19 @@ export function withItemIndexes(items: MediaItem[]): MediaItem[] {
   return items.map((item, itemIndex) => ({ ...item, itemIndex }));
 }
 
-function resolveHdUrl(hdUser: HdAvatarUser | undefined): string | undefined {
-  if (!hdUser) return undefined;
-  // Prefer full-res hd_profile_pic_url_info, then pick largest hd_profile_pic_versions entry
-  if (hdUser.hd_profile_pic_url_info?.url) return hdUser.hd_profile_pic_url_info.url;
-  if (hdUser.hd_profile_pic_versions && hdUser.hd_profile_pic_versions.length > 0) {
-    return [...hdUser.hd_profile_pic_versions].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]
-      ?.url;
-  }
-  return hdUser.profile_pic_url;
-}
-
+/** The Avatar as one image item, at the highest resolution the profile offers. */
 export function normalizeProfilePicture(
-  user: WebProfileInfoUser | undefined,
-  username: string,
-  hdUser?: HdAvatarUser
+  profile: { readonly pictureUrl?: string; readonly hdPictureUrl?: string },
+  username: string
 ): MediaItem[] {
-  // hd_profile_pic_url_info (1080px) > hd_profile_pic_versions > profile_pic_url_hd (320px)
-  const picUrl = resolveHdUrl(hdUser) ?? user?.profile_pic_url_hd ?? user?.profile_pic_url;
-  if (!picUrl) return [];
+  const url = profile.hdPictureUrl ?? profile.pictureUrl;
+  if (!url) return [];
   return [
     {
       itemIndex: 0,
       mediaId: `profile-avatar:${username}`,
       type: 'image',
-      url: picUrl,
-      width: user?.profile_pic_dimensions?.width,
-      height: user?.profile_pic_dimensions?.height,
+      url,
       filenameHint: `${username}_profile`,
     },
   ];

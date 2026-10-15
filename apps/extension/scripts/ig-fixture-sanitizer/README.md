@@ -7,7 +7,7 @@ the reviewed policy before any output directory is changed.
 
 ## Architecture
 
-- `policy.ts` defines the fourteen-file contract and the declarative allowlist and denylist. Reusable
+- `policy.ts` defines the eleven-file contract and the declarative allowlist and denylist. Reusable
   fragments cover repeated person, media resource, Story item, Reel, and Post shapes.
 - `entities.ts` discovers synthetic entities, correlates strong identifiers, and assigns stable
   numbers for one complete batch.
@@ -93,10 +93,9 @@ aborts the batch.
 
 The command always reads exactly these files from `.local/raw-fixtures/`:
 
-`avatar.json`, `highlights-tray.json`, `highlights.json`, `instants-photo.json`,
-`instants-video.json`, `instants-empty.json`, `shortcode-image.json`, `shortcode-sidecar.json`,
-`shortcode-video.json`, `shortcode-rest-video.json`, `story.json`, `topsearch.json`,
-`web-profile-info.json`, and `profile-posts.json`.
+`highlights-tray.json`, `highlights.json`, `instants-photo.json`, `instants-video.json`,
+`instants-empty.json`, `shortcode-image.json`, `shortcode-sidecar.json`, `shortcode-video.json`,
+`shortcode-rest-video.json`, `story.json`, and `profile-posts.json`.
 
 Run:
 
@@ -114,9 +113,9 @@ After reviewing staging, run:
 vp run sanitize:ig-fixtures -- --write
 ```
 
-The write path prepares a sibling directory, copies non-fixture destination files, writes all fourteen
+The write path prepares a sibling directory, copies non-fixture destination files, writes all eleven
 candidates, renames the existing destination to a backup, and renames the prepared directory into
-place. If the final rename fails, the backup is restored. The fourteen committed fixtures therefore
+place. If the final rename fails, the backup is restored. The eleven committed fixtures therefore
 change together or not at all. Raw input is read-only and is never deleted automatically.
 
 Diagnostics contain only filename, normalized path, expected type or contract, observed type or
@@ -127,9 +126,9 @@ are collected before returning.
 
 Effect is used at boundaries rather than around the pure graph algorithm. JSON text is decoded with
 `Schema.parseJson()`. Expected failures are tagged, typed errors. The filesystem service is provided
-once at the CLI edge. Sanitized candidates are decoded in memory through `HdAvatarResponseSchema`,
-`HighlightsTrayResponseSchema`, `ReelsMediaResponseSchema`, `ShortcodeMediaResponseSchema`, or
-`WebProfileInfoResponseSchema` before staging.
+once at the CLI edge. Sanitized candidates are decoded in memory through their endpoint Schema, such as
+`HighlightsTrayResponseSchema`, `ReelsMediaResponseSchema`, or `ShortcodeMediaResponseSchema`,
+before staging.
 
 Tests cover fail-closed policy behavior, exact and transitive correlation, namespace separation,
 placeholder formats, numeric sentinels, URL replacement, embedded JSON, null and empty preservation,

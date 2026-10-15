@@ -196,6 +196,7 @@ function targetUsername(target: string): string | undefined {
 /** The account `accountId` names with its current username, or the rejection that says why not. */
 const confirmTarget = (accountId: string) =>
   confirmProfile(accountId).pipe(
+    Effect.map(({ username }): Account => ({ accountId, username })),
     Effect.catchAll(error => {
       if (error._tag === 'UsernameUnconfirmed') return reject('WATCH_USERNAME_UNCONFIRMED');
       if (error._tag === 'WatchRequestDeferred') return reject('SOURCE_UNEXPECTED_FAILURE');

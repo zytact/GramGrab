@@ -4,7 +4,6 @@ import instantVideo from '../effect/__fixtures__/instants-video.json';
 import postsFixture from '../effect/__fixtures__/profile-posts.json';
 import restVideoFixture from '../effect/__fixtures__/shortcode-rest-video.json';
 import storyFixture from '../effect/__fixtures__/story.json';
-import searchFixture from '../effect/__fixtures__/topsearch.json';
 import { shortcodeMediaId } from '../instagram/rest-shortcode.ts';
 import { json } from './extension-harness.ts';
 
@@ -163,31 +162,25 @@ export function instantsFeed(instants: readonly FakeInstant[]) {
 }
 
 /**
- * A search answer in the shape of the sanitized `topsearch.json` capture holding one record per
- * account, each with the given picture ID and a fresh picture URL.
+ * An ID-keyed profile answer for one account. A picture ID becomes the asset name of a fresh
+ * picture URL, the way Instagram signs every answer anew.
  */
-export function avatarSearch(
-  ...accounts: readonly {
-    readonly id: string;
-    readonly username: string;
-    readonly pictureId?: string;
-  }[]
-) {
-  const [entry] = searchFixture.users;
+export function avatarProfile(account: {
+  readonly id: string;
+  readonly username: string;
+  readonly pictureId?: string;
+}) {
   return {
-    ...searchFixture,
-    users: accounts.map((account, index) => ({
-      ...entry,
+    data: {
       user: {
-        ...entry!.user,
-        pk: account.id,
-        pk_id: account.id,
         id: account.id,
+        pk: account.id,
         username: account.username,
-        profile_pic_id: account.pictureId ?? null,
-        profile_pic_url: `https://sanitized.invalid/avatar/${index}/${Math.random()}`,
+        ...(account.pictureId && {
+          profile_pic_url: `https://sanitized.invalid/v/${account.pictureId}.jpg?sig=${Math.random()}`,
+        }),
       },
-    })),
+    },
   };
 }
 
@@ -200,9 +193,10 @@ export function createWatchInstagram() {
   const state = {
     viewer: VIEWER as { id: string; username: string; profile_pic_url?: string } | null,
     viewerRequests: 0,
-    profile: {
-      data: { user: { id: TARGET.id, pk: TARGET.id, username: TARGET.username } },
-    } as Record<string, unknown>,
+    profile: avatarProfile({ ...TARGET, pictureId: 'PIC_A' }) as Record<string, unknown>,
+    /** The account ID of every ID-keyed profile request. */
+    profileRequests: [] as string[],
+    /** The account IDs profile pages name, by username. */
     accounts: { [TARGET.username]: { id: TARGET.id } } as Record<string, { id: string }>,
     /** The raw Story answer per target ID; absent targets get Instagram's no-reel answer. */
     stories: {} as Record<string, unknown>,
@@ -215,9 +209,6 @@ export function createWatchInstagram() {
     /** The cursor of every Posts page requested, '' for the first page. */
     postRequests: [] as string[],
     instants: instantsFeed([]) as unknown,
-    search: avatarSearch({ ...TARGET, pictureId: 'PIC_A' }) as unknown,
-    /** The query of every search request. */
-    searches: [] as string[],
     instantsRequests: 0,
     /** REST media answers by shortcode; any other media is a 404. */
     media: {} as Record<string, unknown>,
@@ -240,7 +231,7 @@ export function createWatchInstagram() {
 
   /** Each route answers one endpoint the Watch code calls; the first match wins. */
   const routes: readonly ((url: URL, init?: RequestInit) => Response | undefined)[] = [
-    // Search answers carry picture URLs on this host; the Avatar cache loads from it.
+    // Profile answers carry picture URLs on this host; the Avatar cache loads from it.
     ({ hostname }) =>
       hostname === 'sanitized.invalid'
         ? new Response(new Blob(['picture'], { type: 'image/jpeg' }))
@@ -255,11 +246,6 @@ export function createWatchInstagram() {
       const targetId = variable(searchParams);
       return json(state.stories[targetId] ?? { data: { reels_media: [] } }, state.storyStatus);
     },
-    ({ pathname, searchParams }) => {
-      if (pathname !== '/web/search/topsearch/') return undefined;
-      state.searches.push(searchParams.get('query') ?? '');
-      return json(state.search);
-    },
     ({ pathname }) => {
       const id = /^\/api\/v1\/media\/(\d+)\/info\/$/.exec(pathname)?.[1];
       if (!id) return undefined;
@@ -267,11 +253,20 @@ export function createWatchInstagram() {
       const code = Object.keys(state.media).find(shortcode => shortcodeMediaId(shortcode) === id);
       return code ? json(state.media[code]) : json({}, 404);
     },
-    ({ pathname, searchParams }) =>
-      pathname === '/api/v1/users/web_profile_info/'
-        ? json({ data: { user: state.accounts[searchParams.get('username') ?? ''] } })
-        : undefined,
-    (_url, init) => (formDocument(init) === '28036671149327607' ? json(state.profile) : undefined),
+    ({ hostname, pathname }) => {
+      const username = /^\/([^/]+)\/$/.exec(pathname)?.[1];
+      if (hostname !== 'www.instagram.com' || !username) return undefined;
+      const account = state.accounts[username];
+      return account
+        ? new Response(`{"profile_id":"${account.id}"}`)
+        : new Response('', { status: 404 });
+    },
+    (_url, init) => {
+      if (formDocument(init) !== '28036671149327607') return undefined;
+      const body = init?.body as URLSearchParams;
+      state.profileRequests.push(String(JSON.parse(body.get('variables') ?? '{}').id));
+      return json(state.profile);
+    },
     (_url, init) =>
       formDocument(init) === '28991540097136703' ? postsAnswer(init, false) : undefined,
     (_url, init) =>

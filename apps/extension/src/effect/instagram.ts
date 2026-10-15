@@ -9,14 +9,11 @@ import {
   ResponseShapeUnknown,
 } from './errors.ts';
 import {
-  HdAvatarResponseSchema,
   HighlightsTrayResponseSchema,
   InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
-  TopSearchResponseSchema,
-  WebProfileInfoResponseSchema,
 } from './schemas.ts';
-import type { HdAvatarUser, HighlightsTrayItem, ReelItem, WebProfileInfoUser } from './schemas.ts';
+import type { HighlightsTrayItem, ReelItem } from './schemas.ts';
 import type { InstantItem } from './schemas.ts';
 
 const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
@@ -233,7 +230,7 @@ export const fetchBlobAsDataUrl = (url: string) =>
     });
   });
 
-type RestContext = 'web_profile_info' | 'topsearch' | 'highlights_tray';
+type RestContext = 'highlights_tray';
 
 /** Reads a REST endpoint and decodes it, reporting a decode failure as ResponseShapeUnknown. */
 const fetchDecodedJson = <A, I>(
@@ -262,50 +259,6 @@ const fetchDecodedJson = <A, I>(
     );
   });
 
-export const fetchWebProfileInfoUser = (
-  url: string,
-  headers: Record<string, string>
-): Effect.Effect<
-  WebProfileInfoUser | undefined,
-  HttpError | NetworkError | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
-  InstagramRequests
-> =>
-  fetchDecodedJson(
-    url,
-    { credentials: 'include', headers },
-    WebProfileInfoResponseSchema,
-    'web_profile_info'
-  ).pipe(Effect.map(decoded => decoded.data?.user));
-
-/**
- * Looks a username up through topsearch, matching the exact username. Its record carries the id
- * and a small Avatar, in the shape `web_profile_info` gives them.
- */
-export const fetchTopSearchUser = (
-  username: string,
-  headers: Record<string, string>
-): Effect.Effect<
-  WebProfileInfoUser | undefined,
-  HttpError | NetworkError | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
-  InstagramRequests
-> =>
-  fetchDecodedJson(
-    `https://www.instagram.com/web/search/topsearch/?context=blended&query=${encodeURIComponent(username)}`,
-    { credentials: 'include', headers },
-    TopSearchResponseSchema,
-    'topsearch'
-  ).pipe(
-    Effect.map(decoded => {
-      const wanted = username.toLowerCase();
-      const match = decoded.users?.find(
-        entry => entry.user.username.toLowerCase() === wanted
-      )?.user;
-      const id = match?.pk ?? match?.pk_id;
-      if (id == null) return undefined;
-      return { id, ...(match?.profile_pic_url ? { profile_pic_url: match.profile_pic_url } : {}) };
-    })
-  );
-
 export const fetchReelsMedia = (
   graphqlUrl: string,
   operationKey: 'doc_id' | 'query_hash',
@@ -327,22 +280,6 @@ export const fetchReelsMedia = (
     );
     return decoded.data.reels_media;
   });
-
-export const fetchHdAvatarUser = (
-  userId: string,
-  headers: Record<string, string>
-): Effect.Effect<HdAvatarUser | undefined, never, InstagramRequests> =>
-  Effect.gen(function* () {
-    const requests = yield* InstagramRequests;
-    const res = yield* requests.fetch(`https://i.instagram.com/api/v1/users/${userId}/info/`, {
-      credentials: 'include',
-      headers: { ...headers, Origin: 'https://www.instagram.com' },
-    });
-    if (!res.ok) return undefined;
-    const json = yield* Effect.tryPromise(() => res.json() as Promise<unknown>);
-    const decoded = yield* Schema.decodeUnknown(HdAvatarResponseSchema)(json);
-    return decoded.user;
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
 export const fetchHighlightsTray = (
   userId: string,

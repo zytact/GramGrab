@@ -1,6 +1,12 @@
-import { Either, Schema } from 'effect';
+import { Either, Schema, Struct } from 'effect';
 import { browser } from '../lib/browser.ts';
-import { STORE_BUDGET_BYTES, STORE_KEY, STORE_VERSION, WatchStore } from './contracts.ts';
+import {
+  STORE_BUDGET_BYTES,
+  STORE_KEY,
+  STORE_VERSION,
+  WatchStore,
+  type Watch,
+} from './contracts.ts';
 
 export type StoreFailureCode =
   | 'WATCH_STORE_CAPACITY_EXCEEDED'
@@ -27,6 +33,25 @@ const strict = { onExcessProperty: 'error' } as const;
 const decodeStore = Schema.decodeUnknownEither(WatchStore, strict);
 const encodeStore = Schema.encodeSync(WatchStore);
 const emptyStore: WatchStore = { version: STORE_VERSION, watches: [] };
+const decodeV1Store = Schema.decodeUnknownEither(
+  Schema.Struct({ version: Schema.Literal(1), watches: WatchStore.fields.watches }),
+  strict
+);
+
+/**
+ * Version 1 identified Avatars by a picture ID Instagram no longer sends. Its Avatar baselines and
+ * cached pictures are dropped, so the next check records a fresh baseline instead of a change.
+ */
+const fromV1 = (watches: readonly Watch[]): WatchStore => ({
+  version: STORE_VERSION,
+  watches: watches.map(watch => ({
+    ...Struct.omit(watch, 'avatarImage', 'avatarLookupAt'),
+    tracking: {
+      ...watch.tracking,
+      ...(watch.tracking.avatar && { avatar: Struct.omit(watch.tracking.avatar, 'pictureId') }),
+    },
+  })),
+});
 
 const storeBytes = (store: WatchStore): number =>
   new TextEncoder().encode(JSON.stringify(encodeStore(store))).length;
@@ -39,6 +64,11 @@ function decode(value: unknown): StoreRead {
   const decoded = decodeStore(value);
   if (Either.isRight(decoded))
     return { kind: 'ok', store: decoded.right, bytes: storeBytes(decoded.right) };
+  const v1 = decodeV1Store(value);
+  if (Either.isRight(v1)) {
+    const store = fromV1(v1.right.watches);
+    return { kind: 'ok', store, bytes: storeBytes(store) };
+  }
   const version =
     typeof value === 'object' && value !== null && 'version' in value ? value.version : undefined;
   // A store this build cannot read is kept exactly as it is: it is never read as empty or reset.

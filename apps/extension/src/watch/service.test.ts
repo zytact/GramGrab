@@ -387,8 +387,32 @@ describe('Watch storage', () => {
     });
   });
 
+  it('drops version 1 Avatar baselines and cached pictures, keeping the rest of each Watch', async () => {
+    await addTarget({ kinds: ['stories', 'avatar'] });
+    const [watch] = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches;
+    harness.local.write('watch-store', {
+      version: 1,
+      watches: [
+        {
+          ...watch,
+          tracking: { avatar: { pictureId: '3707377453016286513_2002', lastCheckAt: 1 } },
+          avatarImage: { pictureId: '3707377453016286513_2002', jpeg: '/9j/2Q==', checkedAt: 1 },
+          avatarLookupAt: 1,
+        },
+      ],
+    });
+
+    const { readStore } = await import('./store.ts');
+    const read = await readStore();
+
+    expect(read.kind === 'ok' && read.store).toEqual({
+      version: 2,
+      watches: [{ ...watch, tracking: { avatar: { lastCheckAt: 1 } } }],
+    });
+  });
+
   it('refuses a newer store version without reading it as empty', async () => {
-    harness.local.write('watch-store', { version: 2, watches: [] });
+    harness.local.write('watch-store', { version: 3, watches: [] });
     expect(failureOf(await addTarget())?.failure.code).toBe('WATCH_STORE_VERSION_UNSUPPORTED');
   });
 

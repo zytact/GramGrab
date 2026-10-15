@@ -8,7 +8,7 @@ import {
   type WatchCommand,
 } from '@gramgrab/protocol';
 import { createExtensionHarness } from '../test/extension-harness.ts';
-import { TARGET, VIEWER, avatarSearch, createWatchInstagram } from '../test/watch-instagram.ts';
+import { TARGET, VIEWER, avatarProfile, createWatchInstagram } from '../test/watch-instagram.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, WatchStore, type Discovery } from './contracts.ts';
 
@@ -37,7 +37,7 @@ it('enforces the aggregate byte budget without eviction and recovers after expli
     targetId: '2003',
     username: 'instagram',
   };
-  const empty = { version: 1, watches: [first, second] } as const;
+  const empty = { version: 2, watches: [first, second] } as const;
   const discovery: Discovery = {
     id: '00000000-0000-4000-8000-000000000002',
     checkId: '00000000-0000-4000-8000-000000000003',
@@ -53,7 +53,7 @@ it('enforces the aggregate byte budget without eviction and recovers after expli
   }));
   const split = Math.floor(entries.length / 2);
   const filled = {
-    version: 1,
+    version: 2,
     watches: [
       { ...first, discoveries: entries.slice(0, split) },
       { ...second, discoveries: entries.slice(split) },
@@ -71,7 +71,7 @@ it('enforces the aggregate byte budget without eviction and recovers after expli
   harness.local.write('watch-store', encoded);
   instagram.state.accounts.instagram = { id: '3003' };
   instagram.state.profile = { data: { user: { id: '3003', username: 'instagram' } } };
-  instagram.state.search = avatarSearch({ id: '3003', username: 'instagram' });
+  instagram.state.profile = avatarProfile({ id: '3003', username: 'instagram' });
   const refused = await add('instagram');
   expect(refused.failure?._tag === 'CommandFailure' && refused.failure.failure.code).toBe(
     'WATCH_STORE_CAPACITY_EXCEEDED'

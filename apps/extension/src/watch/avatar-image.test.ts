@@ -15,7 +15,7 @@ import {
   STUB_AVATAR,
   TARGET,
   VIEWER,
-  avatarSearch,
+  avatarProfile,
   createWatchInstagram,
   stubAvatarScaling,
 } from '../test/watch-instagram.ts';
@@ -63,16 +63,20 @@ async function run<T extends WatchResult['_tag']>(command: WatchCommand, expecte
 
 const selector = AccountIdSelector.make({ accountId: TARGET.id });
 
-const addWatch = (kind: WatchKind) =>
-  run(
+/** Adds a Watch of `kinds`, leaving no profile request of the add itself counted. */
+async function addWatch(...kinds: [WatchKind, ...WatchKind[]]) {
+  const added = await run(
     WatchAdd.make({
       target: TARGET.username,
-      kinds: [kind],
+      kinds,
       actions: ['collect'],
       acceptUnattended: true,
     }),
     'WatchAddResult'
   );
+  instagram.state.profileRequests.length = 0;
+  return added;
+}
 
 async function checkLater(after = 5 * MINUTE) {
   await vi.advanceTimersByTimeAsync(after);
@@ -102,11 +106,11 @@ describe('Watch Avatar images', () => {
     await checkLater();
     expect(pictureLoads()).toBe(1);
 
-    instagram.state.search = avatarSearch({ ...TARGET, pictureId: 'PIC_B' });
+    instagram.state.profile = avatarProfile({ ...TARGET, pictureId: 'PIC_B' });
     await checkLater();
     expect(avatarImage()?.pictureId).toBe('PIC_B');
     expect(pictureLoads()).toBe(2);
-    expect(instagram.state.searches).toHaveLength(3);
+    expect(instagram.state.profileRequests).toHaveLength(3);
   });
 
   it('looks up the picture of any other Watch once, then again only a week later', async () => {
@@ -114,10 +118,10 @@ describe('Watch Avatar images', () => {
     await checkLater();
     expect(avatarImage()?.pictureId).toBe('PIC_A');
     await checkLater();
-    expect(instagram.state.searches).toHaveLength(1);
+    expect(instagram.state.profileRequests).toHaveLength(1);
 
     await checkLater(7 * DAY);
-    expect(instagram.state.searches).toHaveLength(2);
+    expect(instagram.state.profileRequests).toHaveLength(2);
     expect(pictureLoads()).toBe(1);
     expect(
       Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
@@ -146,11 +150,11 @@ describe('Watch Avatar images', () => {
     await checkLater();
     expect(avatarImage()).toBeUndefined();
     await checkLater();
-    expect(instagram.state.searches).toHaveLength(1);
+    expect(instagram.state.profileRequests).toHaveLength(1);
 
     stubAvatarScaling();
     await checkLater(7 * DAY);
-    expect(instagram.state.searches).toHaveLength(2);
+    expect(instagram.state.profileRequests).toHaveLength(2);
     expect(avatarImage()?.pictureId).toBe('PIC_A');
   });
 
@@ -173,27 +177,19 @@ describe('Watch Avatar images', () => {
     }).then(() => (done = true));
     while (!done) await vi.advanceTimersByTimeAsync(1_000);
     expect(avatarImage()?.pictureId).toBe('PIC_A');
-    expect(instagram.state.searches).toHaveLength(1);
+    expect(instagram.state.profileRequests).toHaveLength(1);
   });
 
   it.each([true, false])(
-    'distinguishes a failed profile check from an attempted Avatar search, profile fails=%s',
+    'counts a failed profile check as the attempted Avatar lookup, ID mismatch=%s',
     async profileFails => {
-      await run(
-        WatchAdd.make({
-          target: TARGET.username,
-          kinds: ['stories', 'avatar'],
-          actions: ['collect'],
-          acceptUnattended: true,
-        }),
-        'WatchAddResult'
-      );
+      await addWatch('stories', 'avatar');
       if (profileFails)
         instagram.state.profile = { data: { user: { id: '9999', username: TARGET.username } } };
-      else instagram.state.search = {};
+      else instagram.state.profile = {};
       await checkLater();
-      expect(instagram.state.searches).toHaveLength(1);
-      expect(!!avatarImage()).toBe(profileFails);
+      expect(instagram.state.profileRequests).toHaveLength(1);
+      expect(avatarImage()).toBeUndefined();
     }
   );
 
@@ -210,7 +206,7 @@ describe('Watch Avatar images', () => {
       loginVerified: true,
       avatarAttempted: false,
     });
-    expect(instagram.state.searches).toHaveLength(0);
+    expect(instagram.state.profileRequests).toHaveLength(0);
     expect(
       Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
         ?.avatarLookupAt
@@ -225,15 +221,7 @@ describe('Watch Avatar images', () => {
   ])(
     'does not fetch an initial image after a later login check fails, %j',
     async ({ stage, signedOut }) => {
-      await run(
-        WatchAdd.make({
-          target: TARGET.username,
-          kinds: ['stories', 'avatar'],
-          actions: ['collect'],
-          acceptUnattended: true,
-        }),
-        'WatchAddResult'
-      );
+      await addWatch('stories', 'avatar');
       if (stage === 'profile')
         instagram.state.profile = { data: { user: { id: '9999', username: TARGET.username } } };
       harness.setFetch((url, init) => {
@@ -251,7 +239,7 @@ describe('Watch Avatar images', () => {
       expect(result.outcomes[0]?.kinds).toContainEqual(
         KindBaselineRecorded.make({ kind: 'stories' })
       );
-      expect(instagram.state.searches).toHaveLength(0);
+      expect(instagram.state.profileRequests).toHaveLength(stage === 'profile' ? 1 : 0);
       expect(avatarImage()).toBeUndefined();
       expect(
         Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
@@ -275,7 +263,7 @@ describe('Watch Avatar images', () => {
       loginVerified: true,
       avatarAttempted: false,
     });
-    expect(instagram.state.searches).toHaveLength(0);
+    expect(instagram.state.profileRequests).toHaveLength(0);
     expect(avatarImage()).toBeUndefined();
     expect(
       Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
@@ -306,7 +294,7 @@ describe('Watch Avatar images', () => {
       const { Effect } = await import('effect');
       await Effect.runPromise(fetchViewer.pipe(Effect.either, Effect.provide(PersonRequests)));
       while (!done) await vi.advanceTimersByTimeAsync(1_000);
-      expect(instagram.state.searches).toHaveLength(0);
+      expect(instagram.state.profileRequests).toHaveLength(0);
       expect(avatarImage()).toBeUndefined();
       expect(
         Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
@@ -316,15 +304,7 @@ describe('Watch Avatar images', () => {
   );
 
   it('preserves authentication failure when recording its kind outcome fails', async () => {
-    await run(
-      WatchAdd.make({
-        target: TARGET.username,
-        kinds: ['stories', 'avatar'],
-        actions: ['collect'],
-        acceptUnattended: true,
-      }),
-      'WatchAddResult'
-    );
+    await addWatch('stories', 'avatar');
     harness.setFetch((url, init) =>
       init?.body instanceof URLSearchParams && init.body.get('doc_id') === '28036671149327607'
         ? json({}, 401)
@@ -348,7 +328,7 @@ describe('Watch Avatar images', () => {
       kind: 'avatar',
       reason: 'storage',
     });
-    expect(instagram.state.searches).toHaveLength(0);
+    expect(instagram.state.profileRequests).toHaveLength(0);
     expect(avatarImage()).toBeUndefined();
     expect(
       Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]
@@ -418,7 +398,13 @@ describe('Watch Avatar images', () => {
         loginVerified: true,
         avatarAttempted: observed,
         ...(observed
-          ? { avatar: { pictureId: 'PIC_A', pictureUrl: 'https://sanitized.invalid/avatar' } }
+          ? {
+              avatar: {
+                pictureId: 'PIC_A',
+                pictureUrl: 'https://sanitized.invalid/avatar',
+                hdPictureUrl: 'https://sanitized.invalid/avatar',
+              },
+            }
           : {}),
       }).then(() => (done = true));
       while (!done) await vi.advanceTimersByTimeAsync(1_000);
@@ -434,7 +420,7 @@ describe('Watch Avatar images', () => {
       ).toBeDefined();
     await vi.advanceTimersByTimeAsync(MINUTE);
     await refresh();
-    expect(instagram.state.searches).toHaveLength(!observed && room > 0 ? 1 : 0);
+    expect(instagram.state.profileRequests).toHaveLength(!observed && room > 0 ? 1 : 0);
   });
 
   it('shows the page only the asking login’s pictures, and its own picture from memory', async () => {

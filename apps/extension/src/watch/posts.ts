@@ -2,7 +2,7 @@ import { Effect, Either, Schema } from 'effect';
 import { InstagramUsername, type CheckIncompleteReason } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { IG_API_GRAPHQL_HEADERS, readCsrfToken } from '../instagram/acquisition.ts';
+import { IG_API_GRAPHQL_HEADERS, readCsrfToken } from '../instagram/headers.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { AnswerUntrusted, ResponseShapeUnknown } from '../effect/errors.ts';
 import { MediaId, Shortcode, type TimedRef } from './contracts.ts';
