@@ -582,7 +582,9 @@ it is not an Instagram response.
 5. Run cleanup soon after. Once the seeded attempts age out the round runs for
    real against the account.
 
-Watch checks pace requests and can take minutes. Rerunning inside five minutes
+Watch checks pace requests and can take minutes. Keep `watch check` attached
+until it returns: a CLI killed mid-check cancels the check, so the Avatar image
+cache that runs after it never does. Rerunning inside five minutes
 may defer a check; keep that terminal result as evidence. All-digit WATCH values
 mean account IDs unless `--username` forces a username. CLI help is the grammar
 reference, including explicit Silent re-encode approval.
