@@ -105,6 +105,7 @@ import {
   holdForStartup,
   initializeScheduler,
   pump,
+  retryAfterUpdate,
 } from './watch/scheduler.ts';
 import { notifiedWatch } from './watch/notify.ts';
 import { acceptedHistoryEntry, type AcceptedHistoryOperation } from './history/receipt.ts';
@@ -1202,14 +1203,18 @@ startNativeBridge(executeCommand);
 browser.runtime.onStartup.addListener(() => startNativeBridge(executeCommand));
 
 // Watches: one periodic alarm wakes the worker to run due checks. Each wake, browser start, and
-// installation recreates the alarm if the browser dropped it.
+// installation recreates the alarm if the browser dropped it. An update re-checks kinds whose
+// problem the older version recorded from an answer it could not read.
 browser.alarms.onAlarm.addListener(alarm => {
   if (alarm.name !== ALARM_NAME) return;
   void ensureAlarm();
   void pump();
 });
 browser.runtime.onStartup.addListener(() => void holdForStartup().then(ensureAlarm));
-browser.runtime.onInstalled.addListener(() => void ensureAlarm());
+browser.runtime.onInstalled.addListener(details => {
+  void ensureAlarm();
+  if (details.reason === 'update') void retryAfterUpdate();
+});
 // A Watch notification opens that Watch's Inbox tab; the page shows it only to its own login.
 browser.notifications.onClicked.addListener(id => {
   const watchId = notifiedWatch(id);

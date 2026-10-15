@@ -352,6 +352,28 @@ describe('Watch scheduling', () => {
     expect(instagram.state.postRequests).toHaveLength(2);
   });
 
+  it('re-checks a kind an older version could not read once GramGrab updates', async () => {
+    await add(TARGET.username, ['posts']);
+    instagram.state.postRequests.length = 0;
+    instagram.state.posts = { '': new Response('<html>') };
+    await wake();
+    await vi.advanceTimersByTimeAsync(HOUR);
+    await wake();
+    const problem = () =>
+      Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches[0]?.tracking
+        .posts?.problem;
+    expect(problem()?.code).toBe('WATCH_CHECK_INCOMPLETE');
+    expect(instagram.state.postRequests).toHaveLength(2);
+
+    instagram.state.posts = { '': postsPage([]) };
+    harness.fireInstalled('update');
+    await vi.advanceTimersByTimeAsync(0);
+    await wake();
+
+    expect(instagram.state.postRequests).toHaveLength(3);
+    expect(problem()).toBeUndefined();
+  });
+
   it('pauses every Watch after a 429 and shows one attention item with the pause end', async () => {
     await add(TARGET.username);
     await add(OTHER.username);
