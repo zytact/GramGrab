@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.2](https://github.com/zytact/GramGrab/compare/v3.3.1...v3.3.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **instagram:** load Instants again from the mobile GraphQL host ([#297](https://github.com/zytact/GramGrab/issues/297)) ([8d3c990](https://github.com/zytact/GramGrab/commit/8d3c990f7b0620a294aae7ef88afed45ee161696))
+
 ## [3.3.1](https://github.com/zytact/GramGrab/compare/v3.3.0...v3.3.1) (2026-10-14)
 
 
