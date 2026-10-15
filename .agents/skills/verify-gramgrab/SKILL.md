@@ -146,6 +146,7 @@ checkout's sign-ins, copy that profile into this worktree while no browser holds
 it, leaving out its lock files:
 
 ```bash
+mkdir -p .local/verify-profile
 rsync -a --exclude 'Singleton*' --exclude 'Default/Service Worker' \
   "$OTHER_CHECKOUT/.local/verify-profile/" .local/verify-profile/
 ```

@@ -55,7 +55,8 @@ GRAMGRAB_IPC_PATH=/tmp/gramgrab-nope.sock node apps/cli/bin/gramgrab.mjs status
   `PROTOCOL_VERSION`, exit 0.
 - `history list` prints a `HistoryListResult`, exit 0. `debug get` prints a
   `DebugGetResult` whose `report` is JSON with `diagnosticsVersion: 2` and a
-  `browser.majorVersion` matching the browser doctor reported.
+  `browser.majorVersion` matching the browser doctor reported. Without `--json`
+  each prints a label line before its JSON, so parse stdout only with `--json`.
 - The WhatsApp source refuses with
   `WhatsApp Status downloads are only available in the browser extension.` and
   exit 2, with no request crossing the socket.
