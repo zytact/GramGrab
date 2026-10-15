@@ -242,32 +242,17 @@
     async function instantsFetch() {
       const candidate = INSTANTS_OPERATION.candidates[0];
       const request = candidate.requests[0];
-      const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '';
       const friendlyName = INSTANTS_OPERATION.friendlyName;
       const body = new URLSearchParams({
-        method: 'post',
-        pretty: 'false',
-        format: 'json',
-        server_timestamps: 'true',
-        locale: 'user',
-        purpose: 'fetch',
         fb_api_req_friendly_name: friendlyName,
-        enable_canonical_naming: 'true',
-        enable_canonical_variable_overrides: 'true',
-        enable_canonical_naming_ambiguous_type_prefixing: 'true',
-        variables: JSON.stringify({ request: {} }),
         client_doc_id: candidate.id,
+        variables: JSON.stringify({ request: {} }),
+        server_timestamps: 'true',
       });
+      // Custom headers make this cross-origin request preflight, which i.instagram.com refuses.
       const response = await fetch(request.endpoint, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'X-IG-App-ID': INSTANTS_OPERATION.appId,
-          'X-FB-Friendly-Name': friendlyName,
-          'X-Client-Doc-Id': candidate.id,
-          'X-CSRFToken': csrf,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
         body,
       });
       return readJsonResponse(response);

@@ -183,18 +183,10 @@ export const fetchInstantsFeed = (
   Effect.gen(function* () {
     const variables = JSON.stringify({ request: {} });
     const body = new URLSearchParams({
-      method: 'post',
-      pretty: 'false',
-      format: 'json',
-      server_timestamps: 'true',
-      locale: 'user',
-      purpose: 'fetch',
       fb_api_req_friendly_name: friendlyName,
-      enable_canonical_naming: 'true',
-      enable_canonical_variable_overrides: 'true',
-      enable_canonical_naming_ambiguous_type_prefixing: 'true',
-      variables,
       client_doc_id: clientDocumentId,
+      variables,
+      server_timestamps: 'true',
     });
     const requests = yield* InstagramRequests;
     const res = yield* requests.fetch(url, {

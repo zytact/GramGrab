@@ -4,9 +4,13 @@ import encodedProtocolConfig from './config.json';
 const NonEmptyString = Schema.String.pipe(
   Schema.filter(value => value.trim().length > 0, { message: () => 'must not be empty' })
 );
+// The mobile GraphQL host serves Instants, which the web host answers with `null` (#295).
+const MOBILE_GRAPHQL_ENDPOINT = 'https://i.instagram.com/graphql_www';
+
 const InstagramEndpoint = NonEmptyString.pipe(
   Schema.filter(
     value => {
+      if (value === MOBILE_GRAPHQL_ENDPOINT) return true;
       try {
         const url = new URL(value);
         return (
@@ -19,7 +23,10 @@ const InstagramEndpoint = NonEmptyString.pipe(
         return false;
       }
     },
-    { message: () => 'must be an HTTPS www.instagram.com URL without query or fragment' }
+    {
+      message: () =>
+        `must be an HTTPS www.instagram.com URL without query or fragment, or ${MOBILE_GRAPHQL_ENDPOINT}`,
+    }
   )
 );
 class ProtocolClient extends Schema.Class<ProtocolClient>('ProtocolClient')({

@@ -87,9 +87,14 @@ read the built file back out of the running browser rather than trusting the
 build:
 
 ```bash
+grep -l 'YOUR_MARKER' extension/chromium/js/*.js   # the build splits code into chunks
 node $D eval "background.js" \
-  "fetch(chrome.runtime.getURL('js/background.js')).then(r=>r.text()).then(t=>t.includes('YOUR_MARKER'))"
+  "fetch(chrome.runtime.getURL('js/CHUNK.js')).then(r=>r.text()).then(t=>t.includes('YOUR_MARKER'))"
 ```
+
+Probe the chunk `grep` named. Shared code such as the Instagram protocol config
+lands in a chunk like `attention.js`, so probing `background.js` reads `false`
+for code that is loaded.
 
 Every later command needs the session variables:
 

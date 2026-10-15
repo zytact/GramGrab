@@ -66,6 +66,15 @@ describe('protocol configuration', () => {
     ]);
   });
 
+  it('accepts the mobile GraphQL endpoint and no other path on its host', () => {
+    const config = (endpoint: string) => encodedConfig({ endpoint, transport: 'form' });
+    expect(() => decodeProtocolConfig(config('https://i.instagram.com/graphql_www'))).not.toThrow();
+    expect(Schema.is(ProtocolConfig)(config('https://i.instagram.com/api/v1/graphql'))).toBe(false);
+    expect(Schema.is(ProtocolConfig)(config('https://i.instagram.com/graphql_www?x=1'))).toBe(
+      false
+    );
+  });
+
   it('rejects unsafe endpoints and unsupported transports', () => {
     expect(
       Schema.is(ProtocolConfig)(

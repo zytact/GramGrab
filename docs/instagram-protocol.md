@@ -38,8 +38,11 @@ live. Check this list before debugging an Instagram failure.
   so a profile resolves to the 150px `topsearch` Avatar and no Highlight covers.
 - **The web GraphQL host answers the Instants query with `null`.** Since October 2026,
   `www.instagram.com/graphql/query` returns HTTP 200, no `errors`, and a `null`
-  `xdt_get_quick_snaps` for every `client_doc_id` and app ID tried. `i.instagram.com/graphql_www`
-  with the Moonshot app ID still returns the feed ([#295](https://github.com/zytact/GramGrab/issues/295)).
+  `xdt_get_quick_snaps` for every `client_doc_id` and app ID tried. GramGrab sends Instants to
+  `i.instagram.com/graphql_www` with the Moonshot app ID instead, which still returns the feed
+  ([#295](https://github.com/zytact/GramGrab/issues/295)). Send only `fb_api_req_friendly_name`,
+  `client_doc_id`, `variables`, and `server_timestamps`: the `enable_canonical_naming*` flags rename
+  the root field to `1$xdt_get_quick_snaps(request:$request)`.
 - **Instagram Web never sends the Instants query.** `IGQuickSnapGetQuickSnapsQuery` comes only from
   the mobile apps, so its `client_doc_id` cannot be captured from instagram.com. Its persisted ID
   changes with most Instagram app releases; take the current one from
@@ -67,7 +70,6 @@ The updater requires an explicit operation because it does not classify captured
 | ------------------ | ------------------------------------------------------- |
 | `mediaByShortcode` | Posts, Reels, and sidecars fetched from a shortcode     |
 | `reelsMedia`       | Stories and Highlights fetched through reels media data |
-| `instantsFeed`     | The authenticated active Instants feed                  |
 | `viewer`           | Watches: the signed-in viewer's account ID              |
 | `profileById`      | Watches: a watched account's current username by ID     |
 | `profilePosts`     | Watches: the first page of an account's Posts grid      |
@@ -114,9 +116,10 @@ For Stories and Highlights, run:
 vp run update:ig-protocol --operation reelsMedia
 ```
 
-Active Instants have no captured request to paste. Put the newest `client_doc_id` from
-[Reference sources](#reference-sources) first in the `instantsFeed` candidates of `config.json` by
-hand, keeping the older candidates behind it.
+Active Instants have no captured request to paste, so the updater does not accept `instantsFeed`.
+Replace the `client_doc_id` in the `instantsFeed` candidate of `config.json` by hand with the
+newest one from [Reference sources](#reference-sources). GramGrab sends only the first Instants
+candidate, so an older one is never tried.
 
 For a Watch operation, pass its name the same way, for example
 `vp run update:ig-protocol --operation profilePosts`. After refreshing one, rerun the affected Watch

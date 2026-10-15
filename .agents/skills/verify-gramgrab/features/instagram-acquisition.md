@@ -13,8 +13,10 @@ here.
   absolute UTC `expiresAt` in CLI inspection.
 - URL canonicalisation on blur, and auto-detection from the active tab, which
   pre-fills the field and shows `Instagram URL detected - ready to fetch.`
-- Instants: the signed-in account's own feed, fetched without a URL. Reads the
-  Instagram CSRF cookie, which is why the manifest asks for `cookies`.
+- Instants: the signed-in account's own feed, fetched without a URL from
+  `i.instagram.com/graphql_www`, because the web GraphQL host answers it with
+  `null` (#295). Reads the Instagram CSRF cookie, which is why the manifest asks
+  for `cookies`.
 - Failure presentation: every failure renders a title, an explanation, and its
   symbolic code, plus whichever recovery actions apply (`Fetch source again`,
   `Open in Instagram`, `Copy diagnostics`). `docs/error-model.md` is the registry.
@@ -76,6 +78,11 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   label reports the number found, and `SELECT ALL` becomes meaningful.
 - `inspect --json` exits 0 and prints an `InspectResult` whose `items` carry an
   `itemNumber` and a `mediaIdentity`.
+- `LOAD INSTANTS` in the workspace replaces `No media yet.` with `N ITEMS FOUND`,
+  and `instants inspect --json` exits 0 with the same count.
+  `IG_RESPONSE_SHAPE_UNKNOWN` here is the #295 failure, so read the request the
+  worker sent before blaming the schema. Quote the count and code in a PR, not a
+  screenshot: Instant cards show other accounts' usernames.
 - A profile URL exits 0 with the Avatar as item 1, `mediaIdentity.mediaId`
   `profile-avatar:<username>` and `filenameHint` `<username>_profile`, then one
   item per Highlight cover. The workspace reads `1 ITEM FOUND` for an Avatar

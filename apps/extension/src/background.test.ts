@@ -848,6 +848,9 @@ describe('background dispatcher', () => {
       const body = init?.body;
       expect(body).toBeInstanceOf(URLSearchParams);
       if (!(body instanceof URLSearchParams)) throw new Error('Expected an Instant form body');
+      expect(new Set(body.keys())).toEqual(
+        new Set(['fb_api_req_friendly_name', 'client_doc_id', 'variables', 'server_timestamps'])
+      );
       expect(body.toString()).not.toContain('seen');
     });
 
