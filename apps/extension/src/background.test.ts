@@ -160,6 +160,47 @@ function fetchMock(
   return Object.assign(vi.fn(implementation), { preconnect: vi.fn() });
 }
 
+const PROFILE_POSTS_ID = protocolConfig.operations.profilePosts.candidates[0]!.id;
+const PROFILE_BY_ID = protocolConfig.operations.profileById.candidates[0]!.id;
+
+const postsOf = (...owners: { pk: string; username: string }[]) => ({
+  data: {
+    xdt_api__v1__feed__user_timeline_graphql_connection: {
+      edges: owners.map(user => ({ node: { user } })),
+      page_info: { end_cursor: null, has_next_page: false },
+    },
+  },
+});
+
+const urlOf = (input: RequestInfo | URL) =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+const bodyOf = (init: RequestInit | undefined) =>
+  init?.body instanceof URLSearchParams ? init.body.toString() : '';
+
+interface LookupRoutes {
+  readonly posts: () => Response;
+  readonly page?: () => Response;
+  readonly profile?: () => Response;
+  readonly other?: (url: string) => Response;
+}
+
+/** Answers the username lookup: the Posts page, the profile page, and the ID-keyed profile. */
+function lookupFetchMock({
+  posts,
+  page = () => new Response('', { status: 404 }),
+  profile = () => jsonResponse({}, 500),
+  other = () => jsonResponse({}, 500),
+}: LookupRoutes) {
+  return fetchMock(async (input, init) => {
+    const url = urlOf(input);
+    const body = bodyOf(init);
+    if (body.includes(PROFILE_POSTS_ID)) return posts();
+    if (body.includes(PROFILE_BY_ID)) return profile();
+    return /^https:\/\/www\.instagram\.com\/[^/]+\/$/.test(url) ? page() : other(url);
+  });
+}
+
 function installFetchSequence(responses: readonly Response[]): void {
   let index = 0;
   globalThis.fetch = fetchMock(async () => {
@@ -1161,19 +1202,27 @@ describe('background dispatcher', () => {
 
   describe('FETCH_MEDIA — story', () => {
     const storyUrl = 'https://www.instagram.com/stories/instagram/';
-    const topSearchHit = {
-      users: [{ user: { username: 'instagram', pk: '4242' } }],
+    const storyReels = {
+      data: {
+        reels_media: [
+          {
+            __typename: 'GraphReel',
+            id: '4242',
+            items: [
+              {
+                __typename: 'GraphStoryImage',
+                id: '99',
+                is_video: false,
+                display_url: 'https://sanitized.invalid/story.jpg',
+                display_resources: [
+                  { src: 'https://sanitized.invalid/story.jpg', config_width: 1, config_height: 1 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
     };
-
-    function storyFetchMock(topSearch: () => Response, reels: () => Response) {
-      return fetchMock(async input => {
-        const url =
-          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        if (url.includes('/web_profile_info/')) return jsonResponse({}, 429);
-        if (url.includes('/web/search/topsearch/')) return topSearch();
-        return reels();
-      });
-    }
 
     it.each([undefined, 1_700_000_000])(
       'returns Story expiry through native inspect: %s',
@@ -1190,10 +1239,10 @@ describe('background dispatcher', () => {
             })),
           },
         };
-        globalThis.fetch = storyFetchMock(
-          () => jsonResponse(topSearchHit),
-          () => jsonResponse(payload)
-        );
+        globalThis.fetch = lookupFetchMock({
+          posts: () => jsonResponse(postsOf({ pk: '4242', username: 'instagram' })),
+          other: () => jsonResponse(payload),
+        });
         await loadBackground();
         const request = Schema.decodeUnknownSync(Request)({
           version: PROTOCOL_VERSION,
@@ -1232,205 +1281,120 @@ describe('background dispatcher', () => {
       expect(result).toMatchObject({ failure: { code: 'IG_RATE_LIMITED' } });
     });
 
-    it('resolves the username through topsearch when web_profile_info is throttled', async () => {
-      globalThis.fetch = storyFetchMock(
-        () => jsonResponse(topSearchHit),
-        () =>
-          jsonResponse({
-            data: {
-              reels_media: [
-                {
-                  __typename: 'GraphReel',
-                  id: '4242',
-                  items: [
-                    {
-                      __typename: 'GraphStoryImage',
-                      id: '99',
-                      is_video: false,
-                      display_url: 'https://sanitized.invalid/story.jpg',
-                      display_resources: [
-                        {
-                          src: 'https://sanitized.invalid/story.jpg',
-                          config_width: 1,
-                          config_height: 1,
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-          })
-      );
+    it('takes the account ID from its own Post, not a collab owner', async () => {
+      const fetchSpy = lookupFetchMock({
+        posts: () =>
+          jsonResponse(
+            postsOf({ pk: '7', username: 'collaborator' }, { pk: '4242', username: 'Instagram' })
+          ),
+        other: () => jsonResponse(storyReels),
+      });
+      globalThis.fetch = fetchSpy;
 
       const listener = await loadBackground();
       const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });
 
       expect(result).toMatchObject({ media: [{ type: 'image' }] });
-      expect(result).not.toHaveProperty('failure.code');
+      const reels = vi
+        .mocked(fetchSpy)
+        .mock.calls.map(([, init]) => bodyOf(init))
+        .find(body => body.includes('reel_ids'));
+      expect(decodeURIComponent(reels ?? '')).toContain('"reel_ids":["4242"]');
     });
 
-    it('reports the throttle rather than an unresolved username when topsearch also fails', async () => {
-      globalThis.fetch = storyFetchMock(
-        () => jsonResponse({}, 500),
-        () => jsonResponse({})
-      );
+    it('reads the account ID from the profile page when the account has no Posts', async () => {
+      globalThis.fetch = lookupFetchMock({
+        posts: () => jsonResponse(postsOf()),
+        page: () => new Response('{"page_id":"profilePage_4242","profile_id":"4242"}'),
+        other: () => jsonResponse(storyReels),
+      });
 
       const listener = await loadBackground();
       const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });
 
-      expect(result).toMatchObject({ failure: { code: 'IG_RATE_LIMITED' } });
+      expect(result).toMatchObject({ media: [{ type: 'image' }] });
+    });
+
+    it('reports an unresolved username when no lookup knows the account', async () => {
+      globalThis.fetch = lookupFetchMock({
+        posts: () =>
+          jsonResponse({ data: null, errors: [{ description: 'User lookup returned null' }] }),
+      });
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });
+
+      expect(result).toMatchObject({ failure: { code: 'SOURCE_USERNAME_UNRESOLVED' } });
     });
   });
 
   // ── FETCH_MEDIA (profile) ─────────────────────────────────────────────────
 
   describe('FETCH_MEDIA — profile', () => {
-    function toFetchUrl(input: RequestInfo | URL): string {
-      if (typeof input === 'string') return input;
-      return input instanceof URL ? input.toString() : input.url;
-    }
+    const profileUrl = 'https://www.instagram.com/someuser/';
+    const profile = (user: Record<string, unknown>) => () =>
+      jsonResponse({ data: { user: { id: '999', pk: '999', username: 'someuser', ...user } } });
 
-    function mockJsonResponse(body: unknown, ok = true, status = 200, statusText = 'OK') {
-      return {
-        ok,
-        status,
-        statusText,
-        json: async () => body,
-      };
-    }
-
-    function classifyProfileFetchUrl(url: string) {
-      if (url.includes('/api/v1/users/web_profile_info/')) return 'web-profile';
-      if (url.includes('/web/search/topsearch/')) return 'top-search';
-      if (url.includes('/highlights_tray/')) return 'tray';
-      if (url.includes('/users/') && url.includes('/info/')) return 'user-info';
-      return 'default';
-    }
-
-    function buildWebProfileResponse(opts: {
-      webProfile?: unknown;
-      webProfileOk?: boolean;
-      webProfileStatus?: number;
-    }) {
-      return mockJsonResponse(
-        opts.webProfile ?? {},
-        opts.webProfileOk ?? true,
-        opts.webProfileStatus ?? 200,
-        'Not Found'
-      );
-    }
-
-    function buildHighlightsTrayResponse(opts: {
-      tray?: unknown;
-      trayOk?: boolean;
-      trayStatus?: number;
-    }) {
-      return mockJsonResponse(
-        opts.tray ?? { tray: [] },
-        opts.trayOk ?? true,
-        opts.trayStatus ?? 200,
-        'Forbidden'
-      );
-    }
-
-    function buildUserInfoResponse(opts: { userInfo?: unknown }) {
-      return mockJsonResponse(opts.userInfo ?? {}, opts.userInfo !== undefined, 200, 'OK');
-    }
-
-    interface ProfileFetchOptions {
-      webProfile?: unknown;
-      webProfileOk?: boolean;
-      webProfileStatus?: number;
-      topSearch?: unknown;
-      topSearchStatus?: number;
-      tray?: unknown;
-      trayOk?: boolean;
-      trayStatus?: number;
-      userInfo?: unknown;
-    }
-
-    function resolveProfileFetchResponse(url: string, opts: ProfileFetchOptions) {
-      switch (classifyProfileFetchUrl(url)) {
-        case 'web-profile':
-          return buildWebProfileResponse(opts);
-        case 'top-search':
-          return mockJsonResponse(
-            opts.topSearch ?? {},
-            opts.topSearchStatus === undefined,
-            opts.topSearchStatus ?? 200
-          );
-        case 'tray':
-          return buildHighlightsTrayResponse(opts);
-        case 'user-info':
-          return buildUserInfoResponse(opts);
-        default:
-          return mockJsonResponse({}, true, 200, 'OK');
-      }
-    }
-
-    function mockProfileFetch(opts: ProfileFetchOptions) {
-      const fetchSpy = vi
-        .fn()
-        .mockImplementation(async (input: RequestInfo | URL) =>
-          resolveProfileFetchResponse(toFetchUrl(input), opts)
-        );
-      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    function mockProfileFetch(routes: Partial<LookupRoutes> & { tray?: () => Response }) {
+      const fetchSpy = lookupFetchMock({
+        posts: () => jsonResponse(postsOf({ pk: '999', username: 'someuser' })),
+        profile: profile({
+          profile_pic_url: 'https://cdn.instagram.com/pic_s150.jpg',
+          hd_profile_pic_url_info: { url: 'https://cdn.instagram.com/pic_hd.jpg' },
+        }),
+        other: url =>
+          url.includes('/highlights_tray/')
+            ? (routes.tray?.() ?? jsonResponse({ tray: [] }))
+            : jsonResponse({}, 500),
+        ...routes,
+      });
+      globalThis.fetch = fetchSpy;
       return fetchSpy;
     }
 
     it('returns avatar + highlight covers in one response', async () => {
       mockProfileFetch({
-        webProfile: {
-          data: {
-            user: {
-              id: '999',
-              profile_pic_url_hd: 'https://cdn.instagram.com/pic_hd.jpg',
-              profile_pic_dimensions: { width: 320, height: 320 },
-            },
-          },
-        },
-        tray: {
-          tray: [
-            {
-              id: 'highlight:17900123',
-              title: 'Travel',
-              cover_media: {
-                full_image_version: {
-                  url: 'https://cdn.instagram.com/full1.jpg',
-                  width: 1080,
-                  height: 1920,
-                },
-                cropped_image_version: {
-                  url: 'https://cdn.instagram.com/crop1.jpg',
-                  width: 1080,
-                  height: 1080,
+        tray: () =>
+          jsonResponse({
+            tray: [
+              {
+                id: 'highlight:17900123',
+                title: 'Travel',
+                cover_media: {
+                  full_image_version: {
+                    url: 'https://cdn.instagram.com/full1.jpg',
+                    width: 1080,
+                    height: 1920,
+                  },
+                  cropped_image_version: {
+                    url: 'https://cdn.instagram.com/crop1.jpg',
+                    width: 1080,
+                    height: 1080,
+                  },
                 },
               },
-            },
-            {
-              id: 17900456,
-              cover_media: {
-                cropped_image_version: { url: 'https://cdn.instagram.com/crop2.jpg' },
+              {
+                id: 17900456,
+                cover_media: {
+                  cropped_image_version: { url: 'https://cdn.instagram.com/crop2.jpg' },
+                },
               },
-            },
-          ],
-        },
+            ],
+          }),
       });
 
       const listener = await loadBackground();
-      const result = (await invoke(listener, {
-        type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/someuser/',
-      })) as {
+      const result = (await invoke(listener, { type: 'FETCH_MEDIA', url: profileUrl })) as {
         media: { url: string; type: string; filenameHint: string; previewUrl?: string }[];
         failure: undefined;
       };
 
       expect(result.failure).toBeUndefined();
       expect(result.media).toHaveLength(3);
-      expect(result.media[0]?.url).toBe('https://cdn.instagram.com/pic_hd.jpg');
-      expect(result.media[0]).toMatchObject({ width: 320, height: 320 });
+      expect(result.media[0]).toMatchObject({
+        url: 'https://cdn.instagram.com/pic_hd.jpg',
+        filenameHint: 'someuser_profile',
+      });
       expect(result.media[1]?.url).toBe('https://cdn.instagram.com/full1.jpg');
       expect(result.media[1]?.previewUrl).toBe('https://cdn.instagram.com/crop1.jpg');
       expect(result.media[1]).toMatchObject({ width: 1080, height: 1080 });
@@ -1441,25 +1405,14 @@ describe('background dispatcher', () => {
     });
 
     it('still returns avatar when highlights_tray fetch fails (swallowed)', async () => {
-      mockProfileFetch({
-        webProfile: {
-          data: {
-            user: {
-              id: '999',
-              profile_pic_url_hd: 'https://cdn.instagram.com/pic_hd.jpg',
-            },
-          },
-        },
-        trayOk: false,
-        trayStatus: 403,
-      });
+      mockProfileFetch({ tray: () => jsonResponse({}, 403) });
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       const listener = await loadBackground();
-      const result = (await invoke(listener, {
-        type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/someuser/',
-      })) as { media: { url: string }[]; failure: undefined };
+      const result = (await invoke(listener, { type: 'FETCH_MEDIA', url: profileUrl })) as {
+        media: { url: string }[];
+        failure: undefined;
+      };
 
       expect(result.failure).toBeUndefined();
       expect(result.media).toHaveLength(1);
@@ -1469,104 +1422,22 @@ describe('background dispatcher', () => {
     });
 
     it('looks the account up with the signed-in session', async () => {
-      const fetchSpy = mockProfileFetch({ webProfile: { data: { user: { id: '999' } } } });
+      const fetchSpy = mockProfileFetch({});
 
       const listener = await loadBackground();
-      await invoke(listener, { type: 'FETCH_MEDIA', url: 'https://www.instagram.com/instagram/' });
+      await invoke(listener, { type: 'FETCH_MEDIA', url: profileUrl });
 
-      const lookup = fetchSpy.mock.calls.find(([input]) =>
-        toFetchUrl(input).includes('/web_profile_info/')
-      );
+      const lookup = vi
+        .mocked(fetchSpy)
+        .mock.calls.find(([, init]) => bodyOf(init).includes(PROFILE_POSTS_ID));
       expect(lookup?.[1]).toMatchObject({ credentials: 'include' });
     });
 
-    it('resolves the Avatar and covers through topsearch when web_profile_info is refused', async () => {
-      mockProfileFetch({
-        webProfileOk: false,
-        webProfileStatus: 429,
-        topSearch: { users: [{ user: { username: 'instagram', pk: '4242' } }] },
-        userInfo: {
-          user: { hd_profile_pic_url_info: { url: 'https://sanitized.invalid/avatar.jpg' } },
-        },
-        tray: {
-          tray: [
-            {
-              id: 'highlight:17900123',
-              cover_media: {
-                cropped_image_version: { url: 'https://sanitized.invalid/cover.jpg' },
-              },
-            },
-          ],
-        },
-      });
+    it('reports an unresolved username when the profile names another account', async () => {
+      mockProfileFetch({ profile: profile({ id: '1000', pk: '1000' }) });
 
       const listener = await loadBackground();
-      const result = await invoke(listener, {
-        type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/instagram/',
-      });
-
-      expect(result).not.toHaveProperty('failure.code');
-      expect(result).toMatchObject({
-        media: [
-          { url: 'https://sanitized.invalid/avatar.jpg' },
-          { url: 'https://sanitized.invalid/cover.jpg' },
-        ],
-      });
-    });
-
-    it("returns the topsearch record's Avatar when the HD Avatar and covers are refused too", async () => {
-      mockProfileFetch({
-        webProfileOk: false,
-        webProfileStatus: 429,
-        topSearch: {
-          users: [
-            {
-              user: {
-                username: 'instagram',
-                pk: '4242',
-                profile_pic_url: 'https://sanitized.invalid/search-avatar.jpg',
-              },
-            },
-          ],
-        },
-        trayOk: false,
-        trayStatus: 403,
-      });
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-      const listener = await loadBackground();
-      const result = await invoke(listener, {
-        type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/instagram/',
-      });
-
-      expect(result).not.toHaveProperty('failure.code');
-      expect(result).toMatchObject({
-        media: [{ url: 'https://sanitized.invalid/search-avatar.jpg' }],
-      });
-      warnSpy.mockRestore();
-    });
-
-    it('reports the refusal when topsearch also fails', async () => {
-      mockProfileFetch({ webProfileOk: false, webProfileStatus: 404, topSearchStatus: 500 });
-
-      const listener = await loadBackground();
-      const result = await invoke(listener, {
-        type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/instagram/',
-      });
-      expect(result).toMatchObject({ failure: { code: 'IG_REQUEST_REJECTED' } });
-    });
-
-    it('reports an unresolved username when neither lookup knows the account', async () => {
-      mockProfileFetch({ webProfileOk: false, webProfileStatus: 404 });
-
-      const listener = await loadBackground();
-      const result = await invoke(listener, {
-        type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/instagram/',
-      });
+      const result = await invoke(listener, { type: 'FETCH_MEDIA', url: profileUrl });
       expect(result).toMatchObject({ failure: { code: 'SOURCE_USERNAME_UNRESOLVED' } });
     });
   });

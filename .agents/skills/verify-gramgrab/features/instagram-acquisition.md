@@ -65,8 +65,9 @@ node apps/cli/bin/gramgrab.mjs instants inspect --json
 ```
 
 A profile URL is its own path, so drive it on its own. It spends three or four
-requests: the account lookup, `topsearch` when that is refused, then the HD
-Avatar and the Highlights tray together.
+requests: the account's first Posts page, its profile page when it has no Posts,
+then the ID-keyed profile for the Avatar and the Highlights tray together. A
+Story URL spends the same lookup, then the Story request.
 
 ```bash
 node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --json
@@ -107,16 +108,15 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   a real failure code, not a flaky test. `docs/instagram-protocol.md` covers
   what to do when the request shape itself stopped working.
 - Read _Known server behavior_ in `docs/instagram-protocol.md` before calling
-  an Instagram failure a bug. It covers the routine `web_profile_info` 429 and
-  its `topsearch` fallback (#164), the profile path's `i.instagram.com` 403s,
-  and the Instants query on the web host. That 429 never pauses Watches; see
-  [Watches](./watches.md#rate-limit-pause).
-- `SOURCE_USERNAME_UNRESOLVED` or `IG_RATE_LIMITED` for an account that plainly
-  exists means both username lookups refused. Check them by hand from the
+  an Instagram failure a bug. It covers the retired REST username lookups
+  (#301), the Highlights tray 403, and the Instants query on the web host. A
+  person's 429 never pauses Watches; see [Watches](./watches.md#rate-limit-pause).
+- `SOURCE_USERNAME_UNRESOLVED` for an account that plainly exists means neither
+  its Posts page nor its profile page named it. Check both by hand from the
   service worker before treating it as a code bug.
 - On a profile run, read `instagram-requests` from the worker before and after:
-  four new `attempts` and one item is the 403 refusal, not a bug in the lookup.
-  Covers stay unproven live until those requests answer again.
+  three new `attempts` and one item is the tray's 403 refusal, not a bug in the
+  lookup. Covers stay unproven live until the tray answers again.
 
   ```bash
   node $D eval "background.js" \

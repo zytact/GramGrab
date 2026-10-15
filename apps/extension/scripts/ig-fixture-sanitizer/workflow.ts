@@ -2,13 +2,10 @@ import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/pro
 import { join } from 'node:path';
 import { Context, Effect, Either, Layer, Schema } from 'effect';
 import {
-  HdAvatarResponseSchema,
   HighlightsTrayResponseSchema,
   InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
   ShortcodeMediaResponseSchema,
-  TopSearchResponseSchema,
-  WebProfileInfoResponseSchema,
 } from '../../src/effect/schemas.ts';
 import { isJsonValue, sanitizeBatch, type SanitizerViolation } from './sanitize.ts';
 import { RestShortcodeResponseSchema } from '../../src/instagram/rest-shortcode.ts';
@@ -223,7 +220,6 @@ const endpointDecoder =
     Schema.decodeUnknown(schema)(value).pipe(Effect.asVoid);
 
 const endpointDecoders = {
-  'avatar.json': endpointDecoder(HdAvatarResponseSchema),
   'highlights-tray.json': endpointDecoder(HighlightsTrayResponseSchema),
   'highlights.json': endpointDecoder(ReelsMediaResponseSchema),
   'story.json': endpointDecoder(ReelsMediaResponseSchema),
@@ -234,8 +230,6 @@ const endpointDecoders = {
   'shortcode-sidecar.json': endpointDecoder(ShortcodeMediaResponseSchema),
   'shortcode-video.json': endpointDecoder(ShortcodeMediaResponseSchema),
   'shortcode-rest-video.json': endpointDecoder(RestShortcodeResponseSchema),
-  'topsearch.json': endpointDecoder(TopSearchResponseSchema),
-  'web-profile-info.json': endpointDecoder(WebProfileInfoResponseSchema),
   'profile-posts.json': endpointDecoder(PostsResponse),
 };
 

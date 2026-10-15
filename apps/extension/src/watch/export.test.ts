@@ -17,7 +17,7 @@ import {
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
 import {
   TARGET,
-  avatarSearch,
+  avatarProfile,
   createWatchInstagram,
   instantsFeed,
   postsPage,
@@ -281,7 +281,7 @@ describe('Watch inbox Export', () => {
 
   it('refuses transformed Avatars and plan writes that cannot be persisted', async () => {
     await watching('avatar');
-    instagram.state.search = avatarSearch({ ...TARGET, pictureId: 'PIC_B' });
+    instagram.state.profile = avatarProfile({ ...TARGET, pictureId: 'PIC_B' });
     await check();
     const [entry] = await inbox();
     const refused = await run(
@@ -507,12 +507,12 @@ describe('Watch inbox Export', () => {
 
   it('downloads an Avatar change only while it is the current picture', async () => {
     await watching('avatar');
-    instagram.state.search = avatarSearch({ ...TARGET, pictureId: 'PIC_B' });
+    instagram.state.profile = avatarProfile({ ...TARGET, pictureId: 'PIC_B' });
     await check();
     const [entry] = await inbox();
 
     const current = await exportEntries(entry!.entryId);
-    instagram.state.search = avatarSearch({ ...TARGET, pictureId: 'PIC_C' });
+    instagram.state.profile = avatarProfile({ ...TARGET, pictureId: 'PIC_C' });
     const changed = await exportEntries(entry!.entryId);
 
     expect(current.outcomes[0]).toMatchObject({ accepted: 1, failures: [] });

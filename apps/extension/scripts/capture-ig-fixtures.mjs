@@ -11,7 +11,6 @@
   const {
     IG_HIGHLIGHT_ID: HIGHLIGHT_ID,
     IG_STORY_USERNAME: STORY_USERNAME,
-    IG_AVATAR_USERNAME: AVATAR_USERNAME,
     IG_TRAY_USERNAME: TRAY_USERNAME,
     IG_PROFILE_USERNAME: PROFILE_USERNAME,
     IG_POST_IMAGE: POST_IMAGE,
@@ -20,8 +19,7 @@
   } = CAPTURE_CONFIG;
 
   // IG_HIGHLIGHT_ID is from /stories/highlights/<ID>/. IG_STORY_USERNAME must have an active Story.
-  // IG_AVATAR_USERNAME can be any user, IG_TRAY_USERNAME needs visible Highlights, and IG_PROFILE_USERNAME
-  // is used for web_profile_info and the Posts grid. Posts may be public Instagram URLs or shortcodes.
+  // IG_TRAY_USERNAME needs visible Highlights, and IG_PROFILE_USERNAME is used for the Posts grid. Posts may be public Instagram URLs or shortcodes.
   // Shortcodes for each branch of the ShortcodeMedia union — one per __typename.
   // Find one of each by browsing instagram.com: /p/<code>/ for image+sidecar, /reel/<code>/ for video.
   // ---------------------------------------------------------------------------
@@ -90,19 +88,18 @@
       );
     }
 
-    async function webProfileInfo(username) {
-      const normalizedUsername = String(username).trim();
-      const r = await fetch(
-        `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(normalizedUsername)}`,
-        { credentials: 'include', headers: { 'X-IG-App-ID': APP_ID } }
-      );
-      return readJsonResponse(r);
-    }
-
+    // Resolves a username the way the extension does: its own Posts first, then its profile page.
     async function userIdFromUsername(username) {
-      const { status, json } = await webProfileInfo(username);
-      const id = json?.data?.user?.id;
-      if (!id) throw new Error(`Could not resolve user id for ${username} (status ${status})`);
+      const { json } = await profilePostsFetch(username);
+      const edges = json?.data?.xdt_api__v1__feed__user_timeline_graphql_connection?.edges ?? [];
+      const wanted = username.toLowerCase();
+      const owner = edges.find(edge => edge.node.user.username.toLowerCase() === wanted)?.node.user;
+      if (owner?.pk) return owner.pk;
+      const page = await fetch(`https://www.instagram.com/${encodeURIComponent(username)}/`, {
+        credentials: 'include',
+      }).then(r => r.text());
+      const id = page.match(/"profile_id":"(\d+)"/)?.[1];
+      if (!id) throw new Error(`Could not resolve user id for ${username}`);
       return id;
     }
 
@@ -380,18 +377,6 @@
         },
       },
       {
-        label: `avatar.json (users/{id}/info/) for @${AVATAR_USERNAME}`,
-        run: async () => {
-          const userId = await userIdFromUsername(AVATAR_USERNAME);
-          const r = await fetch(`https://i.instagram.com/api/v1/users/${userId}/info/`, {
-            credentials: 'include',
-            headers: { 'X-IG-App-ID': APP_ID, Origin: 'https://www.instagram.com' },
-          });
-          console.log('  status:', r.status);
-          dl('avatar.json', trim(await r.json()));
-        },
-      },
-      {
         label: `highlights-tray.json (highlights/{id}/highlights_tray/) for @${TRAY_USERNAME}`,
         run: async () => {
           const userId = await userIdFromUsername(TRAY_USERNAME);
@@ -413,14 +398,6 @@
         },
       },
       {
-        label: `web-profile-info.json (web_profile_info) for @${PROFILE_USERNAME}`,
-        run: async () => {
-          const { status, json } = await webProfileInfo(PROFILE_USERNAME);
-          console.log('  status:', status);
-          dl('web-profile-info.json', trim(json));
-        },
-      },
-      {
         label: `profile-posts.json (Posts grid, first page) for @${PROFILE_USERNAME}`,
         run: async () => {
           const { status, json, text } = await profilePostsFetch(PROFILE_USERNAME);
@@ -432,22 +409,6 @@
             console.warn(`  @${PROFILE_USERNAME} has no Sidecar on its first Posts page`);
           }
           dl('profile-posts.json', projectPosts(json));
-        },
-      },
-      {
-        label: `topsearch.json (topsearch) for @${PROFILE_USERNAME}`,
-        run: async () => {
-          const r = await fetch(
-            `https://www.instagram.com/web/search/topsearch/?context=blended&query=${encodeURIComponent(PROFILE_USERNAME)}`,
-            { credentials: 'include', headers: { 'X-IG-App-ID': APP_ID } }
-          );
-          console.log('  status:', r.status);
-          const j = await r.json();
-          const wanted = PROFILE_USERNAME.toLowerCase();
-          if (!j?.users?.some(entry => entry.user?.username?.toLowerCase() === wanted)) {
-            throw new Error(`topsearch returned no exact match for @${PROFILE_USERNAME}`);
-          }
-          dl('topsearch.json', trim(j));
         },
       },
       ...[

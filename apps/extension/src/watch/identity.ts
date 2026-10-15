@@ -2,11 +2,7 @@ import { noteViewerPicture } from './viewer-avatar.ts';
 import { Data, Effect, Schema } from 'effect';
 import { AccountId, InstagramUsername } from '@gramgrab/protocol';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import {
-  IG_API_GRAPHQL_HEADERS,
-  IG_GRAPHQL_HEADERS,
-  readCsrfToken,
-} from '../instagram/acquisition.ts';
+import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS, readCsrfToken } from '../instagram/headers.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
 import { VIEWER_KEY } from './contracts.ts';
@@ -32,6 +28,12 @@ export interface Account {
 /** The signed-in login, with its Avatar URL for transient use. */
 interface Viewer extends Account {
   readonly pictureUrl?: string;
+}
+
+/** A confirmed account, with its Avatar URLs for transient use. */
+export interface Profile extends Account {
+  readonly pictureUrl?: string;
+  readonly hdPictureUrl?: string;
 }
 
 /** An account ID as Instagram sends it: a decimal string, or a number only while it is exact. */
@@ -64,18 +66,28 @@ const ProfileResponse = Schema.Struct({
         id: Schema.optional(WireAccountId),
         pk: Schema.optional(WireAccountId),
         username: InstagramUsername,
+        profile_pic_url: Schema.optional(Schema.NullOr(Schema.String)),
+        hd_profile_pic_url_info: Schema.optional(
+          Schema.NullOr(Schema.Struct({ url: Schema.String }))
+        ),
       })
     ),
   }),
   errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
 
-/** The JSON body of a successful response. A body that is not JSON is one bad answer. */
-export const readJson = (response: Response) =>
+/** Fails a refused response: a 429 as a rate limit, any other error status as a failed request. */
+export const requireOk = (response: Response) =>
   Effect.gen(function* () {
     if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
     if (!response.ok)
       return yield* Effect.fail(new GraphQLRequestFailed({ status: response.status }));
+  });
+
+/** The JSON body of a successful response. A body that is not JSON is one bad answer. */
+export const readJson = (response: Response) =>
+  Effect.gen(function* () {
+    yield* requireOk(response);
     return yield* Effect.tryPromise({
       try: (): Promise<unknown> => response.json(),
       catch: cause =>
@@ -131,21 +143,33 @@ export const fetchViewer = Effect.gen(function* () {
   )
 );
 
-/** The username only when the response is error-free and every identity field is `targetId`. */
-function confirmedUsername(
+type ProfileUser = NonNullable<Schema.Schema.Type<typeof ProfileResponse>['data']['user']>;
+
+/** Whether every identity field the profile carries is `targetId`, and it carries at least one. */
+const isAccount = ({ id, pk }: ProfileUser, targetId: string) => {
+  const ids = [id, pk].filter(value => value !== undefined);
+  return ids.length > 0 && ids.every(value => value === targetId);
+};
+
+/** The profile only when the response is error-free and every identity field is `targetId`. */
+function confirmedProfile(
   response: Schema.Schema.Type<typeof ProfileResponse>,
   targetId: string
-): string | undefined {
+): Profile | undefined {
   const user = response.data.user;
-  if (!user || (response.errors?.length ?? 0) > 0) return undefined;
-  const ids = [user.id, user.pk].filter(id => id !== undefined);
-  return ids.length > 0 && ids.every(id => id === targetId) ? user.username : undefined;
+  if (!user || (response.errors?.length ?? 0) > 0 || !isAccount(user, targetId)) return undefined;
+  return {
+    accountId: targetId,
+    username: user.username,
+    pictureUrl: user.profile_pic_url ?? undefined,
+    hdPictureUrl: user.hd_profile_pic_url_info?.url,
+  };
 }
 
 /**
- * Reads the current username of `targetId` from the ID-keyed profile query. Only a successful,
- * error-free response whose every identity field equals `targetId` confirms it, so an old
- * username taken over by another account can never be followed.
+ * Reads the current username and Avatar of `targetId` from the ID-keyed profile query. Only a
+ * successful, error-free response whose every identity field equals `targetId` confirms it, so an
+ * old username taken over by another account can never be followed.
  */
 export const confirmProfile = (targetId: string) =>
   Effect.gen(function* () {
@@ -180,7 +204,7 @@ export const confirmProfile = (targetId: string) =>
     const decoded = yield* Schema.decodeUnknown(ProfileResponse)(yield* readJson(response)).pipe(
       Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_profile' }))
     );
-    const username = confirmedUsername(decoded, targetId);
-    if (!username) return yield* Effect.fail(new UsernameUnconfirmed());
-    return { accountId: targetId, username } satisfies Account;
+    const profile = confirmedProfile(decoded, targetId);
+    if (!profile) return yield* Effect.fail(new UsernameUnconfirmed());
+    return profile;
   });

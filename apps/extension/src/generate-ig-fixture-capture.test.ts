@@ -22,7 +22,6 @@ const template = `{
 const validConfig = {
   IG_HIGHLIGHT_ID: '12345678901234567',
   IG_STORY_USERNAME: 'story_user',
-  IG_AVATAR_USERNAME: 'avatar.user',
   IG_TRAY_USERNAME: 'tray_user',
   IG_PROFILE_USERNAME: 'profile.user',
   IG_POST_IMAGE: 'https://www.instagram.com/p/image_123/?utm_source=test',

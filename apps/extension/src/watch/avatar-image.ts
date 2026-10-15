@@ -3,7 +3,7 @@ import type { KindCheckOutcome } from '@gramgrab/protocol';
 import { InstagramRequests, withWatchAdmission } from '../instagram/requests.ts';
 import type { WatchAvatarsResponse } from '../messaging/contracts.ts';
 import type { Watch } from './contracts.ts';
-import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
+import { fetchAvatar, type ObservedAvatar } from './avatar.ts';
 import { mutateStore, readStore, withinStoreBudget } from './store.ts';
 import { loadJpeg, dataUrl } from './avatar-jpeg.ts';
 import { viewerJpeg } from './viewer-avatar.ts';
@@ -12,14 +12,13 @@ import { verifiedViewerId } from './identity.ts';
 /** A Watch that does not track Avatar changes looks its picture up again after this long. */
 const LOOKUP_AFTER_MS = 7 * 24 * 60 * 60_000;
 
-/** Looks up the account's current picture by its stored username, matched by account ID. */
+/** Looks up the account's current picture by its account ID. */
 const lookup = (watch: Watch) =>
   Effect.runPromise(
     withWatchAdmission(requests =>
       Effect.gen(function* () {
         if ((yield* Effect.promise(verifiedViewerId)) !== watch.viewerId) return undefined;
-        return yield* fetchAvatar(watch.username).pipe(
-          Effect.flatMap(raw => readAvatar(raw, watch.targetId, watch.username)),
+        return yield* fetchAvatar(watch.targetId).pipe(
           Effect.provideService(InstagramRequests, requests)
         );
       })

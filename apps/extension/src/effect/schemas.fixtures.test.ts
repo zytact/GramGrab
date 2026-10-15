@@ -12,18 +12,14 @@ import { describe, it, expect } from 'vite-plus/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  HdAvatarResponseSchema,
   HighlightsTrayResponseSchema,
   InstantPhotoSchema,
   InstantVideoSchema,
   InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
   ShortcodeMediaResponseSchema,
-  TopSearchResponseSchema,
-  WebProfileInfoResponseSchema,
 } from './schemas.ts';
 import { PostsResponse } from '../watch/posts.ts';
-import { readAvatar } from '../watch/avatar.ts';
 import type {
   ShortcodeImage,
   ShortcodeSidecar,
@@ -142,77 +138,6 @@ describe('fixtures: story.json', () => {
   });
 });
 
-describe('fixtures: avatar.json', () => {
-  it('decodes successfully', async () => {
-    const json = loadFixture('avatar.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(HdAvatarResponseSchema)(json));
-    expect(result.user).toBeDefined();
-  });
-
-  it('accepts current empty-user response from the HD avatar endpoint', async () => {
-    const json = loadFixture('avatar.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(HdAvatarResponseSchema)(json));
-    expect(result.user.hd_profile_pic_url_info).toBeUndefined();
-    expect(result.user.hd_profile_pic_versions).toBeUndefined();
-  });
-
-  it('falls back to web_profile_info for usable avatar URL coverage', async () => {
-    const json = loadFixture('avatar.json');
-    await Effect.runPromise(Schema.decodeUnknown(HdAvatarResponseSchema)(json));
-
-    const profileJson = loadFixture('web-profile-info.json');
-    const profile = await Effect.runPromise(
-      Schema.decodeUnknown(WebProfileInfoResponseSchema)(profileJson)
-    );
-    expect(typeof profile.data?.user?.profile_pic_url_hd).toBe('string');
-  });
-
-  it('response has no data wrapper (top-level user key)', async () => {
-    // Confirms the bug fix: old code read data?.user, real shape is just user
-    const json = loadFixture('avatar.json') as Record<string, unknown>;
-    expect('user' in json).toBe(true);
-    expect('data' in json).toBe(false);
-  });
-});
-
-describe('fixtures: web-profile-info.json', () => {
-  it('decodes successfully', async () => {
-    const json = loadFixture('web-profile-info.json');
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(WebProfileInfoResponseSchema)(json)
-    );
-    expect(result.data?.user).toBeDefined();
-  });
-
-  it('exposes a user id (used to bridge username → reels/avatar fetches)', async () => {
-    const json = loadFixture('web-profile-info.json');
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(WebProfileInfoResponseSchema)(json)
-    );
-    const id = result.data?.user?.id;
-    expect(id).toBeDefined();
-    expect(typeof id === 'string' || typeof id === 'number').toBe(true);
-  });
-});
-
-describe('fixtures: topsearch.json', () => {
-  it('decodes successfully', async () => {
-    const json = loadFixture('topsearch.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(TopSearchResponseSchema)(json));
-    expect(result.users?.length).toBeGreaterThan(0);
-  });
-
-  it('exposes a username, id and Avatar for the exact-match lookup', async () => {
-    const json = loadFixture('topsearch.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(TopSearchResponseSchema)(json));
-    const user = result.users?.[0]?.user;
-    expect(typeof user?.username).toBe('string');
-    const id = user?.pk ?? user?.pk_id;
-    expect(typeof id === 'string' || typeof id === 'number').toBe(true);
-    expect(typeof user?.profile_pic_url).toBe('string');
-  });
-});
-
 describe('fixtures: highlights-tray.json', () => {
   it('decodes successfully', async () => {
     const json = loadFixture('highlights-tray.json');
@@ -314,19 +239,5 @@ describe('fixtures: Watch Posts page', () => {
       sidecars.every(({ node }) => node.carousel_media?.length === node.carousel_media_count)
     ).toBe(true);
     expect(page_info.has_next_page).toBe(true);
-  });
-});
-
-describe('fixtures: Watch Avatar identity', () => {
-  it('reads the exact search record of topsearch.json for its picture ID', async () => {
-    const json = loadFixture('topsearch.json') as {
-      users: { user: { pk: string; username: string } }[];
-    };
-    const { pk, username } = json.users[0]!.user;
-
-    await expect(Effect.runPromise(readAvatar(json, pk, username))).resolves.toEqual({
-      pictureId: expect.stringMatching(/^SANITIZED_PROFILE_PICTURE_ID_\d+$/),
-      pictureUrl: expect.stringMatching(/^https:\/\/sanitized\.invalid\//),
-    });
   });
 });

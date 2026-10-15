@@ -28,14 +28,18 @@ request bodies, GraphQL variables, or fixture responses.
 Instagram answers some requests in ways that look like GramGrab bugs. Each item below was observed
 live. Check this list before debugging an Instagram failure.
 
-- **`web_profile_info` answers 429 for an ordinary signed-in session.** Story and profile username
-  lookups fall back to `topsearch` (`lookupAccount` in `apps/extension/src/instagram/acquisition.ts`).
-  When `topsearch` also refuses, the original `web_profile_info` failure surfaces. So
-  `IG_RATE_LIMITED` on a username or profile source usually means both lookups refused, not that
-  GramGrab sent too many requests. That 429 never pauses Watches; only a 429 on a Watch request does.
-- **The profile path's `i.instagram.com` requests answered 403 in October 2026.** Both the HD Avatar
-  (`users/{id}/info/`) and the Highlights tray refused a signed-in session. GramGrab swallows both,
-  so a profile resolves to the 150px `topsearch` Avatar and no Highlight covers.
+- **The REST username lookups are gone for a signed-in session.** Since October 2026,
+  `users/web_profile_info/` and `users/{id}/info/` answer 429 and `web/search/topsearch/` answers
+  404 ([#301](https://github.com/zytact/GramGrab/issues/301)). GramGrab resolves a username to an
+  account ID from the account's own Posts (`profilePosts`), or from the `profile_id` its profile
+  page names when it has no Posts (`resolveUsernameToId` in
+  `apps/extension/src/instagram/acquisition.ts`). A Post's `user` can be a collab owner, so only a
+  record with the requested username counts.
+- **`profileById` carries the Avatar but no picture ID.** It answers `profile_pic_url` and
+  `hd_profile_pic_url_info`, and no `profile_pic_id`. A Watch identifies its Avatar by the asset
+  name in the picture URL, which stays the same across sizes and signed URLs.
+- **The Highlights tray answered 403 in October 2026.** GramGrab swallows it, so a profile resolves
+  to its Avatar and no Highlight covers.
 - **The web GraphQL host answers the Instants query with `null`.** Since October 2026,
   `www.instagram.com/graphql/query` returns HTTP 200, no `errors`, and a `null`
   `xdt_get_quick_snaps` for every `client_doc_id` and app ID tried. GramGrab sends Instants to
@@ -71,8 +75,8 @@ The updater requires an explicit operation because it does not classify captured
 | `mediaByShortcode` | Posts, Reels, and sidecars fetched from a shortcode     |
 | `reelsMedia`       | Stories and Highlights fetched through reels media data |
 | `viewer`           | Watches: the signed-in viewer's account ID              |
-| `profileById`      | Watches: a watched account's current username by ID     |
-| `profilePosts`     | Watches: the first page of an account's Posts grid      |
+| `profileById`      | An account's current username and Avatar by ID          |
+| `profilePosts`     | An account's first Posts page, and a username's ID      |
 | `profilePostsPage` | Watches: a later Posts grid page, by cursor             |
 
 These are configuration keys for existing code paths. They do not represent separate discovery

@@ -184,7 +184,7 @@ describe('IG fixture sanitizer policy and transformation', () => {
   });
   it('fails closed for unknown paths and unexpected types without reporting values', () => {
     const result = sanitizeBatch(
-      oneFile('avatar.json', {
+      oneFile('highlights-tray.json', {
         status: 42,
         synthetic_unknown: 'synthetic-secret-that-must-not-appear',
       })
@@ -202,40 +202,21 @@ describe('IG fixture sanitizer policy and transformation', () => {
 
   it('rejects the wrong type for a reviewed empty container', () => {
     const result = sanitizeBatch(
-      oneFile('avatar.json', {
+      oneFile('highlights-tray.json', {
         status: 'ok',
-        user: [],
+        suggested_highlights: [],
       })
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.violations).toContainEqual({
-        filename: 'avatar.json',
-        path: 'user',
+        filename: 'highlights-tray.json',
+        path: 'suggested_highlights',
         expected: 'object',
         observed: 'array',
         category: 'type',
       });
     }
-  });
-
-  it('models a guardian as a distinct Person entity', () => {
-    const result = sanitizeBatch(
-      oneFile('web-profile-info.json', {
-        status: 'ok',
-        data: {
-          user: {
-            id: 'synthetic-profile-person-id',
-            guardian_id: 'synthetic-guardian-person-id',
-          },
-        },
-      })
-    );
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const serialized = JSON.stringify(result.files.get('web-profile-info.json'));
-    expect(serialized).toContain('SANITIZED_PERSON_1_ID');
-    expect(serialized).toContain('SANITIZED_PERSON_2_GUARDIAN_ID');
   });
 
   it('preserves structural literals, timestamps, GraphQL messages, and scans_profile', () => {
@@ -477,7 +458,7 @@ describe('IG fixture sanitizer entity correlation', () => {
       namespace: 'PERSON_USERNAME',
     });
     const crossFileId = entityLeaf({
-      filename: 'web-profile-info.json',
+      filename: 'highlights-tray.json',
       path: ['users', 0, 'pk'],
       normalizedPath: 'users[].pk',
       value: '73001',
@@ -487,7 +468,7 @@ describe('IG fixture sanitizer entity correlation', () => {
       namespace: 'PERSON_IG',
     });
     const crossFileUsername = entityLeaf({
-      filename: 'web-profile-info.json',
+      filename: 'highlights-tray.json',
       path: ['users', 1, 'username'],
       normalizedPath: 'users[].username',
       value: 'synthetic_bridge',

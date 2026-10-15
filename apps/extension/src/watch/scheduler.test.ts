@@ -340,6 +340,7 @@ describe('Watch scheduling', () => {
 
   it('retries a Posts check that one bad answer left incomplete, an hour later', async () => {
     await add(TARGET.username, ['posts']);
+    instagram.state.postRequests.length = 0;
     instagram.state.posts = { '': new Response('<html>') };
 
     await wake();

@@ -1,5 +1,4 @@
 import { Effect, Schema } from 'effect';
-import { browser } from '../lib/browser.ts';
 import { canonicalizeInstagramUrl, type InstagramTarget } from '../workspace/contracts.ts';
 import {
   protocolConfig,
@@ -8,12 +7,9 @@ import {
   type ProtocolRequest,
 } from '../instagram-protocol/config.ts';
 import {
-  fetchHdAvatarUser,
   fetchHighlightsTray,
   fetchInstantsFeed,
   fetchReelsMedia,
-  fetchTopSearchUser,
-  fetchWebProfileInfoUser,
   graphqlFetch as graphqlFetchEffect,
   graphqlPost as graphqlPostEffect,
 } from '../effect/instagram.ts';
@@ -26,6 +22,8 @@ import {
   ResponseShapeUnknown,
   UsernameUnresolved,
 } from '../effect/errors.ts';
+import { fetchPostsPage } from '../watch/posts.ts';
+import { confirmProfile, requireOk, WireAccountId } from '../watch/identity.ts';
 import { fetchRestShortcodeMedia } from './rest-shortcode.ts';
 import {
   normalizeHighlightCovers,
@@ -36,20 +34,8 @@ import {
   withItemIndexes,
   type MediaItem,
 } from './normalize.ts';
-import type { WatchRequestDeferred } from './requests.ts';
-
-export const IG_HEADERS = {
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'X-IG-App-ID': protocolConfig.client.appId,
-  'X-Requested-With': 'XMLHttpRequest',
-  Accept: '*/*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Sec-Fetch-Mode': 'cors',
-  Referer: 'https://www.instagram.com/',
-} as const;
-
-const USER_PROFILE_URL = 'https://www.instagram.com/api/v1/users/web_profile_info/';
+import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS, readCsrfToken } from './headers.ts';
+import { InstagramRequests, type WatchRequestDeferred } from './requests.ts';
 
 type ParsedUrl = InstagramTarget;
 
@@ -59,41 +45,67 @@ export function parseInstagramUrl(url: string): ParsedUrl | null {
   return canonicalizeInstagramUrl(url)?.target ?? null;
 }
 
-/**
- * Looks an account up by username with the person's session. The record comes from
- * `web_profile_info`, or from topsearch when Instagram refuses that.
- */
-function lookupAccount(username: string) {
-  const url = `${USER_PROFILE_URL}?username=${encodeURIComponent(username)}`;
-  const headers = { ...IG_HEADERS, Origin: 'https://www.instagram.com' };
-  return fetchWebProfileInfoUser(url, headers).pipe(
-    // Instagram refuses web_profile_info often enough, usually with a 429 for an ordinary signed-in
-    // session, that topsearch answers instead. Its own failure surfaces the original one, which
-    // carries the recovery the person actually needs.
-    Effect.catchAll(profileError =>
-      fetchTopSearchUser(username, headers).pipe(Effect.catchAll(() => Effect.fail(profileError)))
-    ),
-    Effect.map(user => {
-      const userId = user?.id ?? user?.pk;
-      return { user, userId: userId != null ? String(userId) : null };
+/** Owners of a Posts page. Instagram answers `data: null` with `errors` for an unknown username. */
+const PostOwners = Schema.Struct({
+  data: Schema.NullOr(
+    Schema.Struct({
+      xdt_api__v1__feed__user_timeline_graphql_connection: Schema.Struct({
+        edges: Schema.Array(
+          Schema.Struct({
+            node: Schema.Struct({
+              user: Schema.Struct({ pk: WireAccountId, username: Schema.String }),
+            }),
+          })
+        ),
+      }),
     })
-  );
-}
+  ),
+});
 
-export function resolveUsernameToId(username: string) {
-  return lookupAccount(username).pipe(Effect.map(account => account.userId));
-}
+/** The account ID on `username`'s own Posts. A collab Post can belong to another account. */
+const idFromPosts = (username: string) =>
+  fetchPostsPage(username, undefined).pipe(
+    Effect.flatMap(raw =>
+      Schema.decodeUnknown(PostOwners)(raw).pipe(
+        Effect.mapError(() => new ResponseShapeUnknown({ context: 'profile_posts' }))
+      )
+    ),
+    Effect.map(
+      ({ data }) =>
+        data?.xdt_api__v1__feed__user_timeline_graphql_connection.edges.find(
+          ({ node }) => node.user.username.toLowerCase() === username.toLowerCase()
+        )?.node.user.pk
+    )
+  );
+
+const PROFILE_PAGE_ID = /"profile_id":"(\d+)"/;
+
+/** The account ID the profile page names, for an account with no Posts to read it from. */
+const idFromProfilePage = (username: string) =>
+  Effect.gen(function* () {
+    const requests = yield* InstagramRequests;
+    const response = yield* requests.fetch(
+      `https://www.instagram.com/${encodeURIComponent(username)}/`,
+      { credentials: 'include' }
+    );
+    if (response.status === 404) return undefined;
+    yield* requireOk(response);
+    const page = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: cause => new NetworkError({ cause }),
+    });
+    return PROFILE_PAGE_ID.exec(page)?.[1];
+  });
+
+/** Looks an account ID up by username with the person's session, or undefined for no account. */
+export const resolveUsernameToId = (username: string) =>
+  idFromPosts(username).pipe(
+    Effect.flatMap(id => (id ? Effect.succeed(id) : idFromProfilePage(username)))
+  );
 
 // ---------------------------------------------------------------------------
 // Shared Effect pipelines — parse → fetch → normalize
 // ---------------------------------------------------------------------------
-
-export const IG_GRAPHQL_HEADERS = { ...IG_HEADERS, Origin: 'https://www.instagram.com' } as const;
-export const IG_API_GRAPHQL_HEADERS = {
-  ...IG_GRAPHQL_HEADERS,
-  Referer: 'https://www.instagram.com/',
-  'X-ASBD-ID': protocolConfig.client.asbdId,
-} as const;
 
 export function configuredGraphqlHeaders(request: ProtocolRequest): Record<string, string> {
   return {
@@ -273,34 +285,31 @@ const fetchStoryMediaItems = (username: string) =>
   });
 
 const fetchProfileMediaItems = (username: string) =>
-  lookupAccount(username).pipe(
-    Effect.flatMap(({ user, userId }) => {
-      if (!userId) return Effect.fail(new UsernameUnresolved({ username }));
+  Effect.gen(function* () {
+    const userId = yield* resolveUsernameToId(username);
+    if (!userId) return yield* Effect.fail(new UsernameUnresolved({ username }));
 
-      const avatarEffect = fetchHdAvatarUser(userId, IG_HEADERS).pipe(
-        Effect.map(hdUser => normalizeProfilePicture(user, username, hdUser))
-      );
-      const coversEffect = fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
-        Effect.map(tray => normalizeHighlightCovers(tray, username)),
-        Effect.catchAll(err =>
-          Effect.sync(() => {
-            console.warn('highlights_tray failed:', err);
-            return [] as MediaItem[];
-          })
-        )
-      );
+    const avatarEffect = confirmProfile(userId).pipe(
+      Effect.mapError(error =>
+        error._tag === 'UsernameUnconfirmed' ? new UsernameUnresolved({ username }) : error
+      ),
+      Effect.map(profile => normalizeProfilePicture(profile, username))
+    );
+    const coversEffect = fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
+      Effect.map(tray => normalizeHighlightCovers(tray, username)),
+      Effect.catchAll(err =>
+        Effect.sync(() => {
+          console.warn('highlights_tray failed:', err);
+          return [] as MediaItem[];
+        })
+      )
+    );
 
-      return Effect.all([avatarEffect, coversEffect], { concurrency: 'unbounded' }).pipe(
-        Effect.map(([avatar, covers]) => [...avatar, ...covers])
-      );
-    })
-  );
-
-/** Reads `csrftoken` for an Instagram request that sends it straight back; never stored. */
-export const readCsrfToken = Effect.tryPromise({
-  try: () => browser.cookies.get({ url: 'https://www.instagram.com/', name: 'csrftoken' }),
-  catch: cause => new NetworkError({ cause }),
-}).pipe(Effect.map(cookie => cookie?.value ?? ''));
+    const [avatar, covers] = yield* Effect.all([avatarEffect, coversEffect], {
+      concurrency: 'unbounded',
+    });
+    return [...avatar, ...covers];
+  });
 
 /** The signed-in viewer's active Instants feed, decoded but not yet normalized. */
 export const fetchInstantItems = () => {

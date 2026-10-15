@@ -19,7 +19,7 @@ const EpochSeconds = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
 
 /** A Post, Story, or Sidecar child ID, or an Instant's `media_owner` composite, kept exactly. */
 export const MediaId = Schema.String.pipe(Schema.pattern(/^\d{1,30}(?:_\d{1,30})?$/));
-/** Instagram's opaque picture/upload identity for an Avatar. */
+/** The CDN asset name of an Avatar's picture, opaque to GramGrab. */
 export const PictureId = Schema.String.pipe(Schema.pattern(/^[0-9A-Za-z_:-]{1,128}$/));
 export const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}$/));
 const MediaType = Schema.Literal('image', 'video');
@@ -27,7 +27,7 @@ const MediaType = Schema.Literal('image', 'video');
 export const STORE_KEY = 'watch-store';
 /** The `storage.session` key holding the account ID the last viewer query found. */
 export const VIEWER_KEY = 'watch-viewer';
-export const STORE_VERSION = 1;
+export const STORE_VERSION = 2;
 export const STORE_BUDGET_BYTES = 2 * 1024 * 1024;
 /** Inbox entries and the discoveries behind them last this long after discovery. */
 export const RETENTION_MS = 30 * 24 * 60 * 60_000;

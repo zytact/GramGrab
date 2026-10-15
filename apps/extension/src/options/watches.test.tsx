@@ -53,7 +53,7 @@ async function addWatch(user: ReturnType<typeof userEvent.setup>) {
 function seedWatchWithProblemAndEntry(extra: readonly object[] = [], expiresAt = 3) {
   const now = Date.now();
   harness.local.write('watch-store', {
-    version: 1,
+    version: 2,
     watches: [
       {
         id: WATCH_ID,
@@ -651,7 +651,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
   });
 
   it('shows only sign-in guidance and the stored count without a verified login', async () => {
-    harness.local.write('watch-store', { version: 1, watches: [] });
+    harness.local.write('watch-store', { version: 2, watches: [] });
     instagram.state.viewer = null;
     render(<Watches />);
 
@@ -771,7 +771,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       version: 1,
       logins: { [VIEWER.id]: { nextRoundAt, remaining, earlyRetries: [] } },
     });
-    harness.local.write('watch-store', { version: 1, watches: [watch] });
+    harness.local.write('watch-store', { version: 2, watches: [watch] });
     harness.local.write('watch-scheduler', schedule(now, [WATCH_ID]));
     render(<Watches />);
     expect(await screen.findByText('First check pending')).toBeDefined();
@@ -781,7 +781,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const nextRoundAt = now + 12 * 60 * 60_000;
     await harness.local.set({
       'watch-store': {
-        version: 1,
+        version: 2,
         watches: [
           {
             ...watch,
@@ -1116,7 +1116,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
   });
 
   it('stops with a red storage banner when the store cannot be read', async () => {
-    harness.local.write('watch-store', { version: 1, watches: [{ id: 'broken' }] });
+    harness.local.write('watch-store', { version: 2, watches: [{ id: 'broken' }] });
     render(<Watches />);
 
     await waitFor(() => expect(screen.getByText('Watches stopped.')).toBeDefined());

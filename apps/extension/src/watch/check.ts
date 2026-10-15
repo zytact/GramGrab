@@ -45,7 +45,7 @@ import {
 import { readStories, fetchStories } from './stories.ts';
 import { readInstants, sharedInstantsFeed } from './instants.ts';
 import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
-import { UsernameUnconfirmed, confirmProfile, fetchViewer } from './identity.ts';
+import { UsernameUnconfirmed, confirmProfile, fetchViewer, type Profile } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
 
 /** Failures that suspend every Watch until the person does something. */
@@ -327,12 +327,11 @@ const traversePosts = (watch: Watch, cutoff: number, checkId: string) =>
     return written('posts', write, outcome => ({ outcome }));
   });
 
-const checkAvatar = (watch: Watch, checkId: string) =>
+/** Reads the Avatar from the profile this check confirmed, or confirms it first. */
+const checkAvatar = (watch: Watch, checkId: string, profile: Profile | undefined) =>
   Effect.gen(function* () {
     const result = yield* Effect.either(
-      fetchAvatar(watch.username).pipe(
-        Effect.flatMap(raw => readAvatar(raw, watch.targetId, watch.username))
-      )
+      profile ? readAvatar(profile) : fetchAvatar(watch.targetId)
     );
     if (Either.isLeft(result)) return yield* failed(watch.id, 'avatar', result.left);
     const write = yield* update(watch.id, (current, now) => {
@@ -346,12 +345,13 @@ const checkAvatar = (watch: Watch, checkId: string) =>
 const turn = (
   watch: Watch,
   kind: WatchKind,
-  scope: CheckScope
+  scope: CheckScope,
+  profile: Profile | undefined
 ): Effect.Effect<KindStep, never, InstagramRequests> => {
   if (!watch.enabled)
     return Effect.succeed({ outcome: KindCheckSkipped.make({ kind, reason: 'paused' }) });
   if (kind === 'avatar')
-    return checkAvatar(watch, scope.checkId).pipe(
+    return checkAvatar(watch, scope.checkId, profile).pipe(
       Effect.map(step => ({ ...step, avatarAttempted: true }))
     );
   const cutoff = watch.tracking[kind]?.baselineCutoff;
@@ -364,8 +364,8 @@ const renamed = (watch: Watch, username: string): Watch =>
   watch.username === username ? watch : { ...watch, username, formerUsername: watch.username };
 
 /**
- * Confirms the current username for the kinds that need it. A failure is each of those kinds'
- * problem, and they are not checked this time.
+ * Confirms the current username and Avatar for the kinds that need it. A failure is each of those
+ * kinds' problem, and they are not checked this time; for Avatar it is the attempted lookup.
  */
 const profileStage = (watch: Watch, kinds: readonly WatchKind[]) =>
   Effect.gen(function* () {
@@ -375,41 +375,44 @@ const profileStage = (watch: Watch, kinds: readonly WatchKind[]) =>
         watch: renamed(current, result.right.username),
         value: true,
       }));
-      return { steps: [written(kinds[0]!, write, () => ({}))], blocked: false };
+      return { steps: [written(kinds[0]!, write, () => ({}))], profile: result.right };
     }
     const steps: KindStep[] = [];
     for (const kind of kinds) {
       const step = yield* failed(watch.id, kind, result.left);
-      steps.push(step);
+      steps.push(kind === 'avatar' ? { ...step, avatarAttempted: true } : step);
       if (step.stop) break;
     }
-    return { steps, blocked: true };
+    return { steps, profile: 'blocked' as const };
   });
 
 const selected = (watch: Watch, kind: WatchKind, only: readonly WatchKind[] | undefined) =>
   watch.kinds.includes(kind) && (!only || only.includes(kind));
 
-/** A stage's steps, and whether it leaves the username-dependent kinds blocked. */
+/** The profile stage's result: not run yet, confirmed, or blocking the kinds that need it. */
+type Confirmation = Profile | 'blocked' | undefined;
+
+/** A stage's steps, and the profile confirmation the stages after it see. */
 interface StageResult {
   readonly steps: readonly KindStep[];
-  readonly blocked: boolean;
+  readonly profile: Confirmation;
 }
 
 const runStage = (
   watch: Watch,
   stage: (typeof STAGES)[number],
   only: readonly WatchKind[] | undefined,
-  context: { readonly scope: CheckScope; readonly blocked: boolean }
+  context: { readonly scope: CheckScope; readonly profile: Confirmation }
 ): Effect.Effect<StageResult, never, InstagramRequests> => {
-  const { scope, blocked } = context;
+  const { scope, profile } = context;
   if (stage !== 'profile')
-    return selected(watch, stage, only) && !blocked
-      ? turn(watch, stage, scope).pipe(Effect.map(step => ({ steps: [step], blocked })))
-      : Effect.succeed({ steps: [], blocked });
+    return selected(watch, stage, only) && profile !== 'blocked'
+      ? turn(watch, stage, scope, profile).pipe(Effect.map(step => ({ steps: [step], profile })))
+      : Effect.succeed({ steps: [], profile });
   const kinds = NEEDS_PROFILE.filter(kind => selected(watch, kind, only));
   return kinds.length > 0 && watch.enabled
     ? profileStage(watch, kinds)
-    : Effect.succeed({ steps: [], blocked });
+    : Effect.succeed({ steps: [], profile });
 };
 
 const checkAuthorization = Effect.fn(function* (
@@ -463,7 +466,7 @@ export const checkWatch = (
   Effect.gen(function* () {
     const shared = { ...scope, feedScope: `${viewerId}:${scope.feedScope}` };
     const outcomes: KindCheckOutcome[] = [];
-    let blocked = false;
+    let profile: Confirmation;
     let avatar: ObservedAvatar | undefined;
     let avatarAttempted = false;
     for (const stage of STAGES) {
@@ -478,8 +481,8 @@ export const checkWatch = (
           avatar,
           avatarAttempted,
         };
-      const result: StageResult = yield* runStage(watch, stage, only, { scope: shared, blocked });
-      blocked = result.blocked;
+      const result: StageResult = yield* runStage(watch, stage, only, { scope: shared, profile });
+      profile = result.profile;
       for (const step of result.steps) {
         const outcome = step.outcome;
         if (outcome) {

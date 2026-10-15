@@ -1,5 +1,4 @@
 export type FixtureFilename =
-  | 'avatar.json'
   | 'highlights-tray.json'
   | 'highlights.json'
   | 'instants-photo.json'
@@ -10,12 +9,9 @@ export type FixtureFilename =
   | 'shortcode-video.json'
   | 'shortcode-rest-video.json'
   | 'story.json'
-  | 'topsearch.json'
-  | 'web-profile-info.json'
   | 'profile-posts.json';
 
 export const FIXTURE_FILENAMES: ReadonlyArray<FixtureFilename> = [
-  'avatar.json',
   'highlights-tray.json',
   'highlights.json',
   'shortcode-image.json',
@@ -23,8 +19,6 @@ export const FIXTURE_FILENAMES: ReadonlyArray<FixtureFilename> = [
   'shortcode-video.json',
   'shortcode-rest-video.json',
   'story.json',
-  'topsearch.json',
-  'web-profile-info.json',
   'instants-photo.json',
   'instants-video.json',
   'instants-empty.json',
@@ -431,89 +425,6 @@ const trayRules: ReadonlyArray<PolicyRule> = [
   preserve(`${tray}.user.is_creator_agent_enabled`, ['boolean']),
 ];
 
-const profile = 'data.user';
-const profileRules: ReadonlyArray<PolicyRule> = [
-  preserve('status'),
-  ...person(profile),
-  entityField(`${profile}.fbid`, 'PERSON', profile, 'FB_ID', ['string', 'number'], 'PERSON_FB'),
-  entityField(`${profile}.eimu_id`, 'PERSON', profile, 'EIMU_ID', ['string'], 'PERSON_EIMU'),
-  url(`${profile}.profile_pic_url_hd`, 'PROFILE_PICTURE_HD', 'PERSON', profile),
-  opaque(`${profile}.biography`, 'BIOGRAPHY'),
-  opaque(`${profile}.biography_with_entities.raw_text`, 'BIOGRAPHY'),
-  preserve(`${profile}.business_contact_method`),
-  preserve(`${profile}.edge_follow.count`, ['number']),
-  preserve(`${profile}.edge_followed_by.count`, ['number']),
-  preserve(`${profile}.edge_mutual_followed_by.count`, ['number']),
-  entityField(
-    `${profile}.edge_mutual_followed_by.edges[].node.username`,
-    'PERSON',
-    `${profile}.edge_mutual_followed_by.edges[].node`,
-    'USERNAME',
-    ['string'],
-    'PERSON_USERNAME'
-  ),
-  preserve(`${profile}.edge_owner_to_timeline_media.count`, ['number']),
-  opaque(`${profile}.edge_owner_to_timeline_media.page_info.end_cursor`, 'CURSOR'),
-  preserve(`${profile}.edge_owner_to_timeline_media.page_info.has_next_page`, ['boolean']),
-  url(`${profile}.external_url`, 'EXTERNAL'),
-  url(`${profile}.external_url_linkshimmed`, 'EXTERNAL_LINK_SHIM'),
-  preserve(`${profile}.has_ar_effects`, ['boolean']),
-  preserve(`${profile}.has_chaining`, ['boolean']),
-  preserve(`${profile}.has_clips`, ['boolean']),
-  preserve(`${profile}.highlight_reel_count`, ['number']),
-  preserve(`${profile}.is_professional_account`, ['boolean']),
-  preserve(`${profile}.is_verified`, ['boolean']),
-  preserve(`${profile}.pinned_channels_list_count`, ['number']),
-  preserve(`${profile}.show_account_transparency_details`, ['boolean']),
-  preserve(`${profile}.blocked_by_viewer`, ['boolean']),
-  preserve(`${profile}.restricted_by_viewer`, ['boolean']),
-  preserve(`${profile}.country_block`, ['boolean']),
-  preserve(`${profile}.followed_by_viewer`, ['boolean']),
-  preserve(`${profile}.follows_viewer`, ['boolean']),
-  preserve(`${profile}.has_guides`, ['boolean']),
-  preserve(`${profile}.has_channel`, ['boolean']),
-  preserve(`${profile}.has_blocked_viewer`, ['boolean']),
-  preserve(`${profile}.has_requested_viewer`, ['boolean']),
-  preserve(`${profile}.hide_like_and_view_counts`, ['boolean']),
-  preserve(`${profile}.is_business_account`, ['boolean']),
-  preserve(`${profile}.is_supervision_enabled`, ['boolean']),
-  preserve(`${profile}.is_guardian_of_viewer`, ['boolean']),
-  preserve(`${profile}.is_supervised_by_viewer`, ['boolean']),
-  preserve(`${profile}.is_supervised_user`, ['boolean']),
-  preserve(`${profile}.is_embeds_disabled`, ['boolean']),
-  preserve(`${profile}.is_joined_recently`, ['boolean']),
-  preserve(`${profile}.is_private`, ['boolean']),
-  preserve(`${profile}.is_verified_by_mv4b`, ['boolean']),
-  preserve(`${profile}.is_regulated_c18`, ['boolean']),
-  preserve(`${profile}.requested_by_viewer`, ['boolean']),
-  preserve(`${profile}.should_show_category`, ['boolean']),
-  preserve(`${profile}.should_show_public_contacts`, ['boolean']),
-  entityField(
-    `${profile}.guardian_id`,
-    'PERSON',
-    `${profile}.guardian_id`,
-    'GUARDIAN_ID',
-    ['string', 'number'],
-    'PERSON_IG'
-  ),
-  opaque(`${profile}.business_address_json`, 'BUSINESS_ADDRESS'),
-  opaque(`${profile}.business_email`, 'BUSINESS_EMAIL'),
-  opaque(`${profile}.business_phone_number`, 'BUSINESS_PHONE'),
-  opaque(`${profile}.business_category_name`, 'BUSINESS_CATEGORY'),
-  opaque(`${profile}.overall_category_name`, 'BUSINESS_CATEGORY'),
-  opaque(`${profile}.category_enum`, 'BUSINESS_CATEGORY'),
-  opaque(`${profile}.category_name`, 'BUSINESS_CATEGORY'),
-  url(`${profile}.fb_profile_biolink`, 'PROFILE_BIO_LINK'),
-  opaque(`${profile}.pronouns[]`, 'PRONOUN'),
-  preserve(`${profile}.ai_agent_type`),
-  opaque(`${profile}.transparency_label`, 'TRANSPARENCY_LABEL'),
-  preserve(`${profile}.transparency_product`),
-  preserve(`${profile}.bio_links[].link_type`),
-  opaque(`${profile}.bio_links[].title`, 'BIO_LINK_TITLE'),
-  url(`${profile}.bio_links[].url`, 'BIO_LINK'),
-  url(`${profile}.bio_links[].lynx_url`, 'BIO_LINK_SHIM'),
-];
-
 const storyEmptyContainers: FixturePolicy['emptyContainers'] = [
   emptyArray('data.reels_media[].items[].overlay_image_resources'),
   emptyObject('data.reels_media[].items[].story_app_attribution'),
@@ -609,48 +520,6 @@ const instantEmptyContainers: FixturePolicy['emptyContainers'] = [
   emptyArray(`${instantItem}.video_versions`),
 ];
 
-const searchUser = 'users[].user';
-const topSearchRules: ReadonlyArray<PolicyRule> = [
-  preserve('status'),
-  preserve('has_more', ['boolean']),
-  preserve('clear_client_cache', ['boolean']),
-  opaque('rank_token', 'RANK_TOKEN'),
-  preserve('users[].position', ['number']),
-  ...person(searchUser),
-  entityField(
-    `${searchUser}.fbid_v2`,
-    'PERSON',
-    searchUser,
-    'FB_ID',
-    ['string', 'number'],
-    'PERSON_FB'
-  ),
-  opaque(`${searchUser}.profile_pic_id`, 'PROFILE_PICTURE_ID'),
-  // Social context names other accounts, so it is opaque rather than preserved.
-  opaque(`${searchUser}.social_context`, 'SOCIAL_CONTEXT'),
-  opaque(`${searchUser}.search_social_context`, 'SOCIAL_CONTEXT'),
-  preserve(`${searchUser}.search_social_context_snippet_type`),
-  preserve(`${searchUser}.friendship_status.following`, ['boolean']),
-  preserve(`${searchUser}.friendship_status.incoming_request`, ['boolean']),
-  preserve(`${searchUser}.friendship_status.is_bestie`, ['boolean']),
-  preserve(`${searchUser}.friendship_status.is_feed_favorite`, ['boolean']),
-  preserve(`${searchUser}.friendship_status.is_private`, ['boolean']),
-  preserve(`${searchUser}.friendship_status.is_restricted`, ['boolean']),
-  preserve(`${searchUser}.friendship_status.outgoing_request`, ['boolean']),
-  preserve(`${searchUser}.has_anonymous_profile_picture`, ['boolean']),
-  preserve(`${searchUser}.is_private`, ['boolean']),
-  preserve(`${searchUser}.is_ring_creator`, ['boolean']),
-  preserve(`${searchUser}.is_verified`, ['boolean']),
-  preserve(`${searchUser}.is_verified_search_boosted`, ['boolean']),
-  preserve(`${searchUser}.latest_reel_media`, ['number']),
-  preserve(`${searchUser}.reel_media_seen_timestamp`, ['number']),
-  preserve(`${searchUser}.should_show_category`, ['boolean']),
-  preserve(`${searchUser}.show_ring_award`, ['boolean']),
-  preserve(`${searchUser}.show_text_post_app_badge`, ['boolean']),
-  preserve(`${searchUser}.third_party_downloads_enabled`, ['number']),
-  preserve(`${searchUser}.unseen_count`, ['number']),
-];
-
 const postsConnection = 'data.xdt_api__v1__feed__user_timeline_graphql_connection';
 const postNode = `${postsConnection}.edges[].node`;
 const postChild = `${postNode}.carousel_media[]`;
@@ -673,10 +542,6 @@ const profilePostsRules: ReadonlyArray<PolicyRule> = [
 ];
 
 export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> = {
-  'avatar.json': {
-    rules: [preserve('status')],
-    emptyContainers: [emptyObject('user')],
-  },
   'highlights-tray.json': {
     rules: trayRules,
     emptyContainers: [
@@ -726,25 +591,9 @@ export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> 
     rules: [...reel('data.reels_media[]'), ...graphqlErrors],
     emptyContainers: storyEmptyContainers,
   },
-  'topsearch.json': {
-    rules: topSearchRules,
-    emptyContainers: [
-      emptyArray('places'),
-      emptyArray('hashtags'),
-      emptyArray(`${searchUser}.account_badges`),
-    ],
-  },
   'profile-posts.json': {
     rules: profilePostsRules,
     emptyContainers: [emptyArray(`${postsConnection}.edges`)],
-  },
-  'web-profile-info.json': {
-    rules: profileRules,
-    emptyContainers: [
-      emptyArray(`${profile}.biography_with_entities.entities`),
-      emptyObject(`${profile}.group_metadata`),
-      emptyArray(`${profile}.edge_owner_to_timeline_media.edges`),
-    ],
   },
 };
 

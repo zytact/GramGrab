@@ -20,7 +20,7 @@ import { createExtensionHarness, type ExtensionHarness } from '../test/extension
 import {
   STUB_AVATAR,
   TARGET,
-  avatarSearch,
+  avatarProfile,
   createWatchInstagram,
   instantsFeed,
   postsPage,
@@ -535,7 +535,7 @@ describe('Instants checks', () => {
 
 describe('Avatar checks', () => {
   const setPicture = (pictureId?: string) =>
-    (instagram.state.search = avatarSearch({ ...TARGET, pictureId }));
+    (instagram.state.profile = avatarProfile({ ...TARGET, pictureId }));
 
   const lastPicture = () =>
     (
@@ -558,7 +558,7 @@ describe('Avatar checks', () => {
       counts.map(outcome => outcome?._tag === 'KindCheckSucceeded' && outcome.newCount)
     ).toEqual([0, 1, 0, 1]);
     expect((await found()).map(entry => entry.mediaType)).toEqual(['avatar', 'avatar']);
-    expect(instagram.state.searches.every(query => query === TARGET.username)).toBe(true);
+    expect(instagram.state.profileRequests.every(id => id === TARGET.id)).toBe(true);
   });
 
   it('compares with the last picture after a pause longer than 30 days', async () => {
@@ -579,36 +579,15 @@ describe('Avatar checks', () => {
   });
 
   it.each([
-    ['no picture identity', avatarSearch({ ...TARGET })],
-    ...['pk', 'pk_id', 'id'].map((field): [string, unknown] => [
-      `conflicting ${field}`,
-      {
-        users: [
-          {
-            user: {
-              pk: TARGET.id,
-              pk_id: TARGET.id,
-              id: TARGET.id,
-              username: TARGET.username,
-              profile_pic_id: 'PIC_B',
-              [field]: '9999',
-            },
-          },
-        ],
-      },
-    ]),
+    ['no picture', avatarProfile({ ...TARGET })],
     [
-      'only another account',
-      avatarSearch({ id: '9999', username: TARGET.username, pictureId: 'PIC_B' }),
+      'a picture URL with no asset name',
+      { data: { user: { ...avatarProfile(TARGET).data.user, profile_pic_url: 'not a URL' } } },
     ],
-    [
-      'two records for the target',
-      avatarSearch({ ...TARGET, pictureId: 'PIC_B' }, { ...TARGET, pictureId: 'PIC_C' }),
-    ],
-  ])('keeps the last picture when the answer has %s', async (_case, search) => {
+  ])('keeps the last picture when the answer has %s', async (_case, profile) => {
     await addWatch(['collect'], 'avatar');
     await checkLater();
-    instagram.state.search = search;
+    instagram.state.profile = profile;
 
     expect((await checkLater()).kinds).toEqual([
       { _tag: 'KindCheckFailed', kind: 'avatar', code: 'IG_RESPONSE_SHAPE_UNKNOWN' },
@@ -616,17 +595,14 @@ describe('Avatar checks', () => {
     expect(lastPicture()).toBe('PIC_A');
   });
 
-  it('follows a verified rename before looking the account up', async () => {
+  it('follows a verified rename while reading the Avatar by account ID', async () => {
     await addWatch(['collect'], 'avatar');
     const renamed = { ...TARGET, username: 'target.renamed' };
-    instagram.state.profile = {
-      data: { user: { id: TARGET.id, pk: TARGET.id, username: renamed.username } },
-    };
-    instagram.state.search = avatarSearch({ ...renamed, pictureId: 'PIC_A' });
+    instagram.state.profile = avatarProfile({ ...renamed, pictureId: 'PIC_A' });
 
     await checkLater();
 
-    expect(instagram.state.searches).toEqual([renamed.username]);
+    expect(instagram.state.profileRequests.every(id => id === TARGET.id)).toBe(true);
     expect((await run(WatchShow.make({ watch: selector }), 'WatchShowResult')).watch).toMatchObject(
       {
         username: renamed.username,
@@ -646,12 +622,14 @@ describe('Avatar checks', () => {
       'WatchAddResult'
     );
     instagram.state.profile = { data: { user: { id: '9999', username: 'someone.else' } } };
+    instagram.state.profileRequests.length = 0;
+    instagram.state.postRequests.length = 0;
 
     expect((await checkLater()).kinds).toEqual([
       { _tag: 'KindCheckFailed', kind: 'avatar', code: 'WATCH_USERNAME_UNCONFIRMED' },
       { _tag: 'KindCheckFailed', kind: 'posts', code: 'WATCH_USERNAME_UNCONFIRMED' },
     ]);
-    expect(instagram.state.searches).toEqual([]);
+    expect(instagram.state.profileRequests).toEqual([TARGET.id]);
     expect(instagram.state.postRequests).toEqual([]);
   });
 });
@@ -845,7 +823,7 @@ describe('Watch notifications', () => {
     allowNotifications();
     harness.failNotificationIcons(true);
     await notifying(['avatar']);
-    instagram.state.search = avatarSearch({ ...TARGET, pictureId: 'PIC_B' });
+    instagram.state.profile = avatarProfile({ ...TARGET, pictureId: 'PIC_B' });
 
     await checkLater();
 

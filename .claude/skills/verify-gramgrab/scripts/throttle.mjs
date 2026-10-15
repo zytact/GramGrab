@@ -4,7 +4,7 @@
 // `--pass N` lets the first N matching requests through untouched. Runs until
 // killed and prints one line per matching request.
 //
-//   throttle.mjs <match> [status] [--pass N]   e.g. throttle.mjs web_profile_info 429
+//   throttle.mjs <match> [status] [--pass N]   e.g. throttle.mjs highlights_tray 429
 //
 // Needs GRAMGRAB_CDP_PORT and GRAMGRAB_EXT_ID from session.env. It re-attaches
 // when the service worker restarts, so it survives an idle worker shutdown.

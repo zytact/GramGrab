@@ -4,8 +4,6 @@ import {
   HighlightsTrayResponseSchema,
   ReelsMediaResponseSchema,
   ShortcodeMediaResponseSchema,
-  WebProfileInfoResponseSchema,
-  WebProfileInfoUserSchema,
 } from './schemas.ts';
 
 // ---------------------------------------------------------------------------
@@ -109,46 +107,6 @@ describe('ShortcodeMediaResponseSchema', () => {
     );
     // Succeeds via Unknown passthrough (B2 design decision)
     expect(result._tag).toBe('Right');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// WebProfileInfoResponseSchema — edge cases
-// ---------------------------------------------------------------------------
-
-describe('WebProfileInfoResponseSchema', () => {
-  it('decodes when data wrapper is absent', async () => {
-    const result = await Effect.runPromise(Schema.decodeUnknown(WebProfileInfoResponseSchema)({}));
-    expect(result.data).toBeUndefined();
-  });
-
-  it('decodes when user is absent inside data', async () => {
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(WebProfileInfoResponseSchema)({ data: {} })
-    );
-    expect(result.data?.user).toBeUndefined();
-  });
-
-  it('fails when id is not a string or number', async () => {
-    // id union is String | Number — objects must fail
-    const input = { data: { user: { id: { nested: 'object' } } } };
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(WebProfileInfoResponseSchema)(input).pipe(Effect.either)
-    );
-    expect(result._tag).toBe('Left');
-  });
-
-  it('ignores extra fields on the user object', async () => {
-    // Schema.Struct is open — unknown fields are stripped, not rejected
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(WebProfileInfoUserSchema)({
-        id: '42',
-        username: 'someone',
-        biography: 'bio',
-      })
-    );
-    expect(result.id).toBe('42');
-    expect((result as Record<string, unknown>)['username']).toBeUndefined();
   });
 });
 

@@ -12,7 +12,6 @@ const repositoryRoot = resolve(scriptDirectory, '../../..');
 export const REQUIRED_CONFIG_KEYS = [
   'IG_HIGHLIGHT_ID',
   'IG_STORY_USERNAME',
-  'IG_AVATAR_USERNAME',
   'IG_TRAY_USERNAME',
   'IG_PROFILE_USERNAME',
   'IG_POST_IMAGE',
@@ -23,12 +22,7 @@ export const REQUIRED_CONFIG_KEYS = [
 export const CONFIG_TOKEN = '__IG_FIXTURE_CAPTURE_CONFIG__';
 export const PROTOCOL_CONFIG_TOKEN = '__IG_PROTOCOL_CONFIG__';
 
-const usernameKeys = [
-  'IG_STORY_USERNAME',
-  'IG_AVATAR_USERNAME',
-  'IG_TRAY_USERNAME',
-  'IG_PROFILE_USERNAME',
-] as const;
+const usernameKeys = ['IG_STORY_USERNAME', 'IG_TRAY_USERNAME', 'IG_PROFILE_USERNAME'] as const;
 const postKeys = ['IG_POST_IMAGE', 'IG_POST_VIDEO', 'IG_POST_SIDECAR'] as const;
 const usernamePattern = /^[A-Za-z0-9._]{1,30}$/;
 const highlightIdPattern = /^\d+$/;
@@ -63,7 +57,6 @@ const PostInputSchema = Schema.String.pipe(
 const CaptureConfigSchema = Schema.Struct({
   IG_HIGHLIGHT_ID: HighlightIdSchema,
   IG_STORY_USERNAME: UsernameSchema,
-  IG_AVATAR_USERNAME: UsernameSchema,
   IG_TRAY_USERNAME: UsernameSchema,
   IG_PROFILE_USERNAME: UsernameSchema,
   IG_POST_IMAGE: PostInputSchema,
@@ -95,7 +88,6 @@ export function validateConfig(values: Record<string, string | undefined>): Capt
   const config = {
     IG_HIGHLIGHT_ID: readRequiredValue(values, 'IG_HIGHLIGHT_ID'),
     IG_STORY_USERNAME: readRequiredValue(values, 'IG_STORY_USERNAME'),
-    IG_AVATAR_USERNAME: readRequiredValue(values, 'IG_AVATAR_USERNAME'),
     IG_TRAY_USERNAME: readRequiredValue(values, 'IG_TRAY_USERNAME'),
     IG_PROFILE_USERNAME: readRequiredValue(values, 'IG_PROFILE_USERNAME'),
     IG_POST_IMAGE: readRequiredValue(values, 'IG_POST_IMAGE'),
