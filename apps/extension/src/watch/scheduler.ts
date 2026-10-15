@@ -36,12 +36,17 @@ const EARLY_RETRY_MS = HOUR_MS;
 /** One alarm wakes the worker; it then works this long at most before the next wake. */
 const PUMP_BUDGET_MS = 4 * 60_000;
 
+/** Kind failures a newer GramGrab may read correctly: the answer did not fit what this one knows. */
+const ANSWER_FAILURES: ReadonlySet<FailureCode> = new Set([
+  'IG_RESPONSE_SHAPE_UNKNOWN',
+  'WATCH_CHECK_INCOMPLETE',
+]);
+
 /** Kind failures worth one early retry: the request or answer broke, not the session. */
 const RETRYABLE: ReadonlySet<FailureCode> = new Set([
   'SOURCE_NETWORK_FAILED',
   'SOURCE_SERVER_FAILED',
-  'IG_RESPONSE_SHAPE_UNKNOWN',
-  'WATCH_CHECK_INCOMPLETE',
+  ...ANSWER_FAILURES,
 ]);
 async function loadState(): Promise<SchedulerState> {
   const stored = await browser.storage
@@ -355,6 +360,32 @@ export async function ensureAlarm(): Promise<void> {
 /** Browser start: overdue work waits two minutes, then runs through the same queue. */
 export async function holdForStartup(): Promise<void> {
   await updateState(state => ({ ...state, startupHoldUntil: Date.now() + STARTUP_HOLD_MS }), true);
+}
+
+/**
+ * After an update, books an early retry due now for every kind whose check problem the older
+ * version recorded from an answer it could not read, so a successful check clears it.
+ */
+export async function retryAfterUpdate(): Promise<void> {
+  const read = await readStore();
+  if (read.kind === 'failed') return;
+  const now = Date.now();
+  for (const watch of read.store.watches) {
+    if (!watch.enabled) continue;
+    const kinds = watch.kinds.filter(kind => {
+      const code = watch.tracking[kind]?.problem?.code;
+      return code !== undefined && ANSWER_FAILURES.has(code);
+    });
+    if (kinds.length === 0) continue;
+    await setSchedule(watch.viewerId, current => {
+      const schedule = current ?? { nextRoundAt: now, remaining: [], earlyRetries: [] };
+      const others = schedule.earlyRetries.filter(
+        retry => retry.watchId !== watch.id || !kinds.includes(retry.kind)
+      );
+      const booked = kinds.map(kind => ({ watchId: watch.id, kind, at: now }));
+      return { ...schedule, earlyRetries: [...others, ...booked] };
+    });
+  }
 }
 
 /** A person verified their login again, so suspended Watches may run. */
