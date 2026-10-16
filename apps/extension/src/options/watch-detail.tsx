@@ -233,8 +233,15 @@ function DiscoveryList({
             <div className="opt-grow">
               <div>
                 {showAccount && `@${entry.username} · `}
-                {MEDIA_LABEL[entry.mediaType]}
-                {entry.childCount ? ` of ${entry.childCount}` : ''}
+                <a
+                  className="opt-entry-link"
+                  href={entry.instagramUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {MEDIA_LABEL[entry.mediaType]}
+                  {entry.childCount ? ` of ${entry.childCount}` : ''}
+                </a>
               </div>
               <EntryMeta entry={entry} />
               <StoryExpiry expiresAt={entry.expiresAt} />

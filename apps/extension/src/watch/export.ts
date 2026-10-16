@@ -10,7 +10,7 @@ import {
   type MediaItem,
 } from '../instagram/normalize.ts';
 import { fetchRestShortcodeMedia } from '../instagram/rest-shortcode.ts';
-import type { Discovery, MediaRef, Watch } from './contracts.ts';
+import { instagramPage, type Discovery, type MediaRef, type Watch } from './contracts.ts';
 import { fetchAvatar } from './avatar.ts';
 import { readInstants } from './instants.ts';
 import { fetchStories, readStories } from './stories.ts';
@@ -122,13 +122,7 @@ export const reacquire = Effect.fn(function* (watch: Watch, ref: MediaRef, nowSe
 /** Where a History receipt says the media came from. */
 export function historyOrigin(watch: Watch, ref: MediaRef): DownloadHistoryEntry['origin'] {
   if (ref._tag === 'Instant') return { kind: 'instants' };
-  const url =
-    ref._tag === 'Story'
-      ? `https://www.instagram.com/stories/${watch.username}/`
-      : ref._tag === 'Avatar'
-        ? `https://www.instagram.com/${watch.username}/`
-        : `https://www.instagram.com/p/${ref.shortcode}/`;
-  const source = historySource(url)!;
+  const source = historySource(instagramPage(watch.username, ref))!;
   return { kind: 'source', sourceUrl: source.url, sourceKind: source.kind };
 }
 

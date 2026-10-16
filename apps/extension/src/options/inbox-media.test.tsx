@@ -13,6 +13,7 @@ const entryDetails = {
   watchId: 'watch',
   accountId: '1',
   username: 'instagram',
+  instagramUrl: 'https://www.instagram.com/stories/instagram/1/',
   kind: 'stories' as const,
   mediaType: 'video' as const,
   discoveredAt: 1,

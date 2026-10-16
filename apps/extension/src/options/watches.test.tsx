@@ -216,9 +216,68 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeDefined();
     expect(screen.getByText(/Instagram's format has changed/)).toBeDefined();
     await user.click(screen.getByText(/^All inbox$/));
-    expect(await screen.findByText(`@${TARGET.username} · Video`)).toBeDefined();
+    expect((await screen.findByRole('link', { name: 'Video' })).parentElement?.textContent).toBe(
+      `@${TARGET.username} · Video`
+    );
     expect(screen.getByText(/leaves the inbox in 30 days/)).toBeDefined();
     expect(screen.getByText('Expired')).toBeDefined();
+  });
+
+  it('links Found and Inbox entries to their Instagram page in a new tab', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '1d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: {
+          _tag: 'Story',
+          mediaId: '32_2002',
+          mediaType: 'image',
+          takenAt: 2,
+          expiresAt: 4_000_000_000,
+        },
+        discoveredAt: Date.now() - 90_000,
+      },
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: { _tag: 'Instant', mediaId: '41_2002', mediaType: 'image', takenAt: 2 },
+        discoveredAt: Date.now() - 120_000,
+      },
+      {
+        id: '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: {
+          _tag: 'Sidecar',
+          mediaId: '300',
+          shortcode: 'C300',
+          takenAt: 2,
+          children: [{ mediaId: '301', mediaType: 'image' }],
+        },
+        discoveredAt: Date.now() - 180_000,
+        collect: { at: Date.now() - 180_000 },
+      },
+    ]);
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByRole('button', { name: /@instagram/ }));
+    const links = () =>
+      screen
+        .getAllByRole('link')
+        .filter(link => link.classList.contains('opt-entry-link'))
+        .map(link => [link.textContent, link.getAttribute('href'), link.getAttribute('target')]);
+
+    await screen.findByRole('link', { name: 'Video' });
+    expect(links()).toEqual([
+      ['Video', 'https://www.instagram.com/instagram/', '_blank'],
+      ['Carousel of 1', 'https://www.instagram.com/p/C300/', '_blank'],
+    ]);
+    await user.click(screen.getByRole('button', { name: /^Found \(/ }));
+    expect(links()).toEqual([
+      ['Video', 'https://www.instagram.com/instagram/', '_blank'],
+      ['Photo', 'https://www.instagram.com/stories/instagram/32/', '_blank'],
+      ['Photo', 'https://www.instagram.com/instagram/', '_blank'],
+      ['Carousel of 1', 'https://www.instagram.com/p/C300/', '_blank'],
+    ]);
   });
 
   it('shows an incomplete Posts check without update copy and previews the rule it broke', async () => {
