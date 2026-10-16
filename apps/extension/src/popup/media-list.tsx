@@ -544,7 +544,11 @@ function MediaItemRow(props: MediaItemRowProps) {
     attemptEntry,
   } = props;
   const num = String(item.index + 1).padStart(2, '0');
-  const [aspect, setAspect] = useState<number>();
+  // A turn swaps the frame's sides, so an aspect lock only holds for the turn it was set at.
+  const [lock, setLock] = useState<{ ratio: number; rotation: MediaItem['rotation'] }>();
+  const aspect = lock && lock.rotation === item.rotation ? lock.ratio : undefined;
+  const setAspect = (ratio: number | undefined) =>
+    setLock(ratio === undefined ? undefined : { ratio, rotation: item.rotation });
   const editing = cropEditing && !disabled && onCrop !== undefined;
   const frameRatio = displayRatio(item, runtime);
 

@@ -113,8 +113,6 @@ export function CropOverlay({
               key={handle}
               className={`crop-handle ${handle}`}
               onPointerDown={event => startDrag(event, { kind: 'resize', handle })}
-              onPointerMove={continueDrag}
-              onPointerUp={() => (drag.current = undefined)}
             />
           ))}
       </div>

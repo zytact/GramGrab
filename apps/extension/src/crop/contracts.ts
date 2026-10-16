@@ -25,8 +25,13 @@ export interface AspectLock {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 /** A crop that keeps the whole frame is no crop, so it is dropped rather than stored. */
-export const normalizeCrop = (crop: Crop): Crop | undefined =>
-  crop.width >= 0.999 && crop.height >= 0.999 ? undefined : crop;
+export function normalizeCrop(crop: Crop): Crop | undefined {
+  if (crop.width >= 0.999 && crop.height >= 0.999) return undefined;
+  // Selector arithmetic can drift a hair past an edge; the schema accepts none of it.
+  const x = clamp(crop.x, 0, 1);
+  const y = clamp(crop.y, 0, 1);
+  return { x, y, width: Math.min(crop.width, 1 - x), height: Math.min(crop.height, 1 - y) };
+}
 
 /**
  * The same region after the frame turns a quarter clockwise, which keeps a crop on its subject.
@@ -63,12 +68,8 @@ export const moveCrop = (crop: Crop, dx: number, dy: number): Crop => ({
  * centred where `crop` was centred.
  */
 export function fitAspect(crop: Crop, aspect: number, frameRatio: number): Crop {
-  let width = Math.min(1, aspect / frameRatio);
-  let height = (width * frameRatio) / aspect;
-  if (height > 1) {
-    height = 1;
-    width = aspect / frameRatio;
-  }
+  const width = Math.min(1, aspect / frameRatio);
+  const height = (width * frameRatio) / aspect;
   return {
     x: clamp(crop.x + crop.width / 2 - width / 2, 0, 1 - width),
     y: clamp(crop.y + crop.height / 2 - height / 2, 0, 1 - height),

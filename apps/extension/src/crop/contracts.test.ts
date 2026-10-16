@@ -24,7 +24,13 @@ describe('crop', () => {
 
   it('stores a whole-frame crop as no crop', () => {
     expect(normalizeCrop(FULL_FRAME)).toBeUndefined();
-    expect(normalizeCrop(crop)).toBe(crop);
+    expect(normalizeCrop(crop)).toEqual(crop);
+    expect(normalizeCrop({ x: -1e-17, y: 0.5, width: 0.5, height: 0.6 })).toEqual({
+      x: 0,
+      y: 0.5,
+      width: 0.5,
+      height: 0.5,
+    });
   });
 
   it('follows its region through four quarter turns back to where it started', () => {
