@@ -20,6 +20,12 @@ describe('crop', () => {
     expect(full.y).toBeCloseTo(crop.y);
   });
 
+  it('stays a valid crop when it sits on the bottom edge', () => {
+    const height = 0.30004191191780444;
+    const turned = rotateCropClockwise({ x: 0, y: 1 - height, width: 0.5, height });
+    expect(Schema.is(CropSchema)(turned)).toBe(true);
+  });
+
   it('converts to whole pixels that never leave the frame', () => {
     expect(cropPixels(crop, 1000, 500)).toEqual({ x: 100, y: 100, width: 300, height: 200 });
     expect(cropPixels({ x: 0.999, y: 0, width: 0.001, height: 1 }, 10, 10)).toEqual({

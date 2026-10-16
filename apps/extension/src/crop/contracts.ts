@@ -6,7 +6,8 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 /** The same region after the frame turns a quarter clockwise, which keeps a crop on its subject. */
 export const rotateCropClockwise = (crop: Crop): Crop => ({
-  x: 1 - crop.y - crop.height,
+  // Floating point can land a hair below zero for a crop on the bottom edge.
+  x: Math.max(0, 1 - crop.y - crop.height),
   y: crop.x,
   width: crop.height,
   height: crop.width,
