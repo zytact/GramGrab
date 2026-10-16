@@ -1,4 +1,5 @@
 import { Either, Schema } from 'effect';
+import type { Crop } from '../crop/contracts.ts';
 import type { Rotation } from '../rotation/contracts.ts';
 import type { ExportSettings } from '@gramgrab/protocol';
 
@@ -22,6 +23,7 @@ export interface DownloadHistoryEntry {
   exportMode?: 'direct' | 'frame' | 'silent';
   frameTimestampSeconds?: number;
   rotation?: Rotation;
+  crop?: Crop;
   requestedExport?: ExportSettings;
   recovery?: 'original' | 'reencode';
   downloadedAt: number;

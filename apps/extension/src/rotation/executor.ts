@@ -1,4 +1,4 @@
-import type { RotatedOperation } from '../download/attempt.ts';
+import type { AttemptOperation } from '../download/attempt.ts';
 import {
   DownloadAcceptedResult,
   DownloadFailedResult,
@@ -17,8 +17,7 @@ import {
 } from '../errors/normalize.ts';
 import { browser } from '../lib/browser.ts';
 import { sendMessage } from '../messaging/send.ts';
-import type { Rotation } from './contracts.ts';
-import { rotateImage, rotateVideo } from './media.ts';
+import { modifyImage, rotateVideo } from './media.ts';
 
 async function fetchMedia(url: string): Promise<Blob> {
   let response: Response;
@@ -34,15 +33,17 @@ async function fetchMedia(url: string): Promise<Blob> {
   return response.blob();
 }
 
-async function rotate(media: Blob, mediaType: 'image' | 'video', rotation: Rotation) {
+async function modify(media: Blob, operation: AttemptOperation) {
   try {
-    return await (mediaType === 'video'
-      ? rotateVideo(media, rotation)
-      : rotateImage(media, rotation));
+    if (operation.mediaType === 'image') return await modifyImage(media, operation);
+    if (operation.crop || !operation.rotation)
+      throw new Error('A video crop needs a re-encode, which this path does not do.');
+    return await rotateVideo(media, operation.rotation);
   } catch (cause) {
     throw OperationFailure.make({
-      code: 'ROTATION_FAILED',
-      phase: 'rotation',
+      ...(operation.crop
+        ? { code: 'CROP_FAILED', phase: 'crop' }
+        : { code: 'ROTATION_FAILED', phase: 'rotation' }),
       scope: 'item',
       cause: diagnosticCause(cause),
     });
@@ -77,22 +78,19 @@ async function download(file: Blob, filename: string): Promise<void> {
 }
 
 /**
- * Downloads a direct-mode item turned by its requested rotation. The turn happens in the calling
- * document because it needs canvas and media APIs, and history records the rotation so a
- * redownload reproduces it.
+ * Downloads a direct-mode item with its Export modifiers applied. The work happens in the calling
+ * document because it needs canvas and media APIs, and history records the modifiers so a
+ * redownload reproduces them.
  */
-export async function executeRotatedExport(
-  operation: RotatedOperation,
+export async function executeModifiedExport(
+  operation: AttemptOperation,
   sourceUrl: string,
   originKind: 'source' | 'instants'
 ): Promise<DownloadOperationResult> {
   const ids = { operationId: operation.operationId, requestId: operation.requestId };
   try {
     const media = await fetchMedia(operation.url);
-    await download(
-      await rotate(media, operation.mediaType, operation.rotation),
-      operation.filename
-    );
+    await download(await modify(media, operation), operation.filename);
   } catch (cause) {
     return DownloadFailedResult.make({
       ...ids,

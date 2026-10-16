@@ -1,6 +1,7 @@
 import { browser } from '../lib/browser';
 import type { FrameExportSetting } from '../frame-export/timestamp.ts';
 import type { MediaItem } from '../popup/media-item.ts';
+import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 import { Schema } from 'effect';
 import type { InstagramLogin } from '@gramgrab/protocol';
@@ -47,6 +48,7 @@ interface WorkspaceSnapshotV3 extends Omit<WorkspaceSnapshot, 'version' | 'acqui
 }
 
 const isRotation = Schema.is(RotationSchema);
+const isCrop = Schema.is(CropSchema);
 
 export const WORKSPACE_TRANSFER_KEY = 'workspace-transfer-v1';
 export const WORKSPACE_STATUS_KEY = 'workspace-status-v1';
@@ -209,6 +211,7 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
       filenameHint: item.filenameHint,
       selected: item.selected,
       ...(isRotation(item.rotation) ? { rotation: item.rotation } : {}),
+      ...(isCrop(item.crop) ? { crop: item.crop } : {}),
       ...sanitizeMediaPreview(item),
       ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
       ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}),

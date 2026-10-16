@@ -137,8 +137,12 @@ describe('download attempt reducer', () => {
     expect(fallback.entries[0]?.operation.requestId).not.toBe(silent.requestId);
   });
 
-  it('drops the rotation when falling back to the original', () => {
-    const rotated = { ...operation(), rotation: 90 as const };
+  it('drops the Export modifiers when falling back to the original', () => {
+    const rotated = {
+      ...operation(),
+      rotation: 90 as const,
+      crop: { x: 0, y: 0, width: 0.5, height: 0.5 },
+    };
     const fresh = attemptReducer(undefined, { type: 'fresh', operations: [rotated] })!;
     const failed = attemptReducer(fresh, {
       type: 'settle',
@@ -162,6 +166,7 @@ describe('download attempt reducer', () => {
     })!;
 
     expect(fallback.entries[0]?.operation.rotation).toBeUndefined();
+    expect(fallback.entries[0]?.operation.crop).toBeUndefined();
   });
 
   it('counts started warnings without treating browser acceptance as completion', () => {

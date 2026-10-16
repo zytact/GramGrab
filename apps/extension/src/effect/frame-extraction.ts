@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { VideoFrameExtractionFailed } from './errors.ts';
 import type { Rotation } from '../rotation/contracts.ts';
-import { canvasToJpeg, drawRotated } from '../rotation/media.ts';
+import { canvasToJpeg, drawModified } from '../rotation/media.ts';
 
 const EVENT_TIMEOUT = '5 seconds';
 
@@ -46,7 +46,7 @@ const captureCanvasFrame = (
       return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-frame' }));
     }
 
-    const canvas = drawRotated(video, video.videoWidth, video.videoHeight, rotation);
+    const canvas = drawModified(video, video.videoWidth, video.videoHeight, { rotation });
     if (!canvas) {
       return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-canvas' }));
     }

@@ -192,6 +192,10 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'Download the original or copy diagnostics.',
     ['download-original', 'copy-diagnostics']
   ),
+  CROP_FAILED: policy('Could not crop this item', 'Download the original or copy diagnostics.', [
+    'download-original',
+    'copy-diagnostics',
+  ]),
   SILENT_STORAGE_UNAVAILABLE: policy(
     'Silent downloads need temporary browser storage',
     'Reload GramGrab or download the originals.',

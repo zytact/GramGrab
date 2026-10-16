@@ -1,11 +1,12 @@
 import { Schema } from 'effect';
-import { ExportMode, ExportSettings, Rotation } from './export-modes.ts';
+import { Crop, ExportMode, ExportSettings, Rotation } from './export-modes.ts';
 export {
   DirectExport,
   FrameExport,
   SilentExport,
   ExportMode,
   Rotation,
+  Crop,
   ExportSettings,
 } from './export-modes.ts';
 import { FailureCodeSchema } from './failures.ts';
@@ -51,6 +52,7 @@ export class ExportOperation extends Schema.Class<ExportOperation>('ExportOperat
   mediaIdentity: Schema.optional(MediaIdentity),
   mode: ExportMode,
   rotation: Schema.optional(Rotation),
+  crop: Schema.optional(Crop),
 }) {}
 
 export class Inspect extends Schema.TaggedClass<Inspect>()('Inspect', {
@@ -260,6 +262,7 @@ export class HistoryEntry extends Schema.Class<HistoryEntry>('HistoryEntry')({
   exportMode: Schema.optional(Schema.Literal('direct', 'frame', 'silent')),
   frameTimestampSeconds: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
   rotation: Schema.optional(Rotation),
+  crop: Schema.optional(Crop),
   requestedExport: Schema.optional(ExportSettings),
   recovery: Schema.optional(Schema.Literal('original', 'reencode')),
   downloadedAt: Schema.Number.pipe(Schema.nonNegative()),

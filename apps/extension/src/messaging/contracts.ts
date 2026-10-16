@@ -24,6 +24,7 @@ import {
 import { DownloadMediaRequest, type DownloadMediaResponse } from '../download/contracts.ts';
 import type { OperationFailure, WarningCode } from '../errors/contracts.ts';
 import type { HistoryEntry } from '../history/contracts.ts';
+import { CropSchema, type Crop } from '../crop/contracts.ts';
 import { RotationSchema, type Rotation } from '../rotation/contracts.ts';
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,7 @@ const HistoryItem = Schema.Struct({
   filename: Schema.String.pipe(Schema.nonEmptyString()),
   mediaType: Schema.Literal('image', 'video'),
   rotation: Schema.optional(RotationSchema),
+  crop: Schema.optional(CropSchema),
   requestedExport: Schema.optional(ExportSettings),
   recovery: Schema.optional(Schema.Literal('original', 'reencode')),
 });
@@ -294,17 +296,18 @@ interface RedownloadFrame {
   sourceUrl: string;
   originKind: 'source' | 'instants';
   rotation?: Rotation;
+  crop?: Crop;
 }
 
 type RedownloadSilent = Omit<RedownloadFrame, 'timestampSeconds'>;
 
-type RedownloadRotated = RedownloadSilent & { mediaType: 'image' | 'video'; rotation: Rotation };
+type RedownloadModified = RedownloadSilent & { mediaType: 'image' | 'video' };
 
 type RedownloadHistoryEntryResponse =
   | { failure: OperationFailure }
   | { frame: RedownloadFrame; failure: undefined }
   | { silent: RedownloadSilent; failure: undefined }
-  | { rotated: RedownloadRotated; failure: undefined }
+  | { modified: RedownloadModified; failure: undefined }
   | DownloadMediaResponse;
 
 /** A Watch rejection, or a request the background could not read. */
