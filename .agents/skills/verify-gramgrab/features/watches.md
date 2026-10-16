@@ -63,6 +63,29 @@ on the same Inbox tab.
    tab's URL with the ID, so match it as `options.html#watch` instead. Close it
    from the worker with `chrome.tabs.remove`, since `drive.mjs` has no close.
 
+## Entry links
+
+Each Found and Inbox entry's media label (`Photo`, `Video`, `Carousel of N`,
+`New picture`) is an `a.opt-entry-link` that opens Instagram in a new tab. The
+page derives the target from the stored username and IDs; nothing stores a URL.
+A Post or Carousel opens `/p/<shortcode>/` and a live Story
+`/stories/<username>/<id>/`. An expired Story, an Instant and an Avatar open the
+profile, since none has a page of its own. All inbox lists the same rows.
+
+This needs at least one natural entry. A Watch has none until a check finds
+media published after its baseline, and Check now on a shared account needs a
+separately authorized run, so record an empty Watch as a live prerequisite.
+
+1. Open `options.html`, select a Watch with entries, `instagram` when it has
+   any, and on each tab read every `a.opt-entry-link`'s text, `href` and
+   `target`. Require one link per entry row, `target="_blank"`, and an `href`
+   whose shape matches the row's kind in its meta line. Capture the list
+   cropped to the entry rows, which keeps the Watch's username out of frame.
+2. Click one link. Require a new tab on that `href` and an unchanged options
+   page with the same Watch and tab selected. Close only the new tab from the
+   worker with `chrome.tabs.remove`. Opening the page is a browser navigation,
+   not a GramGrab request, so it does not touch `instagram-requests`.
+
 ## Inbox preview
 
 Story entries show [expiry](./story-expiry.md) in Found and both inbox views
