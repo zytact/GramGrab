@@ -9,9 +9,12 @@ export function approvedReencodeOperationIds(
     candidates.flatMap(candidate => {
       const operationId = candidate.operation.operationId;
       const requested = requestedById.get(operationId);
-      return requested?.mode._tag === 'SilentExport' && requested.mode.reencode !== 'forbid'
-        ? [operationId]
-        : [];
+      // A requested direct crop is consent to the re-encode it cannot happen without.
+      const consented =
+        requested?.mode._tag === 'SilentExport'
+          ? requested.mode.reencode !== 'forbid'
+          : requested?.mode._tag === 'DirectExport' && requested.crop !== undefined;
+      return consented ? [operationId] : [];
     })
   );
 }

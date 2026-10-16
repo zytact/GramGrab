@@ -53,4 +53,12 @@ describe('silent video progress message', () => {
       ])
     ).toBe('Removing audio… 60%');
   });
+
+  it('describes a direct video crop as cropping, not removing audio', () => {
+    const cropping: AttemptEntry = {
+      ...entry(1, { status: 'pending', phase: 'processing', progress: 0.3 }),
+      operation: { ...operation(1), mode: 'direct', crop: { x: 0, y: 0, width: 0.5, height: 1 } },
+    };
+    expect(silentProgressMessage([cropping])).toBe('Cropping video… 30%');
+  });
 });

@@ -1,6 +1,12 @@
 import { Schema } from 'effect';
 import { describe, expect, it } from 'vite-plus/test';
-import { ExportOperation, HumanItemNumber, OperationId, SilentExport } from '@gramgrab/protocol';
+import {
+  DirectExport,
+  ExportOperation,
+  HumanItemNumber,
+  OperationId,
+  SilentExport,
+} from '@gramgrab/protocol';
 import { createRequestId } from '../download/contracts.ts';
 import type { ReencodeCandidate } from './batch.ts';
 import { SilentPreflight } from './contracts.ts';
@@ -63,5 +69,25 @@ describe('CLI silent policy', () => {
     expect([
       ...approvedReencodeOperationIds([candidate(allow), candidate(require)], requests),
     ]).toEqual([allow.operationId, require.operationId]);
+  });
+
+  it('treats a requested direct crop as consent and a plain direct export as none', () => {
+    const crop = ExportOperation.make({
+      operationId: operationId(4),
+      itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(4),
+      mode: DirectExport.make(),
+      crop: { x: 0, y: 0, width: 0.5, height: 0.5 },
+    });
+    const plain = ExportOperation.make({
+      operationId: operationId(5),
+      itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(5),
+      mode: DirectExport.make(),
+      rotation: 90,
+    });
+    const requests = new Map([crop, plain].map(request => [request.operationId, request]));
+
+    expect([
+      ...approvedReencodeOperationIds([candidate(crop), candidate(plain)], requests),
+    ]).toEqual([crop.operationId]);
   });
 });

@@ -128,8 +128,6 @@ export function MediaListSection({
   showPreview = true,
   layout = 'list',
   canRotate = () => true,
-  canCrop = item =>
-    item.type === 'image' || model.frameExportSettings[item.index]?.enabled === true,
 }: {
   model: MediaListModel;
   actions: MediaListActions;
@@ -139,7 +137,6 @@ export function MediaListSection({
   showPreview?: boolean;
   layout?: 'list' | 'hero';
   canRotate?: (item: MediaItem) => boolean;
-  canCrop?: (item: MediaItem) => boolean;
 }) {
   const {
     mediaItems,
@@ -191,7 +188,7 @@ export function MediaListSection({
       onError={() => onPreviewError(item)}
       onToggle={() => onToggle(item.index)}
       onRotate={onRotate && canRotate(item) ? () => onRotate(item.index) : undefined}
-      onCrop={onCrop && canCrop(item) ? () => onCrop(item.index) : undefined}
+      onCrop={onCrop && (() => onCrop(item.index))}
       cropEditing={cropIndex === item.index}
       onChangeCrop={crop => onChangeCrop?.(item.index, crop)}
       frameSetting={frameExportSettings[item.index]}

@@ -368,6 +368,55 @@ describe('silent video batch', () => {
     expect(approveReencode).toHaveBeenCalledOnce();
   });
 
+  it('asks before cropping a copyable video, then keeps its audio and records a direct export', async () => {
+    const crop = { x: 0, y: 0, width: 0.5, height: 0.5 };
+    const target = { ...operation(16), mode: 'direct' as const, crop };
+    const sent: unknown[] = [];
+    const { runtime } = globalThis.browser as { runtime: { sendMessage: unknown } };
+    runtime.sendMessage = (message: unknown) => {
+      sent.push(message);
+      return Promise.resolve({});
+    };
+    const approveReencode = vi.fn((candidates: readonly { operation: AttemptOperation }[]) =>
+      Promise.resolve(new Set(candidates.map(candidate => candidate.operation.operationId)))
+    );
+    const processed: unknown[] = [];
+    const batch = runSilentVideoBatch(
+      [target],
+      approveReencode,
+      () => {},
+      'https://www.instagram.com/p/example/',
+      () => {},
+      new Set()
+    );
+    const worker = workerAdapter.instance;
+    if (!worker) throw new Error('Expected the batch worker to be created.');
+    worker.onRequest = request => {
+      if (!request.requestId || !request.operationId) return;
+      if (request._tag === 'inspect')
+        worker.respond(inspected(request.operationId, request.requestId));
+      if (request._tag === 'process') {
+        processed.push(request);
+        directory.files.set(`${request.requestId}.mp4`, ['cropped video']);
+        worker.respond(
+          SilentProcessed.make({
+            operationId: request.operationId,
+            requestId: request.requestId,
+            alreadySilent: false,
+            opfsName: `${request.requestId}.mp4`,
+          })
+        );
+      }
+    };
+
+    await expect(batch).resolves.toMatchObject({ outcomes: [{ status: 'started' }] });
+    expect(approveReencode).toHaveBeenCalledOnce();
+    expect(processed).toEqual([
+      expect.objectContaining({ transcode: true, crop, keepAudio: true }),
+    ]);
+    expect(sent).toEqual([expect.objectContaining({ type: 'RECORD_DIRECT_EXPORT' })]);
+  });
+
   it('preserves a worker failure kind and reason in the batch result', async () => {
     const operationToFail = operation(3);
     const batch = runSilentVideoBatch(

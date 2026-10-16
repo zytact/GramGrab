@@ -1367,7 +1367,11 @@ function ReencodeDialog({
               <video src={candidate.operation.url} muted preload="metadata" aria-hidden="true" />
               <span>Item {candidate.operation.displayIndex + 1}</span>
               <strong>{candidate.operation.filename}</strong>
-              <small>{candidate.preflight.reason ?? candidate.preflight.videoCodec}</small>
+              <small>
+                {candidate.operation.crop
+                  ? 'Cropping needs a re-encode'
+                  : (candidate.preflight.reason ?? candidate.preflight.videoCodec)}
+              </small>
             </li>
           ))}
         </ul>

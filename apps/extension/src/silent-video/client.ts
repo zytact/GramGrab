@@ -1,6 +1,6 @@
 import type { OperationId, RequestId } from '../download/contracts.ts';
 import { OperationFailure } from '../errors/contracts.ts';
-import type { Rotation } from '../rotation/contracts.ts';
+import type { VideoEdits } from './engine.ts';
 import {
   decodeSilentWorkerResponse,
   InspectSilentVideo,
@@ -54,7 +54,7 @@ export class SilentVideoClient {
     operationId: OperationId,
     requestId: RequestId,
     transcode: boolean,
-    rotation: Rotation | undefined,
+    { rotation, crop, keepAudio }: VideoEdits,
     onProgress: Pending['onProgress']
   ) {
     const response = await this.#request(
@@ -65,6 +65,8 @@ export class SilentVideoClient {
         requestId,
         transcode,
         ...(rotation ? { rotation } : {}),
+        ...(crop ? { crop } : {}),
+        keepAudio,
       }),
       onProgress
     );

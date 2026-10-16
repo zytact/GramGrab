@@ -1,6 +1,7 @@
 import { Effect, Schema } from 'effect';
 import { OperationIdSchema, RequestIdSchema } from '../download/contracts.ts';
 import { OperationFailure } from '../errors/contracts.ts';
+import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 
 const SilentPhase = Schema.Literal(
@@ -38,6 +39,8 @@ export class ProcessSilentVideo extends Schema.TaggedClass<ProcessSilentVideo>()
   requestId: RequestIdSchema,
   transcode: Schema.Boolean,
   rotation: Schema.optional(RotationSchema),
+  crop: Schema.optional(CropSchema),
+  keepAudio: Schema.Boolean,
 }) {}
 export class ReleaseSilentVideo extends Schema.TaggedClass<ReleaseSilentVideo>()('release', {
   operationId: OperationIdSchema,

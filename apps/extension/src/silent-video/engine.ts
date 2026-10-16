@@ -10,6 +10,9 @@ import {
   Output,
   QUALITY_VERY_HIGH,
   StreamTarget,
+  type ConversionVideoOptions,
+  type CropRectangle,
+  type InputVideoTrack,
 } from 'mediabunny';
 import type { OperationId, RequestId } from '../download/contracts.ts';
 import {
@@ -19,7 +22,8 @@ import {
   type InstagramFailureCode,
 } from '../errors/contracts.ts';
 import { SilentPreflight } from './contracts.ts';
-import { combineRotations, type Rotation } from '../rotation/contracts.ts';
+import { combineRotations, swapsAxes, type Rotation } from '../rotation/contracts.ts';
+import { cropPixels, type Crop } from '../crop/contracts.ts';
 import {
   createOutput,
   readInput,
@@ -87,17 +91,41 @@ export async function inspectSilentVideo(
   }
 }
 
+/** What processing changes in a video: a turn, a crop, and whether its audio survives. */
+export interface VideoEdits {
+  readonly rotation?: Rotation;
+  readonly crop?: Crop;
+  readonly keepAudio: boolean;
+}
+
+/**
+ * The crop in pixels of the turned frame. H.264 encodes whole 2 by 2 chroma blocks, so both sides
+ * round down to even.
+ */
+export function evenCropRectangle(
+  crop: Crop,
+  rotation: Rotation | undefined,
+  width: number,
+  height: number
+): CropRectangle {
+  const turned = swapsAxes(rotation) ? { width: height, height: width } : { width, height };
+  const area = cropPixels(crop, turned.width, turned.height);
+  const even = (side: number) => Math.max(2, side - (side % 2));
+  return { left: area.x, top: area.y, width: even(area.width), height: even(area.height) };
+}
+
 export async function processSilentVideo(
   operationId: OperationId,
   requestId: RequestId,
   transcode: boolean,
-  rotation: Rotation | undefined,
+  edits: VideoEdits,
   onProgress: (progress: number) => void
 ): Promise<{ alreadySilent: boolean; opfsName?: string }> {
   const file = await readInput(operationId);
   const preflight = await inspectSilentVideo(operationId, requestId, file);
-  if (preflight.audioTrackCount === 0 && !rotation) return { alreadySilent: true };
-  if (!preflight.copyCompatible && !transcode)
+  if (preflight.audioTrackCount === 0 && !edits.rotation && !edits.crop)
+    return { alreadySilent: true };
+  if ((!preflight.copyCompatible || edits.crop) && !transcode)
     throw silentFailure('SILENT_COPY_FAILED', 'silent-copy');
   const owned = await createOutput(operationId);
   try {
@@ -106,10 +134,10 @@ export async function processSilentVideo(
       owned.writable,
       preflight.durationSeconds,
       transcode,
-      rotation,
+      edits,
       onProgress
     );
-    await validateOutput(owned.name);
+    await validateOutput(owned.name, edits.keepAudio);
     return { alreadySilent: false, opfsName: owned.name };
   } catch (error) {
     const failure = normalizeProcessingFailure(error, transcode);
@@ -123,11 +151,11 @@ async function processOutput(
   writable: WritableStream,
   duration: number,
   transcode: boolean,
-  rotation: Rotation | undefined,
+  edits: VideoEdits,
   onProgress: (progress: number) => void
 ): Promise<void> {
-  if (transcode) return transcodeVideo(file, writable, rotation, onProgress);
-  return copyVideo(file, writable, duration, rotation, onProgress);
+  if (transcode) return transcodeVideo(file, writable, edits, onProgress);
+  return copyVideo(file, writable, duration, edits.rotation, onProgress);
 }
 
 function normalizeProcessingFailure(error: unknown, transcode: boolean): OperationFailure {
@@ -176,10 +204,33 @@ async function copyVideo(
   }
 }
 
+/** The re-encoded video track: H.264 near the source bitrate, turned and then cropped. */
+async function videoConversion(
+  track: InputVideoTrack,
+  { rotation, crop }: VideoEdits
+): Promise<ConversionVideoOptions> {
+  const sourceBitrate = await track.getBitrate();
+  return {
+    codec: 'avc',
+    bitrate: sourceBitrate ? Math.ceil(sourceBitrate * 1.2) : QUALITY_VERY_HIGH,
+    ...(rotation ? { rotate: rotation } : {}),
+    ...(crop
+      ? {
+          crop: evenCropRectangle(
+            crop,
+            rotation,
+            await track.getDisplayWidth(),
+            await track.getDisplayHeight()
+          ),
+        }
+      : {}),
+  };
+}
+
 async function transcodeVideo(
   file: File,
   writable: WritableStream,
-  rotation: Rotation | undefined,
+  edits: VideoEdits,
   onProgress: (progress: number) => void
 ) {
   if (!(await canEncodeVideo('avc')))
@@ -188,20 +239,18 @@ async function transcodeVideo(
   try {
     const track = await input.getPrimaryVideoTrack();
     if (!track) throw silentFailure('SILENT_SOURCE_NO_VIDEO', 'silent-reencode');
-    const sourceBitrate = await track.getBitrate();
     const output = new Output({ format: mp4, target: new StreamTarget(writable) });
     const conversion = await Conversion.init({
       input,
       output,
-      video: {
-        codec: 'avc',
-        bitrate: sourceBitrate ? Math.ceil(sourceBitrate * 1.2) : QUALITY_VERY_HIGH,
-        ...(rotation ? { rotate: rotation } : {}),
-      },
-      audio: { discard: true },
+      video: await videoConversion(track, edits),
+      audio: edits.keepAudio ? {} : { discard: true },
       showWarnings: false,
     });
-    if (!conversion.isValid)
+    const lostAudio =
+      edits.keepAudio &&
+      conversion.discardedTracks.some(discarded => discarded.track.isAudioTrack());
+    if (!conversion.isValid || lostAudio)
       throw silentFailure('SILENT_SOURCE_CONVERSION_UNSUPPORTED', 'silent-reencode');
     conversion.onProgress = onProgress;
     await conversion.execute();
@@ -210,12 +259,12 @@ async function transcodeVideo(
   }
 }
 
-async function validateOutput(name: string): Promise<void> {
+async function validateOutput(name: string, keepAudio: boolean): Promise<void> {
   const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(await readOutput(name)) });
   try {
     if (!(await input.getPrimaryVideoTrack()))
       throw silentFailure('SILENT_OUTPUT_NO_VIDEO', 'silent-validation');
-    if ((await input.getAudioTracks()).length !== 0)
+    if (!keepAudio && (await input.getAudioTracks()).length !== 0)
       throw silentFailure('SILENT_OUTPUT_HAS_AUDIO', 'silent-validation');
   } finally {
     input.dispose();

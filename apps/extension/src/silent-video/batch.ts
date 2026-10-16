@@ -100,11 +100,14 @@ function needsReencodeDecision(
   candidate: ReencodeCandidate,
   approvedOperationIds: ReadonlySet<string>
 ): boolean {
-  // An already-silent video is still processed, and so may be re-encoded, when it is rotated.
+  const { operation, preflight } = candidate;
+  if (approvedOperationIds.has(operation.operationId)) return false;
+  // A crop always re-encodes. An already-silent video is still processed, and so may be
+  // re-encoded, when it is rotated.
   return (
-    (candidate.preflight.audioTrackCount > 0 || candidate.operation.rotation !== undefined) &&
-    !candidate.preflight.copyCompatible &&
-    !approvedOperationIds.has(candidate.operation.operationId)
+    operation.crop !== undefined ||
+    ((preflight.audioTrackCount > 0 || operation.rotation !== undefined) &&
+      !preflight.copyCompatible)
   );
 }
 
@@ -187,7 +190,7 @@ async function recordSilentHistory(
 ) {
   try {
     return await sendMessage({
-      type: 'RECORD_SILENT_EXPORT',
+      type: operation.mode === 'silent' ? 'RECORD_SILENT_EXPORT' : 'RECORD_DIRECT_EXPORT',
       sourceUrl,
       originKind,
       item: operation,
@@ -246,7 +249,11 @@ async function processCandidate(
       operation.operationId,
       operation.requestId,
       !preflight.copyCompatible || approvedOperationIds.has(operation.operationId),
-      operation.rotation,
+      {
+        rotation: operation.rotation,
+        crop: operation.crop,
+        keepAudio: operation.mode !== 'silent',
+      },
       (phase, progress) => onProgress(operation.requestId, phase, progress)
     );
     const source = await resolveDownloadSource(processed, operation, client);
