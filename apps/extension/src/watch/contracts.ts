@@ -122,6 +122,23 @@ export type MediaRef = Schema.Schema.Type<typeof MediaRef>;
 /** A reference to media with a publication time, which every kind but Avatar records. */
 export type TimedRef = Exclude<MediaRef, { readonly _tag: 'Avatar' }>;
 
+/**
+ * The Instagram page that shows a reference, derived rather than stored. Instants and Avatars
+ * have no page of their own, so they open the profile.
+ */
+export function instagramPage(username: string, ref: MediaRef): string {
+  switch (ref._tag) {
+    case 'Post':
+    case 'Sidecar':
+      return `https://www.instagram.com/p/${ref.shortcode}/`;
+    case 'Story':
+      return `https://www.instagram.com/stories/${username}/${ref.mediaId.split('_')[0]}/`;
+    case 'Instant':
+    case 'Avatar':
+      return `https://www.instagram.com/${username}/`;
+  }
+}
+
 const NotifyRecord = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
   Schema.Struct({ status: Schema.Literal('done'), at: EpochMillis }),

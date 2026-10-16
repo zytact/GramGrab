@@ -53,7 +53,8 @@ Watches are the one exception to request-in-the-moment access. See
   Apart from those Avatar images, it never holds media bytes or thumbnails. It never holds signed,
   preview, data, or blob URLs, captions, full or display names, locations, cookies, or tokens. The
   viewer's own username and Avatar are fetched when needed and are not stored. A Posts traversal
-  cursor lives only in `storage.session`.
+  cursor lives only in `storage.session`. Each Watch entry links to its Instagram page, built
+  when shown from the username and the stored shortcode or Story ID; the link is never stored.
 
 - **Export and import.** The options page can save the verified login's Watches to a file and add
   the Watches in such a file to the verified login. The file holds each target account ID and

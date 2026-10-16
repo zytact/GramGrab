@@ -337,7 +337,6 @@ export class ActionOutcome extends Schema.Class<ActionOutcome>('ActionOutcome')(
   dismissed: Schema.optional(Schema.Boolean),
 }) {}
 
-/** One discovery as the page and CLI show it: no media bytes, URLs, or captions. */
 /**
  * One entry's Export: how many files the browser accepted, and each failure, with the 0-based
  * Sidecar child it concerns when it concerns one.
@@ -359,12 +358,17 @@ export class InboxExportOutcome extends Schema.Class<InboxExportOutcome>('InboxE
   warning: Schema.optional(Schema.Literal('HISTORY_SAVE_FAILED')),
 }) {}
 
+/**
+ * One discovery as the page and CLI show it: no media bytes, media URLs, or captions. Its
+ * `instagramUrl` is the Instagram page that shows it, or the profile when it has no page.
+ */
 export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoverySummary')({
   entryId: NonEmptyString,
   manualExport: Schema.optional(InboxExportOutcome),
   watchId: NonEmptyString,
   accountId: AccountId,
   username: InstagramUsername,
+  instagramUrl: Schema.String.pipe(Schema.startsWith('https://www.instagram.com/')),
   kind: WatchKind,
   mediaType: Schema.Literal('image', 'video', 'sidecar', 'avatar'),
   childCount: Schema.optional(Count),
