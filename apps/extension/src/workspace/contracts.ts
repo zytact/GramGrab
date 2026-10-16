@@ -26,6 +26,8 @@ export interface WorkspaceSnapshot {
   intent?: 'open' | 'fetch';
   /** The login the results were fetched as. Absent means the main login. */
   login?: InstagramLogin;
+  /** The item whose crop selector opens when the workspace claims this snapshot. */
+  cropIndex?: number;
 }
 
 interface LegacyWorkspaceSnapshot extends Omit<

@@ -21,7 +21,7 @@ export async function findWorkspaceTab() {
   return tabs.find(isWorkspaceTab);
 }
 
-export async function isWorkspaceReportedBusy(): Promise<boolean> {
+async function isWorkspaceReportedBusy(): Promise<boolean> {
   const value = (await browser.sessionStorage.get(WORKSPACE_STATUS_KEY))[WORKSPACE_STATUS_KEY];
   if (!value || typeof value !== 'object') return false;
   const status = value as { busy?: unknown; updatedAt?: unknown };
@@ -95,6 +95,28 @@ async function replaceWorkspaceNow(snapshot: WorkspaceSnapshot): Promise<'replac
   } catch {
     return createWorkspace(snapshot);
   }
+}
+
+/**
+ * Moves work that must outlive the popup into the workspace. A busy workspace is only focused,
+ * and an idle one is replaced once the person accepts `replaceQuestion`.
+ */
+export async function handOffToWorkspace(
+  snapshot: WorkspaceSnapshot,
+  replaceQuestion: string
+): Promise<'moved' | 'busy' | 'declined'> {
+  const existing = await findWorkspaceTab();
+  if (!existing) {
+    await openWorkspace(snapshot);
+    return 'moved';
+  }
+  if (await isWorkspaceReportedBusy()) {
+    await openWorkspace(snapshot);
+    return 'busy';
+  }
+  if (!window.confirm(replaceQuestion)) return 'declined';
+  await replaceWorkspace(snapshot);
+  return 'moved';
 }
 
 export async function claimWorkspaceTransfer(): Promise<WorkspaceSnapshot | undefined> {

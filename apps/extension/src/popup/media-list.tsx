@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { AttemptEntry, DownloadAttempt } from '../download/attempt';
 import {
   FAILURE_PRESENTATION,
@@ -14,6 +14,8 @@ import {
 import { distributeMasonryItems } from '../workspace/masonry';
 import { resolveMediaRatio } from '../workspace/media-ratio';
 import { swapsAxes } from '../rotation/contracts';
+import type { Crop } from '../crop/contracts';
+import { CropOverlay, CropToolbar } from './crop-selector';
 import { itemRuntimeAt, type ItemRuntime, type ItemRuntimes, type MediaItem } from './media-item';
 import { StoryExpiry } from './story-expiry';
 
@@ -25,6 +27,8 @@ export type MediaListModel = {
   removeAudioIndexes: ReadonlySet<number>;
   attempt: DownloadAttempt | undefined;
   emptyMessage: string;
+  /** The item whose crop selector is open. */
+  cropIndex?: number;
 };
 
 export type MediaListActions = {
@@ -32,6 +36,9 @@ export type MediaListActions = {
   onToggle: (index: number) => void;
   /** Absent where outputs cannot be rotated, which hides the control. */
   onRotate?: (index: number) => void;
+  /** Absent where outputs cannot be cropped, which hides the control. */
+  onCrop?: (index: number) => void;
+  onChangeCrop?: (index: number, crop: Crop | undefined) => void;
   onToggleAll: () => void;
   onToggleExportFrame: (index: number) => void;
   onToggleRemoveAudio: (index: number) => void;
@@ -99,6 +106,7 @@ export function MediaListSection({
   showPreview = true,
   layout = 'list',
   canRotate = () => true,
+  canCrop = item => item.type === 'image',
 }: {
   model: MediaListModel;
   actions: MediaListActions;
@@ -108,6 +116,7 @@ export function MediaListSection({
   showPreview?: boolean;
   layout?: 'list' | 'hero';
   canRotate?: (item: MediaItem) => boolean;
+  canCrop?: (item: MediaItem) => boolean;
 }) {
   const {
     mediaItems,
@@ -117,11 +126,14 @@ export function MediaListSection({
     removeAudioIndexes,
     attempt,
     emptyMessage,
+    cropIndex,
   } = model;
   const {
     onPreviewError,
     onToggle,
     onRotate,
+    onCrop,
+    onChangeCrop,
     onToggleAll,
     onToggleExportFrame,
     onToggleRemoveAudio,
@@ -156,6 +168,9 @@ export function MediaListSection({
       onError={() => onPreviewError(item)}
       onToggle={() => onToggle(item.index)}
       onRotate={onRotate && canRotate(item) ? () => onRotate(item.index) : undefined}
+      onCrop={onCrop && canCrop(item) ? () => onCrop(item.index) : undefined}
+      cropEditing={cropIndex === item.index}
+      onChangeCrop={crop => onChangeCrop?.(item.index, crop)}
       frameSetting={frameExportSettings[item.index]}
       removeAudio={allowSilent && removeAudioIndexes.has(item.index)}
       allowSilent={allowSilent}
@@ -225,6 +240,9 @@ interface MediaItemRowProps {
   onError: () => void;
   onToggle: () => void;
   onRotate?: () => void;
+  onCrop?: () => void;
+  cropEditing: boolean;
+  onChangeCrop: (crop: Crop | undefined) => void;
   frameSetting?: FrameExportSetting;
   removeAudio: boolean;
   allowSilent: boolean;
@@ -257,7 +275,7 @@ type MediaPreviewProps = Pick<
   | 'onVideoRef'
   | 'onVideoMetadata'
   | 'onIntrinsicDimensions'
->;
+> & { children?: ReactNode };
 
 function MediaPreview({
   item,
@@ -268,6 +286,7 @@ function MediaPreview({
   onVideoRef,
   onVideoMetadata,
   onIntrinsicDimensions,
+  children,
 }: MediaPreviewProps) {
   const previewStyle =
     workspaceMode || layout === 'hero'
@@ -296,6 +315,7 @@ function MediaPreview({
       {runtime.preview === 'loading' && !item.previewUrl && (
         <span className="thumb-loading">···</span>
       )}
+      {children}
     </div>
   );
 }
@@ -361,6 +381,8 @@ function MediaControls({
   runtime,
   onToggle,
   onRotate,
+  onCrop,
+  cropToolbar,
   onToggleExportFrame,
   onToggleRemoveAudio,
   onChangeFrameTimestamp,
@@ -377,13 +399,14 @@ function MediaControls({
   | 'runtime'
   | 'onToggle'
   | 'onRotate'
+  | 'onCrop'
   | 'onToggleExportFrame'
   | 'onToggleRemoveAudio'
   | 'onChangeFrameTimestamp'
   | 'onRetryFrameMetadata'
   | 'onRetryFrameExport'
   | 'disabled'
-> & { failureDescriptionId?: string }) {
+> & { failureDescriptionId?: string; cropToolbar?: ReactNode }) {
   const frame = runtime.frame;
   const duration = frame.durationSeconds;
   const maximum = duration === undefined ? undefined : maximumFrameSecond(duration);
@@ -461,6 +484,23 @@ function MediaControls({
           ↻ {item.rotation ?? 0}°
         </button>
       )}
+      {onCrop && (
+        <button
+          type="button"
+          className="frame-toggle crop-toggle"
+          aria-pressed={item.crop !== undefined}
+          aria-label={`Crop item ${String(item.index + 1).padStart(2, '0')}${item.crop ? ', cropped' : ''}`}
+          title="Crop before download"
+          onClick={event => {
+            event.stopPropagation();
+            onCrop();
+          }}
+          disabled={disabled}
+        >
+          Crop
+        </button>
+      )}
+      {cropToolbar}
       <input
         className="item-checkbox"
         type="checkbox"
@@ -486,6 +526,9 @@ function MediaItemRow(props: MediaItemRowProps) {
     onError,
     onToggle,
     onRotate,
+    onCrop,
+    cropEditing,
+    onChangeCrop,
     frameSetting,
     removeAudio,
     allowSilent,
@@ -501,6 +544,9 @@ function MediaItemRow(props: MediaItemRowProps) {
     attemptEntry,
   } = props;
   const num = String(item.index + 1).padStart(2, '0');
+  const [aspect, setAspect] = useState<number>();
+  const editing = cropEditing && !disabled && onCrop !== undefined;
+  const frameRatio = displayRatio(item, runtime);
 
   return (
     <div
@@ -519,7 +565,18 @@ function MediaItemRow(props: MediaItemRowProps) {
           onVideoRef={onVideoRef}
           onVideoMetadata={onVideoMetadata}
           onIntrinsicDimensions={onIntrinsicDimensions}
-        />
+        >
+          {workspaceMode && (editing || item.crop) && (
+            <CropOverlay
+              crop={item.crop}
+              editing={editing}
+              frameRatio={frameRatio}
+              aspect={aspect}
+              label={`Crop area for item ${num}. Arrow keys move it; Shift with arrow keys resizes it.`}
+              onChange={onChangeCrop}
+            />
+          )}
+        </MediaPreview>
       )}
 
       <div className="item-info">
@@ -576,6 +633,22 @@ function MediaItemRow(props: MediaItemRowProps) {
         runtime={runtime}
         onToggle={onToggle}
         onRotate={onRotate}
+        onCrop={onCrop}
+        cropToolbar={
+          editing && (
+            <CropToolbar
+              crop={item.crop}
+              frameRatio={frameRatio}
+              aspect={aspect}
+              onAspect={setAspect}
+              onChange={onChangeCrop}
+              onDone={() => {
+                setAspect(undefined);
+                onCrop();
+              }}
+            />
+          )
+        }
         onToggleExportFrame={onToggleExportFrame}
         onToggleRemoveAudio={onToggleRemoveAudio}
         onChangeFrameTimestamp={onChangeFrameTimestamp}
