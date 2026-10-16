@@ -183,7 +183,7 @@ async function declinedReencodes(
   return declined;
 }
 
-async function recordSilentHistory(
+async function recordProcessedHistory(
   sourceUrl: string,
   operation: AttemptOperation,
   originKind: 'source' | 'instants'
@@ -263,7 +263,7 @@ async function processCandidate(
       source.artifact === 'remote'
         ? undefined
         : await trackOwnedDownload(operation, downloadId, source, client, ownership);
-    const historyWarning = (await recordSilentHistory(sourceUrl, operation, originKind)).warning;
+    const historyWarning = (await recordProcessedHistory(sourceUrl, operation, originKind)).warning;
     return DownloadAcceptedResult.make({
       operationId: operation.operationId,
       requestId: operation.requestId,

@@ -36,7 +36,8 @@ async function fetchMedia(url: string): Promise<Blob> {
 async function modify(media: Blob, operation: AttemptOperation) {
   try {
     if (operation.mediaType === 'image') return await modifyImage(media, operation);
-    if (!operation.rotation) throw new Error('A cropped video is made by the video processor.');
+    if (operation.crop || !operation.rotation)
+      throw new Error('A cropped video is made by the video processor.');
     return await rotateVideo(media, operation.rotation);
   } catch (cause) {
     throw OperationFailure.make({

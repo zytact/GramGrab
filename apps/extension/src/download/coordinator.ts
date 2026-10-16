@@ -158,19 +158,19 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
 
   yield* Effect.promise(async () => {
     const tasks: Promise<void>[] = [];
-    const silent = operations.filter(operation => executorFor(operation) === 'video');
-    if (silent.length > 0 && execution.silent) {
+    const videos = operations.filter(operation => executorFor(operation) === 'video');
+    if (videos.length > 0 && execution.silent) {
       let completePreflight = () => {};
       const preflight = new Promise<void>(resolve => {
         completePreflight = resolve;
       });
       tasks.push(
         execution
-          .silent(silent, events.progress, completePreflight, approvedOperationIds)
+          .silent(videos, events.progress, completePreflight, approvedOperationIds)
           .then(outcome => events.settle(outcome.outcomes, outcome.failure))
           .catch(cause =>
             events.settle(
-              failedResults(silent, failure('SILENT_UNEXPECTED_FAILURE', 'silent-worker', cause))
+              failedResults(videos, failure('SILENT_UNEXPECTED_FAILURE', 'silent-worker', cause))
             )
           )
           .finally(completePreflight)

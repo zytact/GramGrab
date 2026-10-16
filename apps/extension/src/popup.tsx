@@ -1360,7 +1360,12 @@ function ReencodeDialog({
           ×
         </button>
         <h2 id="quality-dialog-title">Some videos require re-encoding</h2>
-        <p>Lossless packet copying is unavailable. Re-encoding may change video quality.</p>
+        <p>
+          {candidates.every(candidate => candidate.operation.crop)
+            ? 'Cropping a video re-encodes it.'
+            : 'Lossless packet copying is unavailable.'}{' '}
+          Re-encoding may change video quality.
+        </p>
         <ul>
           {candidates.map(candidate => (
             <li key={candidate.operation.requestId}>
