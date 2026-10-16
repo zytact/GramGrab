@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.0.0](https://github.com/zytact/GramGrab/compare/v3.3.3...v4.0.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **watch:** open Found and Inbox entries on Instagram ([#306](https://github.com/zytact/GramGrab/issues/306))
+
+### Features
+
+* **watch:** open Found and Inbox entries on Instagram ([#306](https://github.com/zytact/GramGrab/issues/306)) ([a53154e](https://github.com/zytact/GramGrab/commit/a53154eeef0104142e43c2708ce85246b131cb2f))
+
+
+### Bug Fixes
+
+* **watch:** clear a stale format-changed problem soon after GramGrab updates ([#304](https://github.com/zytact/GramGrab/issues/304)) ([07c015c](https://github.com/zytact/GramGrab/commit/07c015c2483299674b866bf584b2d6342bfa97f3))
+
 ## [3.3.3](https://github.com/zytact/GramGrab/compare/v3.3.2...v3.3.3) (2026-10-15)
 
 
