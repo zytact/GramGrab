@@ -228,7 +228,13 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       {
         id: '1d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
         checkId: CHECK_ID,
-        ref: { _tag: 'Story', mediaId: '32_2002', mediaType: 'image', takenAt: 2, expiresAt: 3 },
+        ref: {
+          _tag: 'Story',
+          mediaId: '32_2002',
+          mediaType: 'image',
+          takenAt: 2,
+          expiresAt: 4_000_000_000,
+        },
         discoveredAt: Date.now() - 90_000,
       },
       {
@@ -262,12 +268,12 @@ describe('Watches options page', { timeout: 15_000 }, () => {
 
     await screen.findByRole('link', { name: 'Video' });
     expect(links()).toEqual([
-      ['Video', 'https://www.instagram.com/stories/instagram/31/', '_blank'],
+      ['Video', 'https://www.instagram.com/instagram/', '_blank'],
       ['Carousel of 1', 'https://www.instagram.com/p/C300/', '_blank'],
     ]);
     await user.click(screen.getByRole('button', { name: /^Found \(/ }));
     expect(links()).toEqual([
-      ['Video', 'https://www.instagram.com/stories/instagram/31/', '_blank'],
+      ['Video', 'https://www.instagram.com/instagram/', '_blank'],
       ['Photo', 'https://www.instagram.com/stories/instagram/32/', '_blank'],
       ['Photo', 'https://www.instagram.com/instagram/', '_blank'],
       ['Carousel of 1', 'https://www.instagram.com/p/C300/', '_blank'],

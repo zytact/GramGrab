@@ -360,7 +360,8 @@ export class InboxExportOutcome extends Schema.Class<InboxExportOutcome>('InboxE
 
 /**
  * One discovery as the page and CLI show it: no media bytes, media URLs, or captions. Its
- * `instagramUrl` is the Instagram page that shows it, or the profile when it has no page.
+ * `instagramUrl` is the Instagram page that shows it, or the profile when it has no page or its
+ * Story expired.
  */
 export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoverySummary')({
   entryId: NonEmptyString,

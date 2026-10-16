@@ -135,9 +135,11 @@ export function instagramPage(username: string, ref: MediaRef): string {
       return `https://www.instagram.com/stories/${username}/${ref.mediaId.split('_')[0]}/`;
     case 'Instant':
     case 'Avatar':
-      return `https://www.instagram.com/${username}/`;
+      return profilePage(username);
   }
 }
+
+export const profilePage = (username: string) => `https://www.instagram.com/${username}/`;
 
 const NotifyRecord = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),

@@ -13,6 +13,7 @@ import {
 import {
   RETENTION_MS,
   instagramPage,
+  profilePage,
   type ChildDownload,
   type Discovery,
   type MediaRef,
@@ -257,6 +258,12 @@ export const inInbox = (discovery: Discovery, now: number) =>
   discovery.collect.removedAt === undefined &&
   discovery.discoveredAt + RETENTION_MS > now;
 
+/** An expired Story has nothing left on its page, so its entry opens the profile instead. */
+const entryPage = (username: string, ref: MediaRef, now: number) =>
+  ref._tag === 'Story' && ref.expiresAt * SECOND_MS <= now
+    ? profilePage(username)
+    : instagramPage(username, ref);
+
 /** Presents a discovery without its media references, linking its Instagram page instead. */
 export function summarizeDiscovery(
   watch: Watch,
@@ -274,7 +281,7 @@ export function summarizeDiscovery(
     watchId: watch.id,
     accountId: watch.targetId,
     username: watch.username,
-    instagramUrl: instagramPage(watch.username, ref),
+    instagramUrl: entryPage(watch.username, ref, now),
     kind: KIND_OF_REF[ref._tag],
     mediaType:
       ref._tag === 'Sidecar' ? 'sidecar' : ref._tag === 'Avatar' ? 'avatar' : ref.mediaType,
