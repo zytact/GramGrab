@@ -25,6 +25,17 @@ const candidate = (overrides: Partial<ExportCandidate> = {}) =>
   });
 
 describe('export coordinator planning', () => {
+  it('keeps a crop on stills and drops it from a whole video', () => {
+    const crop = { x: 0, y: 0, width: 0.5, height: 0.5 };
+    const operations = planExportOperations([
+      candidate({ crop, frameEnabled: true, frameDurationSeconds: 8 }),
+      candidate({ index: 1, crop }),
+      candidate({ index: 2, crop, type: 'image' }),
+    ]);
+
+    expect(operations.map(operation => operation.crop)).toEqual([crop, undefined, crop]);
+  });
+
   it('plans only selected items with stable display and media identity', () => {
     const operations = planExportOperations([
       candidate({ itemIndex: 4, mediaId: 'media-1' }),

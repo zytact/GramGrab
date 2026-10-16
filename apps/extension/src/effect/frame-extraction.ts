@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import { VideoFrameExtractionFailed } from './errors.ts';
-import type { Rotation } from '../rotation/contracts.ts';
-import { canvasToJpeg, drawModified } from '../rotation/media.ts';
+import { canvasToJpeg, drawModified, type Modifiers } from '../rotation/media.ts';
 
 const EVENT_TIMEOUT = '5 seconds';
 
@@ -39,14 +38,14 @@ const seekToTimestamp = (
 
 const captureCanvasFrame = (
   video: HTMLVideoElement,
-  rotation: Rotation | undefined
+  modifiers: Modifiers
 ): Effect.Effect<Blob, VideoFrameExtractionFailed> =>
   Effect.gen(function* () {
     if (!video.videoWidth || !video.videoHeight) {
       return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-frame' }));
     }
 
-    const canvas = drawModified(video, video.videoWidth, video.videoHeight, { rotation });
+    const canvas = drawModified(video, video.videoWidth, video.videoHeight, modifiers);
     if (!canvas) {
       return yield* Effect.fail(new VideoFrameExtractionFailed({ reason: 'no-canvas' }));
     }
@@ -61,7 +60,7 @@ const captureCanvasFrame = (
 export const captureFrameFromVideoEffect = (
   video: HTMLVideoElement,
   timestampSeconds: number,
-  rotation?: Rotation
+  modifiers: Modifiers = {}
 ): Effect.Effect<Blob, VideoFrameExtractionFailed> =>
   Effect.gen(function* () {
     if (video.readyState < 1) {
@@ -77,5 +76,5 @@ export const captureFrameFromVideoEffect = (
     }
 
     yield* seekToTimestamp(video, timestampSeconds);
-    return yield* captureCanvasFrame(video, rotation);
+    return yield* captureCanvasFrame(video, modifiers);
   });

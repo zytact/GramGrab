@@ -44,7 +44,7 @@ export async function executeFrameExport(
     const captured = await captureFrameFromSource(
       mediaObjectUrl,
       operation.frameTimestampSeconds ?? 0,
-      operation.rotation
+      operation
     );
     if (Either.isLeft(captured))
       return DownloadFailedResult.make({
@@ -68,6 +68,7 @@ export async function executeFrameExport(
         mediaType: 'video',
         frameTimestampSeconds: operation.frameTimestampSeconds ?? 0,
         ...(operation.rotation ? { rotation: operation.rotation } : {}),
+        ...(operation.crop ? { crop: operation.crop } : {}),
         ...(operation.requestedExport ? { requestedExport: operation.requestedExport } : {}),
         ...(operation.recovery ? { recovery: operation.recovery } : {}),
       },

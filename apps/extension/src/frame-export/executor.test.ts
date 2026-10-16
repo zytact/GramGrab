@@ -51,7 +51,7 @@ describe('executeFrameExport', () => {
     );
 
     expect(result.status).toBe('started');
-    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 7.5, undefined);
+    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 7.5, expect.any(Object));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'DOWNLOAD_FRAME_EXPORT',
@@ -62,6 +62,21 @@ describe('executeFrameExport', () => {
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:media');
   });
 
+  it('crops the captured frame and records the crop for redownload', async () => {
+    const crop = { x: 0.25, y: 0, width: 0.5, height: 1 };
+
+    await executeFrameExport({ ...operation, crop }, 'https://www.instagram.com/stories/example/');
+
+    expect(captureFrameFromSource).toHaveBeenCalledWith(
+      'blob:media',
+      7.5,
+      expect.objectContaining({ crop })
+    );
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ item: expect.objectContaining({ crop }) })
+    );
+  });
+
   it('defaults an omitted operation timestamp to zero', async () => {
     const withoutTimestamp = Schema.decodeUnknownSync(AttemptOperationSchema)({
       ...operation,
@@ -70,7 +85,7 @@ describe('executeFrameExport', () => {
 
     await executeFrameExport(withoutTimestamp, 'https://www.instagram.com/p/example/');
 
-    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 0, undefined);
+    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 0, expect.any(Object));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ item: expect.objectContaining({ frameTimestampSeconds: 0 }) })
     );

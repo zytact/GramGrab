@@ -128,7 +128,8 @@ export function MediaListSection({
   showPreview = true,
   layout = 'list',
   canRotate = () => true,
-  canCrop = item => item.type === 'image',
+  canCrop = item =>
+    item.type === 'image' || model.frameExportSettings[item.index]?.enabled === true,
 }: {
   model: MediaListModel;
   actions: MediaListActions;

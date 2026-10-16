@@ -1,23 +1,23 @@
 import { Effect, Either } from 'effect';
 import { captureFrameFromVideoEffect } from '../effect/frame-extraction.ts';
 import type { VideoFrameExtractionFailed } from '../effect/errors.ts';
-import type { Rotation } from '../rotation/contracts.ts';
+import type { Modifiers } from '../rotation/media.ts';
 
 type Capture = (
   video: HTMLVideoElement,
   timestampSeconds: number,
-  rotation?: Rotation
+  modifiers?: Modifiers
 ) => Promise<Either.Either<Blob, VideoFrameExtractionFailed>>;
 
-const captureFrame: Capture = (video, timestampSeconds, rotation) =>
+const captureFrame: Capture = (video, timestampSeconds, modifiers) =>
   Effect.runPromise(
-    captureFrameFromVideoEffect(video, timestampSeconds, rotation).pipe(Effect.either)
+    captureFrameFromVideoEffect(video, timestampSeconds, modifiers).pipe(Effect.either)
   );
 
 export async function captureFrameFromSource(
   sourceUrl: string,
   timestampSeconds: number,
-  rotation?: Rotation,
+  modifiers?: Modifiers,
   capture: Capture = captureFrame
 ): Promise<Either.Either<Blob, VideoFrameExtractionFailed>> {
   const attempt = async () => {
@@ -29,7 +29,7 @@ export async function captureFrameFromSource(
     video.src = sourceUrl;
     document.body.append(video);
     try {
-      const pending = capture(video, timestampSeconds, rotation);
+      const pending = capture(video, timestampSeconds, modifiers);
       video.load();
       return await pending;
     } finally {

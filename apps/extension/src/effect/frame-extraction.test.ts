@@ -92,7 +92,7 @@ describe('captureFrameFromVideoEffect', () => {
     const video = makeVideo({ readyState: 4, duration: 10, currentTime: 3 });
 
     const result = await Effect.runPromise(
-      captureFrameFromVideoEffect(video, 3, 90).pipe(Effect.either)
+      captureFrameFromVideoEffect(video, 3, { rotation: 90 }).pipe(Effect.either)
     );
 
     expect(result._tag).toBe('Right');
@@ -100,6 +100,32 @@ describe('captureFrameFromVideoEffect', () => {
     const ctx = currentCanvas.getContext.mock.results[0]?.value;
     expect(ctx.rotate).toHaveBeenCalledWith(Math.PI / 2);
     expect(ctx.drawImage).toHaveBeenCalledWith(video, -320, -240, 640, 480);
+  });
+
+  it('crops the turned frame to the requested region', async () => {
+    const video = makeVideo({ readyState: 4, duration: 10, currentTime: 3 });
+
+    const result = await Effect.runPromise(
+      captureFrameFromVideoEffect(video, 3, {
+        rotation: 90,
+        crop: { x: 0, y: 0.5, width: 0.5, height: 0.5 },
+      }).pipe(Effect.either)
+    );
+
+    expect(result._tag).toBe('Right');
+    expect(currentCanvas).toMatchObject({ width: 240, height: 320 });
+    const ctx = currentCanvas.getContext.mock.results[0]?.value;
+    expect(ctx.drawImage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      0,
+      320,
+      240,
+      320,
+      0,
+      0,
+      240,
+      320
+    );
   });
 
   it('waits for loadedmetadata when readyState < 1', async () => {

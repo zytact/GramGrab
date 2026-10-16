@@ -565,6 +565,7 @@ export default function Popup() {
         displayIndex: index,
         frameTimestampSeconds: timestampSeconds,
         ...(item.rotation ? { rotation: item.rotation } : {}),
+        ...(item.crop ? { crop: item.crop } : {}),
       });
     },
     [executeFrameAttempt, frameExportSettings, itemRuntimes, mediaItems]
@@ -801,6 +802,7 @@ export default function Popup() {
             displayIndex: 0,
             frameTimestampSeconds: timestampSeconds,
             ...(response.frame.rotation ? { rotation: response.frame.rotation } : {}),
+            ...(response.frame.crop ? { crop: response.frame.crop } : {}),
           },
           response.frame.sourceUrl,
           { originKind: response.frame.originKind }

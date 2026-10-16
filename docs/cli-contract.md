@@ -71,8 +71,8 @@ export defaults to timestamp 5 seconds and clamps to the last valid second for s
 A `--plan` operation may also carry `rotation` (`90`, `180`, or `270`, clockwise), which the
 extension applies to that item's output. It may carry `crop`, `{ "x", "y", "width", "height" }` as
 fractions of the frame after rotation, which the extension applies after the turn. A direct image
-crop re-encodes a JPEG; a direct video crop fails with `CROP_FAILED`. History redownload
-reproduces a recorded rotation and crop.
+crop re-encodes a JPEG and a frame export crops the still; a direct video crop fails with
+`CROP_FAILED`. History redownload reproduces a recorded rotation and crop.
 The `instants` commands never accept a Source. They inspect the authenticated active feed afresh,
 preserve its server order, and apply the same item numbering and export-mode rules.
 
