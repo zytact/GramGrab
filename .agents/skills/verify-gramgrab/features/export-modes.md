@@ -15,6 +15,13 @@ media APIs a service worker does not have, so the background worker opens
   only, `allow` permits re-encoding when needed, `require` always permits it.
   The UI asks through the `Some videos require re-encoding` dialog instead;
   `--json` never prompts.
+- Crop: an Export modifier next to rotation. The workspace `Crop` button opens a
+  selector on the preview with corner handles, `Free`, `1:1`, `4:5`, `9:16`,
+  `Reset`, and `Done`. An image crop re-encodes a JPEG, a frame export crops the
+  still, and a video crop re-encodes H.264 through the silent-video processor
+  after the `Some videos require re-encoding` dialog. A direct video crop keeps
+  its audio; a silent one drops it. Plans carry `crop` as fractions of the
+  turned frame.
 - Batch selection: `SELECT ALL` and `DOWNLOAD SELECTED` across mixed modes.
 - Plans: `gramgrab export SOURCE --plan FILE|-` replays protocol
   `ExportOperation` objects with stable operation IDs, which is how a retry
@@ -96,6 +103,26 @@ that the second document is doing the work:
 node .agents/skills/verify-gramgrab/scripts/drive.mjs targets | grep runner.html
 ```
 
+### Crop
+
+Fetch one image post and one video with audio into the workspace. On the image,
+click `Crop item NN`, choose `1:1`, then press `ArrowLeft` once on the focused
+`Crop area for item NN` group and click `Done`. Shoot the card: the area outside
+the crop is dimmed. Rotate the same item once and confirm the crop follows its
+subject. On the video, crop with `Free` by dragging a corner handle, leave it
+direct, download, and accept `Re-encode affected videos`. Repeat with `Frame`
+enabled to crop a still. Then open History and redownload the cropped image; it
+must arrive cropped again.
+
+From the plain popup, `Crop item NN` hands the whole batch to the workspace and
+opens that item's selector. With a workspace open, it asks
+`Replace the current workspace session to crop this item?` first.
+
+```bash
+file "$GRAMGRAB_VERIFY_DOWNLOADS"/*.jpg   # prints each JPEG's width x height
+ffprobe -v error -show_entries stream=codec_type,width,height -of csv=p=0 FILE.mp4
+```
+
 ## What proves it works
 
 - A file exists in `$GRAMGRAB_VERIFY_DOWNLOADS` with the extension's own
@@ -115,6 +142,9 @@ node .agents/skills/verify-gramgrab/scripts/drive.mjs targets | grep runner.html
   preview shown in the UI and the saved frame must match.
 - A mixed batch reports one terminal outcome for every selected item and keeps
   each mode attached to the intended item.
+- A cropped output has the cropped size: a `1:1` image crop is square, a
+  cropped video's width and height are even and match the selected region of
+  the turned frame, and a direct video crop still prints `video` and `audio`.
 - Plan results retain the supplied operation ID across retries.
 - `export --json` exits 0 when every outcome is `ItemSucceeded`, and exits 1
   when any item failed, with the failure codes in the terminal JSON.
