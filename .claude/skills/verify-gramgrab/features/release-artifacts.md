@@ -13,6 +13,12 @@ entry owns the browser and CLI packages that path does not exercise.
 
 ## Driving it
 
+Two commands need more than the repo. `package:chromium` signs with the release
+key at `~/.config/gramgrab-release/chromium.pem`, or `CHROMIUM_CRX_KEY_FILE`, and
+stops when it is missing. `package:firefox` shells out to `zip`, which a fresh
+Ubuntu or WSL install lacks. Record a missing key or `zip` as an unreachable
+prerequisite, not a build failure.
+
 ```bash
 vp run build
 vp run verify:whatsapp-packages

@@ -104,7 +104,8 @@ node .agents/skills/verify-gramgrab/scripts/drive.mjs targets | grep runner.html
 - The file is non-empty and the right kind: a frame export is a JPEG, a silent
   export is an MP4.
 - A silent export has a video track and no audio track. Check it, do not infer
-  it from the mode name. This must print `video` and nothing else:
+  it from the mode name. `ffprobe` ships with `ffmpeg`, which a fresh Ubuntu or
+  WSL install lacks. This must print `video` and nothing else:
 
   ```bash
   ffprobe -v error -show_entries stream=codec_type -of csv=p=0 FILE
@@ -122,6 +123,9 @@ node .agents/skills/verify-gramgrab/scripts/drive.mjs targets | grep runner.html
 
 - Direct downloads use `saveAs: false` and complete on their own. Only
   `debug export` prompts.
+- Frame export needs a headed browser. Under `GRAMGRAB_HEADLESS=1` the
+  minimized runner counts as hidden, its video never loads, and every frame
+  export fails with `FRAME_TIMEOUT`. Direct and silent exports work headless.
 - The runner window is minimized, not hidden. It appears in the window list
   during an export and closes afterwards; do not treat it as a stray window and
   kill it mid-run.

@@ -23,9 +23,22 @@ disagree about how to verify the app are worse than one.
 
 ## Launch
 
+Every route runs the same `launch.sh`; only the one-time browser setup differs.
+`[ -n "$WSL_DISTRO_NAME" ]` is true on WSL, and `launch.sh` failing with
+`No Chromium browser found` means the machine still needs that setup.
+
+| Machine | One-time setup | What `launch.sh` starts |
+| --- | --- | --- |
+| Linux desktop | Helium or Chromium on `PATH` | That browser, headed |
+| WSL | `sudo apt install libnss3`, then the [Chrome for Testing download](#browser-choice) | Chrome for Testing, headed through WSLg |
+| No display (SSH, CI) | Either of the above | The same browser, headless, with the gaps in [Browser choice](#browser-choice) |
+
 ```bash
 .agents/skills/verify-gramgrab/scripts/launch.sh
 ```
+
+`session.env` records the choice as `GRAMGRAB_VERIFY_BROWSER` and
+`GRAMGRAB_VERIFY_HEADLESS`.
 
 It builds `extension/chromium`, writes a native-messaging manifest pointing at
 `apps/native-host/bin/gramgrab-native-host.mjs`, and starts the browser with a
@@ -103,18 +116,41 @@ cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 ```
 
 That exports `GRAMGRAB_CDP_PORT`, `GRAMGRAB_EXT_ID`, `GRAMGRAB_IPC_PATH`,
-`GRAMGRAB_VERIFY_DOWNLOADS`, and the browser PID.
+`GRAMGRAB_VERIFY_DOWNLOADS`, `GRAMGRAB_VERIFY_HEADLESS`, and the browser PID.
 
 ### Browser choice
 
-`launch.sh` resolves `GRAMGRAB_BROWSER` first, then `helium`, `chromium`,
-`google-chrome`. **Google Chrome 137 and newer ignore `--load-extension`**, so
-the script refuses to start it and tells you to pick another binary. Helium is a
-Chromium fork and honours the switch; it is the working default on this machine.
+`launch.sh` resolves `GRAMGRAB_BROWSER` first, then `helium`, `chromium`, and
+the newest Chrome for Testing under `~/.cache/gramgrab-verify-browser/`.
+**Google Chrome 137 and newer ignore `--load-extension`**, so the script refuses
+to start it and tells you to pick another binary. Helium, Chromium and Chrome
+for Testing honour the switch.
 
 ```bash
 GRAMGRAB_BROWSER=chromium .agents/skills/verify-gramgrab/scripts/launch.sh
 ```
+
+A machine with none of those, WSL included, can download Chrome for Testing
+without root:
+
+```bash
+vp dlx @puppeteer/browsers install chrome@stable --path ~/.cache/gramgrab-verify-browser
+```
+
+Ubuntu lacks `libnss3`, which Chrome for Testing needs, so a person runs
+`sudo apt install libnss3` once. `launch.sh` names any missing library before
+starting instead of timing out on the CDP port. Prefer Chrome for Testing to a
+Chromium snapshot from the same tool: snapshots cannot play H.264 or AAC, so
+Instagram video previews read `No preview available` and frame export fails.
+
+The browser runs headed when `DISPLAY` or `WAYLAND_DISPLAY` is set, and WSLg
+sets one, so on WSL the window appears on the Windows desktop.
+`GRAMGRAB_HEADLESS=1` forces `--headless` in a 1280x900 window, and it is the
+default without a display. Headless loads the extension, starts the native
+host, and captures screenshots, but it cannot prove frame export: the runner's
+minimized window counts as hidden there, its video never loads, and the export
+fails with `FRAME_TIMEOUT`. Human checkpoints need a window too. `signin.sh`
+always launches headed.
 
 ### Signing in
 

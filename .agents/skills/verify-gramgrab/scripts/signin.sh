@@ -10,7 +10,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../../../.." && pwd)"
 cd "$repo"
 
-"$here/launch.sh" >/dev/null
+# Signing in is a human step, so it always needs a visible window.
+GRAMGRAB_HEADLESS=0 "$here/launch.sh" >/dev/null
 # shellcheck disable=SC1091
 . "$repo/.local/verify/session.env"
 
