@@ -484,6 +484,36 @@ fixtures cannot show which accounts do this, so prove Posts against a live grid 
 A copied profile can carry a rate-limit `pause` in `instagram-requests`, which makes every check
 report `deferredUntil` with no kinds run. Preserve and report that deferral on a shared account.
 
+## Fetched media is seen
+
+Media the person fetches in the popup, workspace or CLI is marked seen for the verified login's
+Watches of its author or co-authors, whether or not it is downloaded. The record is
+`tracking.<kind>.seen`, a list of media IDs with publication times, and the next check of that kind
+skips them. Only media newer than the kind's baseline and inside 30 days is recorded, so the
+official `instagram` Watch, whose recent media is usually already found, rarely shows a change.
+This recipe uses a paused fixture Watch of the same account with older baselines instead. It
+spends the ordinary fetch requests plus one viewer request per fetch, and no Watch check.
+
+1. Launch, then within the two-minute startup hold run `watch-problem.mjs hold 60` and require
+   `"held":true`. The seed copies the official `instagram` Watch's IDs, so a profile without one
+   needs it added first, through Add Watch on the options page or `gramgrab watch add instagram
+   --kinds posts,stories --actions collect --accept-unattended`. The hold keeps its first check
+   from running.
+2. `node .agents/skills/verify-gramgrab/scripts/watch-seen.mjs seed 7`, then `watch-seen.mjs read`:
+   `present: true` with `postsSeen: 0` and `storiesSeen: 0`.
+3. In the workspace, type `https://www.instagram.com/stories/instagram/` into `#source-url` and click
+   `.fetch-row button`. When the media shows, `watch-seen.mjs read` reports `storiesSeen` equal to
+   the number of Stories shown, unless the account has none active.
+4. Fetch one `instagram` Post from the last seven days the same way. Find one by reading `/p/` and
+   `/reel/` links off `https://www.instagram.com/instagram/` in the driven browser. `postsSeen`
+   becomes 1, and a Sidecar still counts once.
+5. `gramgrab inspect` of the same Post leaves the counts unchanged, since the media is already seen.
+6. `watch-seen.mjs remove` in a `finally` step. It removes only the fixture, by its fixed ID.
+
+That the next check skips the media is owned by the "Media the person fetched" tests in
+`watch/check.test.ts`. Proving it live needs a Watch check, so it needs the same authorization as
+Check now.
+
 ## Check problem
 
 A kind whose check failed shows its problem in the Watch's health row and in Needs you. The stored

@@ -13,7 +13,7 @@ import {
   graphqlFetch as graphqlFetchEffect,
   graphqlPost as graphqlPostEffect,
 } from '../effect/instagram.ts';
-import { ShortcodeMediaResponseSchema } from '../effect/schemas.ts';
+import { ShortcodeMediaResponseSchema, type InstantItem } from '../effect/schemas.ts';
 import {
   GraphQLRequestFailed,
   InvalidInstagramUrl,
@@ -24,7 +24,8 @@ import {
 } from '../effect/errors.ts';
 import { fetchPostsPage } from '../watch/posts.ts';
 import { confirmProfile, requireOk, WireAccountId } from '../watch/identity.ts';
-import { fetchRestShortcodeMedia } from './rest-shortcode.ts';
+import { fetchedMedia, type FetchedMedia } from '../watch/contracts.ts';
+import { decodeRestShortcodeMedia, fetchRestShortcodeRaw, fetchedPost } from './rest-shortcode.ts';
 import {
   normalizeHighlightCovers,
   normalizeInstantItems,
@@ -40,6 +41,12 @@ import { InstagramRequests, type WatchRequestDeferred } from './requests.ts';
 type ParsedUrl = InstagramTarget;
 
 type ShortcodeMediaResponse = Schema.Schema.Type<typeof ShortcodeMediaResponseSchema>;
+
+/** The media a person asked for, and how a Watch check would identify it. */
+export interface Resolution {
+  readonly items: MediaItem[];
+  readonly fetched: readonly FetchedMedia[];
+}
 
 export function parseInstagramUrl(url: string): ParsedUrl | null {
   return canonicalizeInstagramUrl(url)?.target ?? null;
@@ -214,9 +221,18 @@ const fetchShortcodeMediaRaw = (shortcode: string) =>
     );
   });
 
-const fetchShortcodeMediaItems = (shortcode: string) =>
+const fetchRestResolution = (shortcode: string) =>
+  fetchRestShortcodeRaw(shortcode).pipe(
+    Effect.flatMap(raw =>
+      decodeRestShortcodeMedia(raw, shortcode).pipe(
+        Effect.map((items): Resolution => ({ items, fetched: fetchedPost(raw, shortcode) }))
+      )
+    )
+  );
+
+const fetchShortcodeMedia = (shortcode: string) =>
   Effect.gen(function* () {
-    const rest = yield* fetchRestShortcodeMedia(shortcode).pipe(Effect.either);
+    const rest = yield* fetchRestResolution(shortcode).pipe(Effect.either);
     if (rest._tag === 'Right') return rest.right;
     const error = rest.left;
     if (
@@ -227,7 +243,8 @@ const fetchShortcodeMediaItems = (shortcode: string) =>
       return yield* Effect.fail(error);
     const raw = yield* fetchShortcodeMediaRaw(shortcode);
     const decoded = yield* decodeShortcodeResponse(raw);
-    return yield* normalizeKnownShortcodeMedia(resolveShortcodeResponseNode(decoded));
+    const items = yield* normalizeKnownShortcodeMedia(resolveShortcodeResponseNode(decoded));
+    return { items, fetched: [] } satisfies Resolution;
   });
 
 function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
@@ -266,12 +283,14 @@ const fetchConfiguredReelsMedia = (variables: Record<string, unknown>) =>
     return yield* Effect.fail(lastError ?? new ResponseShapeUnknown({ context: 'reels_media' }));
   });
 
-const fetchHighlightMediaItems = (highlightId: string) =>
+const fetchHighlightMedia = (highlightId: string) =>
   fetchConfiguredReelsMedia(createReelsRequestVariables('highlight', highlightId)).pipe(
-    Effect.map(reels => normalizeReelsMediaItems(reels, 'highlight'))
+    Effect.map(
+      (reels): Resolution => ({ items: normalizeReelsMediaItems(reels, 'highlight'), fetched: [] })
+    )
   );
 
-const fetchStoryMediaItems = (username: string) =>
+const fetchStoryMedia = (username: string) =>
   Effect.gen(function* () {
     const userId = yield* resolveUsernameToId(username);
 
@@ -281,10 +300,20 @@ const fetchStoryMediaItems = (username: string) =>
 
     const reels = yield* fetchConfiguredReelsMedia(createReelsRequestVariables('story', userId));
 
-    return normalizeReelsMediaItems(reels, 'story');
+    const fetched = fetchedMedia(
+      reels.flatMap(reel =>
+        reel.items.map(item => ({
+          kind: 'stories',
+          owners: [String(reel.id)],
+          mediaId: item.id,
+          takenAt: 'taken_at_timestamp' in item ? item.taken_at_timestamp : undefined,
+        }))
+      )
+    );
+    return { items: normalizeReelsMediaItems(reels, 'story'), fetched } satisfies Resolution;
   });
 
-const fetchProfileMediaItems = (username: string) =>
+const fetchProfileMedia = (username: string) =>
   Effect.gen(function* () {
     const userId = yield* resolveUsernameToId(username);
     if (!userId) return yield* Effect.fail(new UsernameUnresolved({ username }));
@@ -308,7 +337,7 @@ const fetchProfileMediaItems = (username: string) =>
     const [avatar, covers] = yield* Effect.all([avatarEffect, coversEffect], {
       concurrency: 'unbounded',
     });
-    return [...avatar, ...covers];
+    return { items: [...avatar, ...covers], fetched: [] } satisfies Resolution;
   });
 
 /** The signed-in viewer's active Instants feed, decoded but not yet normalized. */
@@ -329,8 +358,32 @@ export const fetchInstantItems = () => {
   );
 };
 
-export const fetchInstantMediaItems = () =>
-  fetchInstantItems().pipe(Effect.flatMap(normalizeInstantItems));
+/**
+ * The Instants the feed holds, as an Instants check of each owner would find them: an Instant's
+ * ID ends with its owner's account ID.
+ */
+const fetchedInstants = (items: readonly InstantItem[]) =>
+  fetchedMedia(
+    items.flatMap(item =>
+      'media_type' in item && item.id.endsWith(`_${item.user.id}`)
+        ? [{ kind: 'instants', owners: [item.user.id], mediaId: item.id, takenAt: item.taken_at }]
+        : []
+    )
+  );
+
+export const fetchInstantMedia = () =>
+  fetchInstantItems().pipe(
+    Effect.flatMap(raw =>
+      normalizeInstantItems(raw).pipe(
+        Effect.map((items): Resolution => ({ items, fetched: fetchedInstants(raw) }))
+      )
+    )
+  );
+
+const indexed = (resolution: Resolution): Resolution => ({
+  ...resolution,
+  items: withItemIndexes(resolution.items),
+});
 
 export const resolveMediaEffect = (url: string) =>
   Effect.gen(function* () {
@@ -340,12 +393,12 @@ export const resolveMediaEffect = (url: string) =>
     switch (parsed.type) {
       case 'post':
       case 'reel':
-        return withItemIndexes(yield* fetchShortcodeMediaItems(parsed.shortcode!));
+        return indexed(yield* fetchShortcodeMedia(parsed.shortcode!));
       case 'highlight':
-        return withItemIndexes(yield* fetchHighlightMediaItems(parsed.highlightId!));
+        return indexed(yield* fetchHighlightMedia(parsed.highlightId!));
       case 'story':
-        return withItemIndexes(yield* fetchStoryMediaItems(parsed.username!));
+        return indexed(yield* fetchStoryMedia(parsed.username!));
       case 'profile':
-        return withItemIndexes(yield* fetchProfileMediaItems(parsed.username!));
+        return indexed(yield* fetchProfileMedia(parsed.username!));
     }
   });

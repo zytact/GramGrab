@@ -40,7 +40,8 @@ Watches are the one exception to request-in-the-moment access. See
   - IDs: the creating viewer ID, the target account ID, and the target's current and previous usernames
   - settings: the chosen kinds and actions, and whether the Watch is enabled or paused
   - per kind: the baseline cutoff, the seen media IDs with publication times, and the last check
-    status, code, and time
+    status, code, and time. Seen media includes what the person fetched by hand, as described
+    under Fetched media
   - media references: shortcodes, media IDs, Sidecar child IDs, media type, publication time, Story
     expiry time, and discovery time
   - Avatar picture identities: the last one observed and one for each recorded change
@@ -55,6 +56,13 @@ Watches are the one exception to request-in-the-moment access. See
   viewer's own username and Avatar are fetched when needed and are not stored. A Posts traversal
   cursor lives only in `storage.session`. Each Watch entry links to its Instagram page, built
   when shown from the username and the stored shortcode or Story ID; the link is never stored.
+
+- **Fetched media.** When the person fetches a Post, Sidecar, Story, or Instant in the popup,
+  workspace, or CLI, GramGrab adds its media ID and publication time to the seen media of the
+  verified login's Watches of its author or co-authors, so their next check skips it. It confirms
+  the login with one viewer request, and only when such a Watch exists. It records nothing for an
+  account without a Watch, for media inside a Watch's baseline or older than 30 days, for a
+  Highlight, or for an Avatar. An entry already in the Watch inbox stays there.
 
 - **Export and import.** The options page can save the verified login's Watches to a file and add
   the Watches in such a file to the verified login. The file holds each target account ID and

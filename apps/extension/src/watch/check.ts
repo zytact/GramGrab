@@ -29,6 +29,7 @@ import {
   applyTimedCheck,
   discoverNew,
   eligible,
+  keptSeen,
   windowStartAt,
   type KindProblemCause,
 } from './discoveries.ts';
@@ -263,7 +264,12 @@ const recordPage = (
   update(watchId, (current, now) => {
     const found = discoverNew(current, refs, { ...context, now });
     const posts: TimedTracking = done
-      ? { baselineCutoff: context.cutoff, lastSuccessAt: now, lastCheckAt: now }
+      ? {
+          baselineCutoff: context.cutoff,
+          ...keptSeen(current.tracking.posts, now),
+          lastSuccessAt: now,
+          lastCheckAt: now,
+        }
       : (current.tracking.posts ?? {});
     return { watch: withPosts(found.watch, posts), value: found.newCount };
   });

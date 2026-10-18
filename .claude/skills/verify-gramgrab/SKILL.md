@@ -396,3 +396,5 @@ fixture Watches for the long-list layout recipe in the same file.
 `scripts/watch-problem.mjs hold | seed CODE [REASON] | remove | quiet | release`
 holds Watch work and seeds a Posts check problem on the `instagram` Watch for the
 Check problem recipe.
+`scripts/watch-seen.mjs seed [DAYS] | read | remove` adds, reads, or removes a paused
+fixture Watch of the `instagram` account for the Fetched media is seen recipe.

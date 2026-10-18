@@ -1,4 +1,4 @@
-import { Schema } from 'effect';
+import { Option, Schema } from 'effect';
 import {
   ExportSettings,
   AccountId,
@@ -39,9 +39,13 @@ const KindProblemRecord = Schema.Struct({
   at: EpochMillis,
 });
 
+/** Media the person fetched before a check found it, which later checks skip. */
+const SeenMedia = Schema.Struct({ mediaId: MediaId, takenAt: EpochSeconds });
+
 const TimedTracking = Schema.Struct({
   /** Publication second at or before which media is part of the baseline. Absent means pending. */
   baselineCutoff: Schema.optional(EpochSeconds),
+  seen: Schema.optional(Schema.Array(SeenMedia)),
   lastSuccessAt: Schema.optional(EpochMillis),
   lastCheckAt: Schema.optional(EpochMillis),
   problem: Schema.optional(KindProblemRecord),
@@ -98,6 +102,27 @@ const InstantRef = Schema.TaggedStruct('Instant', {
 });
 
 const AvatarRef = Schema.TaggedStruct('Avatar', { pictureId: PictureId });
+
+/**
+ * Media the person fetched, keyed as a Watch check of `kind` would find it: a Post or Sidecar by
+ * its own ID, never a child's. `owners` are the accounts whose Watches would find it.
+ */
+const FetchedMedia = Schema.Struct({
+  kind: Schema.Literal('posts', 'stories', 'instants'),
+  owners: Schema.Array(AccountId),
+  mediaId: MediaId,
+  takenAt: EpochSeconds,
+});
+export type FetchedMedia = Schema.Schema.Type<typeof FetchedMedia>;
+
+const decodeFetched = Schema.decodeUnknownOption(FetchedMedia);
+
+/** The candidates exact enough to mark seen. Any other is dropped rather than guessed at. */
+export const fetchedMedia = (
+  candidates: readonly {
+    readonly [Key in keyof FetchedMedia]: Key extends 'kind' ? FetchedMedia['kind'] : unknown;
+  }[]
+): FetchedMedia[] => candidates.flatMap(candidate => Option.toArray(decodeFetched(candidate)));
 
 /** A downscaled JPEG's base64 text, at most 8 KiB of image bytes. */
 export const AvatarJpeg = Schema.String.pipe(

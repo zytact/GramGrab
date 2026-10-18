@@ -112,6 +112,12 @@ that feed: an Instant that never appeared in it, or left it before a check, is n
 nothing promises 30 days of Instants. One malformed or unknown item in the feed fails the Instants
 check of every Watch that read it.
 
+Media the person fetches counts as seen. `inspect`, `export`, and their `instants` forms, like the
+popup and workspace, mark each fetched Post, Sidecar, Story, and Instant seen for the verified
+login's Watches of its author or co-authors, whether or not it is downloaded. The next check of
+that kind skips it: no notification, download, or inbox entry. A Sidecar is seen as a whole. An
+entry a check already found keeps its pending actions. Avatars and Highlights are never marked.
+
 Avatar and Posts checks first confirm the account's current username by its account ID and follow
 a confirmed rename. An Avatar check then finds the account's exact record in Instagram search and
 compares its opaque picture ID with the last one seen. A new ID is a change even when the picture
@@ -131,7 +137,7 @@ transport failure.
 | Existing behavior                                                        | Protocol command or event                                 | Progress and edge behavior                                                                       |
 | ------------------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Resolve Post, shortcode Reel, Sidecar, Story, Highlight, or Avatar media | `Inspect`                                                 | `resolving`; source and Instagram failures retain their registered codes                         |
-| Inspect the authenticated active Instants feed                           | `InstantsInspect`                                         | `resolving`; no Source or seen-state mutation                                                    |
+| Inspect the authenticated active Instants feed                           | `InstantsInspect`                                         | `resolving`; no Source; marks fetched Instants seen for Watches of their owners                  |
 | Export active Instant photos and videos                                  | `InstantsExport.operations`                               | Fresh inspection supplies signed URLs and stable media identity                                  |
 | Select one or more media items                                           | `Export.operations`                                       | Reject zero, negative, missing, or out-of-range human item numbers before execution              |
 | Download an original image or video                                      | `DirectExport`                                            | `direct-download`; success means the browser accepted the download                               |
