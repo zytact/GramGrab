@@ -103,18 +103,40 @@ cd "$(git rev-parse --show-toplevel)" && . ./.local/verify/session.env
 ```
 
 That exports `GRAMGRAB_CDP_PORT`, `GRAMGRAB_EXT_ID`, `GRAMGRAB_IPC_PATH`,
-`GRAMGRAB_VERIFY_DOWNLOADS`, and the browser PID.
+`GRAMGRAB_VERIFY_DOWNLOADS`, `GRAMGRAB_VERIFY_HEADLESS`, and the browser PID.
 
 ### Browser choice
 
-`launch.sh` resolves `GRAMGRAB_BROWSER` first, then `helium`, `chromium`,
-`google-chrome`. **Google Chrome 137 and newer ignore `--load-extension`**, so
-the script refuses to start it and tells you to pick another binary. Helium is a
-Chromium fork and honours the switch; it is the working default on this machine.
+`launch.sh` resolves `GRAMGRAB_BROWSER` first, then `helium`, `chromium`, the
+newest Chromium under `~/.cache/gramgrab-verify-browser/`, and `google-chrome`.
+**Google Chrome 137 and newer ignore `--load-extension`**, so the script refuses
+to start it and tells you to pick another binary. Helium is a Chromium fork and
+honours the switch.
 
 ```bash
 GRAMGRAB_BROWSER=chromium .agents/skills/verify-gramgrab/scripts/launch.sh
 ```
+
+A machine with none of those, WSL included, can download a Chromium snapshot
+without root:
+
+```bash
+vp dlx @puppeteer/browsers install chromium@latest --path ~/.cache/gramgrab-verify-browser
+```
+
+Ubuntu lacks one library that build needs, so a person runs
+`sudo apt install libnss3` once. `launch.sh` names any missing library before
+starting instead of timing out on the CDP port.
+
+`GRAMGRAB_HEADLESS=1` runs the browser with `--headless` in a 1280x900 window,
+because the headless default of 800x600 leaves pages too short for the Watches
+layout recipes. It defaults to `1` under WSL or when neither `DISPLAY` nor
+`WAYLAND_DISPLAY` is set, and `0` elsewhere. Headless Chromium still loads the
+extension, starts the native host, opens the runner window, and captures
+screenshots. Human checkpoints need a window for the toolbar popup, a context
+menu, a permission prompt, or a Save As dialog, so relaunch with
+`GRAMGRAB_HEADLESS=0` for those. WSLg shows that window on the Windows desktop.
+`signin.sh` always launches headed.
 
 ### Signing in
 

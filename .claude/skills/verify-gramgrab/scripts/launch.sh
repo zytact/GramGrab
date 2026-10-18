@@ -7,8 +7,10 @@
 # Instagram and WhatsApp Web sign-in survives. Only the run state under
 # .local/verify/ is throwaway.
 #
-#   GRAMGRAB_BROWSER   browser binary or name (default: helium, chromium, google-chrome)
+#   GRAMGRAB_BROWSER   browser binary or name (default: helium, chromium, the
+#                      Chromium in ~/.cache/gramgrab-verify-browser, google-chrome)
 #   GRAMGRAB_PROFILE   use a different profile directory, e.g. a second account
+#   GRAMGRAB_HEADLESS  1 or 0 (default: 1 under WSL or without a display)
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
@@ -31,12 +33,29 @@ if [ -f "$session_dir/session.env" ]; then
 fi
 
 browser=""
-for candidate in "${GRAMGRAB_BROWSER:-}" helium chromium google-chrome google-chrome-stable; do
+downloaded="$(ls -d "$HOME"/.cache/gramgrab-verify-browser/chromium/linux-*/chrome-linux/chrome 2>/dev/null | sort -V | tail -n 1 || true)"
+for candidate in "${GRAMGRAB_BROWSER:-}" helium chromium "$downloaded" google-chrome google-chrome-stable; do
   [ -n "$candidate" ] || continue
   if [ -x "$candidate" ]; then browser="$candidate"; break; fi
   if resolved="$(command -v "$candidate" 2>/dev/null)"; then browser="$resolved"; break; fi
 done
 [ -n "$browser" ] || { echo "No Chromium browser found. Set GRAMGRAB_BROWSER." >&2; exit 2; }
+
+# A downloaded Chromium starts without its system libraries and only says so in
+# browser.log after the CDP wait times out, so name them up front.
+missing="$(ldd "$browser" 2>/dev/null | awk '/not found/ {print $1}' || true)"
+if [ -n "$missing" ]; then
+  echo "$browser is missing shared libraries:" $missing >&2
+  echo "On Ubuntu, sudo apt install libnss3 provides the usual ones." >&2
+  exit 2
+fi
+
+headless="${GRAMGRAB_HEADLESS:-}"
+if [ -z "$headless" ]; then
+  if [ -n "${WSL_DISTRO_NAME:-}" ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then headless=1; else headless=0; fi
+fi
+headless_flag=()
+[ "$headless" = 1 ] && headless_flag=(--headless --window-size=1280,900)
 
 # Google Chrome 137+ ignores --load-extension unless enterprise policy allows it.
 # Helium and plain Chromium still honour it. Say so before burning a minute on a
@@ -128,6 +147,7 @@ GRAMGRAB_IPC_PATH="$ipc_path" nohup "$browser" \
   --remote-debugging-port="$port" \
   --no-first-run \
   --no-default-browser-check \
+  "${headless_flag[@]}" \
   about:blank \
   >"$session_dir/browser.log" 2>&1 &
 pid=$!
@@ -141,6 +161,7 @@ export GRAMGRAB_IPC_PATH=$ipc_path
 export GRAMGRAB_VERIFY_DIR=$session_dir
 export GRAMGRAB_VERIFY_PROFILE=$profile
 export GRAMGRAB_VERIFY_DOWNLOADS=$downloads
+export GRAMGRAB_VERIFY_HEADLESS=$headless
 ENV
 
 for _ in $(seq 1 60); do
