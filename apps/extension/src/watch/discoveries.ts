@@ -16,6 +16,7 @@ import {
   profilePage,
   type ChildDownload,
   type Discovery,
+  type FetchedMedia,
   type MediaRef,
   type TimedRef,
   type TimedTracking,
@@ -38,6 +39,20 @@ const refIdentity = (ref: MediaRef): string =>
   ref._tag === 'Avatar' ? ref.pictureId : ref.mediaId;
 
 type TimedKind = Exclude<WatchKind, 'avatar'>;
+const TIMED_KINDS = ['posts', 'stories', 'instants'] as const satisfies readonly TimedKind[];
+
+/** Every media ID the Watch has seen: what its checks found, and what the person fetched. */
+const seenIds = (watch: Watch) =>
+  new Set([
+    ...watch.discoveries.map(discovery => refIdentity(discovery.ref)),
+    ...TIMED_KINDS.flatMap(kind => watch.tracking[kind]?.seen ?? []).map(media => media.mediaId),
+  ]);
+
+/** The kind's fetched media that can still be eligible, so later checks keep skipping it. */
+export const keptSeen = (tracking: TimedTracking | undefined, now: number) => {
+  const seen = tracking?.seen?.filter(media => media.takenAt >= windowStartAt(now));
+  return seen?.length ? { seen } : {};
+};
 
 /** Records a discovery with every selected action waiting, and collection done with it. */
 function discover(ref: MediaRef, watch: Watch, checkId: string, now: number): Discovery {
@@ -121,7 +136,7 @@ export function discoverNew(
   }
 ): { readonly watch: Watch; readonly newCount: number } {
   const { checkId, cutoff, windowStart, now } = context;
-  const seen = new Set(watch.discoveries.map(discovery => refIdentity(discovery.ref)));
+  const seen = seenIds(watch);
   const found: Discovery[] = [];
   for (const ref of refs) {
     if (!eligible(ref.takenAt, cutoff, windowStart) || seen.has(ref.mediaId)) continue;
@@ -148,7 +163,12 @@ export function applyTimedCheck(
   const { checkId, proposedCutoff, now } = context;
   const baseline = watch.tracking[kind]?.baselineCutoff;
   const cutoff = baseline ?? proposedCutoff;
-  const checked: TimedTracking = { baselineCutoff: cutoff, lastSuccessAt: now, lastCheckAt: now };
+  const checked: TimedTracking = {
+    baselineCutoff: cutoff,
+    ...keptSeen(watch.tracking[kind], now),
+    lastSuccessAt: now,
+    lastCheckAt: now,
+  };
   const tracked = { ...watch, tracking: { ...watch.tracking, [kind]: checked } };
   if (baseline === undefined)
     return { watch: tracked, outcome: KindBaselineRecorded.make({ kind }) };
@@ -162,6 +182,29 @@ export function applyTimedCheck(
     watch: result.watch,
     outcome: KindCheckSucceeded.make({ kind, newCount: result.newCount, catchUp: false }),
   };
+}
+
+/**
+ * Records the fetched media a later check of this Watch would find as new, so that check skips
+ * it. Media inside the baseline, outside the window, or already seen is left out.
+ */
+export function markFetched(watch: Watch, fetched: readonly FetchedMedia[], now: number): Watch {
+  const seen = seenIds(watch);
+  let tracking = watch.tracking;
+  for (const media of fetched) {
+    const timed = tracking[media.kind];
+    if (
+      !media.owners.includes(watch.targetId) ||
+      timed?.baselineCutoff === undefined ||
+      !eligible(media.takenAt, timed.baselineCutoff, windowStartAt(now)) ||
+      seen.has(media.mediaId)
+    )
+      continue;
+    seen.add(media.mediaId);
+    const entry = { mediaId: media.mediaId, takenAt: media.takenAt };
+    tracking = { ...tracking, [media.kind]: { ...timed, seen: [...(timed.seen ?? []), entry] } };
+  }
+  return tracking === watch.tracking ? watch : { ...watch, tracking };
 }
 
 /**

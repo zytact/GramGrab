@@ -62,9 +62,10 @@ import {
 } from './history/contracts.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
 import {
-  fetchInstantMediaItems,
+  fetchInstantMedia,
   parseInstagramUrl,
   resolveMediaEffect,
+  type Resolution,
 } from './instagram/acquisition.ts';
 import { runOperationHandler } from './effect/runtime.ts';
 import { fetchBlobAsDataUrl } from './effect/instagram.ts';
@@ -108,6 +109,7 @@ import {
   retryAfterUpdate,
 } from './watch/scheduler.ts';
 import { notifiedWatch } from './watch/notify.ts';
+import { recordFetched } from './watch/fetched.ts';
 import { acceptedHistoryEntry, type AcceptedHistoryOperation } from './history/receipt.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
@@ -152,6 +154,13 @@ function hasValidMediaDimensions(
   );
 }
 
+/** The items a person asked for, after marking them seen by that login's Watches of their owners. */
+const fetchedItems = <E, R>(resolution: Effect.Effect<Resolution, E, R>) =>
+  resolution.pipe(
+    Effect.tap(({ fetched }) => recordFetched(fetched)),
+    Effect.map(({ items }) => ({ items }))
+  );
+
 async function handleFetchMedia(
   msg: MessageOf<'FETCH_MEDIA'>
 ): Promise<MessageResponse<'FETCH_MEDIA'>> {
@@ -166,7 +175,7 @@ async function handleFetchMedia(
       }),
     };
   const result = await runOperationHandler(
-    resolveMediaEffect(source.url).pipe(Effect.map(items => ({ items }))),
+    fetchedItems(resolveMediaEffect(source.url)),
     { items: undefined as MediaItem[] | undefined },
     normalizeSourceFailure
   );
@@ -198,7 +207,7 @@ async function handleFetchInstants(
   _msg: MessageOf<'FETCH_INSTANTS'>
 ): Promise<MessageResponse<'FETCH_INSTANTS'>> {
   const result = await runOperationHandler(
-    fetchInstantMediaItems().pipe(Effect.map(items => ({ items }))),
+    fetchedItems(fetchInstantMedia()),
     { items: undefined as MediaItem[] | undefined },
     normalizeSourceFailure
   );
@@ -401,14 +410,14 @@ async function handleRedownloadHistoryEntry(
   const resolved =
     entry.origin.kind === 'instants'
       ? await runOperationHandler(
-          fetchInstantMediaItems().pipe(Effect.map(items => ({ items }))),
+          fetchedItems(fetchInstantMedia()),
           {
             items: undefined as MediaItem[] | undefined,
           },
           normalizeSourceFailure
         )
       : await runOperationHandler(
-          resolveMediaEffect(entry.origin.sourceUrl).pipe(Effect.map(items => ({ items }))),
+          fetchedItems(resolveMediaEffect(entry.origin.sourceUrl)),
           { items: undefined as MediaItem[] | undefined },
           normalizeSourceFailure
         );

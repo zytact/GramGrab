@@ -24,11 +24,13 @@ import {
   createWatchInstagram,
   instantsFeed,
   postsPage,
+  restMedia,
   storyResponse,
   stubAvatarScaling,
   type FakeInstant,
   type FakePost,
   type FakeStory,
+  VIEWER,
 } from '../test/watch-instagram.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
 
@@ -530,6 +532,96 @@ describe('Instants checks', () => {
       code: 'IG_RESPONSE_SHAPE_UNKNOWN',
       since: expect.any(Number),
     });
+  });
+});
+
+describe('Media the person fetched', () => {
+  /** Fetches by hand the way the popup, workspace, and CLI do, letting paced requests run. */
+  async function fetchByHand(
+    message: { type: 'FETCH_MEDIA'; url: string } | { type: 'FETCH_INSTANTS' }
+  ) {
+    let response: { media?: readonly unknown[] } | undefined;
+    void harness.send<typeof response>(message).then(answer => (response = answer));
+    while (!response) await vi.advanceTimersByTimeAsync(1_000);
+    expect(response.media?.length).toBeGreaterThan(0);
+  }
+
+  const STORIES = 'https://www.instagram.com/stories/instagram/';
+
+  it('skips a fetched Story on the next check and still finds one fetched by no one', async () => {
+    await addWatch();
+    await checkLater();
+    const published = seconds(Date.now()) + 60;
+    setStories([{ id: '61', takenAt: published }]);
+    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+
+    await fetchByHand({ type: 'FETCH_MEDIA', url: STORIES });
+    setStories([
+      { id: '61', takenAt: published },
+      { id: '62', takenAt: published + 1 },
+    ]);
+    const next = await checkLater();
+
+    expect(next.kinds).toEqual([
+      { _tag: 'KindCheckSucceeded', kind: 'stories', newCount: 1, catchUp: false },
+    ]);
+    expect(await found()).toHaveLength(1);
+  });
+
+  it('skips a fetched collab Sidecar as a whole, across later checks', async () => {
+    await addWatch(['collect'], 'posts');
+    await checkLater();
+    await vi.advanceTimersByTimeAsync(DAY);
+    const post = {
+      id: '910',
+      takenAt: seconds(Date.now()) - 60,
+      children: ['911', '912'],
+      owner: '3003',
+      coauthors: [TARGET.id],
+    };
+    instagram.state.media[`C${post.id}`] = restMedia(post);
+    instagram.state.posts = { '': postsPage([post]) };
+
+    await fetchByHand({ type: 'FETCH_MEDIA', url: `https://www.instagram.com/p/C${post.id}/` });
+    const next = await checkLater();
+    await checkLater();
+
+    expect(next.kinds).toEqual([
+      { _tag: 'KindCheckSucceeded', kind: 'posts', newCount: 0, catchUp: false },
+    ]);
+    expect(await found()).toEqual([]);
+  });
+
+  it('skips a fetched Instant', async () => {
+    await addWatch(['collect'], 'instants');
+    await checkLater();
+    const takenAt = seconds(Date.now()) + 60;
+    instagram.state.instants = instantsFeed([{ pk: '71', owner: TARGET.id, takenAt }]);
+    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+
+    await fetchByHand({ type: 'FETCH_INSTANTS' });
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ newCount: 0 });
+  });
+
+  it("records nothing for another login's Watch, or without a Watch of the owner", async () => {
+    await addWatch();
+    await checkLater();
+    setStories([{ id: '81', takenAt: seconds(Date.now()) + 60 }]);
+    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+    instagram.state.viewer = { id: '1009', username: 'instagram' };
+    await fetchByHand({ type: 'FETCH_MEDIA', url: STORIES });
+
+    instagram.state.viewer = VIEWER;
+    expect((await checkLater()).kinds[0]).toMatchObject({ newCount: 1 });
+
+    const viewerRequests = instagram.state.viewerRequests;
+    instagram.state.accounts.other = { id: '4004' };
+    instagram.state.stories['4004'] = storyResponse('4004', [
+      { id: '82', takenAt: seconds(Date.now()) },
+    ]);
+    await fetchByHand({ type: 'FETCH_MEDIA', url: 'https://www.instagram.com/stories/other/' });
+    expect(instagram.state.viewerRequests).toBe(viewerRequests);
   });
 });
 

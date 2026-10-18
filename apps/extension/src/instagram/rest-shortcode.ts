@@ -1,8 +1,9 @@
-import { Effect, Schema } from 'effect';
+import { Effect, Option, Schema } from 'effect';
 import { HttpError, NetworkError, RateLimited, ResponseShapeUnknown } from '../effect/errors.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
 import { InstagramRequests } from './requests.ts';
 import type { MediaItem } from './normalize.ts';
+import { fetchedMedia, type FetchedMedia } from '../watch/contracts.ts';
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 const PRIVATE_SHORTCODE_SUFFIX_LENGTH = 28;
@@ -256,10 +257,9 @@ export const fetchRestShortcodeRaw = (shortcode: string) =>
     });
   });
 
-export const fetchRestShortcodeMedia = (shortcode: string, expected?: ExpectedMedia) =>
+/** The media items a REST shortcode answer holds for `shortcode`. */
+export const decodeRestShortcodeMedia = (raw: unknown, shortcode: string) =>
   Effect.gen(function* () {
-    const raw = yield* fetchRestShortcodeRaw(shortcode);
-    if (expected) yield* verifyExpectedMedia(raw, shortcode, expected);
     const decoded = yield* decode(RestShortcodeResponseSchema, raw);
     if (decoded.status !== 'ok') return yield* Effect.fail(unknownShape());
     if (!decoded.items.length) return [];
@@ -267,3 +267,43 @@ export const fetchRestShortcodeMedia = (shortcode: string, expected?: ExpectedMe
     if (!match) return yield* Effect.fail(unknownShape());
     return yield* decodeRestItem(match, shortcode);
   });
+
+export const fetchRestShortcodeMedia = (shortcode: string, expected?: ExpectedMedia) =>
+  Effect.gen(function* () {
+    const raw = yield* fetchRestShortcodeRaw(shortcode);
+    if (expected) yield* verifyExpectedMedia(raw, shortcode, expected);
+    return yield* decodeRestShortcodeMedia(raw, shortcode);
+  });
+
+const PostIdentity = Schema.Struct({
+  items: Schema.Array(
+    Schema.Struct({
+      pk: Schema.String,
+      code: Schema.String,
+      taken_at: Schema.Number,
+      user: Schema.Struct({ pk: Schema.String }),
+      coauthor_producers: Schema.optional(
+        Schema.NullOr(Schema.Array(Schema.Struct({ pk: Schema.String })))
+      ),
+    })
+  ),
+});
+
+/**
+ * The Post or Sidecar a REST shortcode answer holds, as a Posts check of its author or a
+ * co-author would find it. An answer without that identity yields nothing.
+ */
+export function fetchedPost(raw: unknown, shortcode: string): FetchedMedia[] {
+  const decoded = Schema.decodeUnknownOption(PostIdentity)(raw);
+  if (Option.isNone(decoded)) return [];
+  return fetchedMedia(
+    decoded.value.items
+      .filter(item => item.code === shortcode)
+      .map(item => ({
+        kind: 'posts',
+        owners: [item.user.pk, ...(item.coauthor_producers ?? []).map(coauthor => coauthor.pk)],
+        mediaId: item.pk,
+        takenAt: item.taken_at,
+      }))
+  );
+}
