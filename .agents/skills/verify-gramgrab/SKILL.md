@@ -23,9 +23,22 @@ disagree about how to verify the app are worse than one.
 
 ## Launch
 
+Every route runs the same `launch.sh`; only the one-time browser setup differs.
+`[ -n "$WSL_DISTRO_NAME" ]` is true on WSL, and `launch.sh` failing with
+`No Chromium browser found` means the machine still needs that setup.
+
+| Machine | One-time setup | What `launch.sh` starts |
+| --- | --- | --- |
+| Linux desktop | Helium or Chromium on `PATH` | That browser, headed |
+| WSL | `sudo apt install libnss3`, then the [Chrome for Testing download](#browser-choice) | Chrome for Testing, headed through WSLg |
+| No display (SSH, CI) | Either of the above | The same browser, headless, with the gaps in [Browser choice](#browser-choice) |
+
 ```bash
 .agents/skills/verify-gramgrab/scripts/launch.sh
 ```
+
+`session.env` records the choice as `GRAMGRAB_VERIFY_BROWSER` and
+`GRAMGRAB_VERIFY_HEADLESS`.
 
 It builds `extension/chromium`, writes a native-messaging manifest pointing at
 `apps/native-host/bin/gramgrab-native-host.mjs`, and starts the browser with a
