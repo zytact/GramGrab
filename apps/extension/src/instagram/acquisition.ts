@@ -358,22 +358,15 @@ export const fetchInstantItems = () => {
   );
 };
 
-/** An Instant's ID ends with its owner's account ID. */
-const INSTANT_OWNER = /_(\d+)$/;
-
-/** The Instants the feed holds, as an Instants check of each owner would find them. */
+/**
+ * The Instants the feed holds, as an Instants check of each owner would find them: an Instant's
+ * ID ends with its owner's account ID.
+ */
 const fetchedInstants = (items: readonly InstantItem[]) =>
   fetchedMedia(
     items.flatMap(item =>
-      'media_type' in item
-        ? [
-            {
-              kind: 'instants',
-              owners: [INSTANT_OWNER.exec(item.id)?.[1]],
-              mediaId: item.id,
-              takenAt: item.taken_at,
-            },
-          ]
+      'media_type' in item && item.id.endsWith(`_${item.user.id}`)
+        ? [{ kind: 'instants', owners: [item.user.id], mediaId: item.id, takenAt: item.taken_at }]
         : []
     )
   );

@@ -189,20 +189,21 @@ export function applyTimedCheck(
  * it. Media inside the baseline, outside the window, or already seen is left out.
  */
 export function markFetched(watch: Watch, fetched: readonly FetchedMedia[], now: number): Watch {
-  const seen = seenIds(watch);
+  const known = seenIds(watch);
   let tracking = watch.tracking;
   for (const media of fetched) {
+    const { mediaId, takenAt } = media;
     const timed = tracking[media.kind];
     if (
       !media.owners.includes(watch.targetId) ||
       timed?.baselineCutoff === undefined ||
-      !eligible(media.takenAt, timed.baselineCutoff, windowStartAt(now)) ||
-      seen.has(media.mediaId)
+      !eligible(takenAt, timed.baselineCutoff, windowStartAt(now)) ||
+      known.has(mediaId)
     )
       continue;
-    seen.add(media.mediaId);
-    const entry = { mediaId: media.mediaId, takenAt: media.takenAt };
-    tracking = { ...tracking, [media.kind]: { ...timed, seen: [...(timed.seen ?? []), entry] } };
+    known.add(mediaId);
+    const seen = [...(keptSeen(timed, now).seen ?? []), { mediaId, takenAt }];
+    tracking = { ...tracking, [media.kind]: { ...timed, seen } };
   }
   return tracking === watch.tracking ? watch : { ...watch, tracking };
 }

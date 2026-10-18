@@ -118,8 +118,11 @@ export type FetchedMedia = Schema.Schema.Type<typeof FetchedMedia>;
 const decodeFetched = Schema.decodeUnknownOption(FetchedMedia);
 
 /** The candidates exact enough to mark seen. Any other is dropped rather than guessed at. */
-export const fetchedMedia = (candidates: readonly unknown[]): FetchedMedia[] =>
-  candidates.flatMap(candidate => Option.toArray(decodeFetched(candidate)));
+export const fetchedMedia = (
+  candidates: readonly {
+    readonly [Key in keyof FetchedMedia]: Key extends 'kind' ? FetchedMedia['kind'] : unknown;
+  }[]
+): FetchedMedia[] => candidates.flatMap(candidate => Option.toArray(decodeFetched(candidate)));
 
 /** A downscaled JPEG's base64 text, at most 8 KiB of image bytes. */
 export const AvatarJpeg = Schema.String.pipe(
