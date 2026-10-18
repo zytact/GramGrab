@@ -107,36 +107,37 @@ That exports `GRAMGRAB_CDP_PORT`, `GRAMGRAB_EXT_ID`, `GRAMGRAB_IPC_PATH`,
 
 ### Browser choice
 
-`launch.sh` resolves `GRAMGRAB_BROWSER` first, then `helium`, `chromium`, the
-newest Chromium under `~/.cache/gramgrab-verify-browser/`, and `google-chrome`.
+`launch.sh` resolves `GRAMGRAB_BROWSER` first, then `helium`, `chromium`, and
+the newest Chrome for Testing under `~/.cache/gramgrab-verify-browser/`.
 **Google Chrome 137 and newer ignore `--load-extension`**, so the script refuses
-to start it and tells you to pick another binary. Helium is a Chromium fork and
-honours the switch.
+to start it and tells you to pick another binary. Helium, Chromium and Chrome
+for Testing honour the switch.
 
 ```bash
 GRAMGRAB_BROWSER=chromium .agents/skills/verify-gramgrab/scripts/launch.sh
 ```
 
-A machine with none of those, WSL included, can download a Chromium snapshot
+A machine with none of those, WSL included, can download Chrome for Testing
 without root:
 
 ```bash
-vp dlx @puppeteer/browsers install chromium@latest --path ~/.cache/gramgrab-verify-browser
+vp dlx @puppeteer/browsers install chrome@stable --path ~/.cache/gramgrab-verify-browser
 ```
 
-Ubuntu lacks one library that build needs, so a person runs
+Ubuntu lacks `libnss3`, which Chrome for Testing needs, so a person runs
 `sudo apt install libnss3` once. `launch.sh` names any missing library before
-starting instead of timing out on the CDP port.
+starting instead of timing out on the CDP port. Prefer Chrome for Testing to a
+Chromium snapshot from the same tool: snapshots cannot play H.264 or AAC, so
+Instagram video previews read `No preview available` and frame export fails.
 
-`GRAMGRAB_HEADLESS=1` runs the browser with `--headless` in a 1280x900 window,
-because the headless default of 800x600 leaves pages too short for the Watches
-layout recipes. It defaults to `1` under WSL or when neither `DISPLAY` nor
-`WAYLAND_DISPLAY` is set, and `0` elsewhere. Headless Chromium still loads the
-extension, starts the native host, opens the runner window, and captures
-screenshots. Human checkpoints need a window for the toolbar popup, a context
-menu, a permission prompt, or a Save As dialog, so relaunch with
-`GRAMGRAB_HEADLESS=0` for those. WSLg shows that window on the Windows desktop.
-`signin.sh` always launches headed.
+The browser runs headed when `DISPLAY` or `WAYLAND_DISPLAY` is set, and WSLg
+sets one, so on WSL the window appears on the Windows desktop.
+`GRAMGRAB_HEADLESS=1` forces `--headless` in a 1280x900 window, and it is the
+default without a display. Headless loads the extension, starts the native
+host, and captures screenshots, but it cannot prove frame export: the runner's
+minimized window counts as hidden there, its video never loads, and the export
+fails with `FRAME_TIMEOUT`. Human checkpoints need a window too. `signin.sh`
+always launches headed.
 
 ### Signing in
 

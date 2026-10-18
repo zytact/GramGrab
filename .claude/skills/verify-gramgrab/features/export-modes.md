@@ -123,6 +123,9 @@ node .agents/skills/verify-gramgrab/scripts/drive.mjs targets | grep runner.html
 
 - Direct downloads use `saveAs: false` and complete on their own. Only
   `debug export` prompts.
+- Frame export needs a headed browser. Under `GRAMGRAB_HEADLESS=1` the
+  minimized runner counts as hidden, its video never loads, and every frame
+  export fails with `FRAME_TIMEOUT`. Direct and silent exports work headless.
 - The runner window is minimized, not hidden. It appears in the window list
   during an export and closes afterwards; do not treat it as a stray window and
   kill it mid-run.
