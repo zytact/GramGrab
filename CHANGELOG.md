@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0](https://github.com/zytact/GramGrab/compare/v4.0.0...v4.1.0) (2026-10-18)
+
+
+### Features
+
+* **watch:** stop Watches from re-surfacing media you already fetched ([#310](https://github.com/zytact/GramGrab/issues/310)) ([14b45c7](https://github.com/zytact/GramGrab/commit/14b45c74f2bd79636eb21a971606a85d163715b4))
+
 ## [4.0.0](https://github.com/zytact/GramGrab/compare/v3.3.3...v4.0.0) (2026-10-16)
 
 
