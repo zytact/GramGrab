@@ -6,7 +6,9 @@ and account constraints, and `docs/watch-boundary-coverage.md` for the tests tha
 own simulated failures and interruptions.
 
 On a shared real account, preserve `instagram-requests`, including inherited
-pauses and attempt counts. Use existing discoveries and the page's storage
+pauses and attempt counts, and `instagram-requests.linked` when a second login
+is linked. The recipes below run under the main login unless they say otherwise;
+[Linked login](#linked-login) covers the other one. Use existing discoveries and the page's storage
 updates. A 429 or request-cap deferral is evidence to report, not a reason to
 retry or reset the ledger. Do not force scheduling deadlines into the past.
 Check-now, fault-injection and repeated-check recipes
@@ -666,6 +668,30 @@ cache that runs after it never does. Rerunning inside five minutes
 may defer a check; keep that terminal result as evidence. All-digit WATCH values
 mean account IDs unless `--username` forces a username. CLI help is the grammar
 reference, including explicit Silent re-encode approval.
+
+## Linked login
+
+With a second login linked ([Linked login](./linked-login.md)), the page shows
+one login at a time: `Main` and `Linked` tabs under `.opt-login-switch`, the
+second at `options.html?login=linked`. Each Watch belongs to the login that
+added it, and adding or importing a Watch adds it to the login on show. A
+linked Watch's checks, actions, notifications, and Avatar lookups all run as
+the linked login and spend only `instagram-requests.linked`.
+
+1. Read both ledgers and `watch-scheduler` as counts and booleans.
+2. Open `options.html?login=linked`. Add the linked-only account with Add Watch.
+   Its preview shows the account, which the main login cannot see.
+3. Click Check now once and follow [Check now](#check-now). Require the check
+   to finish with an outcome per kind, `instagram-requests.linked` to gain
+   attempts, and `instagram-requests` to gain none from the check itself.
+4. Open the `Main` tab. The linked Watch is not listed there.
+5. `gramgrab watch list --login linked --json` lists it, and `gramgrab watch
+   list --json` does not.
+
+An ended linked session shows `Linked (signed out)`, a `Your linked login was
+signed out.` banner, and one `IG_LINKED_LOGIN_ENDED` item in `watch needs`.
+Forcing that state means logging the second account out, so leave it to the
+synthetic tests in `linked-login.test.ts` unless the person asks for it.
 
 ## Evidence
 

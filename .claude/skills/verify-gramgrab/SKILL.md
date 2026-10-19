@@ -266,6 +266,8 @@ Prefer these handles, which the source owns and tests already depend on:
 | Watch check problem  | `.opt-health-row.opt-health-problem`               |
 | Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
 | Watches file import  | `input[aria-label="Watches file"]`, button text `Export or import` |
+| Login picker         | `#instagram-login`                                 |
+| Link and Unlink      | `.opt-login-switch button`                         |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 
 One limit worth knowing before planning a run: anything gated on the _active

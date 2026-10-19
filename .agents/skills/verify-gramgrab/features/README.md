@@ -20,6 +20,7 @@ for that.
 | [Export modes](./export-modes.md)                   | popup, workspace, Watches, CLI | yes, for real media   |
 | [Download history](./download-history.md)           | popup, CLI               | no, to read; yes, to fill  |
 | [Watches](./watches.md)                            | options page, packaged CLI | yes                      |
+| [Linked login](./linked-login.md)                   | options page, popup, workspace, CLI | yes, two accounts |
 | [WhatsApp Visible Status](./whatsapp-status.md)     | popup only               | no, needs WhatsApp Web     |
 | [Release artifacts](./release-artifacts.md)         | Chromium, Firefox, tools | no                         |
 
