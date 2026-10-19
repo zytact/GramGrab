@@ -57,10 +57,15 @@ export const SchedulerState = Schema.Struct({
   startupHoldUntil: Schema.optional(Schema.Number),
   /** Set when the main session was rejected; cleared when the person next verifies that login. */
   suspended: Schema.optional(Schema.Boolean),
-  /** The same for the linked login. */
   linkedSuspended: Schema.optional(Schema.Boolean),
 });
 export type SchedulerState = Schema.Schema.Type<typeof SchedulerState>;
+
+/** Where the scheduler records that each login's session was rejected. */
+export const SUSPENDED_KEYS = {
+  main: 'suspended',
+  linked: 'linkedSuspended',
+} as const satisfies Record<InstagramLogin, keyof SchedulerState>;
 
 const EMPTY: SchedulerState = { version: 1, logins: {} };
 
@@ -79,16 +84,16 @@ export function watchSchedule(
   ledger: LedgerView | undefined,
   viewerId: string,
   now: number,
-  as: InstagramLogin = 'main'
+  login: InstagramLogin = 'main'
 ): WatchSchedule {
-  const login = state.logins[viewerId];
+  const schedule = state.logins[viewerId];
   const hold = ledger && watchHold(ledger, now);
   return WatchSchedule.make({
-    ...(login ? { nextRoundAt: login.nextRoundAt } : {}),
-    roundRemaining: login?.remaining.length ?? 0,
+    ...(schedule ? { nextRoundAt: schedule.nextRoundAt } : {}),
+    roundRemaining: schedule?.remaining.length ?? 0,
     ...(hold?.pausedUntil ? { pausedUntil: hold.pausedUntil } : {}),
     ...(hold?.capped ? { cappedUntil: hold.until } : {}),
-    suspended: (as === 'main' ? state.suspended : state.linkedSuspended) ?? false,
+    suspended: state[SUSPENDED_KEYS[login]] ?? false,
   });
 }
 

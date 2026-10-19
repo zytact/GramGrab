@@ -152,6 +152,14 @@ describe('linking a second login', () => {
     expect(harness.sessionRules).toEqual([]);
   });
 
+  it('refuses while the main login cannot be confirmed, so it can never link the main login', async () => {
+    harness.incognito.cookies = LINKED_COOKIES;
+    instagram.state.viewer = null;
+
+    expect(await link()).toEqual({ _tag: 'refused', reason: 'main-unverified' });
+    expect(stored()).toBeUndefined();
+  });
+
   it('deletes the cookies and the rule on Unlink', async () => {
     harness.incognito.cookies = LINKED_COOKIES;
     await link();
@@ -200,6 +208,7 @@ describe('requests as the linked login', () => {
       'sessionid=""; Max-Age=0',
     ]);
     harness.receiveHeaders('https://www.instagram.com/api/v1/x/', ['rur=main-only; Path=/']);
+    harness.receiveHeaders('https://www.instagram.com/?gg_login=linked', ['rur=from-a-tab'], 7);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(stored()?.cookies).toEqual({

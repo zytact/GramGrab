@@ -6,9 +6,10 @@ const HOURLY_REQUEST_CAP = 60;
 
 const LEDGER_KEY = 'instagram-requests';
 
-/** Where `login`'s request ledger is stored. */
-export const ledgerKey = (login: InstagramLogin) =>
-  login === 'main' ? LEDGER_KEY : `${LEDGER_KEY}.linked`;
+export const LEDGER_KEYS = {
+  main: LEDGER_KEY,
+  linked: `${LEDGER_KEY}.linked`,
+} as const satisfies Record<InstagramLogin, string>;
 
 export class RequestPause extends Schema.Class<RequestPause>('RequestPause')({
   until: Schema.Number,

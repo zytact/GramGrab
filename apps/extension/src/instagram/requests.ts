@@ -5,7 +5,7 @@ import { browser } from '../lib/browser.ts';
 import { linkedRoute, readLinkedLogin } from './linked-login.ts';
 import {
   HOUR_MS,
-  ledgerKey,
+  LEDGER_KEYS,
   LedgerState,
   RequestPause,
   decodeLedger,
@@ -172,8 +172,8 @@ class RequestLedger {
 }
 
 const ledgers: Record<InstagramLogin, RequestLedger> = {
-  main: new RequestLedger(ledgerKey('main')),
-  linked: new RequestLedger(ledgerKey('linked')),
+  main: new RequestLedger(LEDGER_KEYS.main),
+  linked: new RequestLedger(LEDGER_KEYS.linked),
 };
 
 export const ledgerOf = (login: InstagramLogin): RequestLedger => ledgers[login];

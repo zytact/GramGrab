@@ -25,7 +25,6 @@ export const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}
 const MediaType = Schema.Literal('image', 'video');
 
 export const STORE_KEY = 'watch-store';
-/** The `storage.session` key holding the account ID the last viewer query found. */
 /** Where the browser session records each login's last verified account ID. */
 export const VIEWER_KEYS = { main: 'watch-viewer', linked: 'watch-viewer.linked' } as const;
 export const STORE_VERSION = 2;

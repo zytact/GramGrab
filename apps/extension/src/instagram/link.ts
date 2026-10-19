@@ -27,11 +27,12 @@ export async function linkLogin(): Promise<LinkLoginResponse> {
   if (found._tag === 'refused') return found;
   const previous = await readLinkedLogin();
   const main = await viewerAs('main');
+  if (Either.isLeft(main)) return { _tag: 'refused', reason: 'main-unverified' };
   await saveLinkedLogin(found.accountId, found.cookies);
   const linked = await viewerAs('linked');
   const verified =
     Either.isRight(linked) && linked.right.accountId === found.accountId ? linked.right : undefined;
-  const same = Either.isRight(main) && main.right.accountId === verified?.accountId;
+  const same = main.right.accountId === verified?.accountId;
   if (verified && !same) {
     await resumeAfterPerson('linked');
     await refreshBadge();

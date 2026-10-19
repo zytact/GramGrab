@@ -29,7 +29,7 @@ import type {
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
-import { decodeLedger, ledgerKey, type LedgerView } from '../instagram/request-state.ts';
+import { decodeLedger, LEDGER_KEYS, type LedgerView } from '../instagram/request-state.ts';
 import { STORE_KEY, VIEWER_KEYS } from '../watch/contracts.ts';
 import {
   SCHEDULER_KEY,
@@ -795,7 +795,7 @@ export function Watches() {
   useEffect(() => {
     if (!ready) return;
     const listener = (changes: StorageChanges) => {
-      const ledger = changes[ledgerKey(pageLogin())];
+      const ledger = changes[LEDGER_KEYS[pageLogin()]];
       if (
         STORE_KEY in changes ||
         SCHEDULER_KEY in changes ||
@@ -849,17 +849,17 @@ function useWatchSchedule(list: WatchListResult) {
     let latest = 0;
     const read = () => {
       const current = ++latest;
-      void browser.storage.get([SCHEDULER_KEY, ledgerKey(pageLogin())]).then(stored => {
+      void browser.storage.get([SCHEDULER_KEY, LEDGER_KEYS[pageLogin()]]).then(stored => {
         if (!active || current !== latest) return;
         setRecords({
           scheduler: decodeSchedulerState(stored[SCHEDULER_KEY]),
-          ledger: decodeLedger(stored[ledgerKey(pageLogin())]),
+          ledger: decodeLedger(stored[LEDGER_KEYS[pageLogin()]]),
           at: Date.now(),
         });
       });
     };
     const listener = (changes: StorageChanges) => {
-      if (SCHEDULER_KEY in changes || ledgerKey(pageLogin()) in changes) read();
+      if (SCHEDULER_KEY in changes || LEDGER_KEYS[pageLogin()] in changes) read();
     };
     browser.storage.onChanged.addListener(listener);
     read();

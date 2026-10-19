@@ -133,10 +133,13 @@ export async function linkedAttention(store: WatchStore): Promise<string[]> {
 export async function attentionCount(): Promise<number> {
   const read = await readStore();
   if (read.kind === 'failed') return 1;
+  const linked = await readLinkedLogin();
+  const linkedViewer = await verifiedViewerId('linked');
   const viewerIds = new Set(
-    [await verifiedViewerId('main'), await verifiedViewerId('linked')].filter(
-      (viewerId): viewerId is string => viewerId !== undefined
-    )
+    [
+      await verifiedViewerId('main'),
+      linked && !linked.ended && linked.accountId === linkedViewer ? linkedViewer : undefined,
+    ].filter((viewerId): viewerId is string => viewerId !== undefined)
   );
   const store = (await storeHealth()) ? 1 : 0;
   let count = store + (await linkedAttention(read.store)).length;

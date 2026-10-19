@@ -17,6 +17,8 @@ const pageFor = (login: InstagramLogin) => {
 };
 
 const REFUSAL: Record<LinkRefusalReason, string> = {
+  'main-unverified':
+    'GramGrab could not confirm your main login, so it cannot tell the two apart. Sign in to Instagram in this window, then link again.',
   'incognito-not-allowed':
     "Allow GramGrab in Incognito on the browser's extensions page, then link again.",
   'not-signed-in':

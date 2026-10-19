@@ -164,6 +164,7 @@ export interface SessionRuleUpdate {
 
 export interface HeadersReceivedDetails {
   url: string;
+  tabId: number;
   responseHeaders?: { name: string; value?: string }[];
 }
 

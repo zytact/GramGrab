@@ -382,10 +382,11 @@ export function createExtensionHarness() {
       return sessionRules;
     },
     /** Delivers a response's `Set-Cookie` lines to the worker's header listener. */
-    receiveHeaders: (url: string, setCookies: readonly string[]) =>
+    receiveHeaders: (url: string, setCookies: readonly string[], tabId = -1) =>
       onHeadersReceived.listeners.forEach(listener =>
         listener({
           url,
+          tabId,
           responseHeaders: setCookies.map(value => ({ name: 'set-cookie', value })),
         })
       ),

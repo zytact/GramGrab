@@ -182,16 +182,19 @@ const list = Effect.fn(function* (known?: WatchViewer) {
   const viewer = yield* viewerFrom(store, known);
   const storage = yield* Effect.promise(() => storageState(read));
   const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
-  const linkedId = (yield* Effect.promise(readLinkedLogin))?.accountId;
+  const logins = new Set([
+    viewer.accountId,
+    (yield* Effect.promise(readLinkedLogin))?.accountId,
+    yield* Effect.promise(() => verifiedViewerId('main')),
+  ]);
   const watches = store
     ? owned(store, viewer).map(watch => summarize(watch, schedule.manualChecks.get(watch.id)))
     : [];
   return WatchListResult.make({
     viewer: WatchViewer.make({ accountId: viewer.accountId, username: viewer.username }),
     schedule: schedule.schedule,
-    otherLoginWatchCount: (store?.watches ?? []).filter(
-      watch => watch.viewerId !== viewer.accountId && watch.viewerId !== linkedId
-    ).length,
+    otherLoginWatchCount: (store?.watches ?? []).filter(watch => !logins.has(watch.viewerId))
+      .length,
     storage,
     attentionCount:
       (store ? (yield* Effect.promise(() => loginAttention(store, viewer.accountId))).length : 0) +
@@ -454,12 +457,11 @@ const checkOne = Effect.fn(function* (
     catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
   });
   const until = run.deferredUntil;
-  const login = yield* requestLogin;
   yield* Effect.tryPromise({
     try: () =>
       until === undefined
-        ? finishManual(viewer.accountId, watch.id, checkId, run.kinds)
-        : deferManual(viewer.accountId, watch.id, checkId, until),
+        ? finishManual(run.login, viewer.accountId, watch.id, checkId, run.kinds)
+        : deferManual(run.login, viewer.accountId, watch.id, checkId, until),
     catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
   });
   return WatchCheckOutcome.make({
@@ -469,7 +471,7 @@ const checkOne = Effect.fn(function* (
     kinds: [...off, ...run.kinds],
     ...(until === undefined
       ? {}
-      : { deferredUntil: until, deferredReason: pacingReason(login, Date.now()) }),
+      : { deferredUntil: until, deferredReason: pacingReason(run.login, Date.now()) }),
   });
 });
 

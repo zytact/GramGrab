@@ -341,6 +341,7 @@ export type LinkedLoginState = 'unsupported' | 'unlinked' | 'linked' | 'ended';
 
 /** Why linking refused the Incognito window's login. */
 export type LinkRefusalReason =
+  | 'main-unverified'
   | 'incognito-not-allowed'
   | 'not-signed-in'
   | 'not-verified'

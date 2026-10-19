@@ -200,7 +200,8 @@ export function absorbSetCookie(
 }
 
 function onHeadersReceived(details: HeadersReceivedDetails) {
-  if (!details.url.includes(MARKER)) return;
+  // A page can load a marked URL itself; its reply carries the main login's cookies, not these.
+  if (details.tabId !== -1 || !details.url.includes(MARKER)) return;
   const lines = (details.responseHeaders ?? []).flatMap(header =>
     header.name.toLowerCase() === 'set-cookie' && header.value ? [header.value] : []
   );
