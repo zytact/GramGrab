@@ -26,6 +26,9 @@ Watches are the one exception to request-in-the-moment access. See
   > account and media IDs and check results it needs, on this device, never media files or media
   > links. You can pause or delete a Watch at any time.
 
+  A Watch of the linked second login uses that login's session the same way. See Linked login
+  below.
+
 - **Requests.** Unattended requests are limited to the profile, Stories, Instants, and Posts requests
   for enabled Watches, plus a search request that looks up an initial Avatar when its check omitted
   the Avatar kind, or refreshes a Watch that does not watch Avatar changes. These lookups run at most
@@ -53,7 +56,8 @@ Watches are the one exception to request-in-the-moment access. See
 
   Apart from those Avatar images, it never holds media bytes or thumbnails. It never holds signed,
   preview, data, or blob URLs, captions, full or display names, locations, cookies, or tokens. The
-  viewer's own username and Avatar are fetched when needed and are not stored. A Posts traversal
+  viewer's own username and Avatar are fetched when needed and are not stored. The linked login's cookies are a
+  separate record, not Watch state; see Linked login. A Posts traversal
   cursor lives only in `storage.session`. Each Watch entry links to its Instagram page, built
   when shown from the username and the stored shortcode or Story ID; the link is never stored.
 
@@ -77,15 +81,36 @@ Watches are the one exception to request-in-the-moment access. See
   stays under a 2 MiB budget. Deleting a Watch removes its state, while downloaded files and History
   receipts remain.
 
+## Linked login (Beta, Chromium)
+
+One browser profile may hold one linked second Instagram login. See
+[ADR 0007](./adr/0007-linked-second-instagram-login.md).
+
+- **Linking.** The person signs in to the second account in an Incognito window and clicks "Link
+  this login" on the Watches page. GramGrab reads that window's `instagram.com` cookies once,
+  confirms the account with the viewer query, and refuses the main login.
+- **Stored state.** While a login is linked, `storage.local` holds its account ID, a copy of its
+  Instagram cookies, unencrypted at rest, and whether Instagram ended its session. Its username is
+  fetched, never stored. Unlink deletes the record and the request rule.
+- **Requests.** Only GramGrab's own requests for that login carry its cookies: they are marked,
+  omit the browser's cookies, and a session rule that matches only requests outside tabs adds the
+  linked cookies. `Set-Cookie` on those responses updates the stored copy and never touches the
+  main login's cookies. Each login has its own request ledger.
+- **Ending.** When Instagram ends the session, its Watches stop until the same account is linked
+  again. Another account never adopts them.
+
 ## Authentication material
 
 Instagram requests may use the browser's authenticated session where required. The `cookies`
-permission is limited to reading Instagram's `csrftoken` cookie immediately before an Instagram
-request that requires it, such as Instants, Posts, or the profile query, and sending that value back
-to Instagram as the CSRF header for that request. The value is never stored or logged.
+permission reads Instagram's `csrftoken` cookie immediately before an Instagram request that
+requires it, such as Instants, Posts, or the profile query, and sends that value back to Instagram
+as the CSRF header for that request. That value is never stored or logged. The only other use is
+copying the Incognito window's Instagram cookies when the person links a second login, as Linked
+login describes.
 
 Cookies, CSRF tokens, request headers, browser storage contents, and unrelated session state never
-enter shareable diagnostics or committed artifacts. They must not be copied into source,
+enter shareable diagnostics or committed artifacts. Neither does the linked login's account ID or
+username. They must not be copied into source,
 configuration, fixtures, documentation, logs, or issues.
 
 ## Shareable diagnostics

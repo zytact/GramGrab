@@ -1,5 +1,5 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
-import type { MediaItem } from '@gramgrab/protocol';
+import type { InstagramLogin, MediaItem } from '@gramgrab/protocol';
 import type { WorkspaceMediaItem } from './contracts';
 import type { FrameExportSetting } from '../frame-export/timestamp';
 import type { OperationFailure } from '../errors/contracts';
@@ -12,6 +12,7 @@ type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 interface UseMediaFetchOptions {
   url: string;
   acquisition: 'source' | 'instants';
+  login: InstagramLogin;
   setFetchedUrl: Dispatch<SetStateAction<string>>;
   setMediaItems: Dispatch<SetStateAction<WorkspaceMediaItem[]>>;
   setFrameExportSettings: Dispatch<SetStateAction<Record<number, FrameExportSetting>>>;
@@ -23,7 +24,7 @@ interface UseMediaFetchOptions {
 
 function applyFetchSuccess(
   media: readonly MediaItem[],
-  options: Omit<UseMediaFetchOptions, 'url' | 'setFetchedUrl'>
+  options: Omit<UseMediaFetchOptions, 'url' | 'setFetchedUrl' | 'login'>
 ) {
   const items = media.map((item, index) => ({ ...item, index, selected: true }));
   options.setMediaItems(items);
@@ -54,8 +55,8 @@ export function useMediaFetch(options: UseMediaFetchOptions) {
     options.setMessage('Fetching media…');
     try {
       const response = await (options.acquisition === 'instants'
-        ? sendMessage({ type: 'FETCH_INSTANTS' })
-        : sendMessage({ type: 'FETCH_MEDIA', url: trimmedUrl }));
+        ? sendMessage({ type: 'FETCH_INSTANTS', login: options.login })
+        : sendMessage({ type: 'FETCH_MEDIA', url: trimmedUrl, login: options.login }));
       if (generation !== requestGeneration.current) return;
       if (response?.failure) {
         options.onFailure?.(response.failure);

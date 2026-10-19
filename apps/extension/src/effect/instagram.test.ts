@@ -13,7 +13,7 @@ import {
 import { PersonRequests, type InstagramRequests } from '../instagram/requests.ts';
 
 const run = <A, E>(effect: Effect.Effect<A, E, InstagramRequests>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(PersonRequests)));
+  Effect.runPromise(effect.pipe(Effect.provide(PersonRequests())));
 
 beforeEach(() => {
   vi.restoreAllMocks();

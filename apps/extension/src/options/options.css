@@ -483,3 +483,29 @@ select {
   background: var(--brand-dim);
   border-color: var(--brand);
 }
+
+.opt-login-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.opt-login-tabs {
+  display: flex;
+  border: 1px solid var(--rule-strong);
+}
+.opt-login-tabs a {
+  flex: 1;
+  padding: 5px 8px;
+  color: var(--text-mid);
+  font-size: 11px;
+  text-align: center;
+  text-decoration: none;
+}
+.opt-login-tabs a[aria-current='page'] {
+  background: var(--brand-dim);
+  color: var(--accent);
+}
+.opt-login-actions {
+  display: flex;
+  gap: 8px;
+}

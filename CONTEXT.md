@@ -72,6 +72,16 @@ _Avoid_: Saved story
 An Instagram account's profile image.
 _Avoid_: Profile pic, DP
 
+### Logins
+
+**Main login**:
+The Instagram account the browser profile is signed in to. Every operation runs as it unless the person picks the Linked login.
+_Avoid_: Primary account
+
+**Linked login**:
+One second Instagram login linked from an Incognito window, whose requests carry its own copied session (Beta, Chromium only).
+_Avoid_: Second profile, alt account
+
 ### Operations
 
 **Failure code**:

@@ -5,6 +5,7 @@ import {
   HumanItemNumber,
   OperationId as ProtocolOperationId,
   AccountId,
+  InstagramLogin,
   WatchCommand,
   WatchInboxList,
   WatchList,
@@ -56,12 +57,16 @@ const RecordExportFields = {
   originKind: Schema.optional(OriginKind),
 } as const;
 
+/** The Instagram login a message runs as. Absent means the main login. */
+const login = Schema.optional(InstagramLogin);
+
 const FetchMedia = Schema.Struct({
   type: Schema.Literal('FETCH_MEDIA'),
   url: Schema.String,
+  login,
 });
 
-const FetchInstants = Schema.Struct({ type: Schema.Literal('FETCH_INSTANTS') });
+const FetchInstants = Schema.Struct({ type: Schema.Literal('FETCH_INSTANTS'), login });
 
 const GetPreviewUrl = Schema.Struct({
   type: Schema.Literal('GET_PREVIEW_URL'),
@@ -90,6 +95,7 @@ const DeleteHistoryEntry = Schema.Struct({
 const RedownloadHistoryEntry = Schema.Struct({
   type: Schema.Literal('REDOWNLOAD_HISTORY_ENTRY'),
   entryId: Schema.String.pipe(Schema.nonEmptyString()),
+  login,
 });
 
 // The receipt stays `Unknown` here on purpose: its privacy contract is an exact shape with no
@@ -143,6 +149,7 @@ const DownloadDebugJson = Schema.Struct({
 const WatchCommandMessage = Schema.Struct({
   type: Schema.Literal('WATCH_COMMAND'),
   command: WatchCommand,
+  login,
 });
 
 const WatchRead = Schema.Union(WatchList, WatchShow, WatchInboxList);
@@ -152,11 +159,13 @@ const WatchReadMessage = Schema.Struct({
   type: Schema.Literal('WATCH_READ'),
   command: WatchRead,
   viewer: WatchViewer,
+  login,
 });
 
 const WatchPreview = Schema.Struct({
   type: Schema.Literal('WATCH_PREVIEW'),
   target: Schema.String.pipe(Schema.nonEmptyString()),
+  login,
 });
 
 const WatchAvatars = Schema.Struct({
@@ -167,12 +176,17 @@ const WatchAvatars = Schema.Struct({
 const WatchInboxPreview = Schema.Struct({
   type: Schema.Literal('WATCH_INBOX_PREVIEW'),
   entryId: Schema.UUID,
+  login,
 });
+
+const LinkLogin = Schema.Struct({ type: Schema.Literal('LINK_LOGIN') });
+const UnlinkLogin = Schema.Struct({ type: Schema.Literal('UNLINK_LOGIN') });
 
 const RunExport = Schema.Struct({
   type: Schema.Literal('RUN_EXPORT'),
   sourceUrl: Schema.String,
   originKind: OriginKind,
+  login,
   command: Schema.Union(ProtocolExport, ProtocolInstantsExport),
   preparedMedia: Schema.optional(Schema.Array(ProtocolMediaItem)),
   requestedExport: Schema.optional(ExportSettings),
@@ -215,6 +229,8 @@ const MessageSchema = Schema.Union(
   WatchPreview,
   WatchAvatars,
   WatchInboxPreview,
+  LinkLogin,
+  UnlinkLogin,
   RunExport,
   RunnerReady,
   RunnerProgress
@@ -317,6 +333,23 @@ export type WatchInboxPreviewResponse = {
   readonly failure?: WatchFailure;
 };
 
+/**
+ * Where the linked login stands. `ended` means Instagram signed it out; linking the same account
+ * again resumes its Watches.
+ */
+export type LinkedLoginState = 'unsupported' | 'unlinked' | 'linked' | 'ended';
+
+/** Why linking refused the Incognito window's login. */
+export type LinkRefusalReason =
+  | 'incognito-not-allowed'
+  | 'not-signed-in'
+  | 'not-verified'
+  | 'same-login';
+
+export type LinkLoginResponse =
+  | { readonly _tag: 'linked'; readonly username: string }
+  | { readonly _tag: 'refused'; readonly reason: LinkRefusalReason };
+
 interface MessageResponses extends Record<MessageType, unknown> {
   FETCH_MEDIA: SourceMediaResponse;
   FETCH_INSTANTS: InstantsMediaResponse;
@@ -343,6 +376,8 @@ interface MessageResponses extends Record<MessageType, unknown> {
   WATCH_PREVIEW: WatchPreviewResponse;
   WATCH_AVATARS: WatchAvatarsResponse;
   WATCH_INBOX_PREVIEW: WatchInboxPreviewResponse;
+  LINK_LOGIN: LinkLoginResponse;
+  UNLINK_LOGIN: LinkedLoginState;
   RUN_EXPORT: ExportResult;
   RUNNER_READY: void;
   RUNNER_PROGRESS: void;

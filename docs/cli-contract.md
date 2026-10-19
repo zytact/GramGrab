@@ -1,6 +1,6 @@
 # CLI capability contract
 
-This document inventories the public GramGrab operations covered by protocol version 4. It is a
+This document inventories the public GramGrab operations covered by protocol version 5. It is a
 behavior contract, not a promise that the CLI transport is implemented before phase 3.
 
 ## Item identity
@@ -39,6 +39,12 @@ gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
 gramgrab watch pause|resume|delete WATCH... [--json]
 gramgrab watch recover notify retry|dismiss ENTRY_ID... [--json]
 ```
+
+Every command accepts `--login main|linked` (Beta, Chromium). It sets the request's `login`, so
+`inspect`, `export`, `instants`, `history redownload`, and `watch` run as the main login, the
+default, or the second login linked on the Watches page. A request for the linked login while none
+is linked fails with `IG_LINKED_LOGIN_MISSING`, and after Instagram ended its session with
+`IG_LINKED_LOGIN_ENDED`.
 
 `SOURCE` may be a supported Instagram URL or a bare username. A bare username targets that
 account's active Stories and must omit the leading `@`. For example, `gramgrab inspect instagram`

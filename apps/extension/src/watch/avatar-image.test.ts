@@ -195,7 +195,8 @@ describe('Watch Avatar images', () => {
 
   it('does not count a deferred cosmetic lookup as a refresh attempt', async () => {
     const { watch } = await addWatch('stories');
-    const { requestLedger } = await import('../instagram/requests.ts');
+    const { ledgerOf } = await import('../instagram/requests.ts');
+    const requestLedger = ledgerOf('main');
     for (let index = 0; index < 60; index++) {
       requestLedger.begin({ kind: 'person' }, Date.now());
       requestLedger.end({ kind: 'person' }, Date.now(), 200);
@@ -256,7 +257,7 @@ describe('Watch Avatar images', () => {
     const { fetchViewer } = await import('./identity.ts');
     const { PersonRequests } = await import('../instagram/requests.ts');
     const { Effect } = await import('effect');
-    await Effect.runPromise(fetchViewer.pipe(Effect.provide(PersonRequests)));
+    await Effect.runPromise(fetchViewer.pipe(Effect.provide(PersonRequests())));
     const { refreshAvatarImage } = await import('./avatar-image.ts');
     await refreshAvatarImage(watch.watchId, VIEWER.id, {
       kinds: [KindBaselineRecorded.make({ kind: 'stories' })],
@@ -292,7 +293,7 @@ describe('Watch Avatar images', () => {
       const { fetchViewer } = await import('./identity.ts');
       const { PersonRequests } = await import('../instagram/requests.ts');
       const { Effect } = await import('effect');
-      await Effect.runPromise(fetchViewer.pipe(Effect.either, Effect.provide(PersonRequests)));
+      await Effect.runPromise(fetchViewer.pipe(Effect.either, Effect.provide(PersonRequests())));
       while (!done) await vi.advanceTimersByTimeAsync(1_000);
       expect(instagram.state.profileRequests).toHaveLength(0);
       expect(avatarImage()).toBeUndefined();
@@ -347,7 +348,7 @@ describe('Watch Avatar images', () => {
     const { fetchViewer } = await import('./identity.ts');
     const { PersonRequests } = await import('../instagram/requests.ts');
     const { Effect } = await import('effect');
-    await Effect.runPromise(fetchViewer.pipe(Effect.provide(PersonRequests)));
+    await Effect.runPromise(fetchViewer.pipe(Effect.provide(PersonRequests())));
     expect((await avatars(VIEWER.id)).login).toBe(STUB_AVATAR);
     expect(harness.local.read('watch-store')).not.toHaveProperty('viewer');
   });

@@ -1,11 +1,12 @@
 import { noteViewerPicture } from './viewer-avatar.ts';
 import { Data, Effect, Schema } from 'effect';
-import { AccountId, InstagramUsername } from '@gramgrab/protocol';
+import { AccountId, InstagramUsername, type InstagramLogin } from '@gramgrab/protocol';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS, readCsrfToken } from '../instagram/headers.ts';
+import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS } from '../instagram/headers.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
-import { VIEWER_KEY } from './contracts.ts';
+import { markLinkedEnded } from '../instagram/linked-login.ts';
+import { VIEWER_KEYS } from './contracts.ts';
 import {
   AnswerUntrusted,
   GraphQLRequestFailed,
@@ -97,51 +98,56 @@ export const readJson = (response: Response) =>
     });
   });
 
-export async function verifiedViewerId(): Promise<string | undefined> {
-  const stored = await browser.sessionStorage
-    .get(VIEWER_KEY)
-    .catch((): Record<string, unknown> => ({}));
-  const decoded = Schema.decodeUnknownOption(AccountId)(stored[VIEWER_KEY]);
+export async function verifiedViewerId(login: InstagramLogin): Promise<string | undefined> {
+  const key = VIEWER_KEYS[login];
+  const stored = await browser.sessionStorage.get(key).catch((): Record<string, unknown> => ({}));
+  const decoded = Schema.decodeUnknownOption(AccountId)(stored[key]);
   return decoded._tag === 'Some' ? decoded.value : undefined;
 }
 
 /**
- * Identifies the signed-in viewer from the dedicated session query, never from a cookie, and
- * records its account ID for `verifiedViewerId`, or drops it when no viewer is signed in.
+ * Identifies the viewer of the requests' login from the dedicated session query, never from a
+ * cookie, and records its account ID for `verifiedViewerId`. When no viewer is signed in it drops
+ * that record, and a linked login is marked ended.
  */
 export const fetchViewer = Effect.gen(function* () {
   const candidate = protocolConfig.operations.viewer.candidates[0]!;
   const request = candidate.requests[0]!;
   const query = new URLSearchParams({ [candidate.kind]: candidate.id, variables: '{}' });
   const requests = yield* InstagramRequests;
+  const key = VIEWER_KEYS[requests.login];
   const response = yield* requests.fetch(`${request.endpoint}?${query}`, {
-    credentials: 'include',
     headers: IG_GRAPHQL_HEADERS,
   });
-  if (response.status === 401) return yield* Effect.fail(new ViewerMissing());
-  const decoded = yield* Schema.decodeUnknown(ViewerResponse)(yield* readJson(response)).pipe(
-    Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' }))
+  return yield* Effect.gen(function* () {
+    if (response.status === 401) return yield* Effect.fail(new ViewerMissing());
+    const decoded = yield* Schema.decodeUnknown(ViewerResponse)(yield* readJson(response)).pipe(
+      Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' }))
+    );
+    const user = decoded.data.user;
+    if (!user || (decoded.errors?.length ?? 0) > 0) return yield* Effect.fail(new ViewerMissing());
+    return {
+      accountId: user.id,
+      username: user.username,
+      ...(user.profile_pic_url ? { pictureUrl: user.profile_pic_url } : {}),
+    } satisfies Viewer;
+  }).pipe(
+    Effect.tap(viewer =>
+      Effect.promise(() => {
+        noteViewerPicture(viewer);
+        return browser.sessionStorage.set({ [key]: viewer.accountId }).catch(() => undefined);
+      })
+    ),
+    Effect.tapError(error =>
+      error._tag === 'ViewerMissing'
+        ? Effect.promise(async () => {
+            await browser.sessionStorage.remove(key).catch(() => undefined);
+            if (requests.login === 'linked') await markLinkedEnded().catch(() => undefined);
+          })
+        : Effect.void
+    )
   );
-  const user = decoded.data.user;
-  if (!user || (decoded.errors?.length ?? 0) > 0) return yield* Effect.fail(new ViewerMissing());
-  return {
-    accountId: user.id,
-    username: user.username,
-    ...(user.profile_pic_url ? { pictureUrl: user.profile_pic_url } : {}),
-  } satisfies Viewer;
-}).pipe(
-  Effect.tap(viewer =>
-    Effect.promise(() => {
-      noteViewerPicture(viewer);
-      return browser.sessionStorage.set({ [VIEWER_KEY]: viewer.accountId }).catch(() => undefined);
-    })
-  ),
-  Effect.tapError(error =>
-    error._tag === 'ViewerMissing'
-      ? Effect.promise(() => browser.sessionStorage.remove(VIEWER_KEY).catch(() => undefined))
-      : Effect.void
-  )
-);
+});
 
 type ProfileUser = NonNullable<Schema.Schema.Type<typeof ProfileResponse>['data']['user']>;
 
@@ -175,7 +181,6 @@ export const confirmProfile = (targetId: string) =>
   Effect.gen(function* () {
     const candidate = protocolConfig.operations.profileById.candidates[0]!;
     const request = candidate.requests[0]!;
-    const csrfToken = yield* readCsrfToken;
     const body = new URLSearchParams({
       [candidate.kind]: candidate.id,
       server_timestamps: 'true',
@@ -193,12 +198,8 @@ export const confirmProfile = (targetId: string) =>
     const requests = yield* InstagramRequests;
     const response = yield* requests.fetch(request.endpoint, {
       method: 'POST',
-      credentials: 'include',
-      headers: {
-        ...IG_API_GRAPHQL_HEADERS,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-      },
+      csrf: true,
+      headers: { ...IG_API_GRAPHQL_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
     });
     const decoded = yield* Schema.decodeUnknown(ProfileResponse)(yield* readJson(response)).pipe(

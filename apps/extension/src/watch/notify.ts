@@ -6,7 +6,7 @@ import type { ChildDownload, Discovery, Watch } from './contracts.ts';
 import { KIND_OF_REF } from './discoveries.ts';
 import { mutateStore, readStore } from './store.ts';
 import { fetchViewer } from './identity.ts';
-import { PersonRequests, WatchRequests } from '../instagram/requests.ts';
+import { OwnerRequests, PersonRequests, loginOf } from '../instagram/requests.ts';
 import { dataUrl } from './avatar-jpeg.ts';
 
 const PREFIX = 'watch|';
@@ -185,7 +185,7 @@ export async function notifyCheck(
     .join('\n');
   if (!message) return;
   const viewer = await Effect.runPromise(
-    fetchViewer.pipe(Effect.either, Effect.provide(WatchRequests))
+    fetchViewer.pipe(Effect.either, Effect.provide(OwnerRequests(watch.viewerId)))
   );
   if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) return;
   const code = await show(watch, message);
@@ -200,7 +200,7 @@ export async function retryNotify(
     const watch = await findWatch(watchId);
     if (!watch?.enabled) continue;
     const viewer = await Effect.runPromise(
-      fetchViewer.pipe(Effect.either, Effect.provide(PersonRequests))
+      fetchViewer.pipe(Effect.either, Effect.provide(PersonRequests(await loginOf(watch.viewerId))))
     );
     if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) continue;
     const ids = entries.filter(entry => entry.watchId === watchId).map(entry => entry.entryId);

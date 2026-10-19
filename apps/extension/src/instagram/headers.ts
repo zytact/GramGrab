@@ -1,7 +1,4 @@
-import { Effect } from 'effect';
-import { browser } from '../lib/browser.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { NetworkError } from '../effect/errors.ts';
 
 const IG_HEADERS = {
   'User-Agent':
@@ -20,9 +17,3 @@ export const IG_API_GRAPHQL_HEADERS = {
   Referer: 'https://www.instagram.com/',
   'X-ASBD-ID': protocolConfig.client.asbdId,
 } as const;
-
-/** Reads `csrftoken` for an Instagram request that sends it straight back; never stored. */
-export const readCsrfToken = Effect.tryPromise({
-  try: () => browser.cookies.get({ url: 'https://www.instagram.com/', name: 'csrftoken' }),
-  catch: cause => new NetworkError({ cause }),
-}).pipe(Effect.map(cookie => cookie?.value ?? ''));

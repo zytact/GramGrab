@@ -6,6 +6,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
+import type { InstagramLogin } from '@gramgrab/protocol';
 import { browser } from '../lib/browser';
 import {
   claimWorkspaceTransfer,
@@ -34,6 +35,8 @@ interface FetchIntent {
 interface WorkspaceSurfaceOptions {
   acquisition: 'source' | 'instants';
   setAcquisition: Dispatch<SetStateAction<'source' | 'instants'>>;
+  login: InstagramLogin;
+  setLogin: Dispatch<SetStateAction<InstagramLogin>>;
   url: string;
   setUrl: Dispatch<SetStateAction<string>>;
   fetchedUrl: string;
@@ -65,8 +68,10 @@ function workspaceSnapshot({
   frameExportSettings,
   removeAudioIndexes,
   acquisition,
+  login,
 }: Pick<
   WorkspaceSurfaceOptions,
+  | 'login'
   | 'url'
   | 'fetchedUrl'
   | 'status'
@@ -84,6 +89,7 @@ function workspaceSnapshot({
     createdAt,
     expiresAt: createdAt + WORKSPACE_TRANSFER_TTL_MS,
     url,
+    login,
   } as const;
   if (!resultsMatchDraftSource)
     return {
@@ -125,6 +131,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
         if (snapshot) {
           session.setUrl(snapshot.url);
           session.setAcquisition(snapshot.acquisition.kind);
+          session.setLogin(snapshot.login ?? 'main');
           session.setFetchedUrl(snapshot.fetchedUrl);
           session.setStatus(snapshot.status);
           session.setMessage(snapshot.message);

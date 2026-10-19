@@ -762,8 +762,49 @@ describe('Popup', () => {
       expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
         type: 'FETCH_MEDIA',
         url: 'https://www.instagram.com/p/abc123/',
+        login: 'main',
       });
     });
+  });
+
+  it('shows the login picker only while a second login is linked, and fetches as the chosen login', async () => {
+    const user = userEvent.setup();
+    const { rerender } = await act(async () => render(<Popup />));
+    expect(screen.queryByRole('combobox', { name: /login/i })).toBeNull();
+
+    Object.assign(mockBrowser, {
+      linkedLogin: {
+        isAllowedIncognitoAccess: vi.fn(),
+        getAllCookieStores: vi.fn(),
+        getAllCookies: vi.fn(),
+        updateSessionRules: vi.fn(),
+        onHeadersReceived: { addListener: vi.fn() },
+      },
+    });
+    mockBrowser.storage.get.mockResolvedValue({
+      'linked-instagram-login': { version: 1, accountId: '3003', cookies: {} },
+    });
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      media: [],
+    });
+    try {
+      rerender(<></>);
+      await act(async () => rerender(<Popup />));
+      await user.selectOptions(await screen.findByRole('combobox', { name: /login/i }), 'linked');
+      await user.click(screen.getByText('Fetch Media'));
+
+      await waitFor(() =>
+        expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+          type: 'FETCH_MEDIA',
+          url: 'https://www.instagram.com/p/abc123/',
+          login: 'linked',
+        })
+      );
+    } finally {
+      Reflect.deleteProperty(mockBrowser, 'linkedLogin');
+      mockBrowser.storage.get.mockResolvedValue({});
+      (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockReset();
+    }
   });
 
   it('switches to Instants, replaces URL results, and renders attributed media', async () => {
@@ -791,7 +832,10 @@ describe('Popup', () => {
     expect(screen.queryByText('source')).toBeNull();
 
     await waitFor(() => {
-      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'FETCH_INSTANTS' });
+      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'FETCH_INSTANTS',
+        login: 'main',
+      });
       expect(screen.getByText('@creator')).toBeDefined();
     });
   });

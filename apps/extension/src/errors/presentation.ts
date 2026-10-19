@@ -61,6 +61,17 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'Open the source or copy diagnostics for support.',
     ['open-in-instagram', 'copy-diagnostics']
   ),
+  IG_LINKED_LOGIN_MISSING: policy(
+    'No second login is linked',
+    'Link a second Instagram login on the Watches page, or use your main login.',
+    []
+  ),
+  IG_LINKED_LOGIN_ENDED: policy(
+    'Your linked login was signed out',
+    'Instagram ended its session. Link this login again on the Watches page.',
+    [],
+    'after-user-action'
+  ),
   SOURCE_NETWORK_FAILED: policy(
     'Connection problem',
     'Check your connection, then fetch the source again.',

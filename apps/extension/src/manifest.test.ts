@@ -61,7 +61,10 @@ describe('manifest generation', () => {
           48: 'icons/icon-48.png',
           96: 'icons/icon-96.png',
         },
-        permissions: expectedPermissions,
+        permissions:
+          browser === 'chromium'
+            ? [...expectedPermissions, 'declarativeNetRequestWithHostAccess', 'webRequest']
+            : expectedPermissions,
         optional_permissions: ['notifications'],
         host_permissions: expectedHostPermissions,
         options_ui: { page: 'options.html', open_in_tab: true },

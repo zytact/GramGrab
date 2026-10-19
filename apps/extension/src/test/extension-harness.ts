@@ -1,6 +1,11 @@
 import { Schema } from 'effect';
 import { vi } from 'vite-plus/test';
-import type { DownloadQuery, StorageChanges } from '../lib/browser.ts';
+import type {
+  DownloadQuery,
+  HeadersReceivedDetails,
+  SessionRuleUpdate,
+  StorageChanges,
+} from '../lib/browser.ts';
 import {
   Event,
   CancelRequest,
@@ -135,6 +140,10 @@ export function createExtensionHarness() {
   const onAlarm = hook<(alarm: { name: string }) => void>();
   const onNotificationClicked = hook<(id: string) => void>();
   const onDownloadChanged = hook<(delta: { id: number; state?: { current?: string } }) => void>();
+  const onHeadersReceived = hook<(details: HeadersReceivedDetails) => void>();
+  /** The Incognito window a link reads: whether GramGrab may see it, and its Instagram cookies. */
+  const incognito = { allowed: true, cookies: undefined as Record<string, string> | undefined };
+  let sessionRules: NonNullable<SessionRuleUpdate['addRules']> = [];
 
   const fakeBrowser = {
     runtime: {
@@ -248,6 +257,27 @@ export function createExtensionHarness() {
       }),
       setBadgeBackgroundColor: vi.fn(async () => undefined),
     },
+    linkedLogin: {
+      isAllowedIncognitoAccess: vi.fn(async () => incognito.allowed),
+      getAllCookieStores: vi.fn(async () =>
+        incognito.cookies ? [{ id: '0' }, { id: '1' }] : [{ id: '0' }]
+      ),
+      getAllCookies: vi.fn(async ({ storeId }: { storeId: string }) =>
+        storeId === '1'
+          ? Object.entries(incognito.cookies ?? {}).map(([name, value]) => ({ name, value }))
+          : []
+      ),
+      updateSessionRules: vi.fn(async (update: SessionRuleUpdate) => {
+        sessionRules = [
+          ...sessionRules.filter(rule => !update.removeRuleIds?.includes(rule.id)),
+          ...(update.addRules ?? []),
+        ];
+      }),
+      onHeadersReceived: {
+        addListener: (listener: (details: HeadersReceivedDetails) => void) =>
+          onHeadersReceived.addListener(listener),
+      },
+    },
     contextMenus: {
       create: vi.fn(),
       removeAll: vi.fn(async () => undefined),
@@ -281,6 +311,7 @@ export function createExtensionHarness() {
     onInstalled.listeners.length = 0;
     onAlarm.listeners.length = 0;
     onNotificationClicked.listeners.length = 0;
+    onHeadersReceived.listeners.length = 0;
     globalThis.browser = fakeBrowser;
     await import('../background.ts');
   }
@@ -308,7 +339,8 @@ export function createExtensionHarness() {
   /** Sends a protocol command through the native bridge and resolves with its terminal event. */
   function command(
     value: Command,
-    onEvent: (event: EventPayload) => void = () => undefined
+    onEvent: (event: EventPayload) => void = () => undefined,
+    login?: Request['login']
   ): Promise<EventPayload> {
     if (!nativeListener) throw new Error('Native bridge is not connected');
     const requestId = Schema.decodeUnknownSync(Request.fields.requestId)(crypto.randomUUID());
@@ -325,7 +357,12 @@ export function createExtensionHarness() {
     });
     nativeListener(
       Schema.encodeSync(Request)(
-        Request.make({ version: PROTOCOL_VERSION, requestId, command: value })
+        Request.make({
+          version: PROTOCOL_VERSION,
+          requestId,
+          command: value,
+          ...(login ? { login } : {}),
+        })
       )
     );
     return terminal;
@@ -340,6 +377,18 @@ export function createExtensionHarness() {
     alarms,
     nativeMessages,
     grantedPermissions,
+    incognito,
+    get sessionRules() {
+      return sessionRules;
+    },
+    /** Delivers a response's `Set-Cookie` lines to the worker's header listener. */
+    receiveHeaders: (url: string, setCookies: readonly string[]) =>
+      onHeadersReceived.listeners.forEach(listener =>
+        listener({
+          url,
+          responseHeaders: setCookies.map(value => ({ name: 'set-cookie', value })),
+        })
+      ),
     get badge() {
       return badge;
     },

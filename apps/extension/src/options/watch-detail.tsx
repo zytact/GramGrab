@@ -23,14 +23,15 @@ import { KIND_LABEL, relativeTime, WATCH_AVATAR_NOTE } from './copy.ts';
 import { useInboxSelection } from './inbox-export.tsx';
 import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
+import { pageLogin } from './login-switch.tsx';
 
 const DAY_MS = 24 * 60 * 60_000;
 
 export const runCommand = (command: WatchCommand): Promise<WatchCommandResponse> =>
-  sendMessage({ type: 'WATCH_COMMAND', command });
+  sendMessage({ type: 'WATCH_COMMAND', command, login: pageLogin() });
 
 export const runRead = (command: WatchRead, viewer: WatchViewer): Promise<WatchCommandResponse> =>
-  sendMessage({ type: 'WATCH_READ', command, viewer });
+  sendMessage({ type: 'WATCH_READ', command, viewer, login: pageLogin() });
 
 export function healthText(health: KindHealth, enabled: boolean): string {
   switch (health._tag) {

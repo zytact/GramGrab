@@ -141,6 +141,81 @@ export interface BrowserShim {
   alarms: PromisedApis['alarms'];
   notifications: PromisedApis['notifications'];
   permissions: PromisedApis['permissions'];
+  linkedLogin?: LinkedLoginApis;
+}
+
+export interface SessionRuleUpdate {
+  removeRuleIds?: number[];
+  addRules?: {
+    id: number;
+    priority: number;
+    condition: {
+      urlFilter: string;
+      requestDomains: string[];
+      tabIds: number[];
+      resourceTypes: string[];
+    };
+    action: {
+      type: 'modifyHeaders';
+      requestHeaders: { header: string; operation: 'set'; value: string }[];
+    };
+  }[];
+}
+
+export interface HeadersReceivedDetails {
+  url: string;
+  responseHeaders?: { name: string; value?: string }[];
+}
+
+/**
+ * The Chromium APIs behind the linked Instagram login. Present only where the manifest grants
+ * them, which is the Chromium build alone.
+ */
+export interface LinkedLoginApis {
+  isAllowedIncognitoAccess: () => Promise<boolean>;
+  getAllCookieStores: () => Promise<{ id: string }[]>;
+  getAllCookies: (details: {
+    domain: string;
+    storeId: string;
+  }) => Promise<{ name: string; value: string }[]>;
+  updateSessionRules: (update: SessionRuleUpdate) => Promise<void>;
+  onHeadersReceived: {
+    addListener: (
+      callback: (details: HeadersReceivedDetails) => void,
+      filter: { urls: string[] },
+      extraInfoSpec: string[]
+    ) => void;
+  };
+}
+
+/**
+ * The promise-based Chromium globals `LinkedLoginApis` reads. `declarativeNetRequest` and
+ * `webRequest` are absent without their permissions, which only the Chromium manifest declares.
+ */
+interface LinkedLoginGlobal {
+  extension?: { isAllowedIncognitoAccess: () => Promise<boolean> };
+  cookies?: {
+    getAllCookieStores: LinkedLoginApis['getAllCookieStores'];
+    getAll: LinkedLoginApis['getAllCookies'];
+  };
+  declarativeNetRequest?: { updateSessionRules: LinkedLoginApis['updateSessionRules'] };
+  webRequest?: { onHeadersReceived: LinkedLoginApis['onHeadersReceived'] };
+}
+
+function linkedLoginApis({
+  extension,
+  cookies,
+  declarativeNetRequest,
+  webRequest,
+}: LinkedLoginGlobal): LinkedLoginApis | undefined {
+  if (!extension || !cookies || !declarativeNetRequest || !webRequest) return undefined;
+  return {
+    isAllowedIncognitoAccess: () => extension.isAllowedIncognitoAccess(),
+    getAllCookieStores: () => cookies.getAllCookieStores(),
+    getAllCookies: details => cookies.getAll(details),
+    updateSessionRules: update => declarativeNetRequest.updateSessionRules(update),
+    onHeadersReceived: webRequest.onHeadersReceived,
+  };
 }
 
 interface AlarmInfo {
@@ -215,7 +290,7 @@ interface ChromeRuntime {
   onInstalled?: BrowserShim['runtime']['onInstalled'];
 }
 
-interface ChromeGlobal extends Partial<PromisedApis> {
+interface ChromeGlobal extends Partial<PromisedApis>, Omit<LinkedLoginGlobal, 'cookies'> {
   runtime: ChromeRuntime;
   tabs: {
     query: (q: unknown, cb: (tabs: unknown[]) => void) => void;
@@ -258,7 +333,7 @@ interface ChromeGlobal extends Partial<PromisedApis> {
       onChanged: PortEvent<(changes: StorageChanges) => void>;
     };
   };
-  cookies: {
+  cookies: LinkedLoginGlobal['cookies'] & {
     get: (
       details: { url: string; name: string },
       callback: (cookie: { value: string } | null) => void
@@ -274,7 +349,7 @@ interface ChromeGlobal extends Partial<PromisedApis> {
   };
 }
 
-interface NativeBrowserGlobal extends Partial<PromisedApis> {
+interface NativeBrowserGlobal extends Partial<PromisedApis>, Omit<LinkedLoginGlobal, 'cookies'> {
   runtime: {
     getURL: (path: string) => string;
     getManifest: () => { version?: string };
@@ -321,7 +396,7 @@ interface NativeBrowserGlobal extends Partial<PromisedApis> {
       onChanged: PortEvent<(changes: StorageChanges) => void>;
     };
   };
-  cookies: {
+  cookies: LinkedLoginGlobal['cookies'] & {
     get: (details: { url: string; name: string }) => Promise<{ value: string } | null>;
   };
   windows: {
@@ -551,6 +626,7 @@ function buildChromeShim(chrome: ChromeGlobal): BrowserShim {
       onShown: contextMenus.onShown ?? noopContextMenus.onShown,
     },
     ...promisedApis(chrome),
+    linkedLogin: linkedLoginApis(chrome),
   };
 }
 
@@ -642,6 +718,7 @@ function buildNativeShim(native: NativeBrowserGlobal): BrowserShim {
     },
     contextMenus: nativeContextMenus(native),
     ...promisedApis(native),
+    linkedLogin: linkedLoginApis(native),
   };
 }
 

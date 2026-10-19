@@ -3,6 +3,7 @@ import type { FrameExportSetting } from '../frame-export/timestamp.ts';
 import type { MediaItem } from '../popup/media-item.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 import { Schema } from 'effect';
+import type { InstagramLogin } from '@gramgrab/protocol';
 
 export type WorkspaceMediaItem = MediaItem;
 
@@ -22,6 +23,8 @@ export interface WorkspaceSnapshot {
   removeAudioIndexes: number[];
   autoStartDownload?: boolean;
   intent?: 'open' | 'fetch';
+  /** The login the results were fetched as. Absent means the main login. */
+  login?: InstagramLogin;
 }
 
 interface LegacyWorkspaceSnapshot extends Omit<

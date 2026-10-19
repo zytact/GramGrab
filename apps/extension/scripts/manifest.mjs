@@ -10,7 +10,7 @@ const permissionDocumentation = [
   {
     permission: 'cookies',
     reason:
-      'Read the current Instagram CSRF token right before an Instants or Watch request that sends it back',
+      'Read the Instagram CSRF token right before a request that sends it back, and copy the Instagram cookies of an Incognito window when you link a second login',
   },
   {
     permission: 'activeTab',
@@ -32,6 +32,20 @@ const permissionDocumentation = [
   },
 ];
 
+/** Chromium only: route a linked second Instagram login's requests (Beta). */
+const chromiumPermissionDocumentation = [
+  {
+    permission: 'declarativeNetRequestWithHostAccess',
+    reason:
+      "Send the linked second login's Instagram cookies with GramGrab's own requests made for that login",
+  },
+  {
+    permission: 'webRequest',
+    reason:
+      'Keep the stored cookies of the linked login current with what Instagram sets on its requests',
+  },
+];
+
 /** Asked for only when a person first chooses to be notified by a Watch. */
 const optionalPermissionDocumentation = [
   { permission: 'notifications', reason: 'Tell you what a Watch check found, if you ask it to' },
@@ -47,6 +61,7 @@ const hostPermissionDocumentation = [
 
 export const manifestPermissionDocumentation = [
   ...permissionDocumentation,
+  ...chromiumPermissionDocumentation,
   ...optionalPermissionDocumentation,
   ...hostPermissionDocumentation,
 ];
@@ -105,7 +120,10 @@ export function createManifest(browser) {
       default_title: 'GramGrab',
     },
     options_ui: { page: 'options.html', open_in_tab: true },
-    permissions: permissionDocumentation.map(({ permission }) => permission),
+    permissions: [
+      ...permissionDocumentation,
+      ...(browser === 'chromium' ? chromiumPermissionDocumentation : []),
+    ].map(({ permission }) => permission),
     optional_permissions: optionalPermissionDocumentation.map(({ permission }) => permission),
     host_permissions: hostPermissionDocumentation.map(({ permission }) => permission),
     background,

@@ -26,7 +26,8 @@ const MediaType = Schema.Literal('image', 'video');
 
 export const STORE_KEY = 'watch-store';
 /** The `storage.session` key holding the account ID the last viewer query found. */
-export const VIEWER_KEY = 'watch-viewer';
+/** Where the browser session records each login's last verified account ID. */
+export const VIEWER_KEYS = { main: 'watch-viewer', linked: 'watch-viewer.linked' } as const;
 export const STORE_VERSION = 2;
 export const STORE_BUDGET_BYTES = 2 * 1024 * 1024;
 /** Inbox entries and the discoveries behind them last this long after discovery. */

@@ -96,12 +96,13 @@ async function run({
   preparedMedia,
   requestedExport,
   recovery,
+  login,
 }: RunnerRequest): Promise<ExportResult> {
   const inspected = preparedMedia
     ? { media: preparedMedia }
     : await (originKind === 'instants'
-        ? sendMessage({ type: 'FETCH_INSTANTS' })
-        : sendMessage({ type: 'FETCH_MEDIA', url: sourceUrl }));
+        ? sendMessage({ type: 'FETCH_INSTANTS', login })
+        : sendMessage({ type: 'FETCH_MEDIA', url: sourceUrl, login }));
   const operations: AttemptOperation[] = [];
   const invalid: ItemOutcome[] = [];
   const requestedById = new Map<string, ExportOperation>();

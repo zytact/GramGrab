@@ -32,6 +32,7 @@ import {
   type CommandResult,
   type EventPayload,
   type ExportMode,
+  type InstagramLogin,
   type InspectResult,
   type InstantsInspectResult,
 } from '@gramgrab/protocol';
@@ -128,6 +129,10 @@ Watches (Beta):
   account ID. --account-id or --username forces one reading.
   add needs --accept-unattended every time; without it, the rejection includes the disclosure to
   read first.
+
+Logins (Beta, Chromium):
+  --login main|linked runs inspect, export, instants, history redownload, and watch commands as
+  your main Instagram login (the default) or the second login linked on the Watches page.
 
 Plans:
   --plan reads an array of protocol ExportOperation objects from a file or stdin (-). Plans retain
@@ -339,6 +344,19 @@ export function parseCliArguments(arguments_: readonly string[]): ParsedCli {
   throw new Error(`Unknown command: ${command}`);
 }
 
+/** Takes `--login main|linked` out of the arguments, so every command parses as it would without. */
+export function takeLogin(arguments_: readonly string[]): {
+  readonly login?: InstagramLogin;
+  readonly rest: readonly string[];
+} {
+  const index = arguments_.indexOf('--login');
+  if (index < 0) return { rest: arguments_ };
+  const value = arguments_[index + 1];
+  if (value !== 'main' && value !== 'linked')
+    throw new Error('Use --login main or --login linked.');
+  return { login: value, rest: arguments_.filter((_, at) => at !== index && at !== index + 1) };
+}
+
 async function parse(arguments_: readonly string[]): Promise<ParsedCli> {
   const plan = option(arguments_, '--plan');
   if (!plan) return parseCliArguments(arguments_);
@@ -373,6 +391,7 @@ export function request(
   onEvent: (event: EventPayload) => void,
   options: {
     readonly signal?: AbortSignal;
+    readonly login?: InstagramLogin;
     readonly endpoint?: string;
     readonly acceptanceTimeoutMs?: number;
     readonly terminalTimeoutMs?: number;
@@ -383,6 +402,7 @@ export function request(
     version: PROTOCOL_VERSION,
     requestId,
     command,
+    ...(options.login ? { login: options.login } : {}),
   });
   return new Promise((resolve, reject) => {
     const socket = connect(options.endpoint ?? endpoint);
@@ -635,11 +655,10 @@ export async function runCli(arguments_: readonly string[], signal?: AbortSignal
 
 async function runCommand(arguments_: readonly string[], signal?: AbortSignal): Promise<void> {
   if (await runLocalCommand(arguments_)) return;
-  const parsed = await parse(arguments_);
+  const { login, rest } = takeLogin(arguments_);
+  const parsed = await parse(rest);
   const printProgress = createProgressPrinter(parsed.json);
-  let event = await request(parsed.command, printProgress, {
-    signal,
-  });
+  let event = await request(parsed.command, printProgress, { signal, login });
   if (
     parsed.expandAll &&
     event._tag === 'Completed' &&
@@ -647,6 +666,7 @@ async function runCommand(arguments_: readonly string[], signal?: AbortSignal): 
   ) {
     event = await request(expandedExport(parsed.expandAll, event.result), printProgress, {
       signal,
+      login,
     });
   }
   printTerminal(event, parsed.json);

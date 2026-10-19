@@ -14,6 +14,7 @@ import {
   GraphQLRequestFailed,
   HttpError,
   InvalidInstagramUrl,
+  LinkedLoginUnavailable,
   MediaNotFound,
   MediaDashOnlyUnsupported,
   NetworkError,
@@ -53,6 +54,13 @@ export function normalizeSourceFailure(cause: unknown): OperationFailure {
     return failure('SOURCE_MEDIA_NOT_FOUND', 'source', cause, 'batch');
   if (cause instanceof MediaDashOnlyUnsupported)
     return failure('MEDIA_DASH_ONLY_UNSUPPORTED', 'source', cause);
+  if (cause instanceof LinkedLoginUnavailable)
+    return failure(
+      cause.reason === 'ended' ? 'IG_LINKED_LOGIN_ENDED' : 'IG_LINKED_LOGIN_MISSING',
+      'source',
+      undefined,
+      'batch'
+    );
   if (cause instanceof RateLimited) return failure('IG_RATE_LIMITED', 'source', cause, 'batch');
   if (cause instanceof ResponseShapeUnknown)
     return failure('IG_RESPONSE_SHAPE_UNKNOWN', 'source', cause, 'batch');

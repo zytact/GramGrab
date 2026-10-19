@@ -458,6 +458,34 @@ describe('CLI watch grammar', () => {
   });
 });
 
+describe('CLI login choice', SPAWNS_CLI, () => {
+  it('sends --login linked on the request and parses the command as it would without', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Completed.make({
+        result: Schema.decodeUnknownSync(WatchLifecycleResult)({
+          _tag: 'WatchLifecycleResult',
+          operation: 'pause',
+          watches: [],
+          unknownWatches: [],
+        }),
+      })
+    );
+    await runCliProcess(['watch', 'pause', 'instagram', '--login', 'linked', '--json'], endpoint);
+
+    expect(server.requests).toMatchObject([
+      { login: 'linked', command: { _tag: 'WatchLifecycle', operation: 'pause' } },
+    ]);
+    await server.close();
+  });
+
+  it('refuses a login other than main or linked', async () => {
+    const result = await runCliProcess(['inspect', 'instagram', '--login', 'other'], 'unused');
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('Use --login main or --login linked.');
+  });
+});
+
 describe('CLI watch process', SPAWNS_CLI, () => {
   it('prints every kind progress on stderr and a single unsuccessful terminal result on stdout', async () => {
     const endpoint = await testEndpoint();

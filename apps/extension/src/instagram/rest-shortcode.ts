@@ -238,7 +238,6 @@ export const fetchRestShortcodeRaw = (shortcode: string) =>
     if (!id) return yield* Effect.fail(unknownShape());
     const requests = yield* InstagramRequests;
     const response = yield* requests.fetch(`https://www.instagram.com/api/v1/media/${id}/info/`, {
-      credentials: 'include',
       headers: {
         'X-IG-App-ID': protocolConfig.client.appId,
         'X-ASBD-ID': protocolConfig.client.asbdId,

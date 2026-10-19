@@ -88,22 +88,24 @@ the registry in [error-model.md](error-model.md), and the shared protocol fixtur
 round-trip. Watch domain failures use `watchFailure`; upstream failures use the
 existing source/media/browser normalizers.
 
-| Required code                     | Producer and behavioral proof                                                 |
-| --------------------------------- | ----------------------------------------------------------------------------- |
-| `WATCH_STORY_EXPIRED`             | `watch/export.ts`; expired Story without request                              |
-| `WATCH_AVATAR_CHANGED`            | `watch/export.ts`; current-picture-only Avatar export                         |
-| `WATCH_INSTANT_NOT_IN_FEED`       | `watch/export.ts`; absence only from valid feed                               |
-| `WATCH_MEDIA_UNAVAILABLE`         | `watch/export.ts`; frozen Sidecar missing child                               |
-| `WATCH_USERNAME_UNCONFIRMED`      | `watch/identity.ts`, `service.ts`; unconfirmed target/rename                  |
-| `WATCH_CHECK_INCOMPLETE`          | `watch/posts.ts`, `identity.ts`, `check.ts`; untrusted pages, non-JSON bodies |
-| `WATCH_STORE_CAPACITY_EXCEEDED`   | `watch/store.ts`; aggregate budget and explicit freeing                       |
-| `WATCH_STORE_FAILED`              | `watch/store.ts`; write refusal before dependent actions                      |
-| `WATCH_STORE_VERSION_UNSUPPORTED` | `watch/store.ts`; newer store preserved                                       |
-| `WATCH_STORE_UNREADABLE`          | `watch/store.ts`; corruption/forbidden fields preserved                       |
-| `WATCH_NOT_FOUND`                 | `watch/service.ts`; other-login show refusal                                  |
-| `WATCH_CONFIG_CONFLICT`           | `watch/service.ts`; conflicting repeated add                                  |
-| `WATCH_UNATTENDED_NOT_ACCEPTED`   | `watch/service.ts`; disclosure before requests                                |
-| `WATCH_RECOVERY_NOT_APPLICABLE`   | `watch/service.ts`, `recovery.ts`; check problems and unsupported recovery    |
+| Required code                     | Producer and behavioral proof                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `WATCH_STORY_EXPIRED`             | `watch/export.ts`; expired Story without request                               |
+| `WATCH_AVATAR_CHANGED`            | `watch/export.ts`; current-picture-only Avatar export                          |
+| `WATCH_INSTANT_NOT_IN_FEED`       | `watch/export.ts`; absence only from valid feed                                |
+| `WATCH_MEDIA_UNAVAILABLE`         | `watch/export.ts`; frozen Sidecar missing child                                |
+| `WATCH_USERNAME_UNCONFIRMED`      | `watch/identity.ts`, `service.ts`; unconfirmed target/rename                   |
+| `WATCH_CHECK_INCOMPLETE`          | `watch/posts.ts`, `identity.ts`, `check.ts`; untrusted pages, non-JSON bodies  |
+| `WATCH_STORE_CAPACITY_EXCEEDED`   | `watch/store.ts`; aggregate budget and explicit freeing                        |
+| `WATCH_STORE_FAILED`              | `watch/store.ts`; write refusal before dependent actions                       |
+| `WATCH_STORE_VERSION_UNSUPPORTED` | `watch/store.ts`; newer store preserved                                        |
+| `WATCH_STORE_UNREADABLE`          | `watch/store.ts`; corruption/forbidden fields preserved                        |
+| `WATCH_NOT_FOUND`                 | `watch/service.ts`; other-login show refusal                                   |
+| `WATCH_CONFIG_CONFLICT`           | `watch/service.ts`; conflicting repeated add                                   |
+| `WATCH_UNATTENDED_NOT_ACCEPTED`   | `watch/service.ts`; disclosure before requests                                 |
+| `WATCH_RECOVERY_NOT_APPLICABLE`   | `watch/service.ts`, `recovery.ts`; check problems and unsupported recovery     |
+| `IG_LINKED_LOGIN_MISSING`         | `instagram/linked-login.ts`; refused before any request                        |
+| `IG_LINKED_LOGIN_ENDED`           | `watch/identity.ts`, `instagram/linked-login.ts`; ended session pauses Watches |
 
 The existing `WATCH_NOTIFY_PERMISSION_DENIED` and `WATCH_NOTIFY_FAILED` literals
 have the same contract coverage and real notification refusal/retry tests.

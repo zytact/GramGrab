@@ -437,11 +437,18 @@ export class StorageAttention extends Schema.TaggedClass<StorageAttention>()('St
   ),
 }) {}
 
+/** Instagram signed the linked login out, so its Watches wait until it is linked again. */
+export class LinkedLoginAttention extends Schema.TaggedClass<LinkedLoginAttention>()(
+  'LinkedLoginAttention',
+  { attentionId: NonEmptyString, code: Schema.Literal('IG_LINKED_LOGIN_ENDED') }
+) {}
+
 export const WatchAttention = Schema.Union(
   CheckAttention,
   ActionAttention,
   PauseAttention,
-  StorageAttention
+  StorageAttention,
+  LinkedLoginAttention
 );
 export type WatchAttention = Schema.Schema.Type<typeof WatchAttention>;
 

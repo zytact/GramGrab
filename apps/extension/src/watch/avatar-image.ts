@@ -1,6 +1,6 @@
 import { Effect, Either } from 'effect';
 import type { KindCheckOutcome } from '@gramgrab/protocol';
-import { InstagramRequests, withWatchAdmission } from '../instagram/requests.ts';
+import { InstagramRequests, loginOf, withWatchAdmission } from '../instagram/requests.ts';
 import type { WatchAvatarsResponse } from '../messaging/contracts.ts';
 import type { Watch } from './contracts.ts';
 import { fetchAvatar, type ObservedAvatar } from './avatar.ts';
@@ -12,18 +12,21 @@ import { verifiedViewerId } from './identity.ts';
 /** A Watch that does not track Avatar changes looks its picture up again after this long. */
 const LOOKUP_AFTER_MS = 7 * 24 * 60 * 60_000;
 
-/** Looks up the account's current picture by its account ID. */
-const lookup = (watch: Watch) =>
-  Effect.runPromise(
-    withWatchAdmission(requests =>
+/** Looks up the account's current picture by its account ID, as the Watch's login. */
+const lookup = async (watch: Watch) => {
+  const login = await loginOf(watch.viewerId);
+  return Effect.runPromise(
+    withWatchAdmission(login, requests =>
       Effect.gen(function* () {
-        if ((yield* Effect.promise(verifiedViewerId)) !== watch.viewerId) return undefined;
+        if ((yield* Effect.promise(() => verifiedViewerId(login))) !== watch.viewerId)
+          return undefined;
         return yield* fetchAvatar(watch.targetId).pipe(
           Effect.provideService(InstagramRequests, requests)
         );
       })
     ).pipe(Effect.either)
   );
+};
 
 const saveImage = (watchId: string, change: Pick<Watch, 'avatarImage' | 'avatarLookupAt'>) =>
   mutateStore(store => {
@@ -77,7 +80,7 @@ export async function refreshAvatarImage(
   }
 ): Promise<void> {
   if (!run.loginVerified || !run.kinds.some(reachedInstagram)) return;
-  if ((await verifiedViewerId()) !== viewerId) return;
+  if ((await verifiedViewerId(await loginOf(viewerId))) !== viewerId) return;
   const read = await readStore();
   const watch =
     read.kind === 'ok'
