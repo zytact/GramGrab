@@ -87,7 +87,7 @@ to Instagram as the CSRF header for that request. The value is never stored or l
 Instagram's Posts queries also need the `fb_dtsg` form token. GramGrab reads it from the
 instagram.com home page, keeps it in the background worker's memory only, and sends it back to
 Instagram with those queries. The `declarativeNetRequestWithHostAccess` permission sets only one
-header: `Origin: https://www.instagram.com`, on GramGrab's own POST requests to instagram.com.
+header, `Origin: https://www.instagram.com`, on GramGrab's own POST requests to instagram.com.
 
 Cookies, CSRF tokens, request headers, browser storage contents, and unrelated session state never
 enter shareable diagnostics or committed artifacts. They must not be copied into source,

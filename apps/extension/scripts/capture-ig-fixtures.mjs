@@ -288,6 +288,8 @@
     async function profilePostsFetch(username) {
       const candidate = PROTOCOL_CONFIG.operations.profilePosts.candidates[0];
       const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '';
+      const home = await (await fetch('/', { credentials: 'include' })).text();
+      const dtsg = /"DTSGInitialData",\[\],\{"token":"([^"]+)"/.exec(home)?.[1] ?? '';
       const response = await fetch(candidate.requests[0].endpoint, {
         method: 'POST',
         credentials: 'include',
@@ -299,6 +301,7 @@
         },
         body: new URLSearchParams({
           [candidate.kind]: candidate.id,
+          fb_dtsg: dtsg,
           variables: JSON.stringify({
             data: {
               count: 12,

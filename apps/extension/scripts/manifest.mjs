@@ -33,7 +33,7 @@ const permissionDocumentation = [
   {
     permission: 'declarativeNetRequestWithHostAccess',
     reason:
-      'Mark GramGrab’s own Instagram requests as coming from instagram.com, which Instagram requires',
+      "Mark GramGrab's own Instagram requests as coming from instagram.com, which Instagram requires",
   },
 ];
 

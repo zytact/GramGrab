@@ -41,8 +41,8 @@ live. Check this list before debugging an Instagram failure.
   `Origin: https://www.instagram.com` ([#313](https://github.com/zytact/GramGrab/issues/313)).
   `fetch` cannot set `Origin`, so `installInstagramOrigin` in
   `apps/extension/src/instagram/origin.ts` adds a session rule that sets it on the extension's own
-  POSTs to instagram.com. `readDtsgToken` in `apps/extension/src/instagram/headers.ts` reads the
-  token from the home page and reads it again when a Posts query answers HTML.
+  POSTs to instagram.com. `withDtsgToken` in `apps/extension/src/instagram/dtsg.ts` reads the
+  token from the home page, and reads it again once when a cached token gets HTML back.
 - **Only the `query_hash` Stories request still works.** The `reelsMedia` `doc_id` request answers
   `execution error` with no data. The `query_hash` request returns the reels with errors only on
   `story_cta_url` and `story_view_count`, which GramGrab ignores.
