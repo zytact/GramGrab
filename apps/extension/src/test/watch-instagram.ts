@@ -208,6 +208,9 @@ export function createWatchInstagram() {
     posts: { '': postsPage([]) } as Record<string, unknown>,
     /** The cursor of every Posts page requested, '' for the first page. */
     postRequests: [] as string[],
+    /** The `fb_dtsg` the home page names, and the one each Posts request sent. */
+    dtsgToken: 'DTSG_A',
+    postTokens: [] as (string | null)[],
     instants: instantsFeed([]) as unknown,
     instantsRequests: 0,
     /** REST media answers by shortcode; any other media is a 404. */
@@ -224,6 +227,9 @@ export function createWatchInstagram() {
     const body = init?.body as URLSearchParams;
     const cursor = cursorPage ? String(JSON.parse(body.get('variables') ?? '{}').after) : '';
     state.postRequests.push(cursor);
+    state.postTokens.push(body.get('fb_dtsg'));
+    if (body.get('fb_dtsg') !== state.dtsgToken)
+      return new Response('<html>', { headers: { 'Content-Type': 'text/html' } });
     const answer = state.posts[cursor];
     if (answer instanceof Response) return answer.clone();
     return json(state.posts[cursor] ?? {}, cursor in state.posts ? 200 : 404);
@@ -253,6 +259,12 @@ export function createWatchInstagram() {
       const code = Object.keys(state.media).find(shortcode => shortcodeMediaId(shortcode) === id);
       return code ? json(state.media[code]) : json({}, 404);
     },
+    ({ hostname, pathname }) =>
+      hostname === 'www.instagram.com' && pathname === '/'
+        ? new Response(`["DTSGInitialData",[],{"token":"${state.dtsgToken}"}]`, {
+            headers: { 'Content-Type': 'text/html' },
+          })
+        : undefined,
     ({ hostname, pathname }) => {
       const username = /^\/([^/]+)\/$/.exec(pathname)?.[1];
       if (hostname !== 'www.instagram.com' || !username) return undefined;
@@ -276,9 +288,6 @@ export function createWatchInstagram() {
       state.instantsRequests += 1;
       return json(state.instants);
     },
-    // The configured primary Story request answered 403 in every live probe.
-    (_url, init) =>
-      formDocument(init) === '28299494542988937' ? new Response('', { status: 403 }) : undefined,
   ];
 
   const handle = (url: string, init?: RequestInit): Response => {

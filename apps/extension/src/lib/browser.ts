@@ -141,6 +141,7 @@ export interface BrowserShim {
   alarms: PromisedApis['alarms'];
   notifications: PromisedApis['notifications'];
   permissions: PromisedApis['permissions'];
+  declarativeNetRequest: PromisedApis['declarativeNetRequest'];
 }
 
 interface AlarmInfo {
@@ -177,6 +178,27 @@ interface PromisedApis {
   permissions: {
     contains: (query: { permissions: string[] }) => Promise<boolean>;
     request: (query: { permissions: string[] }) => Promise<boolean>;
+  };
+  declarativeNetRequest: {
+    updateSessionRules: (options: {
+      removeRuleIds?: number[];
+      addRules?: SessionRule[];
+    }) => Promise<void>;
+  };
+}
+
+/** A session rule that sets request headers, the only kind GramGrab adds. */
+interface SessionRule {
+  id: number;
+  action: {
+    type: 'modifyHeaders';
+    requestHeaders: { header: string; operation: 'set'; value: string }[];
+  };
+  condition: {
+    requestDomains: string[];
+    initiatorDomains: string[];
+    requestMethods: 'post'[];
+    tabIds: number[];
   };
 }
 
@@ -561,6 +583,7 @@ function promisedApis(global: Partial<PromisedApis>): PromisedApis {
     alarms: global.alarms ?? noopPromisedApis.alarms,
     notifications: global.notifications ?? noopPromisedApis.notifications,
     permissions: global.permissions ?? noopPromisedApis.permissions,
+    declarativeNetRequest: global.declarativeNetRequest ?? noopPromisedApis.declarativeNetRequest,
   };
 }
 
@@ -700,6 +723,7 @@ const noopPromisedApis: PromisedApis = {
     contains: () => Promise.resolve(false),
     request: () => Promise.resolve(false),
   },
+  declarativeNetRequest: { updateSessionRules: () => Promise.resolve() },
 };
 
 const noopCookies: BrowserShim['cookies'] = {

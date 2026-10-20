@@ -418,6 +418,15 @@ describe('Posts checks', () => {
     }
   );
 
+  it('reads fb_dtsg again once Instagram stops accepting it', async () => {
+    await baselined();
+    instagram.state.dtsgToken = 'DTSG_B';
+    instagram.state.postTokens = [];
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ _tag: 'KindCheckSucceeded' });
+    expect(instagram.state.postTokens).toEqual(['DTSG_A', 'DTSG_B']);
+  });
+
   it('reports a format change only for a page that does not decode', async () => {
     await baselined();
     instagram.state.posts = { '': { data: {} } };

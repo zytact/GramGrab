@@ -2,7 +2,7 @@ import { Effect, Either, Schema } from 'effect';
 import { InstagramUsername, type CheckIncompleteReason } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { IG_API_GRAPHQL_HEADERS, readCsrfToken } from '../instagram/headers.ts';
+import { IG_API_GRAPHQL_HEADERS, readCsrfToken, readDtsgToken } from '../instagram/headers.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { AnswerUntrusted, ResponseShapeUnknown } from '../effect/errors.ts';
 import { MediaId, Shortcode, type TimedRef } from './contracts.ts';
@@ -164,6 +164,9 @@ function pageRequest(username: string, after: string | undefined) {
   };
 }
 
+const isPage = (response: Response) =>
+  response.headers.get('content-type')?.includes('text/html') ?? false;
+
 /** Requests one page of the account's Posts by its verified current username. */
 export const fetchPostsPage = (username: string, after: string | undefined) =>
   Effect.gen(function* () {
@@ -175,20 +178,25 @@ export const fetchPostsPage = (username: string, after: string | undefined) =>
     const request = candidate.requests[0]!;
     const csrfToken = yield* readCsrfToken;
     const requests = yield* InstagramRequests;
-    const response = yield* requests.fetch(request.endpoint, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        ...IG_API_GRAPHQL_HEADERS,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-      },
-      body: new URLSearchParams({
-        [candidate.kind]: candidate.id,
-        variables: JSON.stringify(variables),
-      }),
-    });
-    return yield* readJson(response);
+    const send = (dtsgToken: string) =>
+      requests.fetch(request.endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...IG_API_GRAPHQL_HEADERS,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        },
+        body: new URLSearchParams({
+          [candidate.kind]: candidate.id,
+          variables: JSON.stringify(variables),
+          fb_dtsg: dtsgToken,
+        }),
+      });
+    const response = yield* send(yield* readDtsgToken());
+    // Instagram answers an expired token with its home page instead of JSON.
+    if (!isPage(response)) return yield* readJson(response);
+    return yield* readJson(yield* send(yield* readDtsgToken(true)));
   });
 
 const TRAVERSALS_KEY = 'watch-posts-traversals';

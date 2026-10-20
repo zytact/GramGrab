@@ -92,6 +92,7 @@ import { sendTabMessage } from './messaging/send.ts';
 import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
+import { installInstagramOrigin } from './instagram/origin.ts';
 import {
   previewInboxEntry,
   previewWatchTarget,
@@ -1208,6 +1209,7 @@ async function executeCommand(
   }
 }
 
+void installInstagramOrigin();
 startNativeBridge(executeCommand);
 browser.runtime.onStartup.addListener(() => startNativeBridge(executeCommand));
 

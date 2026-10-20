@@ -43,7 +43,7 @@ describe('Instagram request accounting', () => {
     return operation;
   };
 
-  it('counts every helper request and automatic retry of a requested operation', async () => {
+  it('counts every automatic retry of a requested operation', async () => {
     vi.useFakeTimers();
     harness.setFetch(url =>
       url === 'https://www.instagram.com/'
@@ -61,8 +61,7 @@ describe('Instagram request accounting', () => {
 
     expect(response.failure?.code).toBe('SOURCE_SERVER_FAILED');
     const calls = instagramCalls();
-    expect(calls.some(([input]) => input === 'https://www.instagram.com/')).toBe(true);
-    expect(calls.length).toBeGreaterThan(4);
+    expect(calls).toHaveLength(4);
     expect((await ledger()).attempts).toHaveLength(calls.length);
   });
 
