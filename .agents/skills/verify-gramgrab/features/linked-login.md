@@ -33,8 +33,10 @@ can fetch and watch private accounts only their second account can see.
 3. Open the Watches page. Under `LOGINS BETA`, click `Link this login`. The
    notice reads `Linked @<username>.` The Incognito window may close; logging
    out of it ends the linked session.
-4. The Watches page gets `Main` and `Linked` tabs (`?login=linked`). The popup
-   and workspace get a `Login` select (`#instagram-login`) next to Fetch.
+4. The Watches page gets one tab per login (`?login=linked` for the second). The
+   popup and workspace get a `Login` select (`#instagram-login`) next to Fetch.
+   Tabs and options read `@<username>`, or `Main` and `Linked` until the worker
+   answers `LOGIN_NAMES`. A signed-out linked login reads `Linked (signed out)`.
 5. The CLI takes `--login main|linked` on `inspect`, `export`, `instants`,
    `history redownload`, and `watch` commands.
 
@@ -90,7 +92,7 @@ Link and unlink from the Watches page with `drive.mjs click` on the
 linking, prove the two logins differ without printing either ID:
 
 ```bash
-node $D eval js/background.js "Promise.all([chrome.storage.session.get(null),chrome.storage.local.get('linked-instagram-login')]).then(([s,l])=>JSON.stringify({differ:s['watch-viewer']!==s['watch-viewer.linked'],linkedVerified:s['watch-viewer.linked']===l['linked-instagram-login']?.accountId}))"
+node $D eval js/background.js "Promise.all([chrome.storage.session.get(null),chrome.storage.local.get('linked-instagram-login')]).then(([s,l])=>JSON.stringify({differ:s['watch-viewer']?.accountId!==s['watch-viewer.linked']?.accountId,linkedVerified:s['watch-viewer.linked']?.accountId===l['linked-instagram-login']?.accountId}))"
 ```
 
 Read the session rule's condition, never its action: the action holds the
@@ -125,7 +127,7 @@ Adding the Watch spends linked requests of its own for the preview and baseline.
 
 ## What proves it works
 
-- Link: the notice starts `Linked @`, the tabs appear, `linked-instagram-login`
+- Link: the notice starts `Linked @`, the tabs appear named by `@username`, `linked-instagram-login`
   exists, and the viewer probe reads `{"differ":true,"linkedVerified":true}`.
 - Refusal: linking without Incognito access reads `Allow GramGrab in Incognito
   on the browser's extensions page, then link again.` and stores nothing.

@@ -672,7 +672,8 @@ reference, including explicit Silent re-encode approval.
 ## Linked login
 
 With a second login linked ([Linked login](./linked-login.md)), the page shows
-one login at a time: `Main` and `Linked` tabs under `.opt-login-switch`, the
+one login at a time: one tab per login under `.opt-login-switch`, named by its
+`@username`, the
 second at `options.html?login=linked`. Each Watch belongs to the login that
 added it, and adding or importing a Watch adds it to the login on show. A
 linked Watch's checks, actions, notifications, and Avatar lookups all run as
@@ -684,7 +685,7 @@ the linked login and spend only `instagram-requests.linked`.
 3. Click Check now once and follow [Check now](#check-now). Require the check
    to finish with an outcome per kind, `instagram-requests.linked` to gain
    attempts, and `instagram-requests` to gain none from the check itself.
-4. Open the `Main` tab. The linked Watch is not listed there.
+4. Open the main login's tab. The linked Watch is not listed there.
 5. `gramgrab watch list --login linked --json` lists it, and `gramgrab watch
    list --json` does not.
 
