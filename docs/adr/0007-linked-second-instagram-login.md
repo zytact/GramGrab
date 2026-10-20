@@ -16,7 +16,7 @@ This supersedes the sentence in [ADR 0005](./0005-unattended-instagram-access-fo
 
 ## Stored state
 
-While a login is linked, `storage.local` holds `linked-instagram-login`: its account ID, a copy of its Instagram cookies, and whether its session ended. The cookies are unencrypted at rest, like the browser's own cookie store on most platforms. Unlink deletes the record and the rule. The linked login's username is fetched, never stored. Diagnostics never contain the cookies, the account ID, or the username.
+While a login is linked, `storage.local` holds `linked-instagram-login`: its account ID, a copy of its Instagram cookies, and whether its session ended. The cookies are unencrypted at rest, like the browser's own cookie store on most platforms. Unlink deletes the record and the rule. The linked login's username is never written to `storage.local`. The popup picker and the Watches tabs name each login by its username, which `storage.session` holds next to the verified account ID until the browser closes. Diagnostics never contain the cookies, the account ID, or the username.
 
 ## Considered options
 

@@ -868,7 +868,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const viewerRequests = instagram.state.viewerRequests;
 
     instagram.state.viewer = { id: '1002', username: 'instagram' };
-    harness.session.write('watch-viewer', '1002');
+    harness.session.write('watch-viewer', { accountId: '1002', username: 'instagram' });
     await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
 
     expect(await screen.findByText('@instagram', { selector: '.opt-viewer' })).toBeDefined();

@@ -181,6 +181,7 @@ const WatchInboxPreview = Schema.Struct({
 
 const LinkLogin = Schema.Struct({ type: Schema.Literal('LINK_LOGIN') });
 const UnlinkLogin = Schema.Struct({ type: Schema.Literal('UNLINK_LOGIN') });
+const LoginNames = Schema.Struct({ type: Schema.Literal('LOGIN_NAMES') });
 
 const RunExport = Schema.Struct({
   type: Schema.Literal('RUN_EXPORT'),
@@ -231,6 +232,7 @@ const MessageSchema = Schema.Union(
   WatchInboxPreview,
   LinkLogin,
   UnlinkLogin,
+  LoginNames,
   RunExport,
   RunnerReady,
   RunnerProgress
@@ -347,6 +349,9 @@ export type LinkRefusalReason =
   | 'not-verified'
   | 'same-login';
 
+/** Each login's verified username, for logins that have one. */
+export type LoginNamesResponse = Partial<Record<InstagramLogin, string>>;
+
 export type LinkLoginResponse =
   | { readonly _tag: 'linked'; readonly username: string }
   | { readonly _tag: 'refused'; readonly reason: LinkRefusalReason };
@@ -379,6 +384,7 @@ interface MessageResponses extends Record<MessageType, unknown> {
   WATCH_INBOX_PREVIEW: WatchInboxPreviewResponse;
   LINK_LOGIN: LinkLoginResponse;
   UNLINK_LOGIN: LinkedLoginState;
+  LOGIN_NAMES: LoginNamesResponse;
   RUN_EXPORT: ExportResult;
   RUNNER_READY: void;
   RUNNER_PROGRESS: void;

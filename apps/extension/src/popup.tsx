@@ -53,7 +53,7 @@ import { MediaListSection } from './popup/media-list';
 import { useFrameSeekEffect } from './popup/use-frame-seek';
 import { useWhatsAppCapture } from './popup/use-whatsapp-capture';
 import { WhatsAppStatusPanel } from './popup/whatsapp-status-panel';
-import { LoginPicker, useLinkedLoginState } from './popup/login-picker';
+import { LoginPicker, useLogins } from './popup/login-picker';
 import type { InstagramLogin } from '@gramgrab/protocol';
 import { sendMessage } from './messaging/send';
 import { attentionCount } from './watch/attention';
@@ -117,7 +117,7 @@ export default function Popup() {
   const [fetchedUrl, setFetchedUrl] = useState('');
   const [acquisition, setAcquisition] = useState<'source' | 'instants'>('source');
   const [login, setLogin] = useState<InstagramLogin>('main');
-  const linkedState = useLinkedLoginState();
+  const logins = useLogins();
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -1031,7 +1031,7 @@ export default function Popup() {
                     )}
                     <div className="instants-row">
                       <LoginPicker
-                        state={linkedState}
+                        logins={logins}
                         login={login}
                         disabled={isBusy}
                         onChange={setLogin}

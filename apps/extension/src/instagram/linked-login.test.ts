@@ -9,13 +9,18 @@ import {
 } from '@gramgrab/protocol';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
 import { TARGET, VIEWER, createWatchInstagram } from '../test/watch-instagram.ts';
-import type { LinkLoginResponse, WatchCommandResponse } from '../messaging/contracts.ts';
+import type {
+  LinkLoginResponse,
+  LoginNamesResponse,
+  WatchCommandResponse,
+} from '../messaging/contracts.ts';
 import { absorbSetCookie } from './linked-login.ts';
 import { SESSION_RULE_ID } from './session-rules.ts';
 
 const START = Date.UTC(2026, 9, 1, 12);
 const MINUTE = 60_000;
-const LINKED = { id: '3003', username: 'instagram' };
+// `creators` is Instagram's own account too; the two logins need different usernames.
+const LINKED = { id: '3003', username: 'creators' };
 const LINKED_COOKIES = {
   sessionid: 'linked-session',
   ds_user_id: LINKED.id,
@@ -163,6 +168,23 @@ describe('linking a second login', () => {
 
     expect(await link()).toEqual({ _tag: 'refused', reason: 'main-unverified' });
     expect(stored()).toBeUndefined();
+  });
+
+  it('names both logins from the viewers the link verified, without asking Instagram again', async () => {
+    harness.incognito.cookies = LINKED_COOKIES;
+    await link();
+    const sent = requests().length;
+
+    expect(await settle(harness.send<LoginNamesResponse>({ type: 'LOGIN_NAMES' }))).toEqual({
+      main: VIEWER.username,
+      linked: LINKED.username,
+    });
+    expect(requests()).toHaveLength(sent);
+  });
+
+  it('asks Instagram for no names while no second login is linked', async () => {
+    expect(await settle(harness.send<LoginNamesResponse>({ type: 'LOGIN_NAMES' }))).toEqual({});
+    expect(requests()).toHaveLength(0);
   });
 
   it('deletes the cookies and the rule on Unlink', async () => {

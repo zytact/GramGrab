@@ -1,3 +1,4 @@
+import { Option } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccountIdSelector,
@@ -30,7 +31,7 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
 import { decodeLedger, LEDGER_KEYS, type LedgerView } from '../instagram/request-state.ts';
-import { STORE_KEY, VIEWER_KEYS } from '../watch/contracts.ts';
+import { STORE_KEY, VIEWER_KEYS, decodeCachedViewer } from '../watch/contracts.ts';
 import {
   SCHEDULER_KEY,
   decodeSchedulerState,
@@ -692,7 +693,7 @@ function useWatchList() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const [version, setVersion] = useState(0);
   const [pending, setPending] = useState(0);
-  const [observed, setObserved] = useState<{ readonly accountId: unknown }>();
+  const [observed, setObserved] = useState<{ readonly accountId: string }>();
   const latest = useRef(0);
   const viewer = useRef<WatchViewer>(undefined);
   const verification = useRef<Promise<void>>(undefined);
@@ -739,8 +740,9 @@ function useWatchList() {
     const listener = (changes: StorageChanges) => {
       const change = changes[VIEWER_KEYS[pageLogin()]];
       if (!change) return;
-      setObserved(change.newValue === undefined ? undefined : { accountId: change.newValue });
-      if (change.newValue !== undefined || !viewer.current) return;
+      const next = Option.getOrUndefined(decodeCachedViewer(change.newValue));
+      setObserved(next && { accountId: next.accountId });
+      if (next || !viewer.current) return;
       latest.current += 1;
       viewer.current = undefined;
       setLoaded(signedOut);

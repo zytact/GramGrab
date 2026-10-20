@@ -1,12 +1,12 @@
 import { noteViewerPicture } from './viewer-avatar.ts';
-import { Data, Effect, Schema } from 'effect';
+import { Data, Effect, Option, Schema } from 'effect';
 import { AccountId, InstagramUsername, type InstagramLogin } from '@gramgrab/protocol';
 import { protocolConfig } from '../instagram-protocol/config.ts';
 import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS } from '../instagram/headers.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
 import { markLinkedEnded } from '../instagram/linked-login.ts';
-import { VIEWER_KEYS } from './contracts.ts';
+import { CachedViewer, VIEWER_KEYS, decodeCachedViewer } from './contracts.ts';
 import {
   AnswerUntrusted,
   GraphQLRequestFailed,
@@ -98,16 +98,18 @@ export const readJson = (response: Response) =>
     });
   });
 
-export async function verifiedViewerId(login: InstagramLogin): Promise<string | undefined> {
+export async function cachedViewer(login: InstagramLogin): Promise<Account | undefined> {
   const key = VIEWER_KEYS[login];
   const stored = await browser.sessionStorage.get(key).catch((): Record<string, unknown> => ({}));
-  const decoded = Schema.decodeUnknownOption(AccountId)(stored[key]);
-  return decoded._tag === 'Some' ? decoded.value : undefined;
+  return Option.getOrUndefined(decodeCachedViewer(stored[key]));
 }
+
+export const verifiedViewerId = async (login: InstagramLogin) =>
+  (await cachedViewer(login))?.accountId;
 
 /**
  * Identifies the viewer of the requests' login from the dedicated session query, never from a
- * cookie, and records its account ID for `verifiedViewerId`. When no viewer is signed in it drops
+ * cookie, and records it for `cachedViewer`. When no viewer is signed in it drops
  * that record, and a linked login is marked ended.
  */
 export const fetchViewer = Effect.gen(function* () {
@@ -135,7 +137,11 @@ export const fetchViewer = Effect.gen(function* () {
     Effect.tap(viewer =>
       Effect.promise(() => {
         noteViewerPicture(viewer);
-        return browser.sessionStorage.set({ [key]: viewer.accountId }).catch(() => undefined);
+        const cached = CachedViewer.make({
+          accountId: viewer.accountId,
+          username: viewer.username,
+        });
+        return browser.sessionStorage.set({ [key]: cached }).catch(() => undefined);
       })
     ),
     Effect.tapError(error =>

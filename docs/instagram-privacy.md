@@ -56,7 +56,9 @@ Watches are the one exception to request-in-the-moment access. See
 
   Apart from those Avatar images, it never holds media bytes or thumbnails. It never holds signed,
   preview, data, or blob URLs, captions, full or display names, locations, cookies, or tokens. The
-  viewer's own username and Avatar are fetched when needed and are not stored. The linked login's cookies are a
+  viewer's own Avatar is fetched when needed and is not stored. Each login's verified account ID
+  and username live only in `storage.session`, which the browser clears when it closes, so the
+  login picker can name them. The linked login's cookies are a
   separate record, not Watch state; see Linked login. A Posts traversal
   cursor lives only in `storage.session`. Each Watch entry links to its Instagram page, built
   when shown from the username and the stored shortcode or Story ID; the link is never stored.
@@ -91,7 +93,7 @@ One browser profile may hold one linked second Instagram login. See
   confirms the account with the viewer query, and refuses the main login.
 - **Stored state.** While a login is linked, `storage.local` holds its account ID, a copy of its
   Instagram cookies, unencrypted at rest, and whether Instagram ended its session. Its username is
-  fetched, never stored. Unlink deletes the record and the request rule.
+  kept only in `storage.session`, never in `storage.local`. Unlink deletes the record and the request rule.
 - **Requests.** Only GramGrab's own requests for that login carry its cookies: they are marked,
   omit the browser's cookies, and a session rule that matches only requests outside tabs adds the
   linked cookies. `Set-Cookie` on those responses updates the stored copy and never touches the

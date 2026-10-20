@@ -1,7 +1,11 @@
 import { Effect, Either } from 'effect';
 import type { InstagramLogin } from '@gramgrab/protocol';
-import type { LinkLoginResponse, LinkedLoginState } from '../messaging/contracts.ts';
-import { fetchViewer } from '../watch/identity.ts';
+import type {
+  LinkLoginResponse,
+  LinkedLoginState,
+  LoginNamesResponse,
+} from '../messaging/contracts.ts';
+import { cachedViewer, fetchViewer } from '../watch/identity.ts';
 import { refreshBadge } from '../watch/attention.ts';
 import { resumeAfterPerson } from '../watch/scheduler.ts';
 import { PersonRequests } from './requests.ts';
@@ -40,6 +44,27 @@ export async function linkLogin(): Promise<LinkLoginResponse> {
   }
   await restoreLinkedLogin(previous);
   return { _tag: 'refused', reason: same ? 'same-login' : 'not-verified' };
+}
+
+const nameOf = async (login: InstagramLogin) => {
+  const cached = await cachedViewer(login);
+  if (cached) return cached.username;
+  const viewer = await viewerAs(login);
+  return Either.isRight(viewer) ? viewer.right.username : undefined;
+};
+
+/**
+ * The usernames the login picker shows, read from this browser session's cache or one viewer
+ * query per login. Nothing is asked while no second login is linked, since the picker is hidden.
+ */
+export async function loginNames(): Promise<LoginNamesResponse> {
+  const state = await linkedLoginState();
+  if (state !== 'linked' && state !== 'ended') return {};
+  const [main, linked] = await Promise.all([
+    nameOf('main'),
+    state === 'linked' ? nameOf('linked') : undefined,
+  ]);
+  return { ...(main ? { main } : {}), ...(linked ? { linked } : {}) };
 }
 
 export async function unlinkLinkedLogin(): Promise<LinkedLoginState> {

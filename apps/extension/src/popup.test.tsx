@@ -767,7 +767,7 @@ describe('Popup', () => {
     });
   });
 
-  it('shows the login picker only while a second login is linked, and fetches as the chosen login', async () => {
+  it('shows the login picker by username only while a second login is linked, and fetches as the chosen login', async () => {
     const user = userEvent.setup();
     const { rerender } = await act(async () => render(<Popup />));
     expect(screen.queryByRole('combobox', { name: /login/i })).toBeNull();
@@ -783,13 +783,17 @@ describe('Popup', () => {
     mockBrowser.storage.get.mockResolvedValue({
       'linked-instagram-login': { version: 1, accountId: '3003', cookies: {} },
     });
-    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      media: [],
-    });
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: { type: string }) =>
+        message.type === 'LOGIN_NAMES' ? { main: 'instagram', linked: 'creators' } : { media: [] }
+    );
     try {
       rerender(<></>);
       await act(async () => rerender(<Popup />));
-      await user.selectOptions(await screen.findByRole('combobox', { name: /login/i }), 'linked');
+      const picker = await screen.findByRole('combobox', { name: /login/i });
+      expect(await screen.findByRole('option', { name: '@creators' })).toBeDefined();
+      expect(screen.getByRole('option', { name: '@instagram' })).toBeDefined();
+      await user.selectOptions(picker, 'linked');
       await user.click(screen.getByText('Fetch Media'));
 
       await waitFor(() =>

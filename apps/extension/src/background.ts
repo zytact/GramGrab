@@ -94,7 +94,7 @@ import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests, loginOf } from './instagram/requests.ts';
 import { listenForLinkedCookies, restoreLinkedRule } from './instagram/linked-login.ts';
-import { linkLogin, unlinkLinkedLogin } from './instagram/link.ts';
+import { linkLogin, loginNames, unlinkLinkedLogin } from './instagram/link.ts';
 import { installInstagramOrigin } from './instagram/origin.ts';
 import {
   previewInboxEntry,
@@ -1321,6 +1321,7 @@ const messageHandlers: MessageHandlers = {
   WATCH_INBOX_PREVIEW: message => previewInboxEntry(message.entryId, message.login),
   LINK_LOGIN: linkLogin,
   UNLINK_LOGIN: unlinkLinkedLogin,
+  LOGIN_NAMES: loginNames,
 };
 
 /** Indexing the handler map with a type parameter keeps the request and its response correlated. */

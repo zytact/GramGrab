@@ -50,6 +50,7 @@ export const MESSAGE_REFUSALS: {
   WATCH_INBOX_PREVIEW: () => ({ failure: ValidationFailure.make({ message: UNREADABLE_REQUEST }) }),
   LINK_LOGIN: () => ({ _tag: 'refused', reason: 'not-verified' }),
   UNLINK_LOGIN: () => 'unsupported',
+  LOGIN_NAMES: () => ({}),
 };
 
 function sourceRefusal() {

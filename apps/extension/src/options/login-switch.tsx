@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { InstagramLogin } from '@gramgrab/protocol';
-import type { LinkRefusalReason, LinkedLoginState } from '../messaging/contracts.ts';
+import type { LinkRefusalReason } from '../messaging/contracts.ts';
 import { sendMessage } from '../messaging/send.ts';
-import { linkedLoginState } from '../instagram/linked-login.ts';
+import { loginLabel, useLogins } from '../popup/login-picker.tsx';
 
 /** The login the Watches page shows, from its `login` query parameter. */
 export const pageLogin = (): InstagramLogin =>
@@ -34,12 +34,10 @@ const REFUSAL: Record<LinkRefusalReason, string> = {
  * (Beta). Hidden where the browser cannot link one.
  */
 export function LoginSwitch() {
-  const [state, setState] = useState<LinkedLoginState>();
+  const logins = useLogins();
+  const { state, reload } = logins;
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
-  useEffect(() => {
-    void linkedLoginState().then(setState, () => undefined);
-  }, []);
   if (!state || state === 'unsupported') return null;
   const login = pageLogin();
 
@@ -48,17 +46,17 @@ export function LoginSwitch() {
     const response = await sendMessage({ type: 'LINK_LOGIN' });
     setBusy(false);
     if (response._tag === 'refused') return setNotice(REFUSAL[response.reason]);
-    setState('linked');
+    reload();
     setNotice(
       `Linked @${response.username}. You can close the Incognito window, but do not log out of it.`
     );
   };
   const unlink = async () => {
     setBusy(true);
-    const response = await sendMessage({ type: 'UNLINK_LOGIN' });
+    await sendMessage({ type: 'UNLINK_LOGIN' });
     setBusy(false);
     if (login === 'linked') location.assign(pageFor('main'));
-    else setState(response);
+    else reload();
     setNotice(undefined);
   };
 
@@ -70,10 +68,10 @@ export function LoginSwitch() {
       {state !== 'unlinked' && (
         <div className="opt-login-tabs">
           <a href={pageFor('main')} aria-current={login === 'main' ? 'page' : undefined}>
-            Main
+            {loginLabel('main', logins)}
           </a>
           <a href={pageFor('linked')} aria-current={login === 'linked' ? 'page' : undefined}>
-            {state === 'ended' ? 'Linked (signed out)' : 'Linked'}
+            {loginLabel('linked', logins)}
           </a>
         </div>
       )}
