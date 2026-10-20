@@ -10,7 +10,7 @@ import {
 import { PersonRequests, type InstagramRequests } from './requests.ts';
 
 const run = <A, E>(effect: Effect.Effect<A, E, InstagramRequests>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(PersonRequests)));
+  Effect.runPromise(effect.pipe(Effect.provide(PersonRequests())));
 
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });

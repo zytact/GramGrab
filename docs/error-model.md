@@ -26,6 +26,8 @@ causes are never ordinary UI copy or serialized report data.
 | `IG_RATE_LIMITED`                      | batch | after user action                       | `refetch-source`                                                         | cause                                  | upstream                 |
 | `IG_RESPONSE_SHAPE_UNKNOWN`            | batch | never                                   | `copy-diagnostics`                                                       | cause, copy offered                    | upstream format          |
 | `IG_REQUEST_REJECTED`                  | batch | never                                   | `open-in-instagram`, `copy-diagnostics`                                  | cause, copy offered                    | upstream protocol        |
+| `IG_LINKED_LOGIN_MISSING`              | batch | never                                   | none                                                                     | none                                   | linked login             |
+| `IG_LINKED_LOGIN_ENDED`                | batch | after user action                       | none                                                                     | none                                   | linked login             |
 | `SOURCE_NETWORK_FAILED`                | batch | once automatically, then manual refetch | `refetch-source`                                                         | cause                                  | network                  |
 | `SOURCE_SERVER_FAILED`                 | batch | once automatically, then manual refetch | `refetch-source`                                                         | cause                                  | upstream server          |
 | `SOURCE_UNEXPECTED_FAILURE`            | batch | once automatically                      | `refetch-source`, `copy-diagnostics`                                     | cause, copy offered                    | extension boundary       |
@@ -114,6 +116,13 @@ they never serialize mediabunny exceptions or arbitrary error text. Peak input-p
 uses `SILENT_MEMORY_CAPACITY_EXCEEDED`, not a browser-storage or browser-download code.
 Because WhatsApp capture bytes are released on terminal-operation failure, its `SILENT_*`
 presentations offer re-capture rather than the Instagram path's cached-original recovery.
+
+`IG_LINKED_LOGIN_MISSING` and `IG_LINKED_LOGIN_ENDED` refuse an operation that asks for the linked
+second login before any request goes out: no login is linked, or Instagram ended its session. Both
+carry `phase: "source"` and no diagnostic cause, so no report can hold the linked login's account ID
+or username. A Watch command for the linked login is rejected with the same codes. An ended linked
+login that still owns Watches is one `LinkedLoginAttention` item, `linked-login`, which clears when
+the same account is linked again.
 
 Watch failures use `phase: "watch"` for the store and command codes and `phase: "resolving"` for
 check problems and final unavailable items. The four unavailable codes are final for the exact

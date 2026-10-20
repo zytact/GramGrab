@@ -1,3 +1,4 @@
+import { Option } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccountIdSelector,
@@ -29,8 +30,8 @@ import type {
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
-import { LEDGER_KEY, decodeLedger, type LedgerView } from '../instagram/request-state.ts';
-import { STORE_KEY, VIEWER_KEY } from '../watch/contracts.ts';
+import { decodeLedger, LEDGER_KEYS, type LedgerView } from '../instagram/request-state.ts';
+import { STORE_KEY, VIEWER_KEYS, decodeCachedViewer } from '../watch/contracts.ts';
 import {
   SCHEDULER_KEY,
   decodeSchedulerState,
@@ -52,6 +53,7 @@ import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
 import { WatchTransfer } from './watch-transfer.tsx';
 import { askToNotify } from './notify-permission.ts';
+import { LoginSwitch, pageLogin } from './login-switch.tsx';
 
 type View = 'attention' | 'inbox' | 'new' | 'transfer' | { readonly watchId: string };
 
@@ -83,14 +85,17 @@ function FailureNotice({ failure }: { failure: WatchFailure }) {
   );
 }
 
+const storedCount = (failure: WatchFailure) =>
+  failure._tag === 'CommandFailure' && failure.detail?._tag === 'StoredWatchCount'
+    ? failure.detail.count
+    : 0;
+
 /** The page shown when GramGrab cannot confirm who is signed in. Nothing owner-bound appears. */
 function LoginGate({ failure }: { failure: WatchFailure }) {
-  const stored =
-    failure._tag === 'CommandFailure' && failure.detail?._tag === 'StoredWatchCount'
-      ? failure.detail.count
-      : 0;
+  const stored = storedCount(failure);
   const signedOut =
     failure._tag === 'CommandFailure' && failure.failure.code === 'IG_NOT_AUTHENTICATED';
+  const mainSignedOut = signedOut && pageLogin() === 'main';
   return (
     <div className="opt-gate">
       <Title />
@@ -107,11 +112,12 @@ function LoginGate({ failure }: { failure: WatchFailure }) {
       <p className="opt-meta">
         {stored} {stored === 1 ? 'Watch' : 'Watches'} stored in this browser.
       </p>
-      {signedOut && (
+      {mainSignedOut && (
         <a className="opt-btn opt-primary" href="https://www.instagram.com/" target="_blank">
           Open instagram.com
         </a>
       )}
+      <LoginSwitch />
     </div>
   );
 }
@@ -222,11 +228,13 @@ function FindAccount({ onFound }: { onFound: (preview: WatchPreviewResponse) => 
       onSubmit={event => {
         event.preventDefault();
         setBusy(true);
-        void sendMessage({ type: 'WATCH_PREVIEW', target: input.trim() }).then(preview => {
-          setBusy(false);
-          setFailure(preview.failure);
-          if (preview.account) onFound(preview);
-        });
+        void sendMessage({ type: 'WATCH_PREVIEW', target: input.trim(), login: pageLogin() }).then(
+          preview => {
+            setBusy(false);
+            setFailure(preview.failure);
+            if (preview.account) onFound(preview);
+          }
+        );
       }}
     >
       <input
@@ -605,8 +613,12 @@ function Navigation({
         <Title />
         <span className="opt-viewer" title="Verified from your Instagram session">
           <Avatar src={avatars.login} username={list.viewer.username} size="sm" />
-          <span className="opt-meta">Instagram login</span> @{list.viewer.username}
+          <span className="opt-meta">
+            {pageLogin() === 'linked' ? 'Linked Instagram login' : 'Instagram login'}
+          </span>{' '}
+          @{list.viewer.username}
         </span>
+        <LoginSwitch />
       </div>
       <button
         className={`opt-item ${current === 'attention' ? 'active' : ''}`}
@@ -681,7 +693,7 @@ function useWatchList() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const [version, setVersion] = useState(0);
   const [pending, setPending] = useState(0);
-  const [observed, setObserved] = useState<{ readonly accountId: unknown }>();
+  const [observed, setObserved] = useState<{ readonly accountId: string }>();
   const latest = useRef(0);
   const viewer = useRef<WatchViewer>(undefined);
   const verification = useRef<Promise<void>>(undefined);
@@ -726,10 +738,11 @@ function useWatchList() {
 
   useEffect(() => {
     const listener = (changes: StorageChanges) => {
-      const change = changes[VIEWER_KEY];
+      const change = changes[VIEWER_KEYS[pageLogin()]];
       if (!change) return;
-      setObserved(change.newValue === undefined ? undefined : { accountId: change.newValue });
-      if (change.newValue !== undefined || !viewer.current) return;
+      const next = Option.getOrUndefined(decodeCachedViewer(change.newValue));
+      setObserved(next && { accountId: next.accountId });
+      if (next || !viewer.current) return;
       latest.current += 1;
       viewer.current = undefined;
       setLoaded(signedOut);
@@ -784,7 +797,7 @@ export function Watches() {
   useEffect(() => {
     if (!ready) return;
     const listener = (changes: StorageChanges) => {
-      const ledger = changes[LEDGER_KEY];
+      const ledger = changes[LEDGER_KEYS[pageLogin()]];
       if (
         STORE_KEY in changes ||
         SCHEDULER_KEY in changes ||
@@ -838,17 +851,17 @@ function useWatchSchedule(list: WatchListResult) {
     let latest = 0;
     const read = () => {
       const current = ++latest;
-      void browser.storage.get([SCHEDULER_KEY, LEDGER_KEY]).then(stored => {
+      void browser.storage.get([SCHEDULER_KEY, LEDGER_KEYS[pageLogin()]]).then(stored => {
         if (!active || current !== latest) return;
         setRecords({
           scheduler: decodeSchedulerState(stored[SCHEDULER_KEY]),
-          ledger: decodeLedger(stored[LEDGER_KEY]),
+          ledger: decodeLedger(stored[LEDGER_KEYS[pageLogin()]]),
           at: Date.now(),
         });
       });
     };
     const listener = (changes: StorageChanges) => {
-      if (SCHEDULER_KEY in changes || LEDGER_KEY in changes) read();
+      if (SCHEDULER_KEY in changes || LEDGER_KEYS[pageLogin()] in changes) read();
     };
     browser.storage.onChanged.addListener(listener);
     read();
@@ -858,7 +871,7 @@ function useWatchSchedule(list: WatchListResult) {
     };
   }, [viewerId]);
   const schedule = records
-    ? watchSchedule(records.scheduler, records.ledger, viewerId, records.at)
+    ? watchSchedule(records.scheduler, records.ledger, viewerId, records.at, pageLogin())
     : list.schedule;
   const holdEnd = schedule.cappedUntil ?? schedule.pausedUntil;
   useEffect(() => {

@@ -1,6 +1,5 @@
 import { browser } from '../lib/browser.ts';
-
-const RULE_ID = 1;
+import { SESSION_RULE_ID } from './session-rules.ts';
 
 /**
  * Sends `Origin: https://www.instagram.com` on this extension's own POSTs to Instagram. Instagram
@@ -10,10 +9,10 @@ const RULE_ID = 1;
 export const installInstagramOrigin = () =>
   browser.declarativeNetRequest
     .updateSessionRules({
-      removeRuleIds: [RULE_ID],
+      removeRuleIds: [SESSION_RULE_ID.instagramOrigin],
       addRules: [
         {
-          id: RULE_ID,
+          id: SESSION_RULE_ID.instagramOrigin,
           action: {
             type: 'modifyHeaders',
             requestHeaders: [

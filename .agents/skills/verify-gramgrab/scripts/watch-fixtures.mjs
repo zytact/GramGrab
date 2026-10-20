@@ -45,7 +45,7 @@ const remove = `(async () => {
 try {
   const { stdout } = await run(
     process.execPath,
-    [resolve(here, 'drive.mjs'), 'eval', 'background.js', mode === 'seed' ? seed : remove],
+    [resolve(here, 'drive.mjs'), 'eval', 'js/background.js', mode === 'seed' ? seed : remove],
     { env: process.env, timeout: 30_000 }
   );
   process.stdout.write(stdout);

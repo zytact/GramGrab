@@ -437,11 +437,18 @@ export class StorageAttention extends Schema.TaggedClass<StorageAttention>()('St
   ),
 }) {}
 
+/** Instagram signed the linked login out, so its Watches wait until it is linked again. */
+export class LinkedLoginAttention extends Schema.TaggedClass<LinkedLoginAttention>()(
+  'LinkedLoginAttention',
+  { attentionId: NonEmptyString, code: Schema.Literal('IG_LINKED_LOGIN_ENDED') }
+) {}
+
 export const WatchAttention = Schema.Union(
   CheckAttention,
   ActionAttention,
   PauseAttention,
-  StorageAttention
+  StorageAttention,
+  LinkedLoginAttention
 );
 export type WatchAttention = Schema.Schema.Type<typeof WatchAttention>;
 
@@ -609,4 +616,4 @@ export type WatchFailureDetail = Schema.Schema.Type<typeof WatchFailureDetail>;
 
 /** The settled disclosure a person acknowledges every time they add a Watch. */
 export const UNATTENDED_DISCLOSURE =
-  'Watches check Instagram for you about twice a day while your browser is open, using your signed-in Instagram session, even when you are not using GramGrab. Instagram may treat this automated activity as unusual and could limit or flag your account. GramGrab stores only the account and media IDs and check results it needs, on this device, never media files or media links. You can pause or delete a Watch at any time.';
+  'Watches check Instagram for you about twice a day while your browser is open, using the session of the Instagram login that adds them, even when you are not using GramGrab. Instagram may treat this automated activity as unusual and could limit or flag your account. GramGrab stores only the account and media IDs and check results it needs, on this device, never media files or media links. You can pause or delete a Watch at any time.';

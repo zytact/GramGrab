@@ -8,7 +8,8 @@ import {
 import { summarizeDiscovery } from './discoveries.ts';
 import { recoverable } from './recovery.ts';
 import { browser } from '../lib/browser.ts';
-import { requestLedger } from '../instagram/requests.ts';
+import { ledgerOf, loginOf } from '../instagram/requests.ts';
+import { readLinkedLogin } from '../instagram/linked-login.ts';
 import type { Discovery, Watch, WatchStore } from './contracts.ts';
 import { readStore, storeHealth } from './store.ts';
 import { verifiedViewerId } from './identity.ts';
@@ -108,22 +109,42 @@ function actionAttention(watch: Watch, entry: Discovery): ActionAttention[] {
  * `pause.<viewerId>`, however many Watches it holds back.
  */
 export async function loginAttention(store: WatchStore, viewerId: string): Promise<string[]> {
-  await requestLedger.ready();
-  const paused = requestLedger.pausedUntil(Date.now()) ? [`pause.${viewerId}`] : [];
+  const ledger = ledgerOf(await loginOf(viewerId));
+  await ledger.ready();
+  const paused = ledger.pausedUntil(Date.now()) ? [`pause.${viewerId}`] : [];
   const watches = store.watches.filter(watch => watch.viewerId === viewerId);
   return watches.length > 0 ? [...paused, ...watches.flatMap(watchAttention)] : [];
 }
 
+export const LINKED_ATTENTION_ID = 'linked-login';
+
+/** `linked-login` while the linked login, signed out by Instagram, still owns Watches. */
+export async function linkedAttention(store: WatchStore): Promise<string[]> {
+  const linked = await readLinkedLogin();
+  return linked?.ended && store.watches.some(watch => watch.viewerId === linked.accountId)
+    ? [LINKED_ATTENTION_ID]
+    : [];
+}
+
 /**
- * How many things need the last verified login, as the toolbar badge and the popup show it. A
- * store that cannot be read or saved counts as one more.
+ * How many things need the last verified logins, as the toolbar badge and the popup show it. A
+ * store that cannot be read or saved counts as one more, and so does a signed-out linked login.
  */
 export async function attentionCount(): Promise<number> {
   const read = await readStore();
   if (read.kind === 'failed') return 1;
-  const viewerId = await verifiedViewerId();
+  const linked = await readLinkedLogin();
+  const linkedViewer = await verifiedViewerId('linked');
+  const viewerIds = new Set(
+    [
+      await verifiedViewerId('main'),
+      linked && !linked.ended && linked.accountId === linkedViewer ? linkedViewer : undefined,
+    ].filter((viewerId): viewerId is string => viewerId !== undefined)
+  );
   const store = (await storeHealth()) ? 1 : 0;
-  return store + (viewerId ? (await loginAttention(read.store, viewerId)).length : 0);
+  let count = store + (await linkedAttention(read.store)).length;
+  for (const viewerId of viewerIds) count += (await loginAttention(read.store, viewerId)).length;
+  return count;
 }
 
 export async function refreshBadge(): Promise<void> {

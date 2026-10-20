@@ -14,6 +14,7 @@ import { loadVideoMetadata } from '../popup/video-metadata.ts';
 import { useFrameSeekEffect } from '../popup/use-frame-seek.ts';
 import { withClampedFrameSecond, type FrameExportSetting } from '../frame-export/timestamp.ts';
 import { nextRotation } from '../rotation/contracts.ts';
+import { pageLogin } from './login-switch.tsx';
 
 type InboxItem = MediaItem & { entryId: string; child: number; avatar: boolean };
 
@@ -95,7 +96,11 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
     try {
       for (const entry of entries) {
         activeEntry = entry;
-        const response = await sendMessage({ type: 'WATCH_INBOX_PREVIEW', entryId: entry.entryId });
+        const response = await sendMessage({
+          type: 'WATCH_INBOX_PREVIEW',
+          entryId: entry.entryId,
+          login: pageLogin(),
+        });
         if (current !== generation.current) return;
         if (refusesOwner(response.failure)) {
           clear();

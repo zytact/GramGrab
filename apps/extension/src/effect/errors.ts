@@ -18,6 +18,11 @@ class NotAuthenticated extends Data.TaggedError('NotAuthenticated')<{ status: 40
 class Forbidden extends Data.TaggedError('Forbidden')<{ status: 403 }> {}
 export class RateLimited extends Data.TaggedError('RateLimited')<{ status: 429 }> {}
 
+/** The operation asked for the linked login while none is linked, or after its session ended. */
+export class LinkedLoginUnavailable extends Data.TaggedError('LinkedLoginUnavailable')<{
+  reason: 'missing' | 'ended';
+}> {}
+
 // GraphQL path
 export class GraphQLRequestFailed extends Data.TaggedError('GraphQLRequestFailed')<{
   status: number;

@@ -149,6 +149,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       expect(harness.browser.runtime.sendMessage).toHaveBeenCalledWith({
         type: 'WATCH_COMMAND',
         command: { _tag: 'WatchInboxRemove', entryIds: [unavailableId, photoId] },
+        login: 'main',
       });
       expect(screen.getByRole('button', { name: 'Remove selected (0)' })).toHaveProperty(
         'disabled',
@@ -867,7 +868,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const viewerRequests = instagram.state.viewerRequests;
 
     instagram.state.viewer = { id: '1002', username: 'instagram' };
-    harness.session.write('watch-viewer', '1002');
+    harness.session.write('watch-viewer', { accountId: '1002', username: 'instagram' });
     await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
 
     expect(await screen.findByText('@instagram', { selector: '.opt-viewer' })).toBeDefined();
@@ -1045,8 +1046,8 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const attention = screen.getByRole('button', { name: /Needs you/ });
     expect(attention.textContent).toContain('1');
 
-    const { requestLedger } = await import('../instagram/requests.ts');
-    requestLedger.end({ kind: 'watch' }, Date.now(), 429);
+    const { ledgerOf } = await import('../instagram/requests.ts');
+    ledgerOf('main').end({ kind: 'watch' }, Date.now(), 429);
 
     expect(await screen.findByText('Watches paused.')).toBeDefined();
     await waitFor(() => expect(attention.textContent).toContain('2'));

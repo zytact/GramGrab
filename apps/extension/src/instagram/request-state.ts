@@ -1,9 +1,15 @@
 import { Option, Schema } from 'effect';
+import type { InstagramLogin } from '@gramgrab/protocol';
 
 export const HOUR_MS = 60 * 60_000;
 const HOURLY_REQUEST_CAP = 60;
 
-export const LEDGER_KEY = 'instagram-requests';
+const LEDGER_KEY = 'instagram-requests';
+
+export const LEDGER_KEYS = {
+  main: LEDGER_KEY,
+  linked: `${LEDGER_KEY}.linked`,
+} as const satisfies Record<InstagramLogin, string>;
 
 export class RequestPause extends Schema.Class<RequestPause>('RequestPause')({
   until: Schema.Number,

@@ -63,8 +63,8 @@ Repair belongs to the dedicated profile and uses the worker target. Save the
 current store, replace it with one invalid entry, then list:
 
 ```bash
-node $D eval "background.js" "chrome.storage.local.get('download-history').then(v => JSON.stringify(v['download-history']))" > "$EV/history-store.json"
-node $D eval "background.js" "chrome.storage.local.set({'download-history':{version:4,entries:[{broken:true}]}}).then(()=> 'written')"
+node $D eval "js/background.js" "chrome.storage.local.get('download-history').then(v => JSON.stringify(v['download-history']))" > "$EV/history-store.json"
+node $D eval "js/background.js" "chrome.storage.local.set({'download-history':{version:4,entries:[{broken:true}]}}).then(()=> 'written')"
 node apps/cli/bin/gramgrab.mjs history list --json
 ```
 
@@ -73,7 +73,7 @@ store before continuing:
 
 ```bash
 STORE=$(< "$EV/history-store.json")
-node $D eval "background.js" "chrome.storage.local.set({'download-history':$STORE}).then(()=> 'restored')"
+node $D eval "js/background.js" "chrome.storage.local.set({'download-history':$STORE}).then(()=> 'restored')"
 ```
 
 Repeat once with `{version:999,entries:[]}`. Opening history in the UI must show

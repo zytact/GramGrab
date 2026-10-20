@@ -25,8 +25,11 @@ export const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}
 const MediaType = Schema.Literal('image', 'video');
 
 export const STORE_KEY = 'watch-store';
-/** The `storage.session` key holding the account ID the last viewer query found. */
-export const VIEWER_KEY = 'watch-viewer';
+/** Where the browser session records each login's last verified viewer. */
+export const VIEWER_KEYS = { main: 'watch-viewer', linked: 'watch-viewer.linked' } as const;
+/** A login's verified viewer, kept in `storage.session`, which the browser clears when it closes. */
+export const CachedViewer = Schema.Struct({ accountId: AccountId, username: InstagramUsername });
+export const decodeCachedViewer = Schema.decodeUnknownOption(CachedViewer);
 export const STORE_VERSION = 2;
 export const STORE_BUDGET_BYTES = 2 * 1024 * 1024;
 /** Inbox entries and the discoveries behind them last this long after discovery. */

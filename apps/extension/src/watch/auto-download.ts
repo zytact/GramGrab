@@ -5,7 +5,7 @@ import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from '../erro
 import { acceptedHistoryEntry } from '../history/receipt.ts';
 import { appendHistory, getHistory } from '../history/repository.ts';
 import type { MediaItem } from '../instagram/normalize.ts';
-import { WatchRequests } from '../instagram/requests.ts';
+import { OwnerRequests } from '../instagram/requests.ts';
 import type { ChildDownload, Discovery, Watch } from './contracts.ts';
 import { historyOrigin, originalFilename, reacquire, type Slot } from './export.ts';
 import { fetchViewer } from './identity.ts';
@@ -427,7 +427,7 @@ export function runActions(watchId: string, viewerId: string): Promise<void> {
           )
         : undefined;
     if (!watch) return;
-    await Effect.runPromise(finishActions(watch).pipe(Effect.provide(WatchRequests)));
+    await Effect.runPromise(finishActions(watch).pipe(Effect.provide(OwnerRequests(viewerId))));
   };
   const result = running.then(run, run);
   running = result.catch(() => undefined);

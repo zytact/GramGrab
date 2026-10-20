@@ -35,7 +35,7 @@ import {
   withItemIndexes,
   type MediaItem,
 } from './normalize.ts';
-import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS, readCsrfToken } from './headers.ts';
+import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS } from './headers.ts';
 import { InstagramRequests, type WatchRequestDeferred } from './requests.ts';
 
 type ParsedUrl = InstagramTarget;
@@ -92,8 +92,7 @@ const idFromProfilePage = (username: string) =>
   Effect.gen(function* () {
     const requests = yield* InstagramRequests;
     const response = yield* requests.fetch(
-      `https://www.instagram.com/${encodeURIComponent(username)}/`,
-      { credentials: 'include' }
+      `https://www.instagram.com/${encodeURIComponent(username)}/`
     );
     if (response.status === 404) return undefined;
     yield* requireOk(response);
@@ -348,14 +347,10 @@ export const fetchInstantItems = () => {
   const request = candidate.requests[0]!;
   if (candidate.kind !== 'client_doc_id' || !operation.friendlyName)
     return Effect.fail(new ResponseShapeUnknown({ context: 'instants_protocol' }));
-  return readCsrfToken.pipe(
-    Effect.flatMap(csrfToken =>
-      fetchInstantsFeed(request.endpoint, candidate.id, operation.friendlyName!, csrfToken, {
-        ...IG_API_GRAPHQL_HEADERS,
-        'X-IG-App-ID': operation.appId ?? protocolConfig.client.appId,
-      })
-    )
-  );
+  return fetchInstantsFeed(request.endpoint, candidate.id, operation.friendlyName, {
+    ...IG_API_GRAPHQL_HEADERS,
+    'X-IG-App-ID': operation.appId ?? protocolConfig.client.appId,
+  });
 };
 
 /**

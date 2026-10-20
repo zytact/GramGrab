@@ -970,8 +970,10 @@ describe('Watch notifications', () => {
 
     harness.clickNotification([...harness.notifications.keys()][0]!);
 
-    expect(harness.browser.tabs.create).toHaveBeenCalledWith({
-      url: `chrome-extension://test/options.html#watch=${watchId}`,
-    });
+    await vi.waitFor(() =>
+      expect(harness.browser.tabs.create).toHaveBeenCalledWith({
+        url: `chrome-extension://test/options.html#watch=${watchId}`,
+      })
+    );
   });
 });

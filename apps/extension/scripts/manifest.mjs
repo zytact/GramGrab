@@ -10,7 +10,7 @@ const permissionDocumentation = [
   {
     permission: 'cookies',
     reason:
-      'Read the current Instagram CSRF token right before an Instants or Watch request that sends it back',
+      'Read the Instagram CSRF token right before a request that sends it back, and copy the Instagram cookies of an Incognito window when you link a second login',
   },
   {
     permission: 'activeTab',
@@ -33,7 +33,16 @@ const permissionDocumentation = [
   {
     permission: 'declarativeNetRequestWithHostAccess',
     reason:
-      "Mark GramGrab's own Instagram requests as coming from instagram.com, which Instagram requires",
+      "Mark GramGrab's own Instagram requests as coming from instagram.com, which Instagram requires, and send the linked second login's cookies with requests made for that login",
+  },
+];
+
+/** Chromium only: keep a linked second Instagram login's cookies current (Beta). */
+const chromiumPermissionDocumentation = [
+  {
+    permission: 'webRequest',
+    reason:
+      'Keep the stored cookies of the linked login current with what Instagram sets on its requests',
   },
 ];
 
@@ -52,6 +61,7 @@ const hostPermissionDocumentation = [
 
 export const manifestPermissionDocumentation = [
   ...permissionDocumentation,
+  ...chromiumPermissionDocumentation,
   ...optionalPermissionDocumentation,
   ...hostPermissionDocumentation,
 ];
@@ -110,7 +120,10 @@ export function createManifest(browser) {
       default_title: 'GramGrab',
     },
     options_ui: { page: 'options.html', open_in_tab: true },
-    permissions: permissionDocumentation.map(({ permission }) => permission),
+    permissions: [
+      ...permissionDocumentation,
+      ...(browser === 'chromium' ? chromiumPermissionDocumentation : []),
+    ].map(({ permission }) => permission),
     optional_permissions: optionalPermissionDocumentation.map(({ permission }) => permission),
     host_permissions: hostPermissionDocumentation.map(({ permission }) => permission),
     background,

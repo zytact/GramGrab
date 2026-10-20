@@ -1,9 +1,11 @@
 import { Context, Data, Effect, Layer, Schema } from 'effect';
+import type { InstagramLogin } from '@gramgrab/protocol';
 import { NetworkError } from '../effect/errors.ts';
 import { browser } from '../lib/browser.ts';
+import { linkedRoute, readLinkedLogin } from './linked-login.ts';
 import {
   HOUR_MS,
-  LEDGER_KEY,
+  LEDGER_KEYS,
   LedgerState,
   RequestPause,
   decodeLedger,
@@ -11,19 +13,32 @@ import {
   type LedgerView,
 } from './request-state.ts';
 
+/** What a caller says about an Instagram request. The service picks credentials for the login. */
+export interface InstagramRequestInit {
+  readonly method?: 'GET' | 'POST';
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body?: URLSearchParams;
+  /** Sends the login's `csrftoken` back as `X-CSRFToken`. */
+  readonly csrf?: boolean;
+}
+
 /**
  * Every Instagram API attempt goes through `InstagramRequests`, so the person's own work and Watch
- * work share one ledger of real attempts. CDN media and Avatar image fetches do not use it.
+ * work of one login share its ledger of real attempts, and every request carries that login's
+ * session. CDN media and Avatar image fetches do not use it.
  */
 export class InstagramRequests extends Context.Tag('InstagramRequests')<
   InstagramRequests,
   {
+    readonly login: InstagramLogin;
     readonly fetch: (
       url: string,
-      init?: RequestInit
+      init?: InstagramRequestInit
     ) => Effect.Effect<Response, NetworkError | WatchRequestDeferred>;
   }
 >() {}
+
+type RequestsService = Context.Tag.Service<typeof InstagramRequests>;
 
 /** A Watch attempt that may not start before `until`. Person-initiated work never sees it. */
 export class WatchRequestDeferred extends Data.TaggedError('WatchRequestDeferred')<{
@@ -45,9 +60,9 @@ type WatchAdmission =
   | { readonly _tag: 'wait'; readonly until: number };
 
 /**
- * The browser's Instagram request ledger. One session signs in at a time, so the rolling cap,
- * spacing, and 429 pause belong to whichever login is signed in. Only a Watch request's 429 starts
- * the pause: person-initiated work can hit an endpoint that answers 429 on its own.
+ * One login's Instagram request ledger: its rolling cap, spacing, and 429 pause, so a 429 on one
+ * login never holds the other back. Only a Watch request's 429 starts the pause: person-initiated
+ * work can hit an endpoint that answers 429 on its own.
  */
 class RequestLedger {
   private attempts: readonly number[] = [];
@@ -59,11 +74,13 @@ class RequestLedger {
   private watchInFlight = false;
   private watchReserved = false;
 
+  constructor(private readonly key: string) {}
+
   ready(): Promise<void> {
     this.loaded ??= browser.storage
-      .get(LEDGER_KEY)
+      .get(this.key)
       .then(stored => {
-        const decoded = decodeLedger(stored[LEDGER_KEY]);
+        const decoded = decodeLedger(stored[this.key]);
         if (!decoded) return;
         this.attempts = decoded.attempts;
         this.nextWatchAt = decoded.nextWatchAt;
@@ -149,62 +166,107 @@ class RequestLedger {
       })
     );
     this.writing = this.writing
-      .then(() => browser.storage.set({ [LEDGER_KEY]: snapshot }))
+      .then(() => browser.storage.set({ [this.key]: snapshot }))
       .catch(() => undefined);
   }
 }
 
-export const requestLedger = new RequestLedger();
+const ledgers: Record<InstagramLogin, RequestLedger> = {
+  main: new RequestLedger(LEDGER_KEYS.main),
+  linked: new RequestLedger(LEDGER_KEYS.linked),
+};
+
+export const ledgerOf = (login: InstagramLogin): RequestLedger => ledgers[login];
 
 const sleep = (ms: number) =>
   Effect.promise(() => new Promise<void>(resolve => setTimeout(resolve, Math.max(0, ms))));
 
+/** The main login sends the browser's own cookies and reads its token from them. */
+const mainRoute = async (url: string) => ({
+  url,
+  credentials: 'include' as const,
+  csrfToken: () =>
+    browser.cookies
+      .get({ url: 'https://www.instagram.com/', name: 'csrftoken' })
+      .then(cookie => cookie?.value),
+});
+
+const ROUTES = { main: mainRoute, linked: linkedRoute } satisfies Record<
+  InstagramLogin,
+  (url: string) => Promise<unknown>
+>;
+
+/** The browser request for `login`, with that login's session and, if asked, its token. */
+async function prepare(login: InstagramLogin, url: string, init: InstagramRequestInit) {
+  const route = await ROUTES[login](url);
+  const csrfToken = init.csrf ? await route.csrfToken() : undefined;
+  const request: RequestInit = {
+    method: init.method ?? 'GET',
+    credentials: route.credentials,
+    headers: { ...init.headers, ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}) },
+    body: init.body,
+  };
+  return { url: route.url, request };
+}
+
 const attempt = (
+  login: InstagramLogin,
   url: string,
-  init: RequestInit | undefined,
+  init: InstagramRequestInit,
   origin: RequestOrigin,
   probe: boolean
 ) =>
   Effect.tryPromise({
-    try: () => fetch(url, init),
+    try: async () => {
+      const prepared = await prepare(login, url, init);
+      return fetch(prepared.url, prepared.request);
+    },
     catch: cause => new NetworkError({ cause }),
   }).pipe(
     Effect.tap(response =>
-      Effect.sync(() => requestLedger.end(origin, Date.now(), response.status, probe))
+      Effect.sync(() => ledgerOf(login).end(origin, Date.now(), response.status, probe))
     ),
-    Effect.tapError(() => Effect.sync(() => requestLedger.end(origin, Date.now(), 'failed', probe)))
+    Effect.tapError(() =>
+      Effect.sync(() => ledgerOf(login).end(origin, Date.now(), 'failed', probe))
+    )
   );
 
-const personFetch = (url: string, init?: RequestInit) =>
-  Effect.gen(function* () {
-    yield* Effect.promise(() => requestLedger.ready());
-    requestLedger.begin({ kind: 'person' }, Date.now());
-    return yield* attempt(url, init, { kind: 'person' }, false);
-  });
+const personFetch =
+  (login: InstagramLogin): RequestsService['fetch'] =>
+  (url, init = {}) =>
+    Effect.gen(function* () {
+      const ledger = ledgerOf(login);
+      yield* Effect.promise(() => ledger.ready());
+      ledger.begin({ kind: 'person' }, Date.now());
+      return yield* attempt(login, url, init, { kind: 'person' }, false);
+    });
 
 export const withWatchAdmission = <A, E, R>(
-  use: (requests: Context.Tag.Service<typeof InstagramRequests>) => Effect.Effect<A, E, R>
+  login: InstagramLogin,
+  use: (requests: RequestsService) => Effect.Effect<A, E, R>
 ) =>
   Effect.gen(function* () {
-    yield* Effect.promise(() => requestLedger.ready());
+    const ledger = ledgerOf(login);
+    yield* Effect.promise(() => ledger.ready());
     for (;;) {
       const now = Date.now();
-      const admission = requestLedger.admitWatch(now);
+      const admission = ledger.admitWatch(now);
       if (admission._tag === 'admit') {
         return yield* Effect.acquireUseRelease(
-          Effect.sync(() => requestLedger.reserveWatch()),
+          Effect.sync(() => ledger.reserveWatch()),
           () =>
             use({
-              fetch: (url, init) =>
+              login,
+              fetch: (url, init = {}) =>
                 Effect.gen(function* () {
                   const now = Date.now();
                   const until = Math.max(
-                    requestLedger.nextWatchAllowedAt(now),
-                    now + (requestLedger.personBusy ? BUSY_POLL_MS : 0)
+                    ledger.nextWatchAllowedAt(now),
+                    now + (ledger.personBusy ? BUSY_POLL_MS : 0)
                   );
                   if (until > now) return yield* Effect.fail(new WatchRequestDeferred({ until }));
-                  requestLedger.begin({ kind: 'watch' }, now);
-                  return yield* attempt(url, init, { kind: 'watch' }, admission.probe);
+                  ledger.begin({ kind: 'watch' }, now);
+                  return yield* attempt(login, url, init, { kind: 'watch' }, admission.probe);
                 }),
             }),
           release => Effect.sync(release)
@@ -216,10 +278,24 @@ export const withWatchAdmission = <A, E, R>(
     }
   });
 
-/** Requests the person asked for in the moment: counted, never held back. */
-export const PersonRequests = Layer.succeed(InstagramRequests, { fetch: personFetch });
+/** Requests the person asked for in the moment, as `login`: counted, never held back. */
+export const PersonRequests = (login: InstagramLogin = 'main') =>
+  Layer.succeed(InstagramRequests, { login, fetch: personFetch(login) });
 
-/** Unattended Watch requests: one at a time, spaced, capped, and stopped by their own 429 pause. */
-export const WatchRequests = Layer.succeed(InstagramRequests, {
-  fetch: (url, init) => withWatchAdmission(requests => requests.fetch(url, init)),
-});
+/**
+ * Unattended Watch requests as `login`: one at a time, spaced, capped, and stopped by their own
+ * 429 pause.
+ */
+export const WatchRequests = (login: InstagramLogin) =>
+  Layer.succeed(InstagramRequests, {
+    login,
+    fetch: (url, init) => withWatchAdmission(login, requests => requests.fetch(url, init)),
+  });
+
+/** The login a Watch of `viewerId` runs as: the linked login when it is that account. */
+export const loginOf = async (viewerId: string): Promise<InstagramLogin> =>
+  (await readLinkedLogin())?.accountId === viewerId ? 'linked' : 'main';
+
+/** Unattended requests as the login that owns Watches of `viewerId`. */
+export const OwnerRequests = (viewerId: string) =>
+  Layer.unwrapEffect(Effect.promise(() => loginOf(viewerId)).pipe(Effect.map(WatchRequests)));

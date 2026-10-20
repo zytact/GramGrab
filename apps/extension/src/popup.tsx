@@ -53,6 +53,8 @@ import { MediaListSection } from './popup/media-list';
 import { useFrameSeekEffect } from './popup/use-frame-seek';
 import { useWhatsAppCapture } from './popup/use-whatsapp-capture';
 import { WhatsAppStatusPanel } from './popup/whatsapp-status-panel';
+import { LoginPicker, useLogins } from './popup/login-picker';
+import type { InstagramLogin } from '@gramgrab/protocol';
 import { sendMessage } from './messaging/send';
 import { attentionCount } from './watch/attention';
 
@@ -114,6 +116,8 @@ export default function Popup() {
   );
   const [fetchedUrl, setFetchedUrl] = useState('');
   const [acquisition, setAcquisition] = useState<'source' | 'instants'>('source');
+  const [login, setLogin] = useState<InstagramLogin>('main');
+  const logins = useLogins();
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('Awaiting URL.');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -179,6 +183,7 @@ export default function Popup() {
   const handleFetch = useMediaFetch({
     url,
     acquisition,
+    login,
     setFetchedUrl,
     setMediaItems: replaceMediaItems,
     setFrameExportSettings,
@@ -488,7 +493,7 @@ export default function Popup() {
     }
     setStatus('fetching');
     setMessage('Refreshing active Instants…');
-    const response = await sendMessage({ type: 'FETCH_INSTANTS' });
+    const response = await sendMessage({ type: 'FETCH_INSTANTS', login });
     if (response.failure) {
       setSourceFailure(response.failure);
       setStatus('error');
@@ -519,7 +524,7 @@ export default function Popup() {
         url: item.url,
       }))
     );
-  }, [acquisition, downloadAttempt, handleFetch, mediaItems, replaceMediaItems]);
+  }, [acquisition, downloadAttempt, handleFetch, login, mediaItems, replaceMediaItems]);
 
   useEffect(() => {
     const progressMessage = silentProgressMessage(downloadAttempt.attempt?.entries);
@@ -576,6 +581,7 @@ export default function Popup() {
         createdAt,
         expiresAt: createdAt + 60_000,
         url,
+        login,
         fetchedUrl,
         status: 'done' as const,
         message,
@@ -605,6 +611,7 @@ export default function Popup() {
   }, [
     downloadAttempt,
     acquisition,
+    login,
     fetchedUrl,
     frameExportSettings,
     initialWorkspaceMode,
@@ -732,7 +739,7 @@ export default function Popup() {
     // fallow-ignore-next-line complexity
     async (entryId: string) => {
       setHistoryBusy(entryId);
-      const response = await sendMessage({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId });
+      const response = await sendMessage({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId, login });
       const redownloadFailure = 'failure' in response ? response.failure : undefined;
       // Video processing outlives the popup, so silent and rotated videos restart in the workspace.
       const workspaceVideo =
@@ -759,6 +766,7 @@ export default function Popup() {
           createdAt,
           expiresAt: createdAt + 60_000,
           url: workspaceVideo.sourceUrl,
+          login,
           fetchedUrl: workspaceVideo.sourceUrl,
           status: 'done' as const,
           message: 'History item restored.',
@@ -851,7 +859,7 @@ export default function Popup() {
       setHistoryBusy(null);
       if (!redownloadFailure) void loadHistory();
     },
-    [loadHistory]
+    [loadHistory, login]
   );
   const removeHistoryEntry = useCallback(async (entry: HistoryEntry) => {
     const response = await ('source' in entry
@@ -885,6 +893,8 @@ export default function Popup() {
   } = useWorkspaceSurface({
     acquisition,
     setAcquisition,
+    login,
+    setLogin,
     url,
     setUrl,
     fetchedUrl,
@@ -1020,6 +1030,12 @@ export default function Popup() {
                       <p className="detected-hint">Instagram URL detected — ready to fetch.</p>
                     )}
                     <div className="instants-row">
+                      <LoginPicker
+                        logins={logins}
+                        login={login}
+                        disabled={isBusy}
+                        onChange={setLogin}
+                      />
                       <button
                         type="button"
                         className="instants-btn"

@@ -4,12 +4,15 @@ import {
   KindCheckOutcome,
   type DeferredReason,
   type FailureCode,
+  type InstagramLogin,
 } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
-import { WatchRequests, requestLedger } from '../instagram/requests.ts';
+import { WatchRequests, ledgerOf, loginOf } from '../instagram/requests.ts';
+import { linkedLoginSupported, readLinkedLogin } from '../instagram/linked-login.ts';
 import type { Watch } from './contracts.ts';
 import {
   SCHEDULER_KEY,
+  SUSPENDED_KEYS,
   SchedulerState,
   decodeSchedulerState,
   manualChecks,
@@ -76,6 +79,14 @@ function updateState(
   return result;
 }
 
+/** Whether Watches of `viewerId` run as `login`: the linked login owns only the linked account's. */
+const runsAs = (login: InstagramLogin, viewerId: string, linkedId: string | undefined) =>
+  (viewerId === linkedId) === (login === 'linked');
+
+/** Stops `login`'s Watch work until the person verifies that login again. */
+const suspend = (login: InstagramLogin) =>
+  updateState(state => ({ ...state, [SUSPENDED_KEYS[login]]: true }));
+
 /** The next round starts 12 hours after this one, give or take 10%. */
 const nextRoundFrom = (start: number) =>
   Math.round(start + ROUND_MS * (1 - ROUND_JITTER + Math.random() * 2 * ROUND_JITTER));
@@ -106,13 +117,14 @@ export async function runCheck(
   only?: readonly WatchKind[]
 ) {
   const startedAt = Date.now();
-  const run = await exclusive(() =>
+  const login = await loginOf(viewerId);
+  const checked = await exclusive(() =>
     Effect.runPromise(
-      checkWatch(watchId, viewerId, scope, only).pipe(Effect.provide(WatchRequests))
+      checkWatch(watchId, viewerId, scope, only).pipe(Effect.provide(WatchRequests(login)))
     )
   );
-  if (!run.loginVerified && run.deferredUntil === undefined)
-    await updateState(state => ({ ...state, suspended: true }));
+  const run = { ...checked, login };
+  if (!run.loginVerified && run.deferredUntil === undefined) await suspend(login);
   await runActions(watchId, viewerId);
   await refreshAvatarImage(watchId, viewerId, run);
   await notifyCheck(watchId, scope.checkId, startedAt);
@@ -193,8 +205,8 @@ function finishJob(
   };
 }
 
-const verifyViewer = () =>
-  Effect.runPromise(fetchViewer.pipe(Effect.either, Effect.provide(WatchRequests)));
+const verifyViewer = (login: InstagramLogin) =>
+  Effect.runPromise(fetchViewer.pipe(Effect.either, Effect.provide(WatchRequests(login))));
 
 const hasDueWork = (state: SchedulerState, watches: readonly Watch[]) =>
   watches.some(
@@ -204,36 +216,89 @@ const hasDueWork = (state: SchedulerState, watches: readonly Watch[]) =>
       notificationsNeedWork(watch)
   );
 
-/** The verified login whose Watch work may run now, or undefined while nothing may run. */
-async function readyViewer(): Promise<string | undefined> {
-  const state = await loadState();
-  if (state.suspended || (state.startupHoldUntil ?? 0) > Date.now()) return undefined;
-  const read = await readStore();
-  if (read.kind === 'failed') return undefined;
-  if (!hasDueWork(state, read.store.watches)) return undefined;
-  const viewer = await verifyViewer();
-  if (viewer._tag === 'Right') return viewer.right.accountId;
-  if (viewer.left._tag === 'WatchRequestDeferred' || viewer.left._tag === 'RateLimited')
-    await holdPendingManual(Date.now());
-  else await updateState(current => ({ ...current, suspended: true }));
-  return undefined;
+/**
+ * The verified account of `login` when its Watch work may run now. The linked login runs only
+ * while it is linked and its session has not ended, and only as the linked account.
+ */
+async function readyViewer(
+  login: InstagramLogin,
+  state: SchedulerState,
+  watches: readonly Watch[],
+  linkedId: string | undefined
+): Promise<string | undefined> {
+  if (state[SUSPENDED_KEYS[login]]) return undefined;
+  const owned = watches.filter(watch => runsAs(login, watch.viewerId, linkedId));
+  if (!hasDueWork(state, owned)) return undefined;
+  const viewer = await verifyViewer(login);
+  if (viewer._tag === 'Left') {
+    await viewerRefused(login, viewer.left._tag, linkedId);
+    return undefined;
+  }
+  return runsAs(login, viewer.right.accountId, linkedId) ? viewer.right.accountId : undefined;
 }
 
-/** Pacing held the pump back before any job ran: pending manual checks wait for the same hold. */
-async function holdPendingManual(now: number) {
-  const until = requestLedger.nextWatchAllowedAt(now);
+/**
+ * Pacing defers `login`'s pending manual checks. Any other refusal suspends its Watches, except a
+ * linked session Instagram ended, which the viewer query already recorded.
+ */
+async function viewerRefused(login: InstagramLogin, reason: string, linkedId: string | undefined) {
+  if (reason === 'WatchRequestDeferred' || reason === 'RateLimited')
+    await holdPendingManual(login, linkedId, Date.now());
+  else if (reason !== 'ViewerMissing' || login === 'main') await suspend(login);
+}
+
+/** The logins that may run Watch work: the linked one only while linked and not ended. */
+async function activeLogins() {
+  const linked = linkedLoginSupported() ? await readLinkedLogin() : undefined;
+  const logins: InstagramLogin[] = linked && !linked.ended ? ['main', 'linked'] : ['main'];
+  return { logins, linkedId: linked?.accountId };
+}
+
+/** Every login whose Watch work may run now, with its verified account. */
+async function readyLogins(): Promise<{ login: InstagramLogin; viewerId: string }[]> {
   const state = await loadState();
-  if (until <= now || !Object.values(state.logins).some(login => login.manual?.length)) return;
-  const deferredReason = pacingReason(now);
+  const read = await readStore();
+  if ((state.startupHoldUntil ?? 0) > Date.now() || read.kind === 'failed') return [];
+  const { logins, linkedId } = await activeLogins();
+  const ready: { login: InstagramLogin; viewerId: string }[] = [];
+  for (const login of logins) {
+    const viewerId = await readyViewer(login, state, read.store.watches, linkedId);
+    if (viewerId) ready.push({ login, viewerId });
+  }
+  return ready;
+}
+
+/**
+ * Pacing held `login`'s pump back before any job ran: its pending manual checks wait for the same
+ * hold. The linked login's schedule is the linked account's; the main login's is any other.
+ */
+async function holdPendingManual(login: InstagramLogin, linkedId: string | undefined, now: number) {
+  const until = ledgerOf(login).nextWatchAllowedAt(now);
+  const ownsSchedule = (viewerId: string) => runsAs(login, viewerId, linkedId);
+  const state = await loadState();
+  if (
+    until <= now ||
+    !Object.entries(state.logins).some(
+      ([viewerId, schedule]) => ownsSchedule(viewerId) && schedule.manual?.length
+    )
+  )
+    return;
+  const deferredReason = pacingReason(login, now);
   await updateState(current => ({
     ...current,
     logins: Object.fromEntries(
-      Object.entries(current.logins).map(([viewerId, login]) => [
+      Object.entries(current.logins).map(([viewerId, schedule]) => [
         viewerId,
-        {
-          ...login,
-          manual: login.manual?.map(job => ({ ...job, deferredUntil: until, deferredReason })),
-        },
+        ownsSchedule(viewerId)
+          ? {
+              ...schedule,
+              manual: schedule.manual?.map(job => ({
+                ...job,
+                deferredUntil: until,
+                deferredReason,
+              })),
+            }
+          : schedule,
       ])
     ),
   }));
@@ -261,8 +326,11 @@ async function recoverManualJob(viewerId: string, job: Extract<Job, { _tag: 'man
     job.remainingKinds
   );
   if (run.deferredUntil === undefined)
-    await finishManual(viewerId, job.watchId, job.checkId, [...(job.outcomes ?? []), ...run.kinds]);
-  else await deferManual(viewerId, job.watchId, job.checkId, run.deferredUntil);
+    await finishManual(run.login, viewerId, job.watchId, job.checkId, [
+      ...(job.outcomes ?? []),
+      ...run.kinds,
+    ]);
+  else await deferManual(run.login, viewerId, job.watchId, job.checkId, run.deferredUntil);
   await refreshBadge();
   return run.loginVerified && run.deferredUntil === undefined;
 }
@@ -305,8 +373,8 @@ async function runNextJob(viewerId: string): Promise<boolean> {
 }
 
 /**
- * Runs whatever Watch work is due for the signed-in login, checkpointing after every Watch so a
- * suspended worker resumes where it stopped. Throttling ends the run until the next wake.
+ * Runs whatever Watch work is due for each verified login, checkpointing after every Watch so a
+ * suspended worker resumes where it stopped. Throttling ends a login's run until the next wake.
  */
 async function pumpOnce(deadline: number): Promise<void> {
   if (
@@ -316,17 +384,17 @@ async function pumpOnce(deadline: number): Promise<void> {
     ))
   )
     return;
-  const viewerId = await readyViewer();
-  if (!viewerId) return;
-  const read = await readStore();
-  if (read.kind === 'ok') {
-    for (const watch of read.store.watches)
-      if (watch.viewerId === viewerId && watch.enabled) {
-        await runActions(watch.id, viewerId);
-        await resumeNotifications(watch.id);
-      }
+  for (const { viewerId } of await readyLogins()) {
+    const read = await readStore();
+    if (read.kind === 'ok') {
+      for (const watch of read.store.watches)
+        if (watch.viewerId === viewerId && watch.enabled) {
+          await runActions(watch.id, viewerId);
+          await resumeNotifications(watch.id);
+        }
+    }
+    while (Date.now() < deadline && (await runNextJob(viewerId)));
   }
-  while (Date.now() < deadline && (await runNextJob(viewerId)));
 }
 
 let pumping: Promise<void> | undefined;
@@ -388,18 +456,21 @@ export async function retryAfterUpdate(): Promise<void> {
   }
 }
 
-/** A person verified their login again, so suspended Watches may run. */
-export async function resumeAfterPerson(): Promise<void> {
+/** A person verified `login` again, so its suspended Watches may run. */
+export async function resumeAfterPerson(login: InstagramLogin): Promise<void> {
+  const key = SUSPENDED_KEYS[login];
   const state = await loadState();
-  if (state.suspended) await updateState(current => ({ ...current, suspended: undefined }));
+  if (state[key]) await updateState(current => ({ ...current, [key]: undefined }));
 }
 
 /** The verified login's schedule, and where each of its Watches' manual check stands. */
 export async function scheduleOf(viewerId: string) {
   const state = await loadState();
-  await requestLedger.ready();
+  const login = await loginOf(viewerId);
+  const ledger = ledgerOf(login);
+  await ledger.ready();
   return {
-    schedule: watchSchedule(state, requestLedger.view, viewerId, Date.now()),
+    schedule: watchSchedule(state, ledger.view, viewerId, Date.now(), login),
     manualChecks: manualChecks(state.logins[viewerId]),
   };
 }
@@ -492,25 +563,29 @@ export async function checkpointManual(
   }));
 }
 
-/** Why pacing holds Watch work back right now: a rate-limit pause, or ordinary spacing. */
-export const pacingReason = (now: number): DeferredReason =>
-  requestLedger.pausedUntil(now) === undefined ? 'paced' : 'rate-limited';
+/** Why pacing holds `login`'s Watch work back right now: a rate-limit pause, or ordinary spacing. */
+export const pacingReason = (login: InstagramLogin, now: number): DeferredReason =>
+  ledgerOf(login).pausedUntil(now) === undefined ? 'paced' : 'rate-limited';
 
 /** Records that pacing stopped a manual check part way, and until when. */
 export async function deferManual(
+  login: InstagramLogin,
   viewerId: string,
   watchId: string,
   checkId: string,
   until: number
 ) {
+  const reason = pacingReason(login, Date.now());
   await updateManual(viewerId, watchId, checkId, job => ({
     ...job,
     deferredUntil: until,
-    deferredReason: pacingReason(Date.now()),
+    deferredReason: reason,
   }));
 }
 
+/** Records a finished manual check of `login`'s Watch, suspending that login if it was refused. */
 export async function finishManual(
+  login: InstagramLogin,
   viewerId: string,
   watchId: string,
   checkId: string,
@@ -524,7 +599,7 @@ export async function finishManual(
       ? [{ watchId, kind: outcome.kind, at: Date.now() + EARLY_RETRY_MS }]
       : []
   );
-  if (checkNeedsLogin(outcomes)) await updateState(state => ({ ...state, suspended: true }));
+  if (checkNeedsLogin(outcomes)) await suspend(login);
   await setSchedule(viewerId, current => ({
     ...(current ?? { nextRoundAt: Date.now(), remaining: [], earlyRetries: [] }),
     manual: current?.manual?.filter(job => job.watchId !== watchId || job.checkId !== checkId),

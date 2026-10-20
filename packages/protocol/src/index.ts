@@ -14,7 +14,11 @@ import { WatchCommand, WatchFailureDetail, WatchResult, WatchCheckProgress } fro
 export { decodeJsonFrame, encodeFrame, encodeJsonFrame, FrameDecoder } from './framing.ts';
 export { localIpcEndpoint, type IpcEnvironment } from './ipc.ts';
 
-export const PROTOCOL_VERSION = 4 as const;
+export const PROTOCOL_VERSION = 5 as const;
+
+/** Which Instagram login an operation runs as: the browser's own, or the linked second login. */
+export const InstagramLogin = Schema.Literal('main', 'linked');
+export type InstagramLogin = Schema.Schema.Type<typeof InstagramLogin>;
 
 export const RequestId = Schema.UUID.pipe(Schema.brand('RequestId'));
 export type RequestId = Schema.Schema.Type<typeof RequestId>;
@@ -108,6 +112,8 @@ export class Request extends Schema.Class<Request>('Request')({
   version: Schema.Literal(PROTOCOL_VERSION),
   requestId: RequestId,
   command: Command,
+  /** Absent means the main login. */
+  login: Schema.optional(InstagramLogin),
 }) {}
 
 export class CancelRequest extends Schema.TaggedClass<CancelRequest>()('CancelRequest', {

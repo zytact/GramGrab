@@ -106,7 +106,7 @@ describe('Watch request admission', () => {
     return Effect.runPromise(
       Effect.flatMap(InstagramRequests, requests => requests.fetch(url)).pipe(
         Effect.either,
-        Effect.provide(WatchRequests)
+        Effect.provide(WatchRequests('main'))
       )
     );
   };
@@ -115,7 +115,7 @@ describe('Watch request admission', () => {
     const { PersonRequests, InstagramRequests } = await import('./requests.ts');
     return Effect.runPromise(
       Effect.flatMap(InstagramRequests, requests => requests.fetch(url)).pipe(
-        Effect.provide(PersonRequests)
+        Effect.provide(PersonRequests())
       )
     );
   };
@@ -150,9 +150,10 @@ describe('Watch request admission', () => {
     vi.useFakeTimers();
     harness.setFetch(() => json({ ok: true }));
     await harness.loadWorker();
-    const { requestLedger, withWatchAdmission } = await import('./requests.ts');
+    const { ledgerOf, withWatchAdmission } = await import('./requests.ts');
+    const requestLedger = ledgerOf('main');
     const result = await Effect.runPromise(
-      withWatchAdmission(requests =>
+      withWatchAdmission('main', requests =>
         Effect.gen(function* () {
           if (condition === 'person')
             yield* Effect.promise(() => runPerson('https://www.instagram.com/person'));
@@ -246,7 +247,7 @@ describe('Watch request admission', () => {
     const result = Effect.runPromise(
       graphqlFetch('https://www.instagram.com/graphql/query/', 'doc_id', '1', {}, {}).pipe(
         Effect.either,
-        Effect.provide(WatchRequests)
+        Effect.provide(WatchRequests('main'))
       )
     );
     await vi.advanceTimersByTimeAsync(5_000);

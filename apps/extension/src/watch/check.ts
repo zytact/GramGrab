@@ -5,15 +5,12 @@ import {
   KindCheckSucceeded,
   WATCH_KINDS,
   type FailureCode,
+  type InstagramLogin,
   type KindCheckOutcome,
   type WatchKind,
 } from '@gramgrab/protocol';
 import { normalizeSourceFailure } from '../errors/normalize.ts';
-import {
-  requestLedger,
-  type InstagramRequests,
-  type WatchRequestDeferred,
-} from '../instagram/requests.ts';
+import { InstagramRequests, ledgerOf, type WatchRequestDeferred } from '../instagram/requests.ts';
 import {
   AnswerUntrusted,
   type GraphQLRequestFailed,
@@ -113,10 +110,11 @@ const ACQUIRERS: Record<TimedKind, Acquirer> = {
 
 /** The time throttling holds Watch work until, or undefined when the failure is the kind's own. */
 function deferral(
-  error: Acquisition | Effect.Effect.Error<typeof fetchViewer>
+  error: Acquisition | Effect.Effect.Error<typeof fetchViewer>,
+  login: InstagramLogin
 ): number | undefined {
   if (error._tag === 'WatchRequestDeferred') return error.until;
-  if (error._tag === 'RateLimited') return requestLedger.pausedUntil(Date.now()) ?? Date.now();
+  if (error._tag === 'RateLimited') return ledgerOf(login).pausedUntil(Date.now()) ?? Date.now();
   return undefined;
 }
 
@@ -195,7 +193,7 @@ function written<T>(
 /** A kind's failed acquisition: throttling defers the check, anything else is the kind's problem. */
 const failed = (watchId: string, kind: WatchKind, error: Acquisition) =>
   Effect.gen(function* () {
-    const until = deferral(error);
+    const until = deferral(error, (yield* InstagramRequests).login);
     if (until !== undefined)
       return {
         outcome: KindCheckSkipped.make({ kind, reason: 'deferred' }),
@@ -283,7 +281,8 @@ const postsPageStep = (watch: Watch, traversal: Traversal | undefined, context: 
   Effect.gen(function* () {
     const result = yield* Effect.either(readNext(watch, traversal));
     if (Either.isLeft(result)) {
-      if (deferral(result.left) === undefined) yield* saveTraversal(watch.id, undefined);
+      if (deferral(result.left, (yield* InstagramRequests).login) === undefined)
+        yield* saveTraversal(watch.id, undefined);
       return {
         _tag: 'end',
         step: yield* failed(watch.id, 'posts', result.left),
@@ -430,7 +429,8 @@ const checkAuthorization = Effect.fn(function* (
   if (!watch.enabled) return undefined;
   const viewer = yield* Effect.either(fetchViewer);
   if (Either.isRight(viewer) && viewer.right.accountId === watch.viewerId) return undefined;
-  const until = Either.isLeft(viewer) ? deferral(viewer.left) : undefined;
+  const { login } = yield* InstagramRequests;
+  const until = Either.isLeft(viewer) ? deferral(viewer.left, login) : undefined;
   const kinds = watch.kinds
     .filter(
       kind => selected(watch, kind, only) && !completed.some(outcome => outcome.kind === kind)

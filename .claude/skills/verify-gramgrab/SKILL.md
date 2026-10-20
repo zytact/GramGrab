@@ -101,7 +101,7 @@ build:
 
 ```bash
 grep -l 'YOUR_MARKER' extension/chromium/js/*.js   # the build splits code into chunks
-node $D eval "background.js" \
+node $D eval "js/background.js" \
   "fetch(chrome.runtime.getURL('js/CHUNK.js')).then(r=>r.text()).then(t=>t.includes('YOUR_MARKER'))"
 ```
 
@@ -266,6 +266,8 @@ Prefer these handles, which the source owns and tests already depend on:
 | Watch check problem  | `.opt-health-row.opt-health-problem`               |
 | Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
 | Watches file import  | `input[aria-label="Watches file"]`, button text `Export or import` |
+| Login picker         | `#instagram-login`                                 |
+| Link and Unlink      | `.opt-login-switch button`                         |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 
 One limit worth knowing before planning a run: anything gated on the _active
@@ -275,10 +277,13 @@ returns the popup. WhatsApp eligibility is the feature this blocks; see
 `features/whatsapp-status.md`.
 
 The service worker is a drivable target too, which is the fastest way to read
-browser state the UI does not show:
+browser state the UI does not show. Name it `js/background.js`: Chrome for
+Testing 155 ships a component extension whose worker is also `background.js`,
+and a bare `background.js` match lands there, where `chrome.cookies` is
+undefined.
 
 ```bash
-node $D eval "background.js" \
+node $D eval "js/background.js" \
   "new Promise(r=>chrome.downloads.search({},d=>r(JSON.stringify(d.map(x=>({f:x.filename,s:x.state}))))))"
 ```
 

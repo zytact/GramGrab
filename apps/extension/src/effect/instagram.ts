@@ -1,6 +1,10 @@
 import { Effect, Schedule, Schema } from 'effect';
 import { blobToDataUrl } from '../lib/data-url.ts';
-import { InstagramRequests, type WatchRequestDeferred } from '../instagram/requests.ts';
+import {
+  InstagramRequests,
+  type InstagramRequestInit,
+  type WatchRequestDeferred,
+} from '../instagram/requests.ts';
 import {
   GraphQLRequestFailed,
   HttpError,
@@ -80,7 +84,6 @@ const getInstagramLsdToken = (): Effect.Effect<string | undefined, never, Instag
   return Effect.gen(function* () {
     const requests = yield* InstagramRequests;
     const res = yield* requests.fetch('https://www.instagram.com/', {
-      credentials: 'include',
       headers: { Accept: 'text/html' },
     });
     if (!res.ok) return undefined;
@@ -106,7 +109,7 @@ export const graphqlFetch = (
       variables: JSON.stringify(variables),
     });
     const requests = yield* InstagramRequests;
-    const res = yield* requests.fetch(`${url}?${qs}`, { credentials: 'include', headers });
+    const res = yield* requests.fetch(`${url}?${qs}`, { headers });
     yield* requireSuccessfulResponse(
       res,
       response => new GraphQLRequestFailed({ status: response.status })
@@ -143,7 +146,6 @@ export const graphqlPost = (
     const requests = yield* InstagramRequests;
     const res = yield* requests.fetch(url, {
       method: 'POST',
-      credentials: 'include',
       headers: {
         ...headers,
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -170,7 +172,6 @@ export const fetchInstantsFeed = (
   url: string,
   clientDocumentId: string,
   friendlyName: string,
-  csrfToken: string,
   headers: Record<string, string>
 ): Effect.Effect<
   readonly InstantItem[],
@@ -188,13 +189,12 @@ export const fetchInstantsFeed = (
     const requests = yield* InstagramRequests;
     const res = yield* requests.fetch(url, {
       method: 'POST',
-      credentials: 'include',
+      csrf: true,
       headers: {
         ...headers,
         'Content-Type': 'application/x-www-form-urlencoded',
         'X-FB-Friendly-Name': friendlyName,
         'X-Client-Doc-Id': clientDocumentId,
-        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
       },
       body,
     });
@@ -235,7 +235,7 @@ type RestContext = 'highlights_tray';
 /** Reads a REST endpoint and decodes it, reporting a decode failure as ResponseShapeUnknown. */
 const fetchDecodedJson = <A, I>(
   url: string,
-  init: RequestInit,
+  init: InstagramRequestInit,
   schema: Schema.Schema<A, I>,
   context: RestContext
 ): Effect.Effect<
@@ -291,7 +291,7 @@ export const fetchHighlightsTray = (
 > =>
   fetchDecodedJson(
     `https://i.instagram.com/api/v1/highlights/${encodeURIComponent(userId)}/highlights_tray/`,
-    { credentials: 'include', headers },
+    { headers },
     HighlightsTrayResponseSchema,
     'highlights_tray'
   ).pipe(Effect.map(decoded => decoded.tray));

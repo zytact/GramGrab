@@ -2,6 +2,7 @@ import { Data, Effect, Either, Match, Schema } from 'effect';
 import {
   AccountId,
   CommandFailure,
+  LinkedLoginAttention,
   ExistingWatch,
   OperationFailure,
   StoredWatchCount,
@@ -35,6 +36,7 @@ import {
   WatchStorage,
   WatchViewer,
   type FailureCode,
+  type InstagramLogin,
   type WatchCommand,
   type WatchDefinition,
   type WatchFailureDetail,
@@ -43,7 +45,8 @@ import {
 } from '@gramgrab/protocol';
 import { canonicalizeInstagramUrl } from '../workspace/contracts.ts';
 import { resolveUsernameToId } from '../instagram/acquisition.ts';
-import { PersonRequests, requestLedger, type InstagramRequests } from '../instagram/requests.ts';
+import { InstagramRequests, PersonRequests, ledgerOf } from '../instagram/requests.ts';
+import { readLinkedLogin, requireLogin } from '../instagram/linked-login.ts';
 import { normalizeSourceFailure } from '../errors/normalize.ts';
 import type {
   WatchCommandResponse,
@@ -53,7 +56,13 @@ import type {
 } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
 import { definitionOf, newWatch } from './definition.ts';
-import { loginAttention, refreshBadge, watchAttentionItems } from './attention.ts';
+import {
+  LINKED_ATTENTION_ID,
+  linkedAttention,
+  loginAttention,
+  refreshBadge,
+  watchAttentionItems,
+} from './attention.ts';
 import { MANUAL_CHECK_INTERVAL_MS, lastCheckAt } from './check.ts';
 import { attentionEntries, discoveries, inbox, initialized, summarize } from './summary.ts';
 import { retryNotify } from './notify.ts';
@@ -111,16 +120,25 @@ const save = <T>(change: (store: WatchStore) => { store: WatchStore; value: T })
  */
 const verifyViewer = (store: WatchStore | undefined) =>
   fetchViewer.pipe(
-    Effect.tap(() => Effect.promise(resumeAfterPerson)),
+    Effect.tap(() =>
+      Effect.flatMap(requestLogin, login => Effect.promise(() => resumeAfterPerson(login)))
+    ),
     Effect.catchAll(() =>
       reject('IG_NOT_AUTHENTICATED', StoredWatchCount.make({ count: store?.watches.length ?? 0 }))
     )
   );
 
+/** The login the person's requests run as. */
+const requestLogin = Effect.map(InstagramRequests, requests => requests.login);
+
 const viewerFrom = (store: WatchStore | undefined, known: WatchViewer | undefined) =>
   known
-    ? Effect.flatMap(Effect.promise(verifiedViewerId), viewerId =>
-        viewerId === known.accountId ? Effect.succeed<Account>(known) : verifyViewer(store)
+    ? Effect.flatMap(requestLogin, login =>
+        Effect.flatMap(
+          Effect.promise(() => verifiedViewerId(login)),
+          viewerId =>
+            viewerId === known.accountId ? Effect.succeed<Account>(known) : verifyViewer(store)
+        )
       )
     : verifyViewer(store);
 
@@ -164,13 +182,19 @@ const list = Effect.fn(function* (known?: WatchViewer) {
   const viewer = yield* viewerFrom(store, known);
   const storage = yield* Effect.promise(() => storageState(read));
   const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
+  const logins = new Set([
+    viewer.accountId,
+    (yield* Effect.promise(readLinkedLogin))?.accountId,
+    yield* Effect.promise(() => verifiedViewerId('main')),
+  ]);
   const watches = store
     ? owned(store, viewer).map(watch => summarize(watch, schedule.manualChecks.get(watch.id)))
     : [];
   return WatchListResult.make({
     viewer: WatchViewer.make({ accountId: viewer.accountId, username: viewer.username }),
     schedule: schedule.schedule,
-    otherLoginWatchCount: (store?.watches.length ?? 0) - watches.length,
+    otherLoginWatchCount: (store?.watches ?? []).filter(watch => !logins.has(watch.viewerId))
+      .length,
     storage,
     attentionCount:
       (store ? (yield* Effect.promise(() => loginAttention(store, viewer.accountId))).length : 0) +
@@ -397,14 +421,14 @@ const lifecycle = (command: Extract<WatchCommand, { _tag: 'WatchLifecycle' }>) =
   });
 
 /** When and why a Check now of `watch` must wait, or undefined when it may run now. */
-function deferral(watch: Watch, now: number) {
+function deferral(watch: Watch, login: InstagramLogin, now: number) {
   const last = lastCheckAt(watch);
   const manual = last === undefined ? now : last + MANUAL_CHECK_INTERVAL_MS;
-  const paced = requestLedger.nextWatchAllowedAt(now);
+  const paced = ledgerOf(login).nextWatchAllowedAt(now);
   if (manual <= now && paced <= now + 25_000) return undefined;
   return {
     deferredUntil: Math.max(manual, paced),
-    deferredReason: manual >= paced ? ('checked-recently' as const) : pacingReason(now),
+    deferredReason: manual >= paced ? ('checked-recently' as const) : pacingReason(login, now),
   };
 }
 
@@ -436,8 +460,8 @@ const checkOne = Effect.fn(function* (
   yield* Effect.tryPromise({
     try: () =>
       until === undefined
-        ? finishManual(viewer.accountId, watch.id, checkId, run.kinds)
-        : deferManual(viewer.accountId, watch.id, checkId, until),
+        ? finishManual(run.login, viewer.accountId, watch.id, checkId, run.kinds)
+        : deferManual(run.login, viewer.accountId, watch.id, checkId, until),
     catch: () => new WatchRejection({ code: 'WATCH_STORE_FAILED' }),
   });
   return WatchCheckOutcome.make({
@@ -447,7 +471,7 @@ const checkOne = Effect.fn(function* (
     kinds: [...off, ...run.kinds],
     ...(until === undefined
       ? {}
-      : { deferredUntil: until, deferredReason: pacingReason(Date.now()) }),
+      : { deferredUntil: until, deferredReason: pacingReason(run.login, Date.now()) }),
   });
 });
 
@@ -470,7 +494,8 @@ const check = (
         selected.flatMap(({ watch }) => (watch ? [[watch.id, watch] as const] : []))
       ).values(),
     ];
-    const holds = new Map(unique.map(watch => [watch.id, deferral(watch, Date.now())]));
+    const login = yield* requestLogin;
+    const holds = new Map(unique.map(watch => [watch.id, deferral(watch, login, Date.now())]));
     const admitted = unique.filter(watch => holds.get(watch.id) === undefined);
     const checkId = decodeUuid(crypto.randomUUID());
     const queued = yield* Effect.tryPromise({
@@ -483,7 +508,7 @@ const check = (
         (Either.isRight(queued) && !queued.right.watchIds.has(watch.id)
           ? {
               deferredUntil: Math.max(
-                requestLedger.nextWatchAllowedAt(Date.now()),
+                ledgerOf(login).nextWatchAllowedAt(Date.now()),
                 Date.now() + 1_000
               ),
               deferredReason: 'queued' as const,
@@ -715,6 +740,13 @@ const needs = Effect.gen(function* () {
           .filter(watch => watch.viewerId === snapshot.viewer.accountId)
           .flatMap(watchAttentionItems)
       : [];
+  if (read.kind === 'ok' && (yield* Effect.promise(() => linkedAttention(read.store))).length)
+    items.unshift(
+      LinkedLoginAttention.make({
+        attentionId: LINKED_ATTENTION_ID,
+        code: 'IG_LINKED_LOGIN_ENDED',
+      })
+    );
   if (snapshot.schedule.pausedUntil && snapshot.watches.length)
     items.unshift(
       PauseAttention.make({
@@ -848,12 +880,21 @@ const program = (
     WatchRecover: recover,
   });
 
-/** Runs person-initiated Watch work, answering a rejection as its protocol failure. */
+/** Refuses work for the linked login while it is not linked or its session ended. */
+const requireWatchLogin = (login: InstagramLogin) =>
+  requireLogin(login).pipe(
+    Effect.catchAll(error =>
+      reject(error.reason === 'ended' ? 'IG_LINKED_LOGIN_ENDED' : 'IG_LINKED_LOGIN_MISSING')
+    )
+  );
+
+/** Runs person-initiated Watch work as `login`, answering a rejection as its protocol failure. */
 const runForPerson = <A>(
-  effect: Effect.Effect<A, WatchRejection, InstagramRequests>
+  effect: Effect.Effect<A, WatchRejection, InstagramRequests>,
+  login: InstagramLogin = 'main'
 ): Promise<A | { readonly failure: CommandFailure }> =>
   Effect.runPromise(
-    effect.pipe(
+    Effect.zipRight(requireWatchLogin(login), effect).pipe(
       Effect.catchAll(rejection =>
         Effect.succeed({
           failure: CommandFailure.make({
@@ -862,31 +903,40 @@ const runForPerson = <A>(
           }),
         })
       ),
-      Effect.provide(PersonRequests),
+      Effect.provide(PersonRequests(login)),
       Effect.ensuring(Effect.promise(refreshBadge))
     )
   );
 
-/** Runs one Watch command, as the options page and CLI both do. */
+/** Runs one Watch command as `login`, as the options page and CLI both do. */
 export const runWatchCommand = (
   command: WatchCommand,
   run: InboxExportExecution['Type']['run'],
-  onProgress: (progress: WatchCheckProgress) => void = () => {}
+  onProgress: (progress: WatchCheckProgress) => void = () => {},
+  login: InstagramLogin = 'main'
 ): Promise<WatchCommandResponse> =>
   runForPerson(
     Effect.map(program(command, onProgress), result => ({ result })).pipe(
       Effect.provideService(InboxExportExecution, { run })
-    )
+    ),
+    login
   );
 
 export const runWatchRead = (
   command: WatchRead,
-  viewer: WatchViewer
+  viewer: WatchViewer,
+  login: InstagramLogin = 'main'
 ): Promise<WatchCommandResponse> =>
-  runForPerson(Effect.map(read(command, viewer), result => ({ result })));
+  runForPerson(
+    Effect.map(read(command, viewer), result => ({ result })),
+    login
+  );
 
 /** Resolves an add target for the person to inspect before adding it. */
-export const previewWatchTarget = (target: string): Promise<WatchPreviewResponse> =>
+export const previewWatchTarget = (
+  target: string,
+  login: InstagramLogin = 'main'
+): Promise<WatchPreviewResponse> =>
   runForPerson(
     Effect.gen(function* () {
       const store = yield* loadOrReject;
@@ -894,10 +944,14 @@ export const previewWatchTarget = (target: string): Promise<WatchPreviewResponse
       const account = yield* resolveTarget(target);
       const existing = owned(store, viewer).find(watch => watch.targetId === account.accountId);
       return { account, ...(existing ? { existing: summarize(existing) } : {}) };
-    })
+    }),
+    login
   );
 
-export const previewInboxEntry = (entryId: string): Promise<WatchInboxPreviewResponse> =>
+export const previewInboxEntry = (
+  entryId: string,
+  login: InstagramLogin = 'main'
+): Promise<WatchInboxPreviewResponse> =>
   runForPerson(
     Effect.gen(function* () {
       const store = yield* loadOrReject;
@@ -952,5 +1006,6 @@ export const previewInboxEntry = (entryId: string): Promise<WatchInboxPreviewRes
             }
           : {}),
       };
-    })
+    }),
+    login
   );

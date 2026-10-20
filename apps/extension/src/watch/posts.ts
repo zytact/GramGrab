@@ -2,7 +2,7 @@ import { Effect, Either, Schema } from 'effect';
 import { InstagramUsername, type CheckIncompleteReason } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { IG_API_GRAPHQL_HEADERS, readCsrfToken } from '../instagram/headers.ts';
+import { IG_API_GRAPHQL_HEADERS } from '../instagram/headers.ts';
 import { withDtsgToken } from '../instagram/dtsg.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { AnswerUntrusted, ResponseShapeUnknown } from '../effect/errors.ts';
@@ -196,17 +196,12 @@ export const fetchPostsPage = (username: string, after: string | undefined) =>
     );
     const candidate = operation.candidates[0]!;
     const request = candidate.requests[0]!;
-    const csrfToken = yield* readCsrfToken;
     const requests = yield* InstagramRequests;
     const send = (dtsgToken: string) =>
       requests.fetch(request.endpoint, {
         method: 'POST',
-        credentials: 'include',
-        headers: {
-          ...IG_API_GRAPHQL_HEADERS,
-          'Content-Type': 'application/x-www-form-urlencoded',
-          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-        },
+        csrf: true,
+        headers: { ...IG_API_GRAPHQL_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
           [candidate.kind]: candidate.id,
           variables: JSON.stringify(variables),

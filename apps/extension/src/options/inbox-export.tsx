@@ -11,8 +11,10 @@ import {
 import { sendMessage } from '../messaging/send.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { InboxMediaPreview, useInboxMedia } from './inbox-media.tsx';
+import { pageLogin } from './login-switch.tsx';
 
-const run = (command: WatchCommand) => sendMessage({ type: 'WATCH_COMMAND', command });
+const run = (command: WatchCommand) =>
+  sendMessage({ type: 'WATCH_COMMAND', command, login: pageLogin() });
 
 function canRecover(code: FailureCode) {
   const policy = FAILURE_PRESENTATION[code];

@@ -37,6 +37,7 @@ import {
   validationFailureFrom,
   type EventPayload,
   type Request,
+  type InstagramLogin,
 } from '@gramgrab/protocol';
 import {
   canonicalizeInstagramUrl,
@@ -91,7 +92,9 @@ import { MESSAGE_REFUSALS } from './messaging/refusals.ts';
 import { sendTabMessage } from './messaging/send.ts';
 import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
-import { PersonRequests } from './instagram/requests.ts';
+import { PersonRequests, loginOf } from './instagram/requests.ts';
+import { listenForLinkedCookies, restoreLinkedRule } from './instagram/linked-login.ts';
+import { linkLogin, loginNames, unlinkLinkedLogin } from './instagram/link.ts';
 import { installInstagramOrigin } from './instagram/origin.ts';
 import {
   previewInboxEntry,
@@ -111,6 +114,7 @@ import {
 } from './watch/scheduler.ts';
 import { notifiedWatch } from './watch/notify.ts';
 import { recordFetched } from './watch/fetched.ts';
+import { readStore } from './watch/store.ts';
 import { acceptedHistoryEntry, type AcceptedHistoryOperation } from './history/receipt.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
@@ -178,7 +182,8 @@ async function handleFetchMedia(
   const result = await runOperationHandler(
     fetchedItems(resolveMediaEffect(source.url)),
     { items: undefined as MediaItem[] | undefined },
-    normalizeSourceFailure
+    normalizeSourceFailure,
+    msg.login
   );
   if (result.failure || !result.items) return { media: undefined, failure: result.failure };
   const stored = await getHistory();
@@ -205,12 +210,13 @@ async function handleFetchMedia(
 }
 
 async function handleFetchInstants(
-  _msg: MessageOf<'FETCH_INSTANTS'>
+  msg: MessageOf<'FETCH_INSTANTS'>
 ): Promise<MessageResponse<'FETCH_INSTANTS'>> {
   const result = await runOperationHandler(
     fetchedItems(fetchInstantMedia()),
     { items: undefined as MediaItem[] | undefined },
-    normalizeSourceFailure
+    normalizeSourceFailure,
+    msg.login
   );
   if (result.failure || !result.items) return { media: undefined, failure: result.failure };
   const stored = await getHistory();
@@ -415,12 +421,14 @@ async function handleRedownloadHistoryEntry(
           {
             items: undefined as MediaItem[] | undefined,
           },
-          normalizeSourceFailure
+          normalizeSourceFailure,
+          msg.login
         )
       : await runOperationHandler(
           fetchedItems(resolveMediaEffect(entry.origin.sourceUrl)),
           { items: undefined as MediaItem[] | undefined },
-          normalizeSourceFailure
+          normalizeSourceFailure,
+          msg.login
         );
   if (resolved.failure) return { failure: resolved.failure };
   if (!resolved.items)
@@ -581,7 +589,7 @@ async function handleDebugShape(
     fetchRestShortcodeRaw(parsed.shortcode!).pipe(
       Effect.map(raw => ({ raw })),
       Effect.catchAll(err => Effect.succeed({ error: formatError(err) })),
-      Effect.provide(PersonRequests)
+      Effect.provide(PersonRequests())
     )
   );
 }
@@ -742,12 +750,13 @@ async function getRunner(): Promise<number> {
 
 type ProtocolExportCommand = ProtocolExport | ProtocolInstantsExport;
 
-async function runInDocument(command: ProtocolExportCommand) {
+async function runInDocument(command: ProtocolExportCommand, login: InstagramLogin | undefined) {
   const tabId = await getRunner();
   return sendTabMessage(tabId, {
     type: 'RUN_EXPORT',
     sourceUrl: command._tag === 'Export' ? command.sourceUrl : '',
     originKind: command._tag === 'InstantsExport' ? 'instants' : 'source',
+    ...(login ? { login } : {}),
     command,
   });
 }
@@ -777,8 +786,11 @@ function protocolFailure(failure: OperationFailure): ProtocolOperationFailure {
   return ProtocolOperationFailure.make({ code: failure.code, scope: failure.scope });
 }
 
-async function inspectCommand(sourceUrl: string): Promise<InspectResult> {
-  const response = await handleFetchMedia({ type: 'FETCH_MEDIA', url: sourceUrl });
+async function inspectCommand(
+  sourceUrl: string,
+  login: InstagramLogin | undefined
+): Promise<InspectResult> {
+  const response = await handleFetchMedia({ type: 'FETCH_MEDIA', url: sourceUrl, login });
   if (response.failure) throw protocolFailure(response.failure);
   if (!response.media || !response.sourceUrl)
     throw ProtocolOperationFailure.make({ code: 'SOURCE_MEDIA_NOT_FOUND', scope: 'batch' });
@@ -804,8 +816,10 @@ async function inspectCommand(sourceUrl: string): Promise<InspectResult> {
   });
 }
 
-async function inspectInstantsCommand(): Promise<InstantsInspectResult> {
-  const response = await handleFetchInstants({ type: 'FETCH_INSTANTS' });
+async function inspectInstantsCommand(
+  login: InstagramLogin | undefined
+): Promise<InstantsInspectResult> {
+  const response = await handleFetchInstants({ type: 'FETCH_INSTANTS', login });
   if (response.failure) throw protocolFailure(response.failure);
   if (!response.media)
     throw ProtocolOperationFailure.make({ code: 'SOURCE_MEDIA_NOT_FOUND', scope: 'batch' });
@@ -854,14 +868,15 @@ function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
 async function runExport(
   command: ProtocolExportCommand,
   emit: (event: EventPayload) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  login: InstagramLogin | undefined
 ) {
   if (
     command.operations.every(
       operation => operation.mode._tag === 'DirectExport' && operation.rotation === undefined
     )
   )
-    return runDirectExport(command, emit, signal);
+    return runDirectExport(command, emit, signal, login);
   let release = () => {};
   const turn = new Promise<void>(resolve => {
     release = resolve;
@@ -882,7 +897,7 @@ async function runExport(
     signal.addEventListener('abort', abort, { once: true });
     try {
       return Schema.decodeUnknownSync(CommandResult)(
-        await abortable(runInDocument(command), signal)
+        await abortable(runInDocument(command, login), signal)
       );
     } catch {
       if (signal.aborted) throw cancellationError();
@@ -891,7 +906,7 @@ async function runExport(
       runnerReady = undefined;
       if (staleTabId !== undefined) discardRunner();
       return Schema.decodeUnknownSync(CommandResult)(
-        await abortable(runInDocument(command), signal)
+        await abortable(runInDocument(command, login), signal)
       );
     }
   } finally {
@@ -906,12 +921,13 @@ async function runExport(
 async function runDirectExport(
   command: ProtocolExportCommand,
   emit: (event: EventPayload) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  login: InstagramLogin | undefined
 ) {
   const inspected =
     command._tag === 'InstantsExport'
-      ? await abortable(inspectInstantsCommand(), signal)
-      : await abortable(inspectCommand(command.sourceUrl), signal);
+      ? await abortable(inspectInstantsCommand(login), signal)
+      : await abortable(inspectCommand(command.sourceUrl, login), signal);
   const operations: DownloadOperation[] = [];
   for (const requested of command.operations) {
     const requestedMediaId = requested.mediaIdentity?.mediaId;
@@ -1002,24 +1018,24 @@ async function executeCommand(
   signal: AbortSignal
 ): Promise<void> {
   try {
-    const command = request.command;
+    const { command, login } = request;
     let result: CommandResult;
     switch (command._tag) {
       case 'Inspect':
         emit(Progress.make({ phase: 'resolving' }));
-        result = await abortable(inspectCommand(command.sourceUrl), signal);
+        result = await abortable(inspectCommand(command.sourceUrl, login), signal);
         break;
       case 'InstantsInspect':
         emit(Progress.make({ phase: 'resolving' }));
-        result = await abortable(inspectInstantsCommand(), signal);
+        result = await abortable(inspectInstantsCommand(login), signal);
         break;
       case 'Export':
         emit(Progress.make({ phase: 'resolving' }));
-        result = await runExport(command, emit, signal);
+        result = await runExport(command, emit, signal, login);
         break;
       case 'InstantsExport':
         emit(Progress.make({ phase: 'resolving' }));
-        result = await runExport(command, emit, signal);
+        result = await runExport(command, emit, signal, login);
         break;
       case 'HistoryList': {
         emit(Progress.make({ phase: 'history' }));
@@ -1069,7 +1085,7 @@ async function executeCommand(
           signal.throwIfAborted();
           const entry = instagramEntries.find(candidate => candidate.id === entryId);
           const response = await abortable(
-            handleRedownloadHistoryEntry({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId }),
+            handleRedownloadHistoryEntry({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId, login }),
             signal
           );
           const frame = 'frame' in response ? response.frame : undefined;
@@ -1097,7 +1113,7 @@ async function executeCommand(
               entry.origin.kind === 'instants'
                 ? ProtocolInstantsExport.make({ operations })
                 : ProtocolExport.make({ sourceUrl: entry.origin.sourceUrl, operations });
-            const exportResult = await runExport(historyExport, emit, signal);
+            const exportResult = await runExport(historyExport, emit, signal, login);
             const failed =
               exportResult._tag === 'ExportResult' &&
               exportResult.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded');
@@ -1181,8 +1197,11 @@ async function executeCommand(
       case 'WatchInboxRetry': {
         emit(Progress.make({ phase: 'resolving' }));
         const outcome = await abortable(
-          runWatchCommand(command, runPreparedInDocument, watchCheck =>
-            emit(Progress.make({ phase: 'watch-check', watchCheck }))
+          runWatchCommand(
+            command,
+            runPreparedInDocument,
+            watchCheck => emit(Progress.make({ phase: 'watch-check', watchCheck })),
+            login
           ),
           signal
         );
@@ -1211,6 +1230,9 @@ async function executeCommand(
 
 void installInstagramOrigin();
 startNativeBridge(executeCommand);
+// The linked login's cookie rule lives in session rules, which a browser restart clears.
+void restoreLinkedRule();
+listenForLinkedCookies();
 browser.runtime.onStartup.addListener(() => startNativeBridge(executeCommand));
 
 // Watches: one periodic alarm wakes the worker to run due checks. Each wake, browser start, and
@@ -1226,12 +1248,20 @@ browser.runtime.onInstalled.addListener(details => {
   void ensureAlarm();
   if (details.reason === 'update') void retryAfterUpdate();
 });
-// A Watch notification opens that Watch's Inbox tab; the page shows it only to its own login.
+// A Watch notification opens that Watch's Inbox tab on its login's page, which shows it only to
+// the login that owns it.
 browser.notifications.onClicked.addListener(id => {
   const watchId = notifiedWatch(id);
   if (!watchId) return;
   void browser.notifications.clear(id).catch(() => undefined);
-  void browser.tabs.create({ url: browser.runtime.getURL(`options.html#watch=${watchId}`) });
+  void (async () => {
+    const read = await readStore();
+    const watch =
+      read.kind === 'ok' ? read.store.watches.find(item => item.id === watchId) : undefined;
+    const login = watch ? await loginOf(watch.viewerId) : 'main';
+    const page = login === 'linked' ? 'options.html?login=linked' : 'options.html';
+    await browser.tabs.create({ url: browser.runtime.getURL(`${page}#watch=${watchId}`) });
+  })();
 });
 void initializeScheduler().catch(() => undefined);
 void refreshBadge();
@@ -1283,11 +1313,15 @@ const messageHandlers: MessageHandlers = {
   FETCH_VIDEO_BLOB: handleFetchVideoBlob,
   DEBUG_SHAPE: handleDebugShape,
   DOWNLOAD_DEBUG_JSON: handleDownloadDebugJson,
-  WATCH_COMMAND: message => runWatchCommand(message.command, runPreparedInDocument),
-  WATCH_READ: message => runWatchRead(message.command, message.viewer),
-  WATCH_PREVIEW: message => previewWatchTarget(message.target),
+  WATCH_COMMAND: message =>
+    runWatchCommand(message.command, runPreparedInDocument, undefined, message.login),
+  WATCH_READ: message => runWatchRead(message.command, message.viewer, message.login),
+  WATCH_PREVIEW: message => previewWatchTarget(message.target, message.login),
   WATCH_AVATARS: message => watchAvatars(message.viewerId),
-  WATCH_INBOX_PREVIEW: message => previewInboxEntry(message.entryId),
+  WATCH_INBOX_PREVIEW: message => previewInboxEntry(message.entryId, message.login),
+  LINK_LOGIN: linkLogin,
+  UNLINK_LOGIN: unlinkLinkedLogin,
+  LOGIN_NAMES: loginNames,
 };
 
 /** Indexing the handler map with a type parameter keeps the request and its response correlated. */

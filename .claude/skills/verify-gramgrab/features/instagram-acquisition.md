@@ -17,6 +17,10 @@ here.
   `i.instagram.com/graphql_www`, because the web GraphQL host answers it with
   `null` (#295). Reads the Instagram CSRF cookie, which is why the manifest asks
   for `cookies`.
+- Login choice (Beta, Chromium): once a second login is linked, a `Login`
+  select (`#instagram-login`) next to Fetch picks Main or Linked, and the CLI
+  takes `--login main|linked`. Main is the default. See
+  [Linked login](./linked-login.md).
 - Failure presentation: every failure renders a title, an explanation, and its
   symbolic code, plus whichever recovery actions apply (`Fetch source again`,
   `Open in Instagram`, `Copy diagnostics`). `docs/error-model.md` is the registry.
@@ -99,6 +103,10 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
 
 ## Gotchas
 
+- A fetch as the linked login fails with `IG_LINKED_LOGIN_MISSING` when no
+  login is linked and `IG_LINKED_LOGIN_ENDED` when Instagram signed it out. The
+  requests it sends carry `gg_login=linked`, so filter on that marker when
+  reading the worker's network log.
 - Story, highlight, profile, and Instants requests need a session. Against a profile
   that was never signed in they fail, or sit on `resolving` until the acceptance
   window and then the terminal deadline apply. Run `scripts/signin.sh` once
@@ -119,7 +127,7 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   Origin rule is installed before blaming the token:
 
   ```bash
-  node $D eval "background.js" \
+  node $D eval "js/background.js" \
     "chrome.declarativeNetRequest.getSessionRules().then(r=>JSON.stringify(r))"
   ```
 
@@ -133,7 +141,7 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   the tray answers again.
 
   ```bash
-  node $D eval "background.js" \
+  node $D eval "js/background.js" \
     "new Promise(r=>chrome.storage.local.get(['instagram-requests'],v=>r(JSON.stringify(v))))"
   ```
 

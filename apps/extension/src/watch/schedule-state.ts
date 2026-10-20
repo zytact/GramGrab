@@ -2,6 +2,7 @@ import { Schema } from 'effect';
 import {
   AccountId,
   DeferredReason,
+  type InstagramLogin,
   KindCheckOutcome,
   ManualCheckFinished,
   ManualCheckPending,
@@ -54,10 +55,17 @@ export const SchedulerState = Schema.Struct({
   version: Schema.Literal(1),
   logins: Schema.Record({ key: AccountId, value: LoginSchedule }),
   startupHoldUntil: Schema.optional(Schema.Number),
-  /** Set when the session was rejected; cleared when the person next verifies their login. */
+  /** Set when the main session was rejected; cleared when the person next verifies that login. */
   suspended: Schema.optional(Schema.Boolean),
+  linkedSuspended: Schema.optional(Schema.Boolean),
 });
 export type SchedulerState = Schema.Schema.Type<typeof SchedulerState>;
+
+/** Where the scheduler records that each login's session was rejected. */
+export const SUSPENDED_KEYS = {
+  main: 'suspended',
+  linked: 'linkedSuspended',
+} as const satisfies Record<InstagramLogin, keyof SchedulerState>;
 
 const EMPTY: SchedulerState = { version: 1, logins: {} };
 
@@ -75,16 +83,17 @@ export function watchSchedule(
   state: SchedulerState,
   ledger: LedgerView | undefined,
   viewerId: string,
-  now: number
+  now: number,
+  login: InstagramLogin = 'main'
 ): WatchSchedule {
-  const login = state.logins[viewerId];
+  const schedule = state.logins[viewerId];
   const hold = ledger && watchHold(ledger, now);
   return WatchSchedule.make({
-    ...(login ? { nextRoundAt: login.nextRoundAt } : {}),
-    roundRemaining: login?.remaining.length ?? 0,
+    ...(schedule ? { nextRoundAt: schedule.nextRoundAt } : {}),
+    roundRemaining: schedule?.remaining.length ?? 0,
     ...(hold?.pausedUntil ? { pausedUntil: hold.pausedUntil } : {}),
     ...(hold?.capped ? { cappedUntil: hold.until } : {}),
-    suspended: state.suspended ?? false,
+    suspended: state[SUSPENDED_KEYS[login]] ?? false,
   });
 }
 

@@ -37,7 +37,7 @@ const participantRequestDecoders = [
 ];
 const participantEventDecoders = [decodeExtensionEvent, decodeCliEvent, decodeNativeHostEvent];
 
-describe('protocol version 4', () => {
+describe('protocol version 5', () => {
   it('decodes every command fixture identically in all participants', () => {
     for (const fixture of requestFixtures) {
       const expected = Schema.decodeUnknownSync(Request)(fixture);
@@ -63,7 +63,7 @@ describe('protocol version 4', () => {
   });
 
   it('rejects unsupported protocol versions and out-of-range progress', () => {
-    for (const version of [1, 2, 3, 5]) {
+    for (const version of [1, 2, 3, 4, 6]) {
       for (const decode of participantRequestDecoders) {
         expect(() =>
           Effect.runSync(decode({ version, requestId, command: { _tag: 'HistoryList' } }))
@@ -77,7 +77,7 @@ describe('protocol version 4', () => {
     }
     expect(() =>
       Schema.decodeUnknownSync(Event)({
-        version: 4,
+        version: 5,
         requestId,
         event: { _tag: 'Progress', phase: 'resolving', progress: 1.01 },
       })
@@ -139,6 +139,6 @@ describe('protocol version 4', () => {
     expect(FAILURE_CODES).toContain('SILENT_MEMORY_CAPACITY_EXCEEDED');
     expect(FAILURE_CODES).toContain('HISTORY_VERSION_UNSUPPORTED');
     expect(FAILURE_CODES).toContain('WATCH_STORE_UNREADABLE');
-    expect(FAILURE_CODES).toHaveLength(72);
+    expect(FAILURE_CODES).toHaveLength(74);
   });
 });
