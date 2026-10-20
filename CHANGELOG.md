@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.0](https://github.com/zytact/GramGrab/compare/v4.1.1...v4.2.0) (2026-10-20)
+
+
+### Features
+
+* **instagram:** watch and fetch as a second Instagram login from one profile (Beta) ([#312](https://github.com/zytact/GramGrab/issues/312)) ([6eb17c1](https://github.com/zytact/GramGrab/commit/6eb17c17a85ac77450e5ea447f105f9f6d259bb7))
+
 ## [4.1.1](https://github.com/zytact/GramGrab/compare/v4.1.0...v4.1.1) (2026-10-20)
 
 
