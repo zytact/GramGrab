@@ -77,7 +77,7 @@ GRAMGRAB_IPC_PATH=/tmp/gramgrab-nope.sock node apps/cli/bin/gramgrab.mjs status
   waits is never "slow Instagram". The extension emits progress before it does
   any work, so this means the worker never reached a terminal event. Read the
   service worker's exceptions rather than raising the timeout: attach CDP to the
-  `background.js` target, enable `Runtime`, and watch `Runtime.exceptionThrown`.
+  `js/background.js` target, enable `Runtime`, and watch `Runtime.exceptionThrown`.
   A throw inside the handler's own `catch` block presents exactly this way, and
   #164 fixed one that hung every failing command.
 - `gramgrab debug export` sets `saveAs: true`, so it opens a native Save As

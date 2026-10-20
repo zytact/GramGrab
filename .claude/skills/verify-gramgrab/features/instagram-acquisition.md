@@ -127,7 +127,7 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   Origin rule is installed before blaming the token:
 
   ```bash
-  node $D eval "background.js" \
+  node $D eval "js/background.js" \
     "chrome.declarativeNetRequest.getSessionRules().then(r=>JSON.stringify(r))"
   ```
 
@@ -141,7 +141,7 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   the tray answers again.
 
   ```bash
-  node $D eval "background.js" \
+  node $D eval "js/background.js" \
     "new Promise(r=>chrome.storage.local.get(['instagram-requests'],v=>r(JSON.stringify(v))))"
   ```
 

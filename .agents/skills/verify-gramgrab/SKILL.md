@@ -101,7 +101,7 @@ build:
 
 ```bash
 grep -l 'YOUR_MARKER' extension/chromium/js/*.js   # the build splits code into chunks
-node $D eval "background.js" \
+node $D eval "js/background.js" \
   "fetch(chrome.runtime.getURL('js/CHUNK.js')).then(r=>r.text()).then(t=>t.includes('YOUR_MARKER'))"
 ```
 
@@ -277,10 +277,13 @@ returns the popup. WhatsApp eligibility is the feature this blocks; see
 `features/whatsapp-status.md`.
 
 The service worker is a drivable target too, which is the fastest way to read
-browser state the UI does not show:
+browser state the UI does not show. Name it `js/background.js`: Chrome for
+Testing 155 ships a component extension whose worker is also `background.js`,
+and a bare `background.js` match lands there, where `chrome.cookies` is
+undefined.
 
 ```bash
-node $D eval "background.js" \
+node $D eval "js/background.js" \
   "new Promise(r=>chrome.downloads.search({},d=>r(JSON.stringify(d.map(x=>({f:x.filename,s:x.state}))))))"
 ```
 

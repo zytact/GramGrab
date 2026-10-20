@@ -49,9 +49,10 @@ Prerequisites, in order. Each is a real gate, not a flake:
 - A target only the linked login can see: a private account the second account
   follows and the main one does not. Without it, popup, CDN, and Watch rows
   prove routing but not visibility.
-- Incognito access. Read `chrome.extension.isAllowedIncognitoAccess()` in the
-  worker after every launch. Whether the setting survives a relaunch of an
-  extension loaded with `--load-extension` is not yet established.
+- Incognito access. It lives in the persistent profile, so turning it on once
+  holds across `cleanup.sh` and `launch.sh`: the worker read `true` after a
+  relaunch with doctor passing. Read `chrome.extension.isAllowedIncognitoAccess()`
+  in the worker before linking anyway.
 
 Turning on Incognito access from a driven page reloads the unpacked extension,
 and the reload leaves it `DISABLED` with `unsupportedDeveloperExtension`. Run
@@ -64,7 +65,7 @@ node $D eval "chrome://extensions/?id=$GRAMGRAB_EXT_ID" \
 node $D eval "chrome://extensions/?id=$GRAMGRAB_EXT_ID" \
   "new Promise(r=>chrome.management.setEnabled('$GRAMGRAB_EXT_ID',true,()=>r(chrome.runtime.lastError?.message||'ok')))"
 node .agents/skills/verify-gramgrab/scripts/doctor.mjs
-node $D eval background.js "chrome.extension.isAllowedIncognitoAccess()"   # true
+node $D eval js/background.js "chrome.extension.isAllowedIncognitoAccess()"   # true
 ```
 
 Clicking the `#allow-incognito` toggle through `eval` does nothing; it needs a
@@ -73,7 +74,7 @@ to the person to sign in. The verify browser is headed on the developer's
 display, so a person working remotely needs a remote desktop to it:
 
 ```bash
-node $D eval background.js \
+node $D eval js/background.js \
   "chrome.windows.create({incognito:true,url:'https://www.instagram.com/accounts/login/'}).then(w=>w.incognito)"
 ```
 
@@ -81,7 +82,7 @@ Fingerprint the main `sessionid` before linking and compare after the run.
 Print a truncated hash only:
 
 ```bash
-node $D eval background.js "new Promise(r=>chrome.cookies.get({url:'https://www.instagram.com',name:'sessionid'},async c=>r(c?[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(c.value)))].slice(0,6).map(b=>b.toString(16).padStart(2,'0')).join(''):'none')))"
+node $D eval js/background.js "new Promise(r=>chrome.cookies.get({url:'https://www.instagram.com',name:'sessionid'},async c=>r(c?[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(c.value)))].slice(0,6).map(b=>b.toString(16).padStart(2,'0')).join(''):'none')))"
 ```
 
 Link and unlink from the Watches page with `drive.mjs click` on the
@@ -89,19 +90,26 @@ Link and unlink from the Watches page with `drive.mjs click` on the
 linking, prove the two logins differ without printing either ID:
 
 ```bash
-node $D eval background.js "Promise.all([chrome.storage.session.get(null),chrome.storage.local.get('linked-instagram-login')]).then(([s,l])=>JSON.stringify({differ:s['watch-viewer']!==s['watch-viewer.linked'],linkedVerified:s['watch-viewer.linked']===l['linked-instagram-login']?.accountId}))"
+node $D eval js/background.js "Promise.all([chrome.storage.session.get(null),chrome.storage.local.get('linked-instagram-login')]).then(([s,l])=>JSON.stringify({differ:s['watch-viewer']!==s['watch-viewer.linked'],linkedVerified:s['watch-viewer.linked']===l['linked-instagram-login']?.accountId}))"
 ```
 
 Read the session rule's condition, never its action: the action holds the
 linked cookies.
 
 ```bash
-node $D eval background.js "chrome.declarativeNetRequest.getSessionRules().then(rs=>JSON.stringify(rs.map(r=>r.condition)))"
+node $D eval js/background.js "chrome.declarativeNetRequest.getSessionRules().then(rs=>JSON.stringify(rs.map(r=>({id:r.id,condition:r.condition}))))"
 ```
 
 Fetch as the linked login in both entry points: select `linked` in
 `#instagram-login`, type the linked-only Post URL into `#source-url`, click
-`.fetch-row button`, then select one item and download it. Over the CLI:
+`.fetch-row button`, then select one item and download it. `drive.mjs` has no
+select command, so set the picker the way React reads it:
+
+```bash
+node $D eval popup.html "(()=>{const s=document.querySelector('#instagram-login');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,'linked');s.dispatchEvent(new Event('change',{bubbles:true}));return s.value})()"
+```
+
+Over the CLI:
 
 ```bash
 node apps/cli/bin/gramgrab.mjs inspect "$LINKED_ONLY_POST" --login linked --json
@@ -111,7 +119,9 @@ node apps/cli/bin/gramgrab.mjs inspect "$LINKED_ONLY_POST" --json; echo "exit=$?
 
 For a linked Watch, open `options.html?login=linked`, add the linked-only
 account, and follow the Check now recipe in [Watches](./watches.md#check-now)
-under that tab. Read both ledgers before and after.
+under that tab. Read both ledgers before and after. The Add Watch username
+field has no `type` attribute, so select it as `input`, not `input[type=text]`.
+Adding the Watch spends linked requests of its own for the preview and baseline.
 
 ## What proves it works
 
@@ -119,10 +129,12 @@ under that tab. Read both ledgers before and after.
   exists, and the viewer probe reads `{"differ":true,"linkedVerified":true}`.
 - Refusal: linking without Incognito access reads `Allow GramGrab in Incognito
   on the browser's extensions page, then link again.` and stores nothing.
-- Rule: one condition with `urlFilter` `gg_login=linked`, `requestDomains`
-  `["instagram.com"]`, and `tabIds` `[-1]`.
+- Rule: rule 2 has `urlFilter` `gg_login=linked`, `requestDomains`
+  `["instagram.com"]`, and `tabIds` `[-1]`. Rule 1 is the Origin rule every
+  build installs, and it stays after linking.
 - Fetch: the linked-only Post lists its items as linked, and the same URL as
-  main fails or shows nothing. The download lands in `$GRAMGRAB_VERIFY_DOWNLOADS`
+  main fails. A private Post the main login cannot see reads
+  `IG_RESPONSE_SHAPE_UNKNOWN` in the popup and exits 1 over the CLI. The download lands in `$GRAMGRAB_VERIFY_DOWNLOADS`
   with a non-zero size; CDN URLs on `fbcdn.net` need no cookies.
 - Watch: the linked check finishes, and only `instagram-requests.linked` gains
   attempts.

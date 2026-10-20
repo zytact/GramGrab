@@ -70,7 +70,7 @@ if (!Object.hasOwn(expressions, mode ?? '')) usage();
 try {
   const { stdout } = await run(
     process.execPath,
-    [resolve(here, 'drive.mjs'), 'eval', 'background.js', expressions[mode]()],
+    [resolve(here, 'drive.mjs'), 'eval', 'js/background.js', expressions[mode]()],
     { env: process.env, timeout: 30_000 }
   );
   process.stdout.write(stdout);
