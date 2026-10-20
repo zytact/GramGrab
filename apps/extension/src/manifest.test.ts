@@ -18,6 +18,7 @@ const expectedPermissions = [
   'contextMenus',
   'nativeMessaging',
   'alarms',
+  'declarativeNetRequestWithHostAccess',
 ];
 const expectedHostPermissions = ['https://*.instagram.com/*', 'https://*.fbcdn.net/*'];
 

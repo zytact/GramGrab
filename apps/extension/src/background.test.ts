@@ -1297,8 +1297,8 @@ describe('background dispatcher', () => {
       expect(result).toMatchObject({ media: [{ type: 'image' }] });
       const reels = vi
         .mocked(fetchSpy)
-        .mock.calls.map(([, init]) => bodyOf(init))
-        .find(body => body.includes('reel_ids'));
+        .mock.calls.map(([input]) => urlOf(input))
+        .find(url => url.includes('reel_ids'));
       expect(decodeURIComponent(reels ?? '')).toContain('"reel_ids":["4242"]');
     });
 

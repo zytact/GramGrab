@@ -264,6 +264,8 @@ describe('native Watch checks', () => {
         },
       },
     });
+    // The reloaded worker holds Watch work for two minutes after it starts.
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
     harness.fireAlarm('watch-pump');
     await vi.advanceTimersByTimeAsync(3 * 60_000);
     expect(storyRequests()).toBe(1);

@@ -30,6 +30,11 @@ const permissionDocumentation = [
     permission: 'alarms',
     reason: 'Wake GramGrab to run your Watch checks while the browser is open',
   },
+  {
+    permission: 'declarativeNetRequestWithHostAccess',
+    reason:
+      "Mark GramGrab's own Instagram requests as coming from instagram.com, which Instagram requires",
+  },
 ];
 
 /** Asked for only when a person first chooses to be notified by a Watch. */
