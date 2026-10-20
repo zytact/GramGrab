@@ -215,22 +215,22 @@ Shared domain code lives under `apps/extension/src/` (`effect/` for Instagram re
 
 ## Permissions
 
-| Permission                            | Why it's needed                                                                                                                                             |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `downloads`                           | Save media files and debug exports to disk                                                                                                                  |
-| `storage`                             | Persist download history, workspace handoff state, and your Watches on this device                                                                          |
-| `cookies`                             | Read the Instagram CSRF token right before a request that sends it back, and copy the Instagram cookies of an Incognito window when you link a second login |
-| `activeTab`                           | Temporarily access the current tab when GramGrab is invoked                                                                                                 |
-| `scripting`                           | Inject the one-shot isolated WhatsApp capture controller                                                                                                    |
-| `tabs`                                | Read and manage tabs for URL detection and the GramGrab workspace                                                                                           |
-| `contextMenus`                        | Add GramGrab actions to page and link context menus                                                                                                         |
-| `nativeMessaging`                     | Expose GramGrab operations to the local CLI bridge                                                                                                          |
-| `alarms`                              | Wake GramGrab to run your Watch checks while the browser is open                                                                                            |
-| `declarativeNetRequestWithHostAccess` | Send the linked second login's Instagram cookies with GramGrab's own requests made for that login                                                           |
-| `webRequest`                          | Keep the stored cookies of the linked login current with what Instagram sets on its requests                                                                |
-| `notifications`                       | Tell you what a Watch check found, if you ask it to                                                                                                         |
-| `https://*.instagram.com/*`           | Fetch media metadata from Instagram                                                                                                                         |
-| `https://*.fbcdn.net/*`               | Load media previews and videos from Instagram’s CDN                                                                                                         |
+| Permission                            | Why it's needed                                                                                                                                                             |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `downloads`                           | Save media files and debug exports to disk                                                                                                                                  |
+| `storage`                             | Persist download history, workspace handoff state, and your Watches on this device                                                                                          |
+| `cookies`                             | Read the Instagram CSRF token right before a request that sends it back, and copy the Instagram cookies of an Incognito window when you link a second login                 |
+| `activeTab`                           | Temporarily access the current tab when GramGrab is invoked                                                                                                                 |
+| `scripting`                           | Inject the one-shot isolated WhatsApp capture controller                                                                                                                    |
+| `tabs`                                | Read and manage tabs for URL detection and the GramGrab workspace                                                                                                           |
+| `contextMenus`                        | Add GramGrab actions to page and link context menus                                                                                                                         |
+| `nativeMessaging`                     | Expose GramGrab operations to the local CLI bridge                                                                                                                          |
+| `alarms`                              | Wake GramGrab to run your Watch checks while the browser is open                                                                                                            |
+| `declarativeNetRequestWithHostAccess` | Mark GramGrab's own Instagram requests as coming from instagram.com, which Instagram requires, and send the linked second login's cookies with requests made for that login |
+| `webRequest`                          | Keep the stored cookies of the linked login current with what Instagram sets on its requests                                                                                |
+| `notifications`                       | Tell you what a Watch check found, if you ask it to                                                                                                                         |
+| `https://*.instagram.com/*`           | Fetch media metadata from Instagram                                                                                                                                         |
+| `https://*.fbcdn.net/*`               | Load media previews and videos from Instagram’s CDN                                                                                                                         |
 
 ---
 

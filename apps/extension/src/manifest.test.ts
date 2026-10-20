@@ -18,6 +18,7 @@ const expectedPermissions = [
   'contextMenus',
   'nativeMessaging',
   'alarms',
+  'declarativeNetRequestWithHostAccess',
 ];
 const expectedHostPermissions = ['https://*.instagram.com/*', 'https://*.fbcdn.net/*'];
 
@@ -62,9 +63,7 @@ describe('manifest generation', () => {
           96: 'icons/icon-96.png',
         },
         permissions:
-          browser === 'chromium'
-            ? [...expectedPermissions, 'declarativeNetRequestWithHostAccess', 'webRequest']
-            : expectedPermissions,
+          browser === 'chromium' ? [...expectedPermissions, 'webRequest'] : expectedPermissions,
         optional_permissions: ['notifications'],
         host_permissions: expectedHostPermissions,
         options_ui: { page: 'options.html', open_in_tab: true },

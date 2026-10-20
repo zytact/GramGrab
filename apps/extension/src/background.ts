@@ -95,6 +95,7 @@ import { OperationFailure, OperationWarning } from './errors/contracts.ts';
 import { PersonRequests, loginOf } from './instagram/requests.ts';
 import { listenForLinkedCookies, restoreLinkedRule } from './instagram/linked-login.ts';
 import { linkLogin, unlinkLinkedLogin } from './instagram/link.ts';
+import { installInstagramOrigin } from './instagram/origin.ts';
 import {
   previewInboxEntry,
   previewWatchTarget,
@@ -1227,6 +1228,7 @@ async function executeCommand(
   }
 }
 
+void installInstagramOrigin();
 startNativeBridge(executeCommand);
 // The linked login's cookie rule lives in session rules, which a browser restart clears.
 void restoreLinkedRule();

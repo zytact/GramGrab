@@ -17,7 +17,7 @@ captures are local-only sensitive data and must never be committed.
 | `instants-photo.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - active photo shape and image candidates                                               |
 | `instants-video.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - video nullability, posters, duplicate progressive URLs, and DASH metadata             |
 | `instants-empty.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - successful empty active feed                                                          |
-| `profile-posts.json`        | `graphql/query` with the `profilePosts` document ID               | Watch `PostsResponse` - one Posts grid page, trimmed to the fields a Watch reads, with mixed Sidecars            |
+| `profile-posts.json`        | `api/graphql` with the `profilePosts` document ID and `fb_dtsg`   | Watch `PostsResponse` - one Posts grid page, trimmed to the fields a Watch reads, with mixed Sidecars            |
 
 ## Notes
 

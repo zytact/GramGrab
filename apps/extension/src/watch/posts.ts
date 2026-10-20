@@ -3,6 +3,7 @@ import { InstagramUsername, type CheckIncompleteReason } from '@gramgrab/protoco
 import { browser } from '../lib/browser.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
 import { IG_API_GRAPHQL_HEADERS } from '../instagram/headers.ts';
+import { withDtsgToken } from '../instagram/dtsg.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { AnswerUntrusted, ResponseShapeUnknown } from '../effect/errors.ts';
 import { MediaId, Shortcode, type TimedRef } from './contracts.ts';
@@ -46,6 +47,27 @@ export const PostsResponse = Schema.Struct({
 
 /** A GraphQL answer that reports errors, which Instagram sends with or without `data`. */
 const isErrored = Schema.is(Schema.Struct({ errors: Schema.NonEmptyArray(Schema.Unknown) }));
+
+/** An error that nulls one field of one Post, such as its location's picture. */
+const isPostFieldError = Schema.is(
+  Schema.Struct({
+    path: Schema.Tuple(
+      [
+        Schema.Literal('xdt_api__v1__feed__user_timeline_graphql_connection'),
+        Schema.Literal('edges'),
+        Schema.Number,
+        Schema.Literal('node'),
+        Schema.String,
+      ],
+      Schema.Union(Schema.String, Schema.Number)
+    ),
+  })
+);
+
+const READ_FIELDS: ReadonlySet<string> = new Set(Object.keys(PostNode.fields));
+
+/** Whether an error only nulls a Post field this check never reads. */
+const isHarmless = (error: unknown) => isPostFieldError(error) && !READ_FIELDS.has(error.path[4]);
 
 export interface PostsPage {
   readonly refs: readonly TimedRef[];
@@ -110,12 +132,13 @@ const consistent = (refs: readonly TimedRef[], next: string | undefined) =>
 
 /**
  * Reads one Posts page of `targetId`. Only an answer that does not decode is an unknown format.
- * A GraphQL error, or a node that is not the target's with trustworthy identity and timing,
+ * A GraphQL error outside the Post fields this check ignores, or a node that is not the target's with trustworthy identity and timing,
  * leaves the check incomplete and names the rule that stopped it.
  */
 export const readPostsPage = (raw: unknown, targetId: string, nowSeconds: number) =>
   Effect.gen(function* () {
-    if (isErrored(raw)) return yield* Effect.fail(incomplete('graphql-errors'));
+    if (isErrored(raw) && !raw.errors.every(isHarmless))
+      return yield* Effect.fail(incomplete('graphql-errors'));
     const decoded = yield* Schema.decodeUnknown(PostsResponse)(raw).pipe(
       Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_posts' }))
     );
@@ -174,16 +197,18 @@ export const fetchPostsPage = (username: string, after: string | undefined) =>
     const candidate = operation.candidates[0]!;
     const request = candidate.requests[0]!;
     const requests = yield* InstagramRequests;
-    const response = yield* requests.fetch(request.endpoint, {
-      method: 'POST',
-      csrf: true,
-      headers: { ...IG_API_GRAPHQL_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        [candidate.kind]: candidate.id,
-        variables: JSON.stringify(variables),
-      }),
-    });
-    return yield* readJson(response);
+    const send = (dtsgToken: string) =>
+      requests.fetch(request.endpoint, {
+        method: 'POST',
+        csrf: true,
+        headers: { ...IG_API_GRAPHQL_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          [candidate.kind]: candidate.id,
+          variables: JSON.stringify(variables),
+          fb_dtsg: dtsgToken,
+        }),
+      });
+    return yield* readJson(yield* withDtsgToken(send));
   });
 
 const TRAVERSALS_KEY = 'watch-posts-traversals';

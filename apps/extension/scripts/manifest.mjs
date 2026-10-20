@@ -30,15 +30,15 @@ const permissionDocumentation = [
     permission: 'alarms',
     reason: 'Wake GramGrab to run your Watch checks while the browser is open',
   },
-];
-
-/** Chromium only: route a linked second Instagram login's requests (Beta). */
-const chromiumPermissionDocumentation = [
   {
     permission: 'declarativeNetRequestWithHostAccess',
     reason:
-      "Send the linked second login's Instagram cookies with GramGrab's own requests made for that login",
+      "Mark GramGrab's own Instagram requests as coming from instagram.com, which Instagram requires, and send the linked second login's cookies with requests made for that login",
   },
+];
+
+/** Chromium only: keep a linked second Instagram login's cookies current (Beta). */
+const chromiumPermissionDocumentation = [
   {
     permission: 'webRequest',
     reason:

@@ -11,6 +11,7 @@ import { createExtensionHarness, json, type ExtensionHarness } from '../test/ext
 import { TARGET, VIEWER, createWatchInstagram } from '../test/watch-instagram.ts';
 import type { LinkLoginResponse, WatchCommandResponse } from '../messaging/contracts.ts';
 import { absorbSetCookie } from './linked-login.ts';
+import { SESSION_RULE_ID } from './session-rules.ts';
 
 const START = Date.UTC(2026, 9, 1, 12);
 const MINUTE = 60_000;
@@ -102,8 +103,11 @@ const stored = () =>
     | { accountId: string; cookies: Record<string, string>; ended?: true }
     | undefined;
 
+const linkedRules = () =>
+  harness.sessionRules.filter(rule => rule.id === SESSION_RULE_ID.linkedCookie);
+
 const cookieRule = () =>
-  harness.sessionRules[0]?.action.requestHeaders.find(header => header.header === 'cookie')?.value;
+  linkedRules()[0]?.action.requestHeaders.find(header => header.header === 'cookie')?.value;
 
 describe('linking a second login', () => {
   it('copies the Incognito cookies and confirms the account as that login', async () => {
@@ -112,7 +116,7 @@ describe('linking a second login', () => {
     expect(await link()).toEqual({ _tag: 'linked', username: LINKED.username });
 
     expect(stored()).toMatchObject({ accountId: LINKED.id, cookies: LINKED_COOKIES });
-    expect(harness.sessionRules).toEqual([
+    expect(linkedRules()).toEqual([
       expect.objectContaining({
         condition: expect.objectContaining({
           urlFilter: 'gg_login=linked',
@@ -122,6 +126,7 @@ describe('linking a second login', () => {
       }),
     ]);
     expect(cookieRule()).toContain('sessionid=linked-session');
+    expect(harness.sessionRules.map(rule => rule.id)).toContain(SESSION_RULE_ID.instagramOrigin);
   });
 
   it.each([
@@ -149,7 +154,7 @@ describe('linking a second login', () => {
 
     expect(await link()).toEqual({ _tag: 'refused', reason });
     expect(stored()).toBeUndefined();
-    expect(harness.sessionRules).toEqual([]);
+    expect(linkedRules()).toEqual([]);
   });
 
   it('refuses while the main login cannot be confirmed, so it can never link the main login', async () => {
@@ -167,7 +172,7 @@ describe('linking a second login', () => {
     await settle(harness.send({ type: 'UNLINK_LOGIN' }));
 
     expect(stored()).toBeUndefined();
-    expect(harness.sessionRules).toEqual([]);
+    expect(linkedRules()).toEqual([]);
   });
 });
 

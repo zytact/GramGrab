@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.1](https://github.com/zytact/GramGrab/compare/v4.1.0...v4.1.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **instagram:** make profiles, Stories and Watch Posts checks work again ([#314](https://github.com/zytact/GramGrab/issues/314)) ([4ad653c](https://github.com/zytact/GramGrab/commit/4ad653ce9ac7106df45290b06d96809e4f56677a))
+
 ## [4.1.0](https://github.com/zytact/GramGrab/compare/v4.0.0...v4.1.0) (2026-10-18)
 
 

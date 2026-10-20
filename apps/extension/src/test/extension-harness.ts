@@ -257,6 +257,14 @@ export function createExtensionHarness() {
       }),
       setBadgeBackgroundColor: vi.fn(async () => undefined),
     },
+    declarativeNetRequest: {
+      updateSessionRules: vi.fn(async (update: SessionRuleUpdate) => {
+        sessionRules = [
+          ...sessionRules.filter(rule => !update.removeRuleIds?.includes(rule.id)),
+          ...(update.addRules ?? []),
+        ];
+      }),
+    },
     linkedLogin: {
       isAllowedIncognitoAccess: vi.fn(async () => incognito.allowed),
       getAllCookieStores: vi.fn(async () =>
@@ -267,12 +275,6 @@ export function createExtensionHarness() {
           ? Object.entries(incognito.cookies ?? {}).map(([name, value]) => ({ name, value }))
           : []
       ),
-      updateSessionRules: vi.fn(async (update: SessionRuleUpdate) => {
-        sessionRules = [
-          ...sessionRules.filter(rule => !update.removeRuleIds?.includes(rule.id)),
-          ...(update.addRules ?? []),
-        ];
-      }),
       onHeadersReceived: {
         addListener: (listener: (details: HeadersReceivedDetails) => void) =>
           onHeadersReceived.addListener(listener),

@@ -108,6 +108,13 @@ as the CSRF header for that request. That value is never stored or logged. The o
 copying the Incognito window's Instagram cookies when the person links a second login, as Linked
 login describes.
 
+Instagram's Posts queries also need the `fb_dtsg` form token. GramGrab reads it from the
+instagram.com home page, keeps it in the background worker's memory only, and sends it back to
+Instagram with those queries, one token per login. The `declarativeNetRequestWithHostAccess`
+permission sets two headers on GramGrab's own requests to instagram.com, never on a tab's:
+`Origin: https://www.instagram.com` on its POST requests, and the linked login's `Cookie` on
+requests made for that login.
+
 Cookies, CSRF tokens, request headers, browser storage contents, and unrelated session state never
 enter shareable diagnostics or committed artifacts. Neither does the linked login's account ID or
 username. They must not be copied into source,

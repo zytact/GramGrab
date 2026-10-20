@@ -26,7 +26,7 @@ While a login is linked, `storage.local` holds `linked-instagram-login`: its acc
 
 ## Consequences
 
-- The Chromium manifest adds `declarativeNetRequestWithHostAccess` and `webRequest`. The Firefox build declares neither, so the feature is hidden there.
+- The Chromium manifest adds `webRequest`. The Firefox build lacks it, so the feature is hidden there. `declarativeNetRequestWithHostAccess` is on both builds for the Origin rule, and the linked cookie rule shares it under its own rule ID.
 - The `cookies` permission now also copies the Incognito window's Instagram cookies when the person links a login.
 - The CLI protocol is version 5: a request may name `login`, and an older extension would otherwise run a linked request as the main login.
 - Instagram can end the linked session at any time, and logging out of the second account anywhere ends it.

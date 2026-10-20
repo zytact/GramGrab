@@ -141,25 +141,8 @@ export interface BrowserShim {
   alarms: PromisedApis['alarms'];
   notifications: PromisedApis['notifications'];
   permissions: PromisedApis['permissions'];
+  declarativeNetRequest: PromisedApis['declarativeNetRequest'];
   linkedLogin?: LinkedLoginApis;
-}
-
-export interface SessionRuleUpdate {
-  removeRuleIds?: number[];
-  addRules?: {
-    id: number;
-    priority: number;
-    condition: {
-      urlFilter: string;
-      requestDomains: string[];
-      tabIds: number[];
-      resourceTypes: string[];
-    };
-    action: {
-      type: 'modifyHeaders';
-      requestHeaders: { header: string; operation: 'set'; value: string }[];
-    };
-  }[];
 }
 
 export interface HeadersReceivedDetails {
@@ -179,7 +162,6 @@ export interface LinkedLoginApis {
     domain: string;
     storeId: string;
   }) => Promise<{ name: string; value: string }[]>;
-  updateSessionRules: (update: SessionRuleUpdate) => Promise<void>;
   onHeadersReceived: {
     addListener: (
       callback: (details: HeadersReceivedDetails) => void,
@@ -190,8 +172,8 @@ export interface LinkedLoginApis {
 }
 
 /**
- * The promise-based Chromium globals `LinkedLoginApis` reads. `declarativeNetRequest` and
- * `webRequest` are absent without their permissions, which only the Chromium manifest declares.
+ * The promise-based Chromium globals `LinkedLoginApis` reads. `webRequest` is absent without its
+ * permission, which only the Chromium manifest declares.
  */
 interface LinkedLoginGlobal {
   extension?: { isAllowedIncognitoAccess: () => Promise<boolean> };
@@ -199,22 +181,19 @@ interface LinkedLoginGlobal {
     getAllCookieStores: LinkedLoginApis['getAllCookieStores'];
     getAll: LinkedLoginApis['getAllCookies'];
   };
-  declarativeNetRequest?: { updateSessionRules: LinkedLoginApis['updateSessionRules'] };
   webRequest?: { onHeadersReceived: LinkedLoginApis['onHeadersReceived'] };
 }
 
 function linkedLoginApis({
   extension,
   cookies,
-  declarativeNetRequest,
   webRequest,
 }: LinkedLoginGlobal): LinkedLoginApis | undefined {
-  if (!extension || !cookies || !declarativeNetRequest || !webRequest) return undefined;
+  if (!extension || !cookies || !webRequest) return undefined;
   return {
     isAllowedIncognitoAccess: () => extension.isAllowedIncognitoAccess(),
     getAllCookieStores: () => cookies.getAllCookieStores(),
     getAllCookies: details => cookies.getAll(details),
-    updateSessionRules: update => declarativeNetRequest.updateSessionRules(update),
     onHeadersReceived: webRequest.onHeadersReceived,
   };
 }
@@ -253,6 +232,32 @@ interface PromisedApis {
   permissions: {
     contains: (query: { permissions: string[] }) => Promise<boolean>;
     request: (query: { permissions: string[] }) => Promise<boolean>;
+  };
+  declarativeNetRequest: {
+    updateSessionRules: (update: SessionRuleUpdate) => Promise<void>;
+  };
+}
+
+export interface SessionRuleUpdate {
+  removeRuleIds?: number[];
+  addRules?: SessionRule[];
+}
+
+/** A session rule that sets request headers, the only kind GramGrab adds. */
+interface SessionRule {
+  id: number;
+  priority?: number;
+  action: {
+    type: 'modifyHeaders';
+    requestHeaders: { header: string; operation: 'set'; value: string }[];
+  };
+  condition: {
+    urlFilter?: string;
+    requestDomains: string[];
+    initiatorDomains?: string[];
+    requestMethods?: 'post'[];
+    resourceTypes?: string[];
+    tabIds: number[];
   };
 }
 
@@ -638,6 +643,7 @@ function promisedApis(global: Partial<PromisedApis>): PromisedApis {
     alarms: global.alarms ?? noopPromisedApis.alarms,
     notifications: global.notifications ?? noopPromisedApis.notifications,
     permissions: global.permissions ?? noopPromisedApis.permissions,
+    declarativeNetRequest: global.declarativeNetRequest ?? noopPromisedApis.declarativeNetRequest,
   };
 }
 
@@ -778,6 +784,7 @@ const noopPromisedApis: PromisedApis = {
     contains: () => Promise.resolve(false),
     request: () => Promise.resolve(false),
   },
+  declarativeNetRequest: { updateSessionRules: () => Promise.resolve() },
 };
 
 const noopCookies: BrowserShim['cookies'] = {

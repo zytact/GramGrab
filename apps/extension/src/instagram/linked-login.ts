@@ -2,6 +2,7 @@ import { Effect, Option, Schema } from 'effect';
 import { AccountId, type InstagramLogin } from '@gramgrab/protocol';
 import { LinkedLoginUnavailable } from '../effect/errors.ts';
 import { browser, type HeadersReceivedDetails } from '../lib/browser.ts';
+import { SESSION_RULE_ID } from './session-rules.ts';
 import type { LinkRefusalReason, LinkedLoginState } from '../messaging/contracts.ts';
 
 /**
@@ -13,7 +14,6 @@ import type { LinkRefusalReason, LinkedLoginState } from '../messaging/contracts
 const LINKED_LOGIN_KEY = 'linked-instagram-login';
 const LINKED_MARKER = 'gg_login';
 const MARKER = `${LINKED_MARKER}=linked`;
-const RULE_ID = 1;
 const INSTAGRAM_URLS = ['https://*.instagram.com/*'];
 
 const LinkedLogin = Schema.Struct({
@@ -71,12 +71,13 @@ const cookieHeader = (cookies: Readonly<Record<string, string>>) =>
     .join('; ');
 
 async function installRule(login: LinkedLogin | undefined): Promise<void> {
-  await browser.linkedLogin?.updateSessionRules({
-    removeRuleIds: [RULE_ID],
+  if (!linkedLoginSupported()) return;
+  await browser.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [SESSION_RULE_ID.linkedCookie],
     addRules: login
       ? [
           {
-            id: RULE_ID,
+            id: SESSION_RULE_ID.linkedCookie,
             priority: 1,
             condition: {
               urlFilter: MARKER,

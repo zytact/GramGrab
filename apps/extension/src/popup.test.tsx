@@ -777,7 +777,6 @@ describe('Popup', () => {
         isAllowedIncognitoAccess: vi.fn(),
         getAllCookieStores: vi.fn(),
         getAllCookies: vi.fn(),
-        updateSessionRules: vi.fn(),
         onHeadersReceived: { addListener: vi.fn() },
       },
     });

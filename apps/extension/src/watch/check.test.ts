@@ -404,8 +404,28 @@ describe('Posts checks', () => {
     }
   );
 
+  const fieldError = (field: string) => ({
+    ...postsPage(posts(9)),
+    errors: [
+      {
+        path: ['xdt_api__v1__feed__user_timeline_graphql_connection', 'edges', 0, 'node', field],
+      },
+    ],
+  });
+
+  it('ignores an error on a Post field it never reads', async () => {
+    await baselined();
+    instagram.state.posts = { '': fieldError('location') };
+
+    expect((await checkLater()).kinds[0]).toMatchObject({
+      _tag: 'KindCheckSucceeded',
+      newCount: 1,
+    });
+  });
+
   it.each([
     ['GraphQL errors', { data: null, errors: [{ message: 'failed' }] }, 'graphql-errors'],
+    ['an error on a Post field it reads', fieldError('taken_at'), 'graphql-errors'],
     ['a body that is not JSON', new Response('<html>'), 'not-json'],
   ] as const)(
     'stops incomplete on an answer with %s and records the rule',
@@ -417,6 +437,15 @@ describe('Posts checks', () => {
       expect(await postsHealth()).toMatchObject({ code: 'WATCH_CHECK_INCOMPLETE', reason });
     }
   );
+
+  it('reads fb_dtsg again once Instagram stops accepting it', async () => {
+    await baselined();
+    instagram.state.dtsgToken = 'DTSG_B';
+    instagram.state.postTokens = [];
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ _tag: 'KindCheckSucceeded' });
+    expect(instagram.state.postTokens).toEqual(['DTSG_A', 'DTSG_B']);
+  });
 
   it('reports a format change only for a page that does not decode', async () => {
     await baselined();
