@@ -122,7 +122,8 @@ check of that kind and are never retried through action recovery. A Posts check 
 records `IG_RESPONSE_SHAPE_UNKNOWN` only when the page does not decode. A page that decodes but
 cannot be trusted is `WATCH_CHECK_INCOMPLETE` with a `reason` from a closed list: `graphql-errors`,
 `foreign-owner`, `future-timestamp`, `inexact-identity`, `inexact-sidecar`, `inconsistent-page` or
-`repeated-traversal`. A body that is not JSON is `not-json` for Posts, Avatar and username
+`repeated-traversal`. A GraphQL error that only nulls a Post field the check never reads, such as a
+location's picture, does not count. A body that is not JSON is `not-json` for Posts, Avatar and username
 confirmation alike. Stories, Instants and Avatar still record `IG_RESPONSE_SHAPE_UNKNOWN` for their
 own untrusted answers. Outside a check, a body that is not JSON is `SOURCE_SERVER_FAILED`.
 `WATCH_CHECK_INCOMPLETE` now gets the same single early retry an hour later that

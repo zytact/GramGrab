@@ -46,6 +46,9 @@ live. Check this list before debugging an Instagram failure.
 - **Only the `query_hash` Stories request still works.** The `reelsMedia` `doc_id` request answers
   `execution error` with no data. The `query_hash` request returns the reels with errors only on
   `story_cta_url` and `story_view_count`, which GramGrab ignores.
+- **A Posts page can carry a `field_exception` on a field GramGrab never reads.** In October 2026
+  one Post's `location.profile_pic_url` errored while all 12 edges and the cursor came back. A
+  Watch ignores an error whose path ends under a Post field `PostNode` does not decode.
 - **`profileById` carries the Avatar but no picture ID.** It answers `profile_pic_url` and
   `hd_profile_pic_url_info`, and no `profile_pic_id`. A Watch identifies its Avatar by the asset
   name in the picture URL, which stays the same across sizes and signed URLs.
