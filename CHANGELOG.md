@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.1](https://github.com/zytact/GramGrab/compare/v4.2.0...v4.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **watch:** keep long usernames inside their containers ([#320](https://github.com/zytact/GramGrab/issues/320)) ([3a006e3](https://github.com/zytact/GramGrab/commit/3a006e32bafcd3bfe3a27ac28442497fe1ac7acb))
+
 ## [4.2.0](https://github.com/zytact/GramGrab/compare/v4.1.1...v4.2.0) (2026-10-20)
 
 
