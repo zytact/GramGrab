@@ -111,7 +111,7 @@ the canonical HTTPS URL.
 
 The actual toolbar popup and active-tab detection need a human checkpoint. Bring
 the post fixture to the front, click GramGrab in the browser toolbar, and verify
-that the field is prefilled and `Instagram URL detected - ready to fetch.` is
+that the field is prefilled and `Instagram URL detected — ready to fetch.` is
 visible. Click `Open in tab`; the workspace must inherit the URL and results.
 Open the toolbar popup again and verify the control now says `Go to tab` and
 focuses the existing workspace. Save screenshots before and after the handoff.

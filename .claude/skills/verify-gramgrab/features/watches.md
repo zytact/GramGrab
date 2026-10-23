@@ -182,6 +182,37 @@ window shorter than about 500px, so read short-height layout from element
 metrics rather than wheel input. A `hidden` page also hangs input and
 screenshots. Run `drive.mjs activate options.html` first.
 
+## Long usernames
+
+A username that is wider than its container must never escape it. Routes
+(materials differ, mechanism differs): a sidebar Watch row's `.opt-name` and
+an open Watch's chip truncate with an ellipsis and put the full handle in
+`title`; status surfaces (`.opt-grow`, `.opt-add strong`, `.opt-banner`) wrap
+with `overflow-wrap: anywhere`. The login-tab route lives in
+[Linked login](#linked-login): without a linked login, drive its rule through a
+synthetic styled duplicate in the page, labeled as such, and record the live
+gap.
+
+1. On `options.html`, seed a paused long-handle Watch (fixture script target
+   ID only, the same way as Long Watch list). Measure the row name with
+   `getBoundingClientRect()` and `scrollWidth`/`clientWidth` whenever the
+   element hides its overflow: `scrollWidth` may exceed `clientWidth`, and the
+   row must hold `text-overflow: ellipsis` with the full handle in `title`.
+   Record the two widths.
+2. Select the long Watch. The chip's name element truncates the same way and
+   its `title` carries the full handle; the chip stays inside the viewer
+   header.
+3. Below 900px of width: the `@<handle>` headline must not paint over the
+   `Check now` button: the headline's right edge stays left of the button's
+   left edge, evaluated on element rects wherever input is wedged. The feed
+   column must not widen by blocked content: `.opt-feed` has
+   `scrollWidth === clientWidth`.
+4. Status surfaces never widen their boxes: on a long needs-you copy,
+   `scrollWidth === clientWidth` on every box, and wrapped lines stay inside
+   their column. Verify the same on `.opt-add strong` for a feed empty state
+   or a copy the fixture seed produces.
+5. `watch-fixtures.mjs remove` in a finally step, as with Long Watch list.
+
 ## Export and import
 
 `Export or import` in the sidebar saves the verified login's Watches to a file
