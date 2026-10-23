@@ -188,6 +188,7 @@ function ImportWatches({ watches, onSend }: { watches: readonly WatchSummary[]; 
       </p>
       <input
         key={imports}
+        className="opt-file"
         type="file"
         accept="application/json,.json"
         aria-label="Watches file"

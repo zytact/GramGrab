@@ -12,7 +12,7 @@ here.
 - [Story expiry](./story-expiry.md): relative time on Story results and an
   absolute UTC `expiresAt` in CLI inspection.
 - URL canonicalisation on blur, and auto-detection from the active tab, which
-  pre-fills the field and shows `Instagram URL detected - ready to fetch.`
+  pre-fills the field and shows `Instagram URL detected — ready to fetch.`
 - Instants: the signed-in account's own feed, fetched without a URL from
   `i.instagram.com/graphql_www`, because the web GraphQL host answers it with
   `null` (#295). Reads the Instagram CSRF cookie, which is why the manifest asks

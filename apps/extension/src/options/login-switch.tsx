@@ -67,10 +67,18 @@ export function LoginSwitch() {
       </span>
       {state !== 'unlinked' && (
         <div className="opt-login-tabs">
-          <a href={pageFor('main')} aria-current={login === 'main' ? 'page' : undefined}>
+          <a
+            href={pageFor('main')}
+            title={loginLabel('main', logins)}
+            aria-current={login === 'main' ? 'page' : undefined}
+          >
             {loginLabel('main', logins)}
           </a>
-          <a href={pageFor('linked')} aria-current={login === 'linked' ? 'page' : undefined}>
+          <a
+            href={pageFor('linked')}
+            title={loginLabel('linked', logins)}
+            aria-current={login === 'linked' ? 'page' : undefined}
+          >
             {loginLabel('linked', logins)}
           </a>
         </div>
