@@ -12,6 +12,7 @@ body.opt-body {
 }
 .opt-profile-link {
   align-self: flex-start;
+  max-width: 100%;
   text-underline-offset: 4px;
 }
 .opt-profile-link,
@@ -163,6 +164,27 @@ select {
   border: 1px solid var(--rule-strong);
   font: inherit;
   padding: 4px;
+}
+
+/* A handle wider than its box never paints outside it. Navigation rows, the viewer chip and
+   the login tabs truncate the tail (the tooltip carries the full handle); status rows, the
+   detail heading and its meta, and banners wrap mid-token instead. */
+.opt-name,
+.opt-login-tabs a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.opt-viewer .opt-name,
+.opt-login-tabs a {
+  min-width: 0;
+}
+.opt-account-text,
+.opt-health-row strong,
+.opt-grow,
+.opt-add strong,
+.opt-banner {
+  overflow-wrap: anywhere;
 }
 
 /* Three panes */

@@ -863,7 +863,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     seedWatchWithProblemAndEntry();
     render(<Watches />);
     expect(
-      await screen.findByText(`@${VIEWER.username}`, { selector: '.opt-viewer' })
+      await screen.findByText(`@${VIEWER.username}`, { selector: '.opt-viewer .opt-name' })
     ).toBeDefined();
     const viewerRequests = instagram.state.viewerRequests;
 
@@ -871,7 +871,9 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     harness.session.write('watch-viewer', { accountId: '1002', username: 'instagram' });
     await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
 
-    expect(await screen.findByText('@instagram', { selector: '.opt-viewer' })).toBeDefined();
+    expect(
+      await screen.findByText('@instagram', { selector: '.opt-viewer .opt-name' })
+    ).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
   });
 

@@ -532,7 +532,9 @@ function WatchRow({
         placeholderHint={WATCH_AVATAR_NOTE}
       />
       <span id={`watch-account-${watch.watchId}`} className="opt-account-text opt-grow">
-        <span>@{watch.username}</span>
+        <span className="opt-name" title={`@${watch.username}`}>
+          @{watch.username}
+        </span>
         <span className="opt-meta">
           {!watch.enabled
             ? 'Paused'
@@ -616,7 +618,9 @@ function Navigation({
           <span className="opt-meta">
             {pageLogin() === 'linked' ? 'Linked Instagram login' : 'Instagram login'}
           </span>{' '}
-          @{list.viewer.username}
+          <span className="opt-name" title={`@${list.viewer.username}`}>
+            @{list.viewer.username}
+          </span>
         </span>
         <LoginSwitch />
       </div>
