@@ -486,12 +486,12 @@ select {
   padding: 12px 0;
 }
 
-.opt-add input[type='file'] {
+.opt-file {
   margin-top: 8px;
   color: var(--text-mid);
   font: 500 11px/1 var(--font-mono);
 }
-.opt-add input[type='file']::file-selector-button {
+.opt-file::file-selector-button {
   margin-right: 10px;
   border: 1px solid var(--rule-strong);
   background: transparent;
@@ -501,7 +501,7 @@ select {
   padding: 7px 10px;
   cursor: pointer;
 }
-.opt-add input[type='file']::file-selector-button:hover {
+.opt-file::file-selector-button:hover {
   background: var(--brand-dim);
   border-color: var(--brand);
 }
