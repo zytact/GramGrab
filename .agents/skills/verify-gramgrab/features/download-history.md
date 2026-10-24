@@ -95,7 +95,7 @@ on a non-verification profile.
   remains untouched and produces the surface-specific failures above.
 - List entries saved with direct, frame, and silent export settings after a
   browser restart. `history list --json` must succeed and retain each entry's
-  `exportMode`, `frameTimestampSeconds`, and `rotation`. Only Watches exports
+  `exportMode`, `frameTimestampSeconds`, `rotation`, and `crop`. Only Watches exports
   add `requestedExport` and `recovery`. Match the CLI entry count to the UI and
   require `repaired: false` for a valid store.
   Keep identifiers and media URLs out of shared evidence. Use synthetic entries
