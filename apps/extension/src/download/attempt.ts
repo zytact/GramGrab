@@ -30,8 +30,7 @@ export function executorFor(
 }
 
 /** A direct operation the calling document can modify: a turned or cropped image, or a turned video. */
-export type ModifiedOperation = AttemptOperation &
-  (
+export type ModifiedOperation = AttemptOperation & { readonly mode: 'direct' } & (
     | { readonly mediaType: 'image' }
     | { readonly mediaType: 'video'; readonly rotation: Rotation; readonly crop?: undefined }
   );

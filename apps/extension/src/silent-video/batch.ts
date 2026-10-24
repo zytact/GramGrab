@@ -96,14 +96,16 @@ function serialQueue() {
   };
 }
 
+/**
+ * Whether a video still needs the person's re-encode consent. A crop always re-encodes. An
+ * already-silent video is still processed, and so may be re-encoded, when it is rotated.
+ */
 function needsReencodeDecision(
   candidate: ReencodeCandidate,
   approvedOperationIds: ReadonlySet<string>
 ): boolean {
   const { operation, preflight } = candidate;
   if (approvedOperationIds.has(operation.operationId)) return false;
-  // A crop always re-encodes. An already-silent video is still processed, and so may be
-  // re-encoded, when it is rotated.
   return (
     operation.crop !== undefined ||
     ((preflight.audioTrackCount > 0 || operation.rotation !== undefined) &&
