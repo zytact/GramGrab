@@ -365,7 +365,7 @@ async function parse(arguments_: readonly string[]): Promise<ParsedCli> {
   const input = plan === '-' ? await readStandardInput() : await readFile(plan, 'utf8');
   const value: unknown = JSON.parse(input);
   const command = await Effect.runPromise(
-    Schema.decodeUnknown(Export)({ sourceUrl, operations: value })
+    Schema.decodeUnknown(Export)({ _tag: 'Export', sourceUrl, operations: value })
   );
   return { command, json: arguments_.includes('--json') };
 }
