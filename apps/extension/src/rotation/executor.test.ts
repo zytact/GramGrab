@@ -21,6 +21,7 @@ const operation = {
     mode: 'direct',
     displayIndex: 0,
   }),
+  mediaType: 'image' as const,
   rotation: 90 as const,
 };
 

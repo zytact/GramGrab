@@ -18,7 +18,13 @@ import {
   createOperationId,
   createRequestId,
 } from './contracts.ts';
-import { AttemptOperationSchema, executorFor, type AttemptOperation } from './attempt.ts';
+import {
+  AttemptOperationSchema,
+  executorFor,
+  isModifiedOperation,
+  type AttemptOperation,
+  type ModifiedOperation,
+} from './attempt.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 
@@ -103,7 +109,7 @@ export class ExportExecution extends Context.Tag('gramgrab/ExportExecution')<
   {
     readonly frame: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
     readonly direct: (operations: readonly DownloadOperation[]) => Promise<unknown>;
-    readonly modified: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
+    readonly modified: (operation: ModifiedOperation) => Promise<DownloadOperationResult>;
     readonly video?: (
       operations: readonly AttemptOperation[],
       onProgress: (requestId: string, phase: string, progress: number) => void,
@@ -210,7 +216,7 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
     }
 
     // One at a time, because each modified output holds a whole media file in memory.
-    const modified = operations.filter(operation => executorFor(operation) === 'modified');
+    const modified = operations.filter(isModifiedOperation);
     if (modified.length > 0) {
       tasks.push(
         (async () => {

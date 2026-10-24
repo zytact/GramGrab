@@ -815,9 +815,9 @@ export default function Popup() {
             : 'Frame export failed. Download the original video or try again.'
         );
         if (result.status === 'failed') setStatus('error');
-      } else if ('modified' in response) {
+      } else if ('modified' in response && response.modified.mediaType === 'image') {
         const { modified } = response;
-        const filename = `${modified.filenameHint}_${modified.itemIndex + 1}.${modified.mediaType === 'video' ? 'mp4' : 'jpg'}`;
+        const filename = `${modified.filenameHint}_${modified.itemIndex + 1}.jpg`;
         const result = await executeModifiedExport(
           {
             operationId: createOperationId(),
@@ -828,7 +828,7 @@ export default function Popup() {
             originalUrl: modified.url,
             filename,
             originalFilename: filename,
-            mediaType: modified.mediaType,
+            mediaType: 'image',
             mode: 'direct',
             displayIndex: 0,
             ...(modified.rotation ? { rotation: modified.rotation } : {}),
