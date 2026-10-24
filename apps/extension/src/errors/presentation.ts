@@ -197,7 +197,7 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     'copy-diagnostics',
   ]),
   SILENT_STORAGE_UNAVAILABLE: policy(
-    'Silent downloads need temporary browser storage',
+    'Video processing needs temporary browser storage',
     'Reload GramGrab or download the originals.',
     ['reload-workspace', 'download-original']
   ),
@@ -209,7 +209,7 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     true
   ),
   SILENT_MEMORY_CAPACITY_EXCEEDED: policy(
-    'Not enough memory to remove audio',
+    'Not enough memory to process this video',
     'Use a smaller video or download the original.',
     ['download-original']
   ),
@@ -243,7 +243,7 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     true
   ),
   SILENT_H264_ENCODER_UNAVAILABLE: policy(
-    'This browser cannot create the silent video',
+    'This browser cannot re-encode video',
     'Download the original video instead.',
     ['download-original']
   ),
@@ -253,22 +253,22 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     ['download-original', 'copy-diagnostics']
   ),
   SILENT_REENCODE_FAILED: policy(
-    'Could not create the silent video',
+    'Could not process the video',
     'Download the original video or copy diagnostics.',
     ['download-original', 'copy-diagnostics']
   ),
   SILENT_UNEXPECTED_FAILURE: policy(
-    'Could not create the silent video',
+    'Could not process the video',
     'Download the original video or copy diagnostics.',
     ['download-original', 'copy-diagnostics']
   ),
   SILENT_OUTPUT_NO_VIDEO: policy(
-    'We could not verify the silent video',
+    'We could not verify the processed video',
     'The invalid output was discarded. Download the original or copy diagnostics.',
     ['download-original', 'copy-diagnostics']
   ),
   SILENT_OUTPUT_HAS_AUDIO: policy(
-    'We could not verify the silent video',
+    'We could not verify the processed video',
     'The invalid output was discarded. Download the original or copy diagnostics.',
     ['download-original', 'copy-diagnostics']
   ),
