@@ -440,7 +440,7 @@ export default function Popup() {
     executeFrame: executeFrameAttempt,
     executeDirect,
     executeModified: operation => executeModifiedExport(operation, fetchedUrl || url, acquisition),
-    executeSilent: (operations, onProgress, onPreflightComplete, approvedRequestIds) =>
+    executeVideo: (operations, onProgress, onPreflightComplete, approvedRequestIds) =>
       runSilentVideoBatch(
         operations,
         requestReencodeApproval,

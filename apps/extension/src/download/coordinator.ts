@@ -104,7 +104,7 @@ export class ExportExecution extends Context.Tag('gramgrab/ExportExecution')<
     readonly frame: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
     readonly direct: (operations: readonly DownloadOperation[]) => Promise<unknown>;
     readonly modified: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
-    readonly silent?: (
+    readonly video?: (
       operations: readonly AttemptOperation[],
       onProgress: (requestId: string, phase: string, progress: number) => void,
       onPreflightComplete: () => void,
@@ -159,14 +159,14 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
   yield* Effect.promise(async () => {
     const tasks: Promise<void>[] = [];
     const videos = operations.filter(operation => executorFor(operation) === 'video');
-    if (videos.length > 0 && execution.silent) {
+    if (videos.length > 0 && execution.video) {
       let completePreflight = () => {};
       const preflight = new Promise<void>(resolve => {
         completePreflight = resolve;
       });
       tasks.push(
         execution
-          .silent(videos, events.progress, completePreflight, approvedOperationIds)
+          .video(videos, events.progress, completePreflight, approvedOperationIds)
           .then(outcome => events.settle(outcome.outcomes, outcome.failure))
           .catch(cause =>
             events.settle(

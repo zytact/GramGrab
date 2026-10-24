@@ -96,7 +96,7 @@ describe('export coordinator planning', () => {
       frame: vi.fn(),
       direct,
       modified: vi.fn(),
-      silent: vi.fn(async () => {
+      video: vi.fn(async () => {
         throw new Error('preflight failed');
       }),
     });
