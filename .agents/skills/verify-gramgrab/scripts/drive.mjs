@@ -8,6 +8,8 @@
 //   drive.mjs click <match> <selector>     click an element
 //   drive.mjs type <match> <selector> <v>  replace an input value and dispatch input
 //   drive.mjs blur <match> <selector>      blur an element
+//   drive.mjs key <match> <key>            press Tab, Enter, or an arrow; prefix shift+ to hold Shift
+//   drive.mjs drag <match> <selector> <dx> <dy>  drag from an element's centre by CSS pixels
 //   drive.mjs upload <match> <selector> <file>  choose a file in a file input
 //   drive.mjs eval <match> <expression>    evaluate in the target whose url ends with <match>, else the first containing it
 //   drive.mjs text <match>                 print document.body.innerText
@@ -105,6 +107,15 @@ async function evaluate(match, expression, userGesture = false) {
   return result.result.value;
 }
 
+const KEY_CODES = {
+  Tab: 9,
+  Enter: 13,
+  ArrowLeft: 37,
+  ArrowUp: 38,
+  ArrowRight: 39,
+  ArrowDown: 40,
+};
+
 const [command, ...rest] = argv;
 
 if (command === 'targets') {
@@ -155,19 +166,46 @@ if (command === 'targets') {
   );
   process.stdout.write(`${selector}\n`);
 } else if (command === 'key') {
-  const [match, key] = rest;
-  const keyCode = key === 'Tab' ? 9 : key === 'Enter' ? 13 : undefined;
-  if (!match || !keyCode) fail('Usage: drive.mjs key <match> Tab|Enter');
+  const [match, chord] = rest;
+  const shift = chord?.startsWith('shift+') ?? false;
+  const key = shift ? chord.slice('shift+'.length) : chord;
+  const keyCode = KEY_CODES[key];
+  if (!match || !keyCode) fail(`Usage: drive.mjs key <match> [shift+]${Object.keys(KEY_CODES).join('|')}`);
   const target = await findTarget(match);
   await send(target, 'Page.bringToFront');
-  const params = { key, code: key, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
+  const params = {
+    key,
+    code: key,
+    windowsVirtualKeyCode: keyCode,
+    nativeVirtualKeyCode: keyCode,
+    modifiers: shift ? 8 : 0,
+  };
   await send(target, 'Input.dispatchKeyEvent', {
     ...params,
     type: 'keyDown',
     ...(key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {}),
   });
   await send(target, 'Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
-  process.stdout.write(`${key}\n`);
+  process.stdout.write(`${chord}\n`);
+} else if (command === 'drag') {
+  const [match, selector, dx, dy] = rest;
+  if (!match || !selector || !Number.isFinite(Number(dx)) || !Number.isFinite(Number(dy)))
+    fail('Usage: drive.mjs drag <match> <selector> <dx> <dy>');
+  const target = await findTarget(match);
+  await send(target, 'Page.bringToFront');
+  const start = await evaluate(
+    match,
+    `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) throw new Error('Element not found.'); element.scrollIntoView({ block: 'center' }); const r = element.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`
+  );
+  await session(target, async call => {
+    const mouse = (type, x, y) =>
+      call('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
+    await mouse('mousePressed', start.x, start.y);
+    for (let step = 1; step <= 10; step++)
+      await mouse('mouseMoved', start.x + (Number(dx) * step) / 10, start.y + (Number(dy) * step) / 10);
+    await mouse('mouseReleased', start.x + Number(dx), start.y + Number(dy));
+  });
+  process.stdout.write(`${selector}\n`);
 } else if (command === 'type') {
   const [match, selector, value] = rest;
   if (!match || !selector || value === undefined)
@@ -220,7 +258,7 @@ if (command === 'targets') {
   const clip = selector
     ? await evaluate(
         match,
-        `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) throw new Error('Element not found.'); element.scrollIntoView({ block: 'center' }); const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, scale: 1 }; })()`
+        `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) throw new Error('Element not found.'); element.scrollIntoView({ block: 'center' }); const r = element.getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height, scale: 1 }; })()`
       )
     : undefined;
   const { data } = await send(target, 'Page.captureScreenshot', {
@@ -244,5 +282,7 @@ if (command === 'targets') {
   }
   process.stdout.write(`${needle}\n`);
 } else {
-  fail('Usage: drive.mjs targets|open|activate|click|key|type|blur|upload|eval|text|shot|wait ...');
+  fail(
+    'Usage: drive.mjs targets|open|activate|click|key|drag|type|blur|upload|eval|text|shot|wait ...'
+  );
 }
