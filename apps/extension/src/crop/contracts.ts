@@ -24,10 +24,12 @@ export interface AspectLock {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-/** A crop that keeps the whole frame is no crop, so it is dropped rather than stored. */
+/**
+ * A crop that keeps the whole frame is no crop, so it is dropped rather than stored. Selector
+ * arithmetic can drift a hair past an edge, which the schema rejects, so the rest is clamped.
+ */
 export function normalizeCrop(crop: Crop): Crop | undefined {
   if (crop.width >= 0.999 && crop.height >= 0.999) return undefined;
-  // Selector arithmetic can drift a hair past an edge; the schema accepts none of it.
   const x = clamp(crop.x, 0, 1);
   const y = clamp(crop.y, 0, 1);
   return { x, y, width: Math.min(crop.width, 1 - x), height: Math.min(crop.height, 1 - y) };

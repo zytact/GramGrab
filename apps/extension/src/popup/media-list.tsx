@@ -50,15 +50,37 @@ export type MediaListActions = {
   onIntrinsicDimensions: (item: MediaItem, width: number, height: number) => void;
 };
 
-/** The width-to-height ratio an item shows at, after its rotation. */
+const turned = (ratio: number, rotation: MediaItem['rotation']) =>
+  swapsAxes(rotation) ? 1 / ratio : ratio;
+
+/** The width-to-height ratio an item's card shows at, after its rotation. */
 function displayRatio(item: MediaItem, runtime: ItemRuntime | undefined): number {
-  const ratio = resolveMediaRatio(
-    item.width,
-    item.height,
-    runtime?.intrinsic?.width,
-    runtime?.intrinsic?.height
+  const intrinsic = runtime?.intrinsic;
+  return turned(
+    resolveMediaRatio(item.width, item.height, intrinsic?.width, intrinsic?.height),
+    item.rotation
   );
-  return swapsAxes(item.rotation) ? 1 / ratio : ratio;
+}
+
+/**
+ * The ratio of the media as drawn inside its card, after its rotation. Export crops the decoded
+ * pixels, so the decoded size wins over the size Instagram reports.
+ */
+function cropFrameRatio(item: MediaItem, runtime: ItemRuntime | undefined): number {
+  const intrinsic = runtime?.intrinsic;
+  return turned(
+    resolveMediaRatio(intrinsic?.width, intrinsic?.height, item.width, item.height),
+    item.rotation
+  );
+}
+
+/** A turn swaps the frame's sides, so an aspect lock only holds for the turn it was set at. */
+function useAspectLock(rotation: MediaItem['rotation']) {
+  const [lock, setLock] = useState<{ ratio: number; rotation: MediaItem['rotation'] }>();
+  const aspect = lock && lock.rotation === rotation ? lock.ratio : undefined;
+  const setAspect = (ratio: number | undefined) =>
+    setLock(ratio === undefined ? undefined : { ratio, rotation });
+  return [aspect, setAspect] as const;
 }
 
 function useMediaMasonry({
@@ -544,13 +566,9 @@ function MediaItemRow(props: MediaItemRowProps) {
     attemptEntry,
   } = props;
   const num = String(item.index + 1).padStart(2, '0');
-  // A turn swaps the frame's sides, so an aspect lock only holds for the turn it was set at.
-  const [lock, setLock] = useState<{ ratio: number; rotation: MediaItem['rotation'] }>();
-  const aspect = lock && lock.rotation === item.rotation ? lock.ratio : undefined;
-  const setAspect = (ratio: number | undefined) =>
-    setLock(ratio === undefined ? undefined : { ratio, rotation: item.rotation });
+  const [aspect, setAspect] = useAspectLock(item.rotation);
   const editing = cropEditing && !disabled && onCrop !== undefined;
-  const frameRatio = displayRatio(item, runtime);
+  const frameRatio = cropFrameRatio(item, runtime);
 
   return (
     <div
