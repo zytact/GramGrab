@@ -4,9 +4,11 @@ export { CropSchema, type Crop };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-/** The same region after the frame turns a quarter clockwise, which keeps a crop on its subject. */
+/**
+ * The same region after the frame turns a quarter clockwise, which keeps a crop on its subject.
+ * `x` is clamped because floating point can land a hair below zero for a crop on the bottom edge.
+ */
 export const rotateCropClockwise = (crop: Crop): Crop => ({
-  // Floating point can land a hair below zero for a crop on the bottom edge.
   x: Math.max(0, 1 - crop.y - crop.height),
   y: crop.x,
   width: crop.height,

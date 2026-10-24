@@ -89,6 +89,11 @@ decode a newer command. Additive and breaking wire changes both require a new pr
 updated participant decoders, shared compatibility fixtures, and an extension/native-host/CLI
 release produced from the same revision.
 
+Protocol 6 adds the optional `crop` on `ExportOperation` and `HistoryEntry`, plus the
+`CROP_FAILED` failure code. Update the extension, native host and CLI together. A protocol 5
+extension would drop a plan's crop and download the item uncropped, so it answers
+`PROTOCOL_VERSION_UNSUPPORTED` instead.
+
 Protocol 4 adds `DiscoverySummary.instagramUrl`, the Instagram page that shows a Watch entry.
 Update the extension, native host and CLI together. Protocol 3 participants receive
 `PROTOCOL_VERSION_UNSUPPORTED` instead of a summary without its page.
