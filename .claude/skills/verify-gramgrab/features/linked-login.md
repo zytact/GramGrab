@@ -8,6 +8,10 @@ can fetch and watch private accounts only their second account can see.
 
 ## Sub-features
 
+- Entry: while nothing is linked, the popup and workspace show `Link a second
+  login` (`.login-link-entry`) beside `Load Instants`. It opens the Watches page
+  through `runtime.openOptionsPage`, where the linking section heads the
+  sidebar.
 - Link: the Watches page copies the Instagram cookies of an open Incognito
   window, confirms that account with the viewer query, and refuses it when it
   is the main login. Refusals render under `.opt-login-switch`, one per
@@ -30,11 +34,13 @@ can fetch and watch private accounts only their second account can see.
 
 1. On the browser's extensions page, turn on Allow in Incognito for GramGrab.
 2. Open an Incognito window and sign in to the second Instagram account there.
-3. Open the Watches page. Under `LOGINS BETA`, click `Link this login`. The
-   notice reads `Linked @<username>.` The Incognito window may close; logging
-   out of it ends the linked session.
-4. The Watches page gets one tab per login (`?login=linked` for the second). The
-   popup and workspace get a `Login` select (`#instagram-login`) next to Fetch.
+3. Click `Link a second login` in the popup, or open the Watches page. Under
+   `LINK A SECOND LOGIN BETA`, click `Link this login`. The notice reads
+   `Linked @<username>.` The Incognito window may close; logging out of it
+   ends the linked session.
+4. The section heading turns to `LOGINS BETA`, and the Watches page gets one
+   tab per login (`?login=linked` for the second). The popup and workspace
+   swap the entry for a `Login` select (`#instagram-login`) next to Fetch.
    Tabs and options read `@<username>`, or `Main` and `Linked` until the worker
    answers `LOGIN_NAMES`. A signed-out linked login reads `Linked (signed out)`.
 5. The CLI takes `--login main|linked` on `inspect`, `export`, `instants`,
@@ -142,6 +148,9 @@ Adding the Watch spends linked requests of its own for the preview and baseline.
   attempts.
 - Main session: the `sessionid` hash is the same before and after.
 - Unlink: the record and the session rule are both gone, and the picker hides.
+- Entry: unlinked, the popup shows `.login-link-entry`, and clicking it adds an
+  `options.html` target whose `.opt-login-switch` reads `LINK A SECOND LOGIN`.
+  Linked, the entry is gone and `#instagram-login` shows instead.
 
 ## Gotchas
 
