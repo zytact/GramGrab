@@ -88,7 +88,10 @@ function planCandidate(candidate: ExportCandidate): AttemptOperation {
     displayIndex: candidate.index,
     ...(timestampSeconds === undefined ? {} : { frameTimestampSeconds: timestampSeconds }),
     ...(candidate.rotation ? { rotation: candidate.rotation } : {}),
-    ...(candidate.crop ? { crop: candidate.crop } : {}),
+    // Only a still can take a crop: cropping a whole video needs a re-encode this path lacks.
+    ...(candidate.crop && (candidate.type === 'image' || mode === 'frame')
+      ? { crop: candidate.crop }
+      : {}),
   };
 }
 
