@@ -3,7 +3,7 @@ import { Schema } from 'effect';
 import { OperationFailure, type OperationWarning, type SkipCode } from '../errors/contracts.ts';
 import { FAILURE_PRESENTATION, presentationForFailure, retryable } from '../errors/presentation.ts';
 import { CropSchema } from '../crop/contracts.ts';
-import { RotationSchema } from '../rotation/contracts.ts';
+import { RotationSchema, type Rotation } from '../rotation/contracts.ts';
 
 export const AttemptOperationSchema = Schema.Struct({
   ...DownloadOperation.fields,
@@ -15,13 +15,35 @@ export const AttemptOperationSchema = Schema.Struct({
 });
 export type AttemptOperation = Schema.Schema.Type<typeof AttemptOperationSchema>;
 
-/** A direct export with Export modifiers is made by the calling document instead of the browser. */
-export const isModifiedDirect = (operation: AttemptOperation): boolean =>
-  operation.mode === 'direct' && (operation.rotation !== undefined || operation.crop !== undefined);
+/**
+ * Which executor makes an operation's output. `video` re-encodes or remuxes a whole video, which
+ * silent mode and every video crop need; `modified` applies the other Export modifiers in the
+ * calling document; `direct` leaves the browser to download the original.
+ */
+export function executorFor(
+  operation: AttemptOperation
+): 'frame' | 'video' | 'modified' | 'direct' {
+  if (operation.mode === 'frame') return 'frame';
+  if (operation.mode === 'silent' || (operation.mediaType === 'video' && operation.crop))
+    return 'video';
+  return isModifiedOperation(operation) ? 'modified' : 'direct';
+}
+
+/** A direct operation the calling document can modify: a turned or cropped image, or a turned video. */
+export type ModifiedOperation = AttemptOperation & { readonly mode: 'direct' } & (
+    | { readonly mediaType: 'image' }
+    | { readonly mediaType: 'video'; readonly rotation: Rotation; readonly crop?: undefined }
+  );
+
+export const isModifiedOperation = (operation: AttemptOperation): operation is ModifiedOperation =>
+  operation.mode === 'direct' &&
+  (operation.mediaType === 'image'
+    ? operation.rotation !== undefined || operation.crop !== undefined
+    : operation.rotation !== undefined && operation.crop === undefined);
 
 /** Whether an operation rewrites a whole video, which the popup hands to the workspace tab. */
 export const processesVideo = (operation: AttemptOperation): boolean =>
-  operation.mode === 'silent' || (isModifiedDirect(operation) && operation.mediaType === 'video');
+  operation.mediaType === 'video' && ['video', 'modified'].includes(executorFor(operation));
 
 export type AttemptOutcome =
   | { readonly status: 'pending'; readonly phase?: string; readonly progress?: number }

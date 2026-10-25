@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect';
 import { describe, expect, it, vi } from 'vite-plus/test';
-import type { AttemptOperation } from './attempt.ts';
+import { executorFor, processesVideo, type AttemptOperation } from './attempt.ts';
 import { DownloadAcceptedResult, DownloadMediaResponse } from './contracts.ts';
 import {
   executeExportPlan,
@@ -25,15 +25,24 @@ const candidate = (overrides: Partial<ExportCandidate> = {}) =>
   });
 
 describe('export coordinator planning', () => {
-  it('keeps a crop on stills and drops it from a whole video', () => {
+  it('routes each crop to the executor that can make it', () => {
     const crop = { x: 0, y: 0, width: 0.5, height: 0.5 };
     const operations = planExportOperations([
       candidate({ crop, frameEnabled: true, frameDurationSeconds: 8 }),
       candidate({ index: 1, crop }),
-      candidate({ index: 2, crop, type: 'image' }),
+      candidate({ index: 2, crop, removeAudio: true }),
+      candidate({ index: 3, crop, type: 'image' }),
+      candidate({ index: 4, rotation: 90 }),
     ]);
 
-    expect(operations.map(operation => operation.crop)).toEqual([crop, undefined, crop]);
+    expect(operations.map(executorFor)).toEqual([
+      'frame',
+      'video',
+      'video',
+      'modified',
+      'modified',
+    ]);
+    expect(operations.map(processesVideo)).toEqual([false, true, true, false, true]);
   });
 
   it('plans only selected items with stable display and media identity', () => {
@@ -87,7 +96,7 @@ describe('export coordinator planning', () => {
       frame: vi.fn(),
       direct,
       modified: vi.fn(),
-      silent: vi.fn(async () => {
+      video: vi.fn(async () => {
         throw new Error('preflight failed');
       }),
     });

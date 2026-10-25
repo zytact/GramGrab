@@ -24,6 +24,7 @@ describe('silent video worker protocol', () => {
       operationId: createOperationId(),
       requestId: createRequestId(),
       transcode: false,
+      keepAudio: false,
     });
     await expect(decodeSilentWorkerRequest(request)).resolves.toEqual(request);
   });

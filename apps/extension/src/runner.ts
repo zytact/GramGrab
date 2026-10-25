@@ -185,9 +185,9 @@ async function run({
       });
     },
     modified: operation => executeModifiedExport(operation, sourceUrl, originKind),
-    silent: (silent, progress, preflight, approvedIds) =>
+    video: (videos, progress, preflight, approvedIds) =>
       runSilentVideoBatch(
-        silent,
+        videos,
         candidates => Promise.resolve(approvedReencodeOperationIds(candidates, requestedById)),
         progress,
         sourceUrl,

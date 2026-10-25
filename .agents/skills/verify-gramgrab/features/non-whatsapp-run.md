@@ -144,6 +144,9 @@ from inspection, assign a UUID operation ID, and use the tagged mode shape from
 `packages/protocol/src/index.ts`. Run the same plan twice. Both results must
 carry the plan's operation ID, proving retry identity is stable.
 
+Run the [Crop](./export-modes.md#crop) recipe on one image, one direct video,
+and one frame export, including the popup handoff and one cropped redownload.
+
 For every accepted export, record the exact filename and byte size. Use
 `file` for type, `ffprobe` for stream kinds, and compare the saved JPEG with the
 UI preview at the requested frame timestamp. Confirm the runner target appears

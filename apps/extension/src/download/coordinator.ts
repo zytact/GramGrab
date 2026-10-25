@@ -18,7 +18,13 @@ import {
   createOperationId,
   createRequestId,
 } from './contracts.ts';
-import { AttemptOperationSchema, isModifiedDirect, type AttemptOperation } from './attempt.ts';
+import {
+  AttemptOperationSchema,
+  executorFor,
+  isModifiedOperation,
+  type AttemptOperation,
+  type ModifiedOperation,
+} from './attempt.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 
@@ -88,10 +94,7 @@ function planCandidate(candidate: ExportCandidate): AttemptOperation {
     displayIndex: candidate.index,
     ...(timestampSeconds === undefined ? {} : { frameTimestampSeconds: timestampSeconds }),
     ...(candidate.rotation ? { rotation: candidate.rotation } : {}),
-    // Only a still can take a crop: cropping a whole video needs a re-encode this path lacks.
-    ...(candidate.crop && (candidate.type === 'image' || mode === 'frame')
-      ? { crop: candidate.crop }
-      : {}),
+    ...(candidate.crop ? { crop: candidate.crop } : {}),
   };
 }
 
@@ -106,8 +109,8 @@ export class ExportExecution extends Context.Tag('gramgrab/ExportExecution')<
   {
     readonly frame: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
     readonly direct: (operations: readonly DownloadOperation[]) => Promise<unknown>;
-    readonly modified: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
-    readonly silent?: (
+    readonly modified: (operation: ModifiedOperation) => Promise<DownloadOperationResult>;
+    readonly video?: (
       operations: readonly AttemptOperation[],
       onProgress: (requestId: string, phase: string, progress: number) => void,
       onPreflightComplete: () => void,
@@ -161,19 +164,19 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
 
   yield* Effect.promise(async () => {
     const tasks: Promise<void>[] = [];
-    const silent = operations.filter(operation => operation.mode === 'silent');
-    if (silent.length > 0 && execution.silent) {
+    const videos = operations.filter(operation => executorFor(operation) === 'video');
+    if (videos.length > 0 && execution.video) {
       let completePreflight = () => {};
       const preflight = new Promise<void>(resolve => {
         completePreflight = resolve;
       });
       tasks.push(
         execution
-          .silent(silent, events.progress, completePreflight, approvedOperationIds)
+          .video(videos, events.progress, completePreflight, approvedOperationIds)
           .then(outcome => events.settle(outcome.outcomes, outcome.failure))
           .catch(cause =>
             events.settle(
-              failedResults(silent, failure('SILENT_UNEXPECTED_FAILURE', 'silent-worker', cause))
+              failedResults(videos, failure('SILENT_UNEXPECTED_FAILURE', 'silent-worker', cause))
             )
           )
           .finally(completePreflight)
@@ -181,7 +184,7 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
       await preflight;
     }
 
-    const frames = operations.filter(operation => operation.mode === 'frame');
+    const frames = operations.filter(operation => executorFor(operation) === 'frame');
     if (frames.length > 0) {
       tasks.push(
         (async () => {
@@ -213,7 +216,7 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
     }
 
     // One at a time, because each modified output holds a whole media file in memory.
-    const modified = operations.filter(isModifiedDirect);
+    const modified = operations.filter(isModifiedOperation);
     if (modified.length > 0) {
       tasks.push(
         (async () => {
@@ -222,9 +225,7 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
       );
     }
 
-    const direct = operations.filter(
-      operation => operation.mode === 'direct' && !isModifiedDirect(operation)
-    );
+    const direct = operations.filter(operation => executorFor(operation) === 'direct');
     if (direct.length > 0) {
       tasks.push(
         (async () => {

@@ -440,7 +440,7 @@ export default function Popup() {
     executeFrame: executeFrameAttempt,
     executeDirect,
     executeModified: operation => executeModifiedExport(operation, fetchedUrl || url, acquisition),
-    executeSilent: (operations, onProgress, onPreflightComplete, approvedRequestIds) =>
+    executeVideo: (operations, onProgress, onPreflightComplete, approvedRequestIds) =>
       runSilentVideoBatch(
         operations,
         requestReencodeApproval,
@@ -815,9 +815,9 @@ export default function Popup() {
             : 'Frame export failed. Download the original video or try again.'
         );
         if (result.status === 'failed') setStatus('error');
-      } else if ('modified' in response) {
+      } else if ('modified' in response && response.modified.mediaType === 'image') {
         const { modified } = response;
-        const filename = `${modified.filenameHint}_${modified.itemIndex + 1}.${modified.mediaType === 'video' ? 'mp4' : 'jpg'}`;
+        const filename = `${modified.filenameHint}_${modified.itemIndex + 1}.jpg`;
         const result = await executeModifiedExport(
           {
             operationId: createOperationId(),
@@ -828,7 +828,7 @@ export default function Popup() {
             originalUrl: modified.url,
             filename,
             originalFilename: filename,
-            mediaType: modified.mediaType,
+            mediaType: 'image',
             mode: 'direct',
             displayIndex: 0,
             ...(modified.rotation ? { rotation: modified.rotation } : {}),
@@ -1360,14 +1360,23 @@ function ReencodeDialog({
           ×
         </button>
         <h2 id="quality-dialog-title">Some videos require re-encoding</h2>
-        <p>Lossless packet copying is unavailable. Re-encoding may change video quality.</p>
+        <p>
+          {candidates.every(candidate => candidate.operation.crop)
+            ? 'Cropping a video re-encodes it.'
+            : 'Lossless packet copying is unavailable.'}{' '}
+          Re-encoding may change video quality.
+        </p>
         <ul>
           {candidates.map(candidate => (
             <li key={candidate.operation.requestId}>
               <video src={candidate.operation.url} muted preload="metadata" aria-hidden="true" />
               <span>Item {candidate.operation.displayIndex + 1}</span>
               <strong>{candidate.operation.filename}</strong>
-              <small>{candidate.preflight.reason ?? candidate.preflight.videoCodec}</small>
+              <small>
+                {candidate.operation.crop
+                  ? 'Cropping needs a re-encode'
+                  : (candidate.preflight.reason ?? candidate.preflight.videoCodec)}
+              </small>
             </li>
           ))}
         </ul>

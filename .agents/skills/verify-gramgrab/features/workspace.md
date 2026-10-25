@@ -10,6 +10,9 @@ from the browser context menu.
 - `Go to tab` focuses the existing workspace without creating a duplicate.
 - `Replace tab session` asks before replacing the workspace with newer popup
   state. Cancel keeps the old state; Replace transfers the new state.
+- `Crop item NN` in the popup moves the whole batch into the workspace and opens
+  that item's crop selector, with the same busy and replace checks as a silent
+  batch. In the workspace the same button crops in place.
 - A busy popup cannot open or replace the workspace. A busy workspace refuses
   an automatic silent-batch replacement.
 - The GramGrab context submenu appears for supported Instagram pages and links.

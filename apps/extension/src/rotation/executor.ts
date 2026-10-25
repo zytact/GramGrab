@@ -1,4 +1,4 @@
-import type { AttemptOperation } from '../download/attempt.ts';
+import type { ModifiedOperation } from '../download/attempt.ts';
 import {
   DownloadAcceptedResult,
   DownloadFailedResult,
@@ -33,11 +33,9 @@ async function fetchMedia(url: string): Promise<Blob> {
   return response.blob();
 }
 
-async function modify(media: Blob, operation: AttemptOperation) {
+async function modify(media: Blob, operation: ModifiedOperation) {
   try {
     if (operation.mediaType === 'image') return await modifyImage(media, operation);
-    if (operation.crop || !operation.rotation)
-      throw new Error('A video crop needs a re-encode, which this path does not do.');
     return await rotateVideo(media, operation.rotation);
   } catch (cause) {
     throw OperationFailure.make({
@@ -83,7 +81,7 @@ async function download(file: Blob, filename: string): Promise<void> {
  * redownload reproduces them.
  */
 export async function executeModifiedExport(
-  operation: AttemptOperation,
+  operation: ModifiedOperation,
   sourceUrl: string,
   originKind: 'source' | 'instants'
 ): Promise<DownloadOperationResult> {

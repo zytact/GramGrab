@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { ALL_FORMATS, BlobSource, Input, type StreamTargetChunk } from 'mediabunny';
 import { operationIdFrom, requestIdFrom } from '../download/contracts.ts';
-import { inspectSilentVideo, processSilentVideo } from './engine.ts';
+import { evenCropRectangle, inspectSilentVideo, processSilentVideo } from './engine.ts';
 
 type StoredPart = string | StreamTargetChunk;
 
@@ -95,7 +95,13 @@ describe('silent video media processing', () => {
     const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
     directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
 
-    const result = await processSilentVideo(operationId, requestId, false, undefined, () => {});
+    const result = await processSilentVideo(
+      operationId,
+      requestId,
+      false,
+      { keepAudio: false },
+      () => {}
+    );
 
     expect(result.alreadySilent).toBe(false);
     expect(result.opfsName).toBe(`${operationId}.mp4`);
@@ -114,7 +120,13 @@ describe('silent video media processing', () => {
     const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
     directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
 
-    await processSilentVideo(operationId, requestId, false, 270, () => {});
+    await processSilentVideo(
+      operationId,
+      requestId,
+      false,
+      { rotation: 270, keepAudio: false },
+      () => {}
+    );
 
     const outputBytes = directory.files.get(`${operationId}.mp4`) ?? new Uint8Array();
     const input = new Input({
@@ -126,5 +138,23 @@ describe('silent video media processing', () => {
     } finally {
       input.dispose();
     }
+  });
+});
+
+describe('evenCropRectangle', () => {
+  it('crops the turned frame with even sides for H.264', () => {
+    const crop = { x: 0.25, y: 0, width: 0.5, height: 0.51 };
+    expect(evenCropRectangle(crop, undefined, 101, 100)).toEqual({
+      left: 25,
+      top: 0,
+      width: 50,
+      height: 50,
+    });
+    expect(evenCropRectangle(crop, 90, 1920, 1080)).toEqual({
+      left: 270,
+      top: 0,
+      width: 540,
+      height: 978,
+    });
   });
 });
