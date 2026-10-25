@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.3.0](https://github.com/zytact/GramGrab/compare/v4.2.1...v4.3.0) (2026-10-25)
+
+
+### Features
+
+* **export:** crop exported video frames ([#324](https://github.com/zytact/GramGrab/issues/324)) ([13ba656](https://github.com/zytact/GramGrab/commit/13ba656f8b03939b6e12c19099fba78efff2d7f2))
+* **export:** crop images, with crop in plans and history on protocol 6 ([#322](https://github.com/zytact/GramGrab/issues/322)) ([fa4623d](https://github.com/zytact/GramGrab/commit/fa4623d2028b7913c8c2446e60ef9a2f2c213c10))
+* **export:** crop videos through the re-encode path ([#325](https://github.com/zytact/GramGrab/issues/325)) ([b490c4e](https://github.com/zytact/GramGrab/commit/b490c4e8b77591f310d75df25411a457854b5b96))
+* **popup:** find second-login linking from the popup ([#328](https://github.com/zytact/GramGrab/issues/328)) ([9a2e76b](https://github.com/zytact/GramGrab/commit/9a2e76b2cb778febb079ad55ccb5aa98d412fc9b))
+* **workspace:** crop images with a selector and aspect presets ([#323](https://github.com/zytact/GramGrab/issues/323)) ([50af87f](https://github.com/zytact/GramGrab/commit/50af87f9bc40ec1f75439edd464361482768ff07))
+
+
+### Bug Fixes
+
+* **watch:** say whether the Incognito window is missing or just signed out when linking ([#327](https://github.com/zytact/GramGrab/issues/327)) ([19148db](https://github.com/zytact/GramGrab/commit/19148db5ca227417b211db56030b5d3bfa59a6ae))
+
 ## [4.2.1](https://github.com/zytact/GramGrab/compare/v4.2.0...v4.2.1) (2026-10-23)
 
 
