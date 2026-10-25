@@ -2,7 +2,8 @@ import { createRequestId, DownloadOperation, type DownloadOperationResult } from
 import { Schema } from 'effect';
 import { OperationFailure, type OperationWarning, type SkipCode } from '../errors/contracts.ts';
 import { FAILURE_PRESENTATION, presentationForFailure, retryable } from '../errors/presentation.ts';
-import { RotationSchema, type Rotation } from '../rotation/contracts.ts';
+import { CropSchema } from '../crop/contracts.ts';
+import { RotationSchema } from '../rotation/contracts.ts';
 
 export const AttemptOperationSchema = Schema.Struct({
   ...DownloadOperation.fields,
@@ -10,17 +11,17 @@ export const AttemptOperationSchema = Schema.Struct({
   displayIndex: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
   frameTimestampSeconds: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
   rotation: Schema.optional(RotationSchema),
+  crop: Schema.optional(CropSchema),
 });
 export type AttemptOperation = Schema.Schema.Type<typeof AttemptOperationSchema>;
-export type RotatedOperation = AttemptOperation & { readonly rotation: Rotation };
 
-/** A direct export with a rotation is turned by the calling document instead of the browser. */
-export const isRotatedDirect = (operation: AttemptOperation): operation is RotatedOperation =>
-  operation.mode === 'direct' && operation.rotation !== undefined;
+/** A direct export with Export modifiers is made by the calling document instead of the browser. */
+export const isModifiedDirect = (operation: AttemptOperation): boolean =>
+  operation.mode === 'direct' && (operation.rotation !== undefined || operation.crop !== undefined);
 
 /** Whether an operation rewrites a whole video, which the popup hands to the workspace tab. */
 export const processesVideo = (operation: AttemptOperation): boolean =>
-  operation.mode === 'silent' || (isRotatedDirect(operation) && operation.mediaType === 'video');
+  operation.mode === 'silent' || (isModifiedDirect(operation) && operation.mediaType === 'video');
 
 export type AttemptOutcome =
   | { readonly status: 'pending'; readonly phase?: string; readonly progress?: number }
@@ -116,6 +117,7 @@ export function attemptReducer(
               filename: entry.operation.originalFilename,
               mode: 'direct',
               rotation: undefined,
+              crop: undefined,
             },
             outcome: { status: 'pending' },
             executionCount: entry.executionCount + 1,

@@ -176,6 +176,37 @@ describe('download history origin migration', () => {
       rotation: 90,
     });
   });
+
+  it('keeps a recorded crop and drops an entry whose crop leaves the frame', async () => {
+    const entry = {
+      origin: {
+        kind: 'source',
+        sourceUrl: 'https://www.instagram.com/p/example/',
+        sourceKind: 'post',
+      },
+      itemIndex: 0,
+      mediaType: 'image',
+      filenameHint: 'instagram',
+      downloadedAt: 1,
+      outcome: 'accepted',
+    };
+    const crop = { x: 0.25, y: 0, width: 0.5, height: 1 };
+    vi.mocked(getMockBrowser().storage.get).mockResolvedValue({
+      'download-history': {
+        version: 4,
+        entries: [
+          { ...entry, id: 'valid', crop },
+          { ...entry, id: 'invalid', crop: { ...crop, x: 0.75 } },
+        ],
+      },
+    });
+
+    await expect(getHistory()).resolves.toMatchObject({
+      kind: 'ok',
+      repaired: true,
+      entries: [{ id: 'valid', crop }],
+    });
+  });
 });
 
 describe('batched history writes', () => {

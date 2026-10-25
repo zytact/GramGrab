@@ -18,12 +18,8 @@ import {
   createOperationId,
   createRequestId,
 } from './contracts.ts';
-import {
-  AttemptOperationSchema,
-  isRotatedDirect,
-  type AttemptOperation,
-  type RotatedOperation,
-} from './attempt.ts';
+import { AttemptOperationSchema, isModifiedDirect, type AttemptOperation } from './attempt.ts';
+import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 
 export class ExportPlan extends Schema.Class<ExportPlan>('ExportPlan')({
@@ -43,6 +39,7 @@ export class ExportCandidate extends Schema.Class<ExportCandidate>('ExportCandid
   frameDurationSeconds: Schema.optional(Schema.Number.pipe(Schema.positive())),
   removeAudio: Schema.Boolean,
   rotation: Schema.optional(RotationSchema),
+  crop: Schema.optional(CropSchema),
 }) {}
 
 function selectedMode(candidate: ExportCandidate): AttemptOperation['mode'] {
@@ -91,6 +88,7 @@ function planCandidate(candidate: ExportCandidate): AttemptOperation {
     displayIndex: candidate.index,
     ...(timestampSeconds === undefined ? {} : { frameTimestampSeconds: timestampSeconds }),
     ...(candidate.rotation ? { rotation: candidate.rotation } : {}),
+    ...(candidate.crop ? { crop: candidate.crop } : {}),
   };
 }
 
@@ -105,7 +103,7 @@ export class ExportExecution extends Context.Tag('gramgrab/ExportExecution')<
   {
     readonly frame: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
     readonly direct: (operations: readonly DownloadOperation[]) => Promise<unknown>;
-    readonly rotated: (operation: RotatedOperation) => Promise<DownloadOperationResult>;
+    readonly modified: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
     readonly silent?: (
       operations: readonly AttemptOperation[],
       onProgress: (requestId: string, phase: string, progress: number) => void,
@@ -211,18 +209,18 @@ export const executeExportPlan = Effect.fn('ExportCoordinator.execute')(function
       );
     }
 
-    // One at a time, because each rotation holds a whole media file in memory.
-    const rotated = operations.filter(isRotatedDirect);
-    if (rotated.length > 0) {
+    // One at a time, because each modified output holds a whole media file in memory.
+    const modified = operations.filter(isModifiedDirect);
+    if (modified.length > 0) {
       tasks.push(
         (async () => {
-          for (const operation of rotated) events.settle([await execution.rotated(operation)]);
+          for (const operation of modified) events.settle([await execution.modified(operation)]);
         })()
       );
     }
 
     const direct = operations.filter(
-      operation => operation.mode === 'direct' && !isRotatedDirect(operation)
+      operation => operation.mode === 'direct' && !isModifiedDirect(operation)
     );
     if (direct.length > 0) {
       tasks.push(

@@ -461,6 +461,7 @@ async function handleRedownloadHistoryEntry(
     sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
     originKind: entry.origin.kind,
     ...(entry.rotation ? { rotation: entry.rotation } : {}),
+    ...(entry.crop ? { crop: entry.crop } : {}),
   };
   if (entry.exportMode === 'frame')
     return {
@@ -468,11 +469,8 @@ async function handleRedownloadHistoryEntry(
       failure: undefined,
     };
   if (entry.exportMode === 'silent') return { silent: redownload, failure: undefined };
-  if (entry.rotation)
-    return {
-      rotated: { ...redownload, mediaType: item.type, rotation: entry.rotation },
-      failure: undefined,
-    };
+  if (entry.rotation || entry.crop)
+    return { modified: { ...redownload, mediaType: item.type }, failure: undefined };
   return handleDownloadMedia({
     type: 'DOWNLOAD_MEDIA',
     ...(entry.origin.kind === 'source' ? { sourceUrl: entry.origin.sourceUrl } : {}),
@@ -856,6 +854,7 @@ function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
     filenameHint: entry.filenameHint,
     ...(entry.exportMode ? { exportMode: entry.exportMode } : {}),
     ...(entry.rotation ? { rotation: entry.rotation } : {}),
+    ...(entry.crop ? { crop: entry.crop } : {}),
     ...(entry.requestedExport ? { requestedExport: entry.requestedExport } : {}),
     ...(entry.recovery ? { recovery: entry.recovery } : {}),
     ...(entry.frameTimestampSeconds === undefined
@@ -873,7 +872,10 @@ async function runExport(
 ) {
   if (
     command.operations.every(
-      operation => operation.mode._tag === 'DirectExport' && operation.rotation === undefined
+      operation =>
+        operation.mode._tag === 'DirectExport' &&
+        operation.rotation === undefined &&
+        operation.crop === undefined
     )
   )
     return runDirectExport(command, emit, signal, login);
@@ -1090,8 +1092,8 @@ async function executeCommand(
           );
           const frame = 'frame' in response ? response.frame : undefined;
           const silent = 'silent' in response ? response.silent : undefined;
-          const rotated = 'rotated' in response ? response.rotated : undefined;
-          const resolvedItem = frame ?? silent ?? rotated;
+          const modified = 'modified' in response ? response.modified : undefined;
+          const resolvedItem = frame ?? silent ?? modified;
           if (entry && resolvedItem) {
             const operations = [
               ProtocolExportOperation.make({
@@ -1107,6 +1109,7 @@ async function executeCommand(
                     ? SilentExport.make({ reencode: 'allow' })
                     : DirectExport.make(),
                 ...(resolvedItem.rotation ? { rotation: resolvedItem.rotation } : {}),
+                ...(resolvedItem.crop ? { crop: resolvedItem.crop } : {}),
               }),
             ];
             const historyExport =

@@ -11,37 +11,63 @@ import {
   type EncodedPacket,
   type InputTrack,
 } from 'mediabunny';
+import { cropPixels, type Crop } from '../crop/contracts.ts';
 import { combineRotations, swapsAxes, type Rotation } from './contracts.ts';
 
-/** Draws `source` turned clockwise onto a canvas sized for the turned result. */
-export function drawRotated(
+/** The Export modifiers a document applies to an output: a clockwise turn, then a crop. */
+export interface Modifiers {
+  readonly rotation?: Rotation;
+  readonly crop?: Crop;
+}
+
+/** Draws `source` turned clockwise, then cropped, onto a canvas sized for the result. */
+export function drawModified(
   source: CanvasImageSource,
   width: number,
   height: number,
-  rotation: Rotation | undefined
+  { rotation, crop }: Modifiers
 ): HTMLCanvasElement | undefined {
-  const canvas = document.createElement('canvas');
-  canvas.width = swapsAxes(rotation) ? height : width;
-  canvas.height = swapsAxes(rotation) ? width : height;
-  const context = canvas.getContext('2d');
+  const turned = document.createElement('canvas');
+  turned.width = swapsAxes(rotation) ? height : width;
+  turned.height = swapsAxes(rotation) ? width : height;
+  const context = turned.getContext('2d');
   if (!context) return undefined;
-  context.translate(canvas.width / 2, canvas.height / 2);
+  context.translate(turned.width / 2, turned.height / 2);
   context.rotate(((rotation ?? 0) * Math.PI) / 180);
   context.drawImage(source, -width / 2, -height / 2, width, height);
-  return canvas;
+  if (!crop) return turned;
+
+  const area = cropPixels(crop, turned.width, turned.height);
+  const cropped = document.createElement('canvas');
+  cropped.width = area.width;
+  cropped.height = area.height;
+  const croppedContext = cropped.getContext('2d');
+  if (!croppedContext) return undefined;
+  croppedContext.drawImage(
+    turned,
+    area.x,
+    area.y,
+    area.width,
+    area.height,
+    0,
+    0,
+    area.width,
+    area.height
+  );
+  return cropped;
 }
 
 export function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
 }
 
-/** Re-encodes an image as a JPEG turned clockwise, relative to its displayed orientation. */
-export async function rotateImage(image: Blob, rotation: Rotation): Promise<Blob> {
+/** Re-encodes an image as a JPEG with its modifiers applied to its displayed orientation. */
+export async function modifyImage(image: Blob, modifiers: Modifiers): Promise<Blob> {
   const bitmap = await createImageBitmap(image);
   try {
-    const canvas = drawRotated(bitmap, bitmap.width, bitmap.height, rotation);
+    const canvas = drawModified(bitmap, bitmap.width, bitmap.height, modifiers);
     const jpeg = canvas && (await canvasToJpeg(canvas));
-    if (!jpeg) throw new Error('The rotated image could not be encoded.');
+    if (!jpeg) throw new Error('The modified image could not be encoded.');
     return jpeg;
   } finally {
     bitmap.close();

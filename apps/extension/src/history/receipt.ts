@@ -1,3 +1,4 @@
+import type { Crop } from '../crop/contracts.ts';
 import type { Rotation } from '../rotation/contracts.ts';
 import type { ExportSettings } from '@gramgrab/protocol';
 import type { DownloadHistoryEntry } from './contracts.ts';
@@ -10,6 +11,7 @@ export interface AcceptedHistoryOperation {
   exportMode?: 'direct' | 'frame' | 'silent';
   frameTimestampSeconds?: number;
   rotation?: Rotation;
+  crop?: Crop;
   requestedExport?: ExportSettings;
   recovery?: 'original' | 'reencode';
 }
@@ -37,6 +39,7 @@ export function acceptedHistoryEntry(
       ? { frameTimestampSeconds: item.frameTimestampSeconds }
       : {}),
     ...(item.rotation ? { rotation: item.rotation } : {}),
+    ...(item.crop ? { crop: item.crop } : {}),
     ...(item.requestedExport ? { requestedExport: item.requestedExport } : {}),
     ...(item.recovery ? { recovery: item.recovery } : {}),
     downloadedAt: Date.now(),

@@ -1,6 +1,7 @@
 import { Either, Option, Schema } from 'effect';
 import { ExportSettings } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
+import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 import {
   DOWNLOAD_HISTORY_KEY,
@@ -21,6 +22,7 @@ let mutationQueue: Promise<void> = Promise.resolve();
 const validKinds = new Set(['post', 'reel', 'story', 'highlight', 'profile']);
 const validTypes = new Set(['image', 'video']);
 const isRotation = Schema.is(RotationSchema);
+const isCrop = Schema.is(CropSchema);
 const supportedHistoryVersions = new Set([1, 2, 3, 4]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,7 +71,8 @@ function hasValidMedia(item: Partial<HistoryMetadata>): boolean {
     (item.frameTimestampSeconds === undefined ||
       (Number.isFinite(item.frameTimestampSeconds) && item.frameTimestampSeconds >= 0)) &&
     (item.exportMode !== 'frame' || item.frameTimestampSeconds !== undefined) &&
-    (item.rotation === undefined || isRotation(item.rotation))
+    (item.rotation === undefined || isRotation(item.rotation)) &&
+    (item.crop === undefined || isCrop(item.crop))
   );
 }
 

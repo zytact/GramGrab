@@ -805,13 +805,14 @@ describe('background dispatcher', () => {
       );
     });
 
-    it('hands a rotated entry back to the popup instead of downloading it unrotated', async () => {
+    it('hands a modified entry back to the popup instead of downloading it unmodified', async () => {
       const fixture = instantFixture('instants-photo.json') as {
         data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };
       };
       const mediaId = String(fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]!.id);
       const store = historyStore(mediaId);
-      Object.assign(store['download-history'].entries[0]!, { rotation: 270 });
+      const crop = { x: 0, y: 0.25, width: 1, height: 0.5 };
+      Object.assign(store['download-history'].entries[0]!, { rotation: 270, crop });
       fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(store);
       globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
 
@@ -821,7 +822,7 @@ describe('background dispatcher', () => {
       });
 
       expect(response).toMatchObject({
-        rotated: { mediaId, mediaType: 'image', rotation: 270, originKind: 'instants' },
+        modified: { mediaId, mediaType: 'image', rotation: 270, crop, originKind: 'instants' },
       });
       expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
     });

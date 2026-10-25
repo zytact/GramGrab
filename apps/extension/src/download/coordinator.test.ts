@@ -75,7 +75,7 @@ describe('export coordinator planning', () => {
     const execution = Layer.succeed(ExportExecution, {
       frame: vi.fn(),
       direct,
-      rotated: vi.fn(),
+      modified: vi.fn(),
       silent: vi.fn(async () => {
         throw new Error('preflight failed');
       }),
@@ -92,18 +92,19 @@ describe('export coordinator planning', () => {
     expect(settle).toHaveBeenCalledTimes(2);
   });
 
-  it('hands rotated direct items to the rotated executor and the rest to one direct batch', async () => {
+  it('hands modified direct items to the modified executor and the rest to one direct batch', async () => {
     const operations = planExportOperations([
       candidate({ type: 'image', rotation: 90 }),
       candidate({ index: 1, type: 'image' }),
       candidate({ index: 2, frameEnabled: true, frameDurationSeconds: 8, rotation: 180 }),
+      candidate({ index: 3, type: 'image', crop: { x: 0, y: 0, width: 0.5, height: 0.5 } }),
     ]);
     const direct = vi.fn(async () => DownloadMediaResponse.make({ results: [] }));
     const started = async ({ operationId, requestId }: AttemptOperation) =>
       DownloadAcceptedResult.make({ operationId, requestId, status: 'started' });
-    const rotated = vi.fn(started);
+    const modified = vi.fn(started);
     const frame = vi.fn(started);
-    const execution = Layer.succeed(ExportExecution, { frame, direct, rotated });
+    const execution = Layer.succeed(ExportExecution, { frame, direct, modified });
     const events = Layer.succeed(ExportEvents, { progress: vi.fn(), settle: vi.fn() });
 
     await Effect.runPromise(
@@ -112,8 +113,11 @@ describe('export coordinator planning', () => {
       )
     );
 
-    expect(rotated).toHaveBeenCalledWith(
+    expect(modified).toHaveBeenCalledWith(
       expect.objectContaining({ displayIndex: 0, rotation: 90 })
+    );
+    expect(modified).toHaveBeenCalledWith(
+      expect.objectContaining({ displayIndex: 3, crop: expect.any(Object) })
     );
     expect(direct).toHaveBeenCalledWith([expect.objectContaining({ displayIndex: 1 })]);
     expect(frame).toHaveBeenCalledWith(expect.objectContaining({ displayIndex: 2, rotation: 180 }));

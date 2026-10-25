@@ -17,7 +17,6 @@ import {
   type AttemptOperation,
   type DownloadAttempt,
   type RefetchedMedia,
-  type RotatedOperation,
 } from './attempt.ts';
 import { type OperationFailure } from '../errors/contracts.ts';
 import { executeExportPlan, ExportEvents, ExportExecution, ExportPlan } from './coordinator.ts';
@@ -25,7 +24,7 @@ import { executeExportPlan, ExportEvents, ExportExecution, ExportPlan } from './
 interface UseDownloadAttemptOptions {
   executeFrame: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
   executeDirect: (operations: readonly DownloadOperation[]) => Promise<unknown>;
-  executeRotated: (operation: RotatedOperation) => Promise<DownloadOperationResult>;
+  executeModified: (operation: AttemptOperation) => Promise<DownloadOperationResult>;
   executeSilent?: (
     operations: readonly AttemptOperation[],
     onProgress: (requestId: string, phase: string, progress: number) => void,
@@ -39,7 +38,7 @@ interface UseDownloadAttemptOptions {
 export function useDownloadAttempt({
   executeFrame,
   executeDirect,
-  executeRotated,
+  executeModified,
   executeSilent,
   onAccepted,
   onSettled,
@@ -85,7 +84,7 @@ export function useDownloadAttempt({
       const execution = Layer.succeed(ExportExecution, {
         frame: executeFrame,
         direct: executeDirect,
-        rotated: executeRotated,
+        modified: executeModified,
         ...(executeSilent ? { silent: executeSilent } : {}),
       });
       const events = Layer.succeed(ExportEvents, {
@@ -107,7 +106,7 @@ export function useDownloadAttempt({
         )
       );
     },
-    [commit, executeDirect, executeFrame, executeRotated, executeSilent, settle]
+    [commit, executeDirect, executeFrame, executeModified, executeSilent, settle]
   );
 
   const start = useCallback(

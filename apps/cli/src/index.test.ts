@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -483,6 +483,38 @@ describe('CLI login choice', SPAWNS_CLI, () => {
     const result = await runCliProcess(['inspect', 'instagram', '--login', 'other'], 'unused');
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('Use --login main or --login linked.');
+  });
+});
+
+describe('CLI export plan', SPAWNS_CLI, () => {
+  it('sends a plan file as an Export with each operation, crop included', async () => {
+    const endpoint = await testEndpoint();
+    const server = await answeringServer(endpoint, () =>
+      Rejected.make({ failure: TransportFailure.make({ code: 'IPC_DISCONNECTED' }) })
+    );
+    const directory = await mkdtemp(join(tmpdir(), 'gramgrab-plan-'));
+    const plan = join(directory, 'plan.json');
+    const operation = {
+      operationId: '6f1c2a4e-9b7d-4c3e-8a21-5d0f3b6e7a90',
+      itemNumber: 1,
+      mode: { _tag: 'DirectExport' },
+      crop: { x: 0.25, y: 0.1, width: 0.5, height: 0.8 },
+    };
+    await writeFile(plan, JSON.stringify([operation]));
+
+    await runCliProcess(['export', 'instagram', '--plan', plan, '--json'], endpoint);
+
+    expect(server.requests).toMatchObject([
+      {
+        command: {
+          _tag: 'Export',
+          sourceUrl: 'https://www.instagram.com/stories/instagram/',
+          operations: [operation],
+        },
+      },
+    ]);
+    await server.close();
+    await rm(directory, { recursive: true });
   });
 });
 

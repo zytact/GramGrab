@@ -24,8 +24,9 @@ import {
   type FrameExportSetting,
 } from './frame-export/timestamp';
 import { executeFrameExport } from './frame-export/executor';
-import { executeRotatedExport } from './rotation/executor';
+import { executeModifiedExport } from './rotation/executor';
 import { nextRotation } from './rotation/contracts';
+import { rotateCropClockwise } from './crop/contracts';
 import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface } from './workspace/use-workspace-surface';
@@ -90,6 +91,7 @@ function exportCandidate(
     frameDurationSeconds: durationSeconds,
     removeAudio: removeAudioIndexes.has(item.index),
     rotation: item.rotation,
+    crop: item.crop,
   });
 }
 
@@ -224,9 +226,13 @@ export default function Popup() {
     setMediaItems(prev =>
       prev.map(item => {
         if (item.index !== index) return item;
-        const { rotation, ...unrotated } = item;
+        const { rotation, crop, ...unmodified } = item;
         const next = nextRotation(rotation);
-        return next ? { ...unrotated, rotation: next } : unrotated;
+        return {
+          ...unmodified,
+          ...(next ? { rotation: next } : {}),
+          ...(crop ? { crop: rotateCropClockwise(crop) } : {}),
+        };
       })
     );
   }, []);
@@ -430,7 +436,7 @@ export default function Popup() {
   const downloadAttempt = useDownloadAttempt({
     executeFrame: executeFrameAttempt,
     executeDirect,
-    executeRotated: operation => executeRotatedExport(operation, fetchedUrl || url, acquisition),
+    executeModified: operation => executeModifiedExport(operation, fetchedUrl || url, acquisition),
     executeSilent: (operations, onProgress, onPreflightComplete, approvedRequestIds) =>
       runSilentVideoBatch(
         operations,
@@ -741,12 +747,12 @@ export default function Popup() {
       setHistoryBusy(entryId);
       const response = await sendMessage({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId, login });
       const redownloadFailure = 'failure' in response ? response.failure : undefined;
-      // Video processing outlives the popup, so silent and rotated videos restart in the workspace.
+      // Video processing outlives the popup, so silent and modified videos restart in the workspace.
       const workspaceVideo =
         'silent' in response
           ? { ...response.silent, removeAudio: true }
-          : 'rotated' in response && response.rotated.mediaType === 'video'
-            ? { ...response.rotated, removeAudio: false }
+          : 'modified' in response && response.modified.mediaType === 'video'
+            ? { ...response.modified, removeAudio: false }
             : undefined;
       if (workspaceVideo) {
         const createdAt = Date.now();
@@ -759,6 +765,7 @@ export default function Popup() {
           filenameHint: workspaceVideo.filenameHint,
           selected: true,
           ...(workspaceVideo.rotation ? { rotation: workspaceVideo.rotation } : {}),
+          ...(workspaceVideo.crop ? { crop: workspaceVideo.crop } : {}),
         };
         const snapshot = {
           version: 4 as const,
@@ -816,26 +823,27 @@ export default function Popup() {
             : 'Frame export failed. Download the original video or try again.'
         );
         if (result.status === 'failed') setStatus('error');
-      } else if ('rotated' in response) {
-        const { rotated } = response;
-        const filename = `${rotated.filenameHint}_${rotated.itemIndex + 1}.${rotated.mediaType === 'video' ? 'mp4' : 'jpg'}`;
-        const result = await executeRotatedExport(
+      } else if ('modified' in response) {
+        const { modified } = response;
+        const filename = `${modified.filenameHint}_${modified.itemIndex + 1}.${modified.mediaType === 'video' ? 'mp4' : 'jpg'}`;
+        const result = await executeModifiedExport(
           {
             operationId: createOperationId(),
             requestId: createRequestId(),
-            itemIndex: rotated.itemIndex,
-            ...(rotated.mediaId ? { mediaId: rotated.mediaId } : {}),
-            url: rotated.url,
-            originalUrl: rotated.url,
+            itemIndex: modified.itemIndex,
+            ...(modified.mediaId ? { mediaId: modified.mediaId } : {}),
+            url: modified.url,
+            originalUrl: modified.url,
             filename,
             originalFilename: filename,
-            mediaType: rotated.mediaType,
+            mediaType: modified.mediaType,
             mode: 'direct',
             displayIndex: 0,
-            rotation: rotated.rotation,
+            ...(modified.rotation ? { rotation: modified.rotation } : {}),
+            ...(modified.crop ? { crop: modified.crop } : {}),
           },
-          rotated.sourceUrl,
-          rotated.originKind
+          modified.sourceUrl,
+          modified.originKind
         );
         if (result.status === 'failed') setStatus('error');
         setMessage(

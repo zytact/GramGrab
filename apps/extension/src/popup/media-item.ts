@@ -1,9 +1,10 @@
 import type { MediaItem as ResolvedMediaItem } from '@gramgrab/protocol';
 import type { OperationFailure } from '../errors/contracts';
+import type { Crop } from '../crop/contracts';
 import type { Rotation } from '../rotation/contracts';
 
 /**
- * A resolved media item plus the display index, selection and rotation state the popup owns.
+ * A resolved media item plus the display index, selection and Export modifiers the popup owns.
  * `itemIndex` is absent for a WhatsApp capture, which comes from no indexed source, and for
  * workspace snapshots written before item indexes existed.
  */
@@ -12,6 +13,7 @@ export type MediaItem = Omit<ResolvedMediaItem, 'itemIndex'> & {
   itemIndex?: number;
   selected: boolean;
   rotation?: Rotation;
+  crop?: Crop;
 };
 
 export type FrameRuntime = {
