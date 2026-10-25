@@ -225,7 +225,9 @@ node $D activate "popup.html?surface"             # bring a page to the front
 node $D type  "popup.html" "#source-url" "https://www.instagram.com/p/SHORTCODE/"
 node $D blur  "popup.html" "#source-url"
 node $D click "popup.html" ".fetch-row button"
-node $D key   "options.html" Tab                  # browser keyboard input: Tab or Enter
+node $D key   "options.html" Tab                  # browser keyboard input to the focused element
+node $D key   "popup.html?surface" shift+ArrowRight  # Tab, Enter, or an arrow; shift+ holds Shift
+node $D drag  "popup.html?surface" ".crop-handle.se" -40 -60  # real pointer drag by CSS pixels
 node $D upload "options.html" 'input[type=file]' .local/verify/watches.json  # choose a file
 node $D text  "popup.html"                        # innerText of the first match
 node $D wait  "popup.html" "No media yet." 15000  # poll until text appears
@@ -390,7 +392,7 @@ All are executable and take no arguments beyond what is shown above.
 | `scripts/launch.sh`  | Build and start the browser; `--restart` preserves an unchanged build                     |
 | `scripts/signin.sh`  | Launch with Instagram and WhatsApp Web open for a one-time sign-in     |
 | `scripts/doctor.mjs` | Six read-only health checks, non-zero exit on any failure              |
-| `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, choosing files, reading, and capturing pages |
+| `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, pressing keys, dragging, choosing files, reading, and capturing pages |
 | `scripts/throttle.mjs` | Answer the worker's matching Instagram requests with a status such as 429 |
 | `scripts/cleanup.sh` | Close the browser, remove run state, keep the profile and evidence     |
 

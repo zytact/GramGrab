@@ -11,6 +11,7 @@ import { browser } from '../lib/browser';
 import {
   claimWorkspaceTransfer,
   findWorkspaceTab,
+  handOffToWorkspace,
   openWorkspace,
   replaceWorkspace,
 } from './coordinator';
@@ -53,6 +54,9 @@ interface WorkspaceSurfaceOptions {
   setRemoveAudioIndexes: Dispatch<SetStateAction<Set<number>>>;
   setAutoDetected: Dispatch<SetStateAction<boolean>>;
 }
+
+export const WORKSPACE_BUSY_MESSAGE =
+  'The workspace is busy. Finish its active batch before replacing it.';
 
 function settledWorkspaceStatus(status: SurfaceStatus): WorkspaceSnapshot['status'] {
   if (status === 'error' || status === 'done') return status;
@@ -112,6 +116,37 @@ function workspaceSnapshot({
   };
 }
 
+/** The workspace crops in place; the popup's thumbnails are too small, so it hands off. */
+function useCropSelection(
+  workspaceMode: boolean,
+  busy: boolean,
+  snapshot: () => WorkspaceSnapshot,
+  setMessage: (message: string) => void
+) {
+  const [cropIndex, setCropIndex] = useState<number>();
+  const handleCrop = useCallback(
+    (index: number) => {
+      if (workspaceMode) setCropIndex(current => (current === index ? undefined : index));
+      else if (!busy) void handOffCrop(snapshot(), index, setMessage);
+    },
+    [busy, setMessage, snapshot, workspaceMode]
+  );
+  return { cropIndex, setCropIndex, handleCrop };
+}
+
+async function handOffCrop(
+  snapshot: WorkspaceSnapshot,
+  index: number,
+  setMessage: (message: string) => void
+): Promise<void> {
+  const outcome = await handOffToWorkspace(
+    { ...snapshot, cropIndex: index },
+    'Replace the current workspace session to crop this item?'
+  );
+  if (outcome === 'busy') setMessage(WORKSPACE_BUSY_MESSAGE);
+  if (outcome === 'moved') setMessage('Crop opened in the GramGrab workspace.');
+}
+
 export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
   const workspaceMode = new URLSearchParams(window.location.search).get('surface') === 'workspace';
   const [workspaceExists, setWorkspaceExists] = useState(false);
@@ -120,6 +155,14 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
   const [downloadIntent, setDownloadIntent] = useState(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  const snapshot = useCallback(() => workspaceSnapshot(options), [options]);
+  const busy = isBusy(options.status);
+  const { cropIndex, setCropIndex, handleCrop } = useCropSelection(
+    workspaceMode,
+    busy,
+    snapshot,
+    options.setMessage
+  );
   const requestFetch = useCallback((target: FetchTarget) => {
     setFetchIntent(current => ({ id: (current?.id ?? 0) + 1, target }));
   }, []);
@@ -139,6 +182,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
           session.setFrameExportSettings(snapshot.frameExportSettings);
           session.setRemoveAudioIndexes(new Set(snapshot.removeAudioIndexes));
           if (snapshot.autoStartDownload) setDownloadIntent(intent => intent + 1);
+          setCropIndex(snapshot.cropIndex);
           if (snapshot.intent === 'fetch') requestFetch(snapshot.acquisition.kind);
           return;
         }
@@ -162,7 +206,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
         }
       })
       .catch(() => {});
-  }, [requestFetch, workspaceMode]);
+  }, [requestFetch, setCropIndex, workspaceMode]);
 
   useEffect(() => {
     if (!workspaceMode)
@@ -179,8 +223,6 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
     window.history.replaceState({}, '', page);
   }, [options.url, workspaceMode]);
 
-  const snapshot = useCallback(() => workspaceSnapshot(options), [options]);
-  const busy = isBusy(options.status);
   const hasTransferableSession =
     options.acquisition === 'instants' ||
     isInstagramSource(options.url) ||
@@ -222,6 +264,8 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
 
   return {
     workspaceMode,
+    cropIndex,
+    handleCrop,
     workspaceExists,
     confirmReplace,
     setConfirmReplace,

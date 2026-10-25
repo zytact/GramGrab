@@ -1706,3 +1706,66 @@ body:has(.workspace-container) {
 .media-thumb[data-rotation='270'] .media-preview {
   rotate: 270deg;
 }
+
+/* Crop selector. The frame box matches the displayed media inside the contained preview, so crop
+   fractions map straight onto it. */
+.media-thumb:has(.crop-frame) {
+  container-type: size;
+}
+.crop-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: min(100cqw, 100cqh * var(--media-ratio));
+  height: min(100cqh, 100cqw / var(--media-ratio));
+  overflow: hidden;
+  pointer-events: none;
+}
+.crop-rect {
+  position: absolute;
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.55);
+  outline: 1px solid var(--brand);
+}
+.crop-frame.editing .crop-rect {
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+}
+.crop-rect:focus-visible {
+  outline: 2px solid var(--brand);
+}
+.crop-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--brand);
+  border: 1px solid var(--bg);
+}
+.crop-handle.nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.crop-handle.ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.crop-handle.sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.crop-handle.se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+.crop-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  order: 2;
+  flex-basis: 100%;
+}

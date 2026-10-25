@@ -722,6 +722,89 @@ describe('Popup', () => {
     });
   });
 
+  it('moves the whole batch to the workspace to crop, naming the item to crop', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [
+        { url: 'https://instagram.com/a.jpg', type: 'image', filenameHint: 'a' },
+        { url: 'https://instagram.com/b.jpg', type: 'image', filenameHint: 'b' },
+      ],
+    });
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('2 items found'));
+
+    await user.click(screen.getByRole('button', { name: 'Crop item 02' }));
+
+    await waitFor(() =>
+      expect(mockBrowser.sessionStorage.set).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          'workspace-transfer-v1': expect.objectContaining({
+            cropIndex: 1,
+            mediaItems: [
+              expect.objectContaining({ index: 0 }),
+              expect.objectContaining({ index: 1 }),
+            ],
+          }),
+        })
+      )
+    );
+  });
+
+  it('crops in place in the workspace and keeps the crop on its subject through a turn', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    window.history.replaceState({}, '', '/popup.html?surface=workspace');
+    mockBrowser.sessionStorage.get.mockResolvedValueOnce({
+      'workspace-transfer-v1': {
+        version: 4,
+        acquisition: { kind: 'source' },
+        createdAt: now,
+        expiresAt: now + 60_000,
+        url: 'https://www.instagram.com/p/abc123/',
+        fetchedUrl: 'https://www.instagram.com/p/abc123/',
+        status: 'done',
+        message: 'Ready',
+        mediaItems: [
+          {
+            index: 0,
+            type: 'image',
+            url: 'https://instagram.com/image.jpg',
+            filenameHint: 'image',
+            selected: true,
+            width: 1600,
+            height: 900,
+          },
+        ],
+        frameExportSettings: {},
+        removeAudioIndexes: [],
+        cropIndex: 0,
+      },
+    });
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: '1:1' }));
+    const area = screen.getByRole('group', { name: /Crop area for item 01/ });
+    expect(area.style.width).toBe('56.25%');
+    area.focus();
+    await user.keyboard('{ArrowLeft}');
+    expect(area.style.left).toBe('20.875%');
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('toolbar', { name: 'Crop' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Crop item 01, cropped' }).getAttribute('aria-pressed')
+    ).toBe('true');
+
+    await user.click(screen.getByRole('button', { name: /Rotate item 01/ }));
+    await user.click(screen.getByRole('button', { name: 'Crop item 01, cropped' }));
+    const turned = screen.getByRole('group', { name: /Crop area for item 01/ });
+    expect(turned.style.top).toBe('20.875%');
+    expect(turned.style.height).toBe('56.25%');
+    window.history.replaceState({}, '', '/popup.html');
+  });
+
   it('auto-detects Instagram URL from active tab', async () => {
     await act(async () => {
       render(<Popup />);

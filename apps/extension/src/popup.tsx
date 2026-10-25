@@ -26,16 +26,11 @@ import {
 import { executeFrameExport } from './frame-export/executor';
 import { executeModifiedExport } from './rotation/executor';
 import { nextRotation } from './rotation/contracts';
-import { rotateCropClockwise } from './crop/contracts';
+import { normalizeCrop, rotateCropClockwise, type Crop } from './crop/contracts';
 import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
-import { useWorkspaceSurface } from './workspace/use-workspace-surface';
-import {
-  findWorkspaceTab,
-  isWorkspaceReportedBusy,
-  openWorkspace,
-  replaceWorkspace,
-} from './workspace/coordinator';
+import { useWorkspaceSurface, WORKSPACE_BUSY_MESSAGE } from './workspace/use-workspace-surface';
+import { handOffToWorkspace } from './workspace/coordinator';
 import { isPositiveFinitePair } from './workspace/media-ratio';
 import { runSilentVideoBatch, type ReencodeCandidate } from './silent-video/batch';
 import { silentProgressMessage } from './silent-video/progress';
@@ -234,6 +229,14 @@ export default function Popup() {
           ...(crop ? { crop: rotateCropClockwise(crop) } : {}),
         };
       })
+    );
+  }, []);
+
+  const changeCrop = useCallback((index: number, crop: Crop | undefined) => {
+    setMediaItems(prev =>
+      prev.map(item =>
+        item.index === index ? { ...item, crop: crop && normalizeCrop(crop) } : item
+      )
     );
   }, []);
 
@@ -596,19 +599,12 @@ export default function Popup() {
         removeAudioIndexes: [...removeAudioIndexes],
         autoStartDownload: true,
       };
-      const existing = await findWorkspaceTab();
-      if (existing) {
-        if (await isWorkspaceReportedBusy()) {
-          await openWorkspace(snapshot);
-          setMessage('The workspace is busy. Finish its active batch before replacing it.');
-          return;
-        }
-        if (!window.confirm('Replace the current workspace session and start this batch?')) return;
-        await replaceWorkspace(snapshot);
-      } else {
-        await openWorkspace(snapshot);
-      }
-      setMessage('Video batch moved to the GramGrab workspace.');
+      const outcome = await handOffToWorkspace(
+        snapshot,
+        'Replace the current workspace session and start this batch?'
+      );
+      if (outcome === 'busy') setMessage(WORKSPACE_BUSY_MESSAGE);
+      if (outcome === 'moved') setMessage('Video batch moved to the GramGrab workspace.');
       return;
     }
     setStatus('downloading');
@@ -782,18 +778,12 @@ export default function Popup() {
           removeAudioIndexes: workspaceVideo.removeAudio ? [0] : [],
           autoStartDownload: true,
         };
-        const existing = await findWorkspaceTab();
-        if (existing && (await isWorkspaceReportedBusy())) {
-          await openWorkspace(snapshot);
-          setMessage('The workspace is busy. Finish its active batch before replacing it.');
-        } else if (
-          !existing ||
-          window.confirm('Replace the current workspace session and start this batch?')
-        ) {
-          if (existing) await replaceWorkspace(snapshot);
-          else await openWorkspace(snapshot);
-          setMessage('Video download moved to the GramGrab workspace.');
-        }
+        const outcome = await handOffToWorkspace(
+          snapshot,
+          'Replace the current workspace session and start this batch?'
+        );
+        if (outcome === 'busy') setMessage(WORKSPACE_BUSY_MESSAGE);
+        if (outcome === 'moved') setMessage('Video download moved to the GramGrab workspace.');
       } else if ('frame' in response) {
         const timestampSeconds = response.frame.timestampSeconds;
         const result = await executeFrameExport(
@@ -889,6 +879,8 @@ export default function Popup() {
 
   const {
     workspaceMode,
+    cropIndex,
+    handleCrop,
     workspaceExists,
     confirmReplace,
     setConfirmReplace,
@@ -945,11 +937,14 @@ export default function Popup() {
     removeAudioIndexes,
     attempt: downloadAttempt.attempt,
     emptyMessage,
+    cropIndex,
   };
   const mediaListActions = {
     onPreviewError: handlePreviewError,
     onToggle: toggleItem,
     onRotate: rotateItem,
+    onCrop: handleCrop,
+    onChangeCrop: changeCrop,
     onToggleAll: toggleAll,
     onToggleExportFrame: toggleExportFrame,
     onToggleRemoveAudio: toggleRemoveAudio,
