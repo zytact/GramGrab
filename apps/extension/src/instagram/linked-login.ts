@@ -26,7 +26,10 @@ const LinkedLogin = Schema.Struct({
 type LinkedLogin = typeof LinkedLogin.Type;
 
 /** Why an Incognito window offers no login to link. */
-type LinkRefusal = Extract<LinkRefusalReason, 'incognito-not-allowed' | 'not-signed-in'>;
+type LinkRefusal = Extract<
+  LinkRefusalReason,
+  'incognito-not-allowed' | 'no-incognito-window' | 'not-signed-in'
+>;
 
 export const linkedLoginSupported = () => browser.linkedLogin !== undefined;
 
@@ -137,9 +140,8 @@ export async function incognitoCookies(): Promise<
   if (!apis || !(await apis.isAllowedIncognitoAccess()))
     return { _tag: 'refused', reason: 'incognito-not-allowed' };
   const store = (await apis.getAllCookieStores()).find(candidate => candidate.id !== '0');
-  const found = store
-    ? await apis.getAllCookies({ domain: 'instagram.com', storeId: store.id })
-    : [];
+  if (!store) return { _tag: 'refused', reason: 'no-incognito-window' };
+  const found = await apis.getAllCookies({ domain: 'instagram.com', storeId: store.id });
   const cookies = Object.fromEntries(found.map(cookie => [cookie.name, cookie.value]));
   const accountId = Schema.decodeUnknownOption(AccountId)(cookies.ds_user_id);
   if (!cookies.sessionid || Option.isNone(accountId))

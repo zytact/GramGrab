@@ -137,24 +137,35 @@ describe('linking a second login', () => {
   it.each([
     [
       'incognito-not-allowed',
+      'without Incognito access',
       () => {
         harness.incognito.allowed = false;
       },
     ],
+    ['no-incognito-window', 'while no Incognito window is open', () => {}],
     [
       'not-signed-in',
+      'while the Incognito window has no Instagram cookies',
+      () => {
+        harness.incognito.cookies = {};
+      },
+    ],
+    [
+      'not-signed-in',
+      'while the Incognito window has Instagram open but signed out',
       () => {
         harness.incognito.cookies = { csrftoken: 'anonymous' };
       },
     ],
     [
       'same-login',
+      'when the Incognito window is signed in to the main login',
       () => {
         harness.incognito.cookies = { ...LINKED_COOKIES, ds_user_id: VIEWER.id };
         linkedViewer = VIEWER;
       },
     ],
-  ] as const)('refuses %s and keeps nothing', async (reason, arrange) => {
+  ] as const)('refuses %s %s and keeps nothing', async (reason, _when, arrange) => {
     arrange();
 
     expect(await link()).toEqual({ _tag: 'refused', reason });
