@@ -87,6 +87,18 @@ Print a truncated hash only:
 node $D eval js/background.js "new Promise(r=>chrome.cookies.get({url:'https://www.instagram.com',name:'sessionid'},async c=>r(c?[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(c.value)))].slice(0,6).map(b=>b.toString(16).padStart(2,'0')).join(''):'none')))"
 ```
 
+The refusal states need no second account and send no Instagram request. Open
+an Incognito window with no Instagram tab, click `Link this login`, and read
+`.opt-login-switch`, then close every Incognito window again.
+`chrome.windows.getAll` rejects an `incognito` filter, so filter the result:
+
+```bash
+node $D eval js/background.js \
+  "chrome.windows.create({incognito:true,url:'about:blank'}).then(w=>String(w.incognito))"
+node $D eval js/background.js \
+  "chrome.windows.getAll().then(ws=>Promise.all(ws.filter(w=>w.incognito).map(w=>chrome.windows.remove(w.id)))).then(r=>String(r.length))"
+```
+
 Link and unlink from the Watches page with `drive.mjs click` on the
 `.opt-login-switch button` whose text is `Link this login` or `Unlink`. After
 linking, prove the two logins differ without printing either ID:
@@ -129,8 +141,14 @@ Adding the Watch spends linked requests of its own for the preview and baseline.
 
 - Link: the notice starts `Linked @`, the tabs appear named by `@username`, `linked-instagram-login`
   exists, and the viewer probe reads `{"differ":true,"linkedVerified":true}`.
-- Refusal: linking without Incognito access reads `Allow GramGrab in Incognito
-  on the browser's extensions page, then link again.` and stores nothing.
+- Refusal: each refusal stores nothing and names its next step. Without
+  Incognito access it reads `Allow GramGrab in Incognito on the browser's
+  extensions page, then link again.` With access and no Incognito window open,
+  it starts `No Incognito window is open.` With an Incognito window that is not
+  signed in to Instagram, `about:blank` included, it starts `Your Incognito
+  window is not signed in to Instagram.` Only an open Incognito window has a
+  second cookie store, so `chrome.cookies.getAllCookieStores()` in the worker
+  reads `["0"]` without one and `["0","1"]` with one.
 - Rule: rule 2 has `urlFilter` `gg_login=linked`, `requestDomains`
   `["instagram.com"]`, and `tabIds` `[-1]`. Rule 1 is the Origin rule every
   build installs, and it stays after linking.

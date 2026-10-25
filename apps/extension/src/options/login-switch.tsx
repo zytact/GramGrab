@@ -21,8 +21,10 @@ const REFUSAL: Record<LinkRefusalReason, string> = {
     'GramGrab could not confirm your main login, so it cannot tell the two apart. Sign in to Instagram in this window, then link again.',
   'incognito-not-allowed':
     "Allow GramGrab in Incognito on the browser's extensions page, then link again.",
+  'no-incognito-window':
+    'No Incognito window is open. Open one, sign in to the other account on instagram.com there, then link again.',
   'not-signed-in':
-    'No Incognito window is signed in to Instagram. Open one, sign in to the other account, and keep it open while you link.',
+    'Your Incognito window is not signed in to Instagram. Open instagram.com there, sign in to the other account, then link again.',
   'not-verified':
     'Instagram did not confirm that login. Sign in again in the Incognito window, then link again.',
   'same-login':

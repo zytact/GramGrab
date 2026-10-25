@@ -348,6 +348,7 @@ export type LinkedLoginState = 'unsupported' | 'unlinked' | 'linked' | 'ended';
 export type LinkRefusalReason =
   | 'main-unverified'
   | 'incognito-not-allowed'
+  | 'no-incognito-window'
   | 'not-signed-in'
   | 'not-verified'
   | 'same-login';
