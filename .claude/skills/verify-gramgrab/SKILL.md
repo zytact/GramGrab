@@ -269,6 +269,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
 | Watches file import  | `input[aria-label="Watches file"]`, button text `Export or import` |
 | Login picker         | `#instagram-login`                                 |
+| Link a second login  | `.login-link-entry`                                |
 | Link and Unlink      | `.opt-login-switch button`                         |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 

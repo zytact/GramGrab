@@ -24,6 +24,7 @@ const mockBrowser = {
     sendMessage: vi.fn(),
     getURL: vi.fn().mockReturnValue('chrome-extension://test/popup.html'),
     getManifest: vi.fn().mockReturnValue({ version: '1.2.3' }),
+    openOptionsPage: vi.fn().mockResolvedValue(undefined),
   },
   windows: { update: vi.fn().mockResolvedValue(undefined) },
   storage: {
@@ -850,6 +851,18 @@ describe('Popup', () => {
     });
   });
 
+  it('offers to link a second login on the Watches page while none is linked', async () => {
+    const user = userEvent.setup();
+    Object.assign(mockBrowser, { linkedLogin: {} });
+    try {
+      await act(async () => render(<Popup />));
+      await user.click(await screen.findByRole('button', { name: /link a second login/i }));
+      expect(mockBrowser.runtime.openOptionsPage).toHaveBeenCalledOnce();
+    } finally {
+      Reflect.deleteProperty(mockBrowser, 'linkedLogin');
+    }
+  });
+
   it('shows the login picker by username only while a second login is linked, and fetches as the chosen login', async () => {
     const user = userEvent.setup();
     const { rerender } = await act(async () => render(<Popup />));
@@ -876,6 +889,7 @@ describe('Popup', () => {
       const picker = await screen.findByRole('combobox', { name: /login/i });
       expect(await screen.findByRole('option', { name: '@creators' })).toBeDefined();
       expect(screen.getByRole('option', { name: '@instagram' })).toBeDefined();
+      expect(screen.queryByRole('button', { name: /link a second login/i })).toBeNull();
       await user.selectOptions(picker, 'linked');
       await user.click(screen.getByText('Fetch Media'));
 

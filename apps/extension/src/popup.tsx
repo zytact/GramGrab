@@ -49,7 +49,7 @@ import { MediaListSection } from './popup/media-list';
 import { useFrameSeekEffect } from './popup/use-frame-seek';
 import { useWhatsAppCapture } from './popup/use-whatsapp-capture';
 import { WhatsAppStatusPanel } from './popup/whatsapp-status-panel';
-import { LoginPicker, useLogins } from './popup/login-picker';
+import { LinkLoginEntry, LoginPicker, useLogins } from './popup/login-picker';
 import type { InstagramLogin } from '@gramgrab/protocol';
 import { sendMessage } from './messaging/send';
 import { attentionCount } from './watch/attention';
@@ -1035,6 +1035,7 @@ export default function Popup() {
                       <p className="detected-hint">Instagram URL detected — ready to fetch.</p>
                     )}
                     <div className="instants-row">
+                      <LinkLoginEntry logins={logins} />
                       <LoginPicker
                         logins={logins}
                         login={login}

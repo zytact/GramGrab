@@ -378,6 +378,22 @@ input:focus-visible {
   padding: 4px 6px;
 }
 
+.login-link-entry {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.login-link-entry:hover {
+  color: var(--text);
+}
+
+.login-link-text {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .login-picker-beta {
   border: 1px solid var(--brand);
   color: var(--accent);

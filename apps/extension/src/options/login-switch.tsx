@@ -65,7 +65,8 @@ export function LoginSwitch() {
   return (
     <div className="opt-login-switch">
       <span className="opt-label">
-        Logins <span className="opt-beta">Beta</span>
+        {state === 'unlinked' ? 'Link a second login' : 'Logins'}{' '}
+        <span className="opt-beta">Beta</span>
       </span>
       {state !== 'unlinked' && (
         <div className="opt-login-tabs">
@@ -93,8 +94,8 @@ export function LoginSwitch() {
       )}
       {state === 'unlinked' && (
         <p className="opt-meta">
-          To watch accounts only another Instagram login can see, sign in to it in an Incognito
-          window, then link it here.
+          To fetch and watch accounts only another Instagram login can see, sign in to it in an
+          Incognito window, then link it here.
         </p>
       )}
       <div className="opt-login-actions">

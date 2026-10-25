@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { InstagramLogin } from '@gramgrab/protocol';
 import type { LinkedLoginState, LoginNamesResponse } from '../messaging/contracts';
 import { linkedLoginState } from '../instagram/linked-login';
+import { browser } from '../lib/browser';
 import { sendMessage } from '../messaging/send';
 
 export interface Logins {
@@ -33,6 +34,22 @@ export function loginLabel(login: InstagramLogin, { state, names }: Logins): str
   const name = names[login];
   const label = name ? `@${name}` : login === 'main' ? 'Main' : 'Linked';
   return login === 'linked' && state === 'ended' ? `${label} (signed out)` : label;
+}
+
+/** Opens the Watches page, where linking lives, while no second login is linked (Beta). */
+export function LinkLoginEntry({ logins }: { readonly logins: Logins }) {
+  if (logins.state !== 'unlinked') return null;
+  return (
+    <button
+      type="button"
+      className="login-picker login-link-entry"
+      title="Opens the Watches page, where you link a second Instagram login"
+      onClick={() => void browser.runtime.openOptionsPage()}
+    >
+      <span className="login-link-text">Link a second login</span>
+      <span className="login-picker-beta">Beta</span>
+    </button>
+  );
 }
 
 /** Picks which Instagram login fetches. Shown only while a second login is linked (Beta). */
