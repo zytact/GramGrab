@@ -17,16 +17,25 @@ export type PageWatch =
 
 export type Owner = PageWatch['owner'];
 
-/** Every signed-in login's Watches, then the `held` ones. */
+/**
+ * Every signed-in login's Watches, then the `held` ones. A Watch a signed-in list already shows is
+ * not repeated as held, as when the linked session ends between the two lists' reads.
+ */
 export const pageWatches = (
   lists: readonly LoginList[],
   held: readonly HeldWatch[]
-): PageWatch[] => [
-  ...lists.flatMap(({ login, list }) =>
+): PageWatch[] => {
+  const signedIn = lists.flatMap(({ login, list }) =>
     list.watches.map(watch => ({ held: false as const, owner: login, watch }))
-  ),
-  ...held.map(({ owner, watch }) => ({ held: true as const, owner, watch })),
-];
+  );
+  const shown = new Set(signedIn.map(({ watch }) => watch.watchId));
+  return [
+    ...signedIn,
+    ...held.flatMap(({ owner, watch }) =>
+      shown.has(watch.watchId) ? [] : [{ held: true as const, owner, watch }]
+    ),
+  ];
+};
 
 export const OWNER_LABEL: Record<Owner, string> = {
   main: 'Main',

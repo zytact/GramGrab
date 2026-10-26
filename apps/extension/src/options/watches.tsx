@@ -681,11 +681,19 @@ type Filter = 'all' | InstagramLogin;
 
 const FILTER_LABEL: Record<Filter, string> = { all: 'All', main: 'Main', linked: 'Linked' };
 
-/** Narrows the Watch list to one login's Watches. */
-function OwnerFilter({ filter, onChange }: { filter: Filter; onChange: (filter: Filter) => void }) {
+/** Narrows the Watch list to the Watches of one of the logins in `filters`. */
+function OwnerFilter({
+  filters,
+  filter,
+  onChange,
+}: {
+  filters: readonly InstagramLogin[];
+  filter: Filter;
+  onChange: (filter: Filter) => void;
+}) {
   return (
     <div className="opt-filter" role="group" aria-label="Show Watches of">
-      {(['all', ...InstagramLogin.literals] as const).map(value => (
+      {(['all', ...filters] as const).map(value => (
         <button key={value} aria-pressed={filter === value} onClick={() => onChange(value)}>
           {FILTER_LABEL[value]}
         </button>
@@ -695,7 +703,7 @@ function OwnerFilter({ filter, onChange }: { filter: Filter; onChange: (filter: 
 }
 
 function Navigation({
-  page: { main, lists, watches, mixed, logins, schedules, attention },
+  page: { main, lists, watches, manyOwners, logins, schedules, attention },
   avatars,
   avatarsLoaded,
   current,
@@ -716,7 +724,7 @@ function Navigation({
     (total, { list }) => total + list.watches.reduce((sum, item) => sum + item.inboxCount, 0),
     0
   );
-  const shown = watches.filter(item => !mixed || filter === 'all' || item.owner === filter);
+  const shown = watches.filter(item => !manyOwners || filter === 'all' || item.owner === filter);
   return (
     <nav className="opt-list">
       <div className="opt-head">
@@ -747,7 +755,15 @@ function Navigation({
         <span className="opt-count">{inboxCount}</span>
       </button>
       <span className="opt-label opt-section">Watches ({shown.length})</span>
-      {mixed && <OwnerFilter filter={filter} onChange={setFilter} />}
+      {manyOwners && (
+        <OwnerFilter
+          filters={InstagramLogin.literals.filter(login =>
+            watches.some(item => item.owner === login)
+          )}
+          filter={filter}
+          onChange={setFilter}
+        />
+      )}
       <div className="opt-watch-list">
         {shown.map(item => (
           <WatchRow
@@ -1234,6 +1250,7 @@ function usePageModel({ main, linked, linkedFailure, linkedState }: Lists) {
   const watches = useMemo(() => pageWatches(lists, main.heldWatches), [lists, main]);
   const mainSchedule = useWatchSchedule(main, 'main') ?? main.schedule;
   const linkedSchedule = useWatchSchedule(linked, 'linked');
+  const storeProblem = main.storage.status === 'ok' ? 0 : 1;
   const ownerOf = (watchId: string | undefined) =>
     watches.find(item => item.watch.watchId === watchId);
   return {
@@ -1246,7 +1263,7 @@ function usePageModel({ main, linked, linkedFailure, linkedState }: Lists) {
       const item = ownerOf(watchId);
       return item && !item.held ? item.owner : 'main';
     },
-    mixed: new Set(watches.map(item => item.owner)).size > 1,
+    manyOwners: new Set(watches.map(item => item.owner)).size > 1,
     logins: {
       state: linkedState,
       names: { main: main.viewer.username, ...(linked ? { linked: linked.viewer.username } : {}) },
@@ -1255,10 +1272,11 @@ function usePageModel({ main, linked, linkedFailure, linkedState }: Lists) {
       { label: linked && OWNER_LABEL.main, schedule: mainSchedule },
       ...(linkedSchedule ? [{ label: OWNER_LABEL.linked, schedule: linkedSchedule }] : []),
     ] satisfies LoginSchedule[],
-    // Each list counts a store problem once; the page shows it once.
-    attention:
-      lists.reduce((total, { list }) => total + list.attentionCount, 0) -
-      (main.storage.status === 'ok' ? 0 : lists.length - 1),
+    // Every list counts the shared store's problem, so the page adds it back once.
+    attention: lists.reduce(
+      (total, { list }) => total + list.attentionCount - storeProblem,
+      storeProblem
+    ),
   };
 }
 
@@ -1300,7 +1318,7 @@ function Console({
   verify: () => Promise<void>;
 }) {
   const page = usePageModel(lists);
-  const { main, ownerOf, mixed, attention } = page;
+  const { main, ownerOf, manyOwners, attention } = page;
   const exporter = useInboxExport(() => void refresh(), page.loginOf);
   const { images: avatars, loaded: avatarsLoaded } = useWatchAvatars(
     main.viewer.accountId,
@@ -1331,7 +1349,7 @@ function Console({
   };
 
   return (
-    <OwnerTagContext.Provider value={watchId => (mixed ? ownerOf(watchId)?.owner : undefined)}>
+    <OwnerTagContext.Provider value={watchId => (manyOwners ? ownerOf(watchId)?.owner : undefined)}>
       <InboxExportContext.Provider value={exporter}>
         <div className="opt-console">
           <Navigation
