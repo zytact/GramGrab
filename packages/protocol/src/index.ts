@@ -16,7 +16,7 @@ import { WatchCommand, WatchFailureDetail, WatchResult, WatchCheckProgress } fro
 export { decodeJsonFrame, encodeFrame, encodeJsonFrame, FrameDecoder } from './framing.ts';
 export { localIpcEndpoint, type IpcEnvironment } from './ipc.ts';
 
-export const PROTOCOL_VERSION = 6 as const;
+export const PROTOCOL_VERSION = 7 as const;
 
 /** Which Instagram login an operation runs as: the browser's own, or the linked second login. */
 export const InstagramLogin = Schema.Literal('main', 'linked');

@@ -326,7 +326,7 @@ export type WatchPreviewResponse =
     }
   | { readonly account?: undefined; readonly failure: WatchFailure };
 
-/** Avatar images as data URLs: the login's, and each of its Watches' by Watch ID. */
+/** Avatar images as data URLs: the asking login's, and every Watch's by Watch ID. */
 export interface WatchAvatarsResponse {
   readonly login?: string;
   readonly watches: Readonly<Record<string, string>>;

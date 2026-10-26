@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { UNATTENDED_DISCLOSURE, WatchList } from '@gramgrab/protocol';
 import { Schema } from 'effect';
 import { WatchStore } from '../watch/contracts.ts';
-import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
+import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
 import {
   STUB_AVATAR,
   TARGET,
@@ -942,8 +942,10 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     fireEvent(window, new Event('blur'));
     fireEvent(window, new Event('focus'));
 
-    expect(await screen.findByText('@instagram')).toBeDefined();
-    expect(screen.getByText('Watches (0)')).toBeDefined();
+    expect(
+      await screen.findByText('@instagram', { selector: '.opt-viewer .opt-name' })
+    ).toBeDefined();
+    expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Fetch media' })).toBeNull();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
@@ -994,7 +996,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Completed' });
     const viewerRequests = instagram.state.viewerRequests;
 
-    expect(await screen.findByText('Watches (0)')).toBeDefined();
+    expect(await screen.findByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
   });
 
@@ -1058,8 +1060,10 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
     release();
 
-    expect(await screen.findByText('@instagram')).toBeDefined();
-    expect(screen.getByText('Watches (0)')).toBeDefined();
+    expect(
+      await screen.findByText('@instagram', { selector: '.opt-viewer .opt-name' })
+    ).toBeDefined();
+    expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
     unmount();
     fireEvent(window, new Event('blur'));
@@ -1086,8 +1090,10 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     fireEvent(window, new Event('focus'));
     release();
 
-    expect(await screen.findByText('@instagram')).toBeDefined();
-    expect(screen.getByText('Watches (0)')).toBeDefined();
+    expect(
+      await screen.findByText('@instagram', { selector: '.opt-viewer .opt-name' })
+    ).toBeDefined();
+    expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(2);
   });
 
@@ -1235,5 +1241,94 @@ describe('Watches options page', { timeout: 15_000 }, () => {
 
     await waitFor(() => expect(screen.getByText('Watches stopped.')).toBeDefined());
     expect(screen.getByText(/Saved Watch data was not dropped or reset/)).toBeDefined();
+  });
+});
+
+describe('Watches of both logins', { timeout: 15_000 }, () => {
+  // `creators` is Instagram's own account too; the two logins need different usernames.
+  const LINKED = { id: '3003', username: 'creators' };
+  const LINKED_WATCH_ID = '7a2c3b0f-8d4e-4c9b-8f2a-3b4c5d6e7f80';
+  const OTHER_WATCH_ID = '8b3d4c1a-9e5f-4dab-9a3b-4c5d6e7f8091';
+
+  /** Links `LINKED` as the second login and answers its viewer query. */
+  beforeEach(() => {
+    harness.local.write('linked-instagram-login', {
+      version: 1,
+      accountId: LINKED.id,
+      cookies: { sessionid: 'linked-session', ds_user_id: LINKED.id, csrftoken: 'linked-csrf' },
+    });
+    harness.setFetch((url, init) => {
+      const { searchParams } = new URL(url);
+      return searchParams.get('gg_login') === 'linked' &&
+        searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3'
+        ? json({ data: { user: LINKED } })
+        : instagram.handle(url, init);
+    });
+  });
+
+  const storedWatches = () =>
+    Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store')).watches;
+
+  it('lists every login’s Watches by owner, filters by login, and changes one as its owner', async () => {
+    seedWatchWithProblemAndEntry();
+    const watch = (id: string, viewerId: string) => ({
+      id,
+      viewerId,
+      targetId: TARGET.id,
+      username: TARGET.username,
+      createdAt: Date.now(),
+      enabled: true,
+      kinds: ['posts'],
+      actions: ['collect'],
+      tracking: {},
+      discoveries: [],
+    });
+    harness.local.write('watch-store', {
+      version: 2,
+      watches: [
+        ...storedWatches(),
+        watch(LINKED_WATCH_ID, LINKED.id),
+        watch(OTHER_WATCH_ID, '4004'),
+      ],
+    });
+    const user = userEvent.setup();
+    render(<Watches />);
+
+    const rows = await screen.findAllByRole('button', { name: /^@instagram/ });
+    expect(rows.map(row => row.querySelector('.opt-owner')?.textContent)).toEqual([
+      'Main',
+      'Linked',
+      'Other login',
+    ]);
+    expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: 'Linked' }));
+    await user.click(screen.getByRole('button', { name: /^@instagram/ }));
+    await user.click(await screen.findByText('Pause checks'));
+
+    await waitFor(() =>
+      expect(storedWatches().find(stored => stored.id === LINKED_WATCH_ID)?.enabled).toBe(false)
+    );
+    expect(harness.browser.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'WATCH_COMMAND',
+        command: expect.objectContaining({ _tag: 'WatchLifecycle', operation: 'pause' }),
+        login: 'linked',
+      })
+    );
+    expect(storedWatches().filter(stored => stored.enabled)).toHaveLength(2);
+  });
+
+  it('adds a Watch as the login picked in Add Watch', async () => {
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText('+ Add Watch'));
+    await user.selectOptions(screen.getByRole('combobox'), 'linked');
+    await user.type(screen.getByPlaceholderText(/username or instagram.com/), TARGET.username);
+    await user.click(screen.getByText('Find account'));
+    await user.click(await screen.findByText(UNATTENDED_DISCLOSURE));
+    await user.click(screen.getByRole('button', { name: 'Add Watch' }));
+
+    await screen.findByText('Pause checks');
+    expect(storedWatches()).toMatchObject([{ viewerId: LINKED.id, targetId: TARGET.id }]);
   });
 });

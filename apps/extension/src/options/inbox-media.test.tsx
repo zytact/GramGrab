@@ -43,7 +43,7 @@ it('waits for measured Frame duration and freezes the clamped timestamp', async 
       finish = resolve;
     })
   );
-  const { result } = renderHook(useInboxMedia);
+  const { result } = renderHook(() => useInboxMedia(() => 'main'));
   await act(() => result.current.fetch([entry]));
   act(() => result.current.actions.onToggleExportFrame(0));
   expect(result.current.runtimes[0]?.frame.status).toBe('loading');
@@ -64,7 +64,7 @@ it('falls back for a failed remote Story-image preview without refetching a data
   }));
   const fallback = vi.fn(() => ({ previewUrl: 'data:image/jpeg;base64,AA==' }));
   setMockMessageHandler('GET_PREVIEW_URL', fallback);
-  const { result } = renderHook(useInboxMedia);
+  const { result } = renderHook(() => useInboxMedia(() => 'main'));
   await act(() => result.current.fetch([entry]));
   act(() => result.current.actions.onPreviewError(result.current.items[0]!));
   await waitFor(() =>
@@ -85,7 +85,7 @@ it.each(['WATCH_NOT_FOUND', 'IG_NOT_AUTHENTICATED'] as const)(
       });
     setMockMessageHandler('WATCH_INBOX_PREVIEW', preview);
     const reconcileOwner = vi.fn();
-    const { result } = renderHook(() => useInboxMedia(reconcileOwner));
+    const { result } = renderHook(() => useInboxMedia(() => 'main', reconcileOwner));
     const second = DiscoverySummary.make({
       ...entryDetails,
       entryId: '2b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e',

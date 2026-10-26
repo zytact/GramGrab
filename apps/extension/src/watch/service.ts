@@ -4,6 +4,7 @@ import {
   CommandFailure,
   LinkedLoginAttention,
   ExistingWatch,
+  HeldWatch,
   OperationFailure,
   StoredWatchCount,
   UNATTENDED_DISCLOSURE,
@@ -176,25 +177,39 @@ async function storageState(read: StoreRead): Promise<WatchStorage> {
   });
 }
 
+/** The stored Watches no signed-in login checks: an ended linked login's, or another login's. */
+async function heldWatches(store: WatchStore | undefined, viewerId: string): Promise<HeldWatch[]> {
+  const linked = await readLinkedLogin();
+  const checking = new Set([
+    viewerId,
+    linked?.ended ? undefined : linked?.accountId,
+    await verifiedViewerId('main'),
+  ]);
+  return (store?.watches ?? []).flatMap(watch =>
+    checking.has(watch.viewerId)
+      ? []
+      : [
+          HeldWatch.make({
+            owner: watch.viewerId === linked?.accountId ? 'linked' : 'other',
+            watch: summarize(watch),
+          }),
+        ]
+  );
+}
+
 const list = Effect.fn(function* (known?: WatchViewer) {
   const read = yield* load;
   const store = read.kind === 'ok' ? read.store : undefined;
   const viewer = yield* viewerFrom(store, known);
   const storage = yield* Effect.promise(() => storageState(read));
   const schedule = yield* Effect.promise(() => scheduleOf(viewer.accountId));
-  const logins = new Set([
-    viewer.accountId,
-    (yield* Effect.promise(readLinkedLogin))?.accountId,
-    yield* Effect.promise(() => verifiedViewerId('main')),
-  ]);
   const watches = store
     ? owned(store, viewer).map(watch => summarize(watch, schedule.manualChecks.get(watch.id)))
     : [];
   return WatchListResult.make({
     viewer: WatchViewer.make({ accountId: viewer.accountId, username: viewer.username }),
     schedule: schedule.schedule,
-    otherLoginWatchCount: (store?.watches ?? []).filter(watch => !logins.has(watch.viewerId))
-      .length,
+    heldWatches: yield* Effect.promise(() => heldWatches(store, viewer.accountId)),
     storage,
     attentionCount:
       (store ? (yield* Effect.promise(() => loginAttention(store, viewer.accountId))).length : 0) +

@@ -11,6 +11,7 @@ import {
   type KindCheckOutcome,
   type KindHealth,
   type ManualCheck,
+  type InstagramLogin,
   type WatchCommand,
   type WatchSummary,
   type WatchViewer,
@@ -23,15 +24,20 @@ import { KIND_LABEL, relativeTime, WATCH_AVATAR_NOTE } from './copy.ts';
 import { useInboxSelection } from './inbox-export.tsx';
 import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
-import { pageLogin } from './login-switch.tsx';
+import { OwnerTag, type LoginList } from './owners.tsx';
 
 const DAY_MS = 24 * 60 * 60_000;
 
-export const runCommand = (command: WatchCommand): Promise<WatchCommandResponse> =>
-  sendMessage({ type: 'WATCH_COMMAND', command, login: pageLogin() });
+export const runCommand = (
+  command: WatchCommand,
+  login: InstagramLogin
+): Promise<WatchCommandResponse> => sendMessage({ type: 'WATCH_COMMAND', command, login });
 
-export const runRead = (command: WatchRead, viewer: WatchViewer): Promise<WatchCommandResponse> =>
-  sendMessage({ type: 'WATCH_READ', command, viewer, login: pageLogin() });
+export const runRead = (
+  command: WatchRead,
+  viewer: WatchViewer,
+  login: InstagramLogin
+): Promise<WatchCommandResponse> => sendMessage({ type: 'WATCH_READ', command, viewer, login });
 
 export function healthText(health: KindHealth, enabled: boolean): string {
   switch (health._tag) {
@@ -220,7 +226,7 @@ function DiscoveryList({
 }: {
   entries: readonly DiscoverySummary[];
   showAccount: boolean;
-  onRemove?: (entryId: string) => void;
+  onRemove?: (entry: DiscoverySummary) => void;
   selection?: Selection;
 }) {
   if (entries.length === 0) return <p className="opt-meta">Nothing here yet.</p>;
@@ -233,7 +239,11 @@ function DiscoveryList({
             {selection && <DiscoveryCheckbox entry={entry} selection={selection} />}
             <div className="opt-grow">
               <div>
-                {showAccount && `@${entry.username} · `}
+                {showAccount && (
+                  <>
+                    <OwnerTag watchId={entry.watchId} />@{entry.username} ·{' '}
+                  </>
+                )}
                 <a
                   className="opt-entry-link"
                   href={entry.instagramUrl}
@@ -253,7 +263,7 @@ function DiscoveryList({
               <button
                 className="opt-btn opt-ghost"
                 disabled={selection?.busy}
-                onClick={() => onRemove(entry.entryId)}
+                onClick={() => onRemove(entry)}
               >
                 Remove
               </button>
@@ -276,40 +286,38 @@ function InboxList({
   showAccount: boolean;
 }) {
   const exporter = useInboxSelection();
-  const selectedIds = entries
-    .filter(entry => exporter.selected.has(entry.entryId))
-    .map(entry => entry.entryId);
+  const selectedEntries = entries.filter(entry => exporter.selected.has(entry.entryId));
   return (
     <>
       {entries.length > 0 && (
         <div className="opt-row opt-line" role="group" aria-label="Inbox selection">
           <button
             className="opt-btn"
-            disabled={exporter.busy || selectedIds.length === entries.length}
+            disabled={exporter.busy || selectedEntries.length === entries.length}
             onClick={() => exporter.selectAll(entries)}
           >
             Select all
           </button>
           <button
             className="opt-btn opt-ghost"
-            disabled={exporter.busy || selectedIds.length === 0}
+            disabled={exporter.busy || selectedEntries.length === 0}
             onClick={exporter.clear}
           >
             Clear selection
           </button>
           <button
             className="opt-btn opt-danger"
-            disabled={exporter.busy || selectedIds.length === 0}
-            onClick={() => exporter.remove(selectedIds)}
+            disabled={exporter.busy || selectedEntries.length === 0}
+            onClick={() => exporter.remove(selectedEntries)}
           >
-            Remove selected ({selectedIds.length})
+            Remove selected ({selectedEntries.length})
           </button>
         </div>
       )}
       <DiscoveryList
         entries={entries}
         showAccount={showAccount}
-        onRemove={entryId => exporter.remove([entryId])}
+        onRemove={entry => exporter.remove([entry])}
         selection={{
           selected: new Set(exporter.selected.keys()),
           outcomes: exporter.outcomes,
@@ -324,19 +332,27 @@ function InboxList({
   );
 }
 
-/** Every collected entry of the verified login, reloaded whenever `version` changes. */
-export function AllInbox({ viewer, version }: { viewer: WatchViewer; version: number }) {
+/** Every collected entry of the signed-in logins, newest first, reloaded when `version` changes. */
+export function AllInbox({ lists, version }: { lists: readonly LoginList[]; version: number }) {
   const [entries, setEntries] = useState<readonly DiscoverySummary[]>();
   useEffect(() => {
     let current = true;
-    void runRead(WatchInboxList.make({}), viewer).then(response => {
-      if (current && response.result?._tag === 'WatchInboxListResult')
-        setEntries(response.result.entries);
+    void Promise.all(
+      lists.map(({ login, list }) => runRead(WatchInboxList.make({}), list.viewer, login))
+    ).then(responses => {
+      if (!current) return;
+      setEntries(
+        responses
+          .flatMap(response =>
+            response.result?._tag === 'WatchInboxListResult' ? response.result.entries : []
+          )
+          .sort((left, right) => right.discoveredAt - left.discoveredAt)
+      );
     });
     return () => {
       current = false;
     };
-  }, [viewer, version]);
+  }, [lists, version]);
   return (
     <>
       <h1 className="opt-h1">All inbox</h1>
@@ -409,7 +425,15 @@ function ManualCheckStatus({ check }: { check: ManualCheck }) {
  * Puts the Watch at the front of the queue; pacing may still hold it back. Whether it is checking
  * comes from the worker's record, so it survives leaving the Watch or reloading the page.
  */
-function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => void }) {
+function CheckNow({
+  watch,
+  login,
+  onChecked,
+}: {
+  watch: WatchSummary;
+  login: InstagramLogin;
+  onChecked: () => void;
+}) {
   const { manualCheck } = watch;
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string>();
@@ -419,7 +443,8 @@ function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => 
     setSending(true);
     setNotice(undefined);
     const response = await runCommand(
-      WatchCheck.make({ watches: [AccountIdSelector.make({ accountId: watch.accountId })] })
+      WatchCheck.make({ watches: [AccountIdSelector.make({ accountId: watch.accountId })] }),
+      login
     );
     setSending(false);
     setFailure(response.failure);
@@ -451,15 +476,15 @@ function CheckNow({ watch, onChecked }: { watch: WatchSummary; onChecked: () => 
   );
 }
 
-/** One Watch's health and what it found, reloaded whenever `version` changes. */
+/** One Watch's health and what it found, read as its owner and reloaded when `version` changes. */
 export function WatchDetail({
-  viewer,
+  owner: { login, list },
   watch,
   avatar,
   version,
   onChanged,
 }: {
-  viewer: WatchViewer;
+  owner: LoginList;
   watch: WatchSummary;
   avatar: string | undefined;
   version: number;
@@ -468,18 +493,21 @@ export function WatchDetail({
   const [tab, setTab] = useState<'found' | 'inbox'>('inbox');
   const [found, setFound] = useState<readonly DiscoverySummary[]>();
   const { accountId } = watch;
+  const { viewer } = list;
   useEffect(() => {
     let current = true;
-    void runRead(WatchShow.make({ watch: AccountIdSelector.make({ accountId }) }), viewer).then(
-      response => {
-        if (current && response.result?._tag === 'WatchShowResult')
-          setFound(response.result.discoveries);
-      }
-    );
+    void runRead(
+      WatchShow.make({ watch: AccountIdSelector.make({ accountId }) }),
+      viewer,
+      login
+    ).then(response => {
+      if (current && response.result?._tag === 'WatchShowResult')
+        setFound(response.result.discoveries);
+    });
     return () => {
       current = false;
     };
-  }, [viewer, accountId, version]);
+  }, [viewer, login, accountId, version]);
   const inbox = found?.filter(entry => entry.inboxUntil !== undefined);
   return (
     <>
@@ -501,7 +529,7 @@ export function WatchDetail({
           </a>
           {watch.formerUsername && <span className="opt-meta">was @{watch.formerUsername}</span>}
         </div>
-        <CheckNow watch={watch} onChecked={onChanged} />
+        <CheckNow watch={watch} login={login} onChecked={onChanged} />
       </div>
       {!watch.enabled && (
         <p className="opt-banner">

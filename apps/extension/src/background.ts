@@ -93,7 +93,7 @@ import { MESSAGE_REFUSALS } from './messaging/refusals.ts';
 import { sendTabMessage } from './messaging/send.ts';
 import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning } from './errors/contracts.ts';
-import { PersonRequests, loginOf } from './instagram/requests.ts';
+import { PersonRequests } from './instagram/requests.ts';
 import { listenForLinkedCookies, restoreLinkedRule } from './instagram/linked-login.ts';
 import { linkLogin, loginNames, unlinkLinkedLogin } from './instagram/link.ts';
 import { installInstagramOrigin } from './instagram/origin.ts';
@@ -115,7 +115,6 @@ import {
 } from './watch/scheduler.ts';
 import { notifiedWatch } from './watch/notify.ts';
 import { recordFetched } from './watch/fetched.ts';
-import { readStore } from './watch/store.ts';
 import { acceptedHistoryEntry, type AcceptedHistoryOperation } from './history/receipt.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
@@ -1245,20 +1244,12 @@ browser.runtime.onInstalled.addListener(details => {
   void ensureAlarm();
   if (details.reason === 'update') void retryAfterUpdate();
 });
-// A Watch notification opens that Watch's Inbox tab on its login's page, which shows it only to
-// the login that owns it.
+// A Watch notification opens that Watch's Inbox tab on the Watches page.
 browser.notifications.onClicked.addListener(id => {
   const watchId = notifiedWatch(id);
   if (!watchId) return;
   void browser.notifications.clear(id).catch(() => undefined);
-  void (async () => {
-    const read = await readStore();
-    const watch =
-      read.kind === 'ok' ? read.store.watches.find(item => item.id === watchId) : undefined;
-    const login = watch ? await loginOf(watch.viewerId) : 'main';
-    const page = login === 'linked' ? 'options.html?login=linked' : 'options.html';
-    await browser.tabs.create({ url: browser.runtime.getURL(`${page}#watch=${watchId}`) });
-  })();
+  void browser.tabs.create({ url: browser.runtime.getURL(`options.html#watch=${watchId}`) });
 });
 void initializeScheduler().catch(() => undefined);
 void refreshBadge();

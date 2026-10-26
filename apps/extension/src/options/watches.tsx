@@ -1,8 +1,9 @@
 import { Option } from 'effect';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccountIdSelector,
   CommandFailure,
+  InstagramLogin,
   OperationFailure,
   StoredWatchCount,
   UNATTENDED_DISCLOSURE,
@@ -17,16 +18,21 @@ import {
   type WatchKind,
   type WatchListResult,
   type WatchSchedule,
+  type FailureCode,
+  type HeldWatch,
   type WatchSummary,
   type WatchViewer,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
 import type {
+  LinkedLoginState,
   WatchCommandResponse,
   WatchAvatarsResponse,
   WatchFailure,
   WatchPreviewResponse,
 } from '../messaging/contracts.ts';
+import { linkedLoginState } from '../instagram/linked-login.ts';
+import { LoginPicker, useLoginChoice, useLogins, type Logins } from '../popup/login-picker.tsx';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
@@ -53,20 +59,40 @@ import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
 import { WatchTransfer } from './watch-transfer.tsx';
 import { askToNotify } from './notify-permission.ts';
-import { LoginSwitch, pageLogin } from './login-switch.tsx';
+import { LoginsSection } from './logins.tsx';
+import {
+  OWNER_LABEL,
+  OwnerTag,
+  OwnerTagContext,
+  pageWatches,
+  type LoginList,
+  type PageWatch,
+} from './owners.tsx';
 
 type View = 'attention' | 'inbox' | 'new' | 'transfer' | { readonly watchId: string };
 
-/** A notification opens `#watch=<id>`; the Watch shows only if this login owns it. */
+/** A notification opens `#watch=<id>`. */
 const linkedView = (): View | undefined => {
   const watchId = new URLSearchParams(location.hash.slice(1)).get('watch');
   return watchId ? { watchId } : undefined;
 };
 
+/** Both logins' verified lists. The main login's comes first and holds the held Watches. */
+interface Lists {
+  readonly main: WatchListResult;
+  readonly linked: WatchListResult | undefined;
+  /** Why the linked login's list could not be read while it is linked. */
+  readonly linkedFailure: WatchFailure | undefined;
+  readonly linkedState: LinkedLoginState;
+}
+
 type Loaded =
   | { readonly kind: 'loading' }
-  | { readonly kind: 'ready'; readonly list: WatchListResult }
+  | { readonly kind: 'ready'; readonly lists: Lists }
   | { readonly kind: 'failed'; readonly failure: WatchFailure };
+
+/** Runs a command as the login that owns what it changes. */
+type Run = (command: WatchCommand, login: InstagramLogin) => Promise<WatchFailure | undefined>;
 
 const toggled = <T,>(values: readonly T[], value: T): T[] =>
   values.includes(value) ? values.filter(item => item !== value) : [...values, value];
@@ -74,13 +100,23 @@ const toggled = <T,>(values: readonly T[], value: T): T[] =>
 const ordered = <T extends string>(all: readonly T[], chosen: readonly T[]) =>
   all.filter(value => chosen.includes(value));
 
-function FailureNotice({ failure }: { failure: WatchFailure }) {
+function FailureNotice({ failure, label }: { failure: WatchFailure; label?: string }) {
+  const named = label ? `${label}: ` : '';
   if (failure._tag === 'ValidationFailure')
-    return <p className="opt-banner opt-banner-error">{failure.message}</p>;
+    return (
+      <p className="opt-banner opt-banner-error">
+        {named}
+        {failure.message}
+      </p>
+    );
   const copy = FAILURE_PRESENTATION[failure.failure.code];
   return (
     <p className="opt-banner opt-banner-error">
-      <strong>{copy.title}.</strong> {copy.explanation}
+      <strong>
+        {named}
+        {copy.title}.
+      </strong>{' '}
+      {copy.explanation}
     </p>
   );
 }
@@ -95,7 +131,7 @@ function LoginGate({ failure }: { failure: WatchFailure }) {
   const stored = storedCount(failure);
   const signedOut =
     failure._tag === 'CommandFailure' && failure.failure.code === 'IG_NOT_AUTHENTICATED';
-  const mainSignedOut = signedOut && pageLogin() === 'main';
+  const logins = useLogins();
   return (
     <div className="opt-gate">
       <Title />
@@ -112,12 +148,12 @@ function LoginGate({ failure }: { failure: WatchFailure }) {
       <p className="opt-meta">
         {stored} {stored === 1 ? 'Watch' : 'Watches'} stored in this browser.
       </p>
-      {mainSignedOut && (
+      {signedOut && (
         <a className="opt-btn opt-primary" href="https://www.instagram.com/" target="_blank">
           Open instagram.com
         </a>
       )}
-      <LoginSwitch />
+      <LoginsSection logins={logins} onChange={logins.reload} />
     </div>
   );
 }
@@ -218,7 +254,13 @@ const actionNote = (chosen: readonly WatchAction[]) => (action: WatchAction) =>
     ? 'Off. Existing inbox entries stay until they expire or you remove them.'
     : ACTION_NOTE[action];
 
-function FindAccount({ onFound }: { onFound: (preview: WatchPreviewResponse) => void }) {
+function FindAccount({
+  login,
+  onFound,
+}: {
+  login: InstagramLogin;
+  onFound: (preview: WatchPreviewResponse) => void;
+}) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<WatchFailure>();
@@ -228,13 +270,11 @@ function FindAccount({ onFound }: { onFound: (preview: WatchPreviewResponse) => 
       onSubmit={event => {
         event.preventDefault();
         setBusy(true);
-        void sendMessage({ type: 'WATCH_PREVIEW', target: input.trim(), login: pageLogin() }).then(
-          preview => {
-            setBusy(false);
-            setFailure(preview.failure);
-            if (preview.account) onFound(preview);
-          }
-        );
+        void sendMessage({ type: 'WATCH_PREVIEW', target: input.trim(), login }).then(preview => {
+          setBusy(false);
+          setFailure(preview.failure);
+          if (preview.account) onFound(preview);
+        });
       }}
     >
       <input
@@ -332,25 +372,64 @@ function NewWatchForm({
   );
 }
 
-/** Resolves an account first, then asks for kinds, actions, and the disclosure acknowledgement. */
+/**
+ * Picks the owning login when one is linked, resolves an account as that login, then asks for
+ * kinds, actions, and the disclosure acknowledgement.
+ */
 function AddWatchFlow({
+  logins,
   onRun,
   onOpen,
 }: {
-  onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
+  logins: Logins;
+  onRun: Run;
+  onOpen: (watchId: string) => void;
+}) {
+  const [login, setLogin] = useLoginChoice(logins);
+  return (
+    <>
+      <LoginPicker logins={logins} login={login} disabled={false} onChange={setLogin} />
+      <AccountStep key={login} login={login} onRun={onRun} onOpen={onOpen} />
+    </>
+  );
+}
+
+/** Finds an account as `login` and adds it as the same login. */
+function AccountStep({
+  login,
+  onRun,
+  onOpen,
+}: {
+  login: InstagramLogin;
+  onRun: Run;
   onOpen: (watchId: string) => void;
 }) {
   const [preview, setPreview] = useState<WatchPreviewResponse>();
-  if (!preview?.account) return <FindAccount onFound={setPreview} />;
-  const { account, existing } = preview;
+  return preview?.account ? (
+    <FoundAccount
+      preview={preview}
+      onRun={command => onRun(command, login)}
+      onChange={() => setPreview(undefined)}
+      onOpen={onOpen}
+    />
+  ) : (
+    <FindAccount login={login} onFound={setPreview} />
+  );
+}
+
+function FoundAccount({
+  preview: { account, existing },
+  onRun,
+  onChange,
+  onOpen,
+}: {
+  preview: Extract<WatchPreviewResponse, { account: object }>;
+  onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
+  onChange: () => void;
+  onOpen: (watchId: string) => void;
+}) {
   if (!existing)
-    return (
-      <NewWatchForm
-        username={account.username}
-        onRun={onRun}
-        onChange={() => setPreview(undefined)}
-      />
-    );
+    return <NewWatchForm username={account.username} onRun={onRun} onChange={onChange} />;
   return (
     <div className="opt-add">
       <strong>@{account.username}</strong>
@@ -453,18 +532,22 @@ function WatchSettings({
 }
 
 function AttentionView({
-  list,
+  lists,
   onOpen,
   onRun,
 }: {
-  list: WatchListResult;
+  lists: readonly LoginList[];
   onOpen: (watchId: string) => void;
-  onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
+  onRun: Run;
 }) {
-  const { watches, attentionEntries } = list;
-  const problems = watches.flatMap(watch =>
-    watch.kinds.flatMap(health =>
-      health._tag === 'KindProblem' && watch.enabled ? [{ watch, health }] : []
+  const attentionEntries = lists.flatMap(({ login, list }) =>
+    list.attentionEntries.map(entry => ({ login, entry }))
+  );
+  const problems = lists.flatMap(({ list }) =>
+    list.watches.flatMap(watch =>
+      watch.kinds.flatMap(health =>
+        health._tag === 'KindProblem' && watch.enabled ? [{ watch, health }] : []
+      )
     )
   );
   return (
@@ -474,7 +557,7 @@ function AttentionView({
         <p className="opt-note">All clear. Nothing needs you right now.</p>
       )}
       {attentionEntries.length > 0 && <h2 className="opt-h2">Actions that need you</h2>}
-      {attentionEntries.map(entry => (
+      {attentionEntries.map(({ login, entry }) => (
         <RecoveryActions
           key={entry.entryId}
           entry={entry}
@@ -485,7 +568,7 @@ function AttentionView({
               command.operation === 'retry'
             )
               askToNotify(['notify']);
-            void onRun(command);
+            void onRun(command, login);
           }}
         />
       ))}
@@ -494,7 +577,7 @@ function AttentionView({
         <div key={watch.watchId + health.kind} className="opt-line opt-row opt-top">
           <div className="opt-grow">
             <strong>
-              @{watch.username} · {KIND_LABEL[health.kind]}
+              <OwnerTag watchId={watch.watchId} />@{watch.username} · {KIND_LABEL[health.kind]}
             </strong>
             <span className="opt-meta">{healthText(health, watch.enabled)}</span>
           </div>
@@ -507,21 +590,34 @@ function AttentionView({
   );
 }
 
+const HELD_NOTE: Record<HeldWatch['owner'], string> = {
+  linked: 'Paused · link this login again to resume',
+  other: 'Paused · sign in as that login to resume',
+};
+
+function rowStatus({ watch, ...owner }: PageWatch): string {
+  if (owner.held) return HELD_NOTE[owner.owner];
+  if (!watch.enabled) return 'Paused';
+  if (watch.attentionCount > 0) return `${watch.attentionCount} need you`;
+  return watch.lastCheckAt ? `Checked ${relativeTime(watch.lastCheckAt)}` : 'First check pending';
+}
+
 function WatchRow({
-  watch,
+  item,
   avatar,
   active,
   onOpen,
 }: {
-  watch: WatchSummary;
+  item: PageWatch;
   avatar: string | undefined;
   active: boolean;
   onOpen: () => void;
 }) {
-  const attention = watch.attentionCount;
+  const { watch } = item;
+  const enabled = watch.enabled && !item.held;
   return (
     <button
-      className={`opt-item ${active ? 'active' : ''} ${watch.enabled ? '' : 'opt-dim'}`}
+      className={`opt-item ${active ? 'active' : ''} ${enabled ? '' : 'opt-dim'}`}
       aria-labelledby={`watch-account-${watch.watchId}`}
       onClick={onOpen}
     >
@@ -536,26 +632,28 @@ function WatchRow({
           @{watch.username}
         </span>
         <span className="opt-meta">
-          {!watch.enabled
-            ? 'Paused'
-            : attention > 0
-              ? `${attention} need you`
-              : watch.lastCheckAt
-                ? `Checked ${relativeTime(watch.lastCheckAt)}`
-                : 'First check pending'}
+          <OwnerTag watchId={watch.watchId} />
+          {rowStatus(item)}
         </span>
       </span>
-      {attention > 0 && watch.enabled && <span className="opt-dot" />}
+      {watch.attentionCount > 0 && enabled && <span className="opt-dot" />}
     </button>
   );
 }
 
-function NextChecks({ schedule }: { schedule: WatchSchedule }) {
+/** One login's schedule, named by its login when both are signed in. */
+interface LoginSchedule {
+  readonly label: string | undefined;
+  readonly schedule: WatchSchedule;
+}
+
+function NextChecks({ label, schedule }: LoginSchedule) {
   const { nextRoundAt, roundRemaining, suspended, pausedUntil, cappedUntil } = schedule;
   const held = suspended || pausedUntil !== undefined || cappedUntil !== undefined;
   if (!nextRoundAt) return null;
   return (
     <p className="opt-meta">
+      {label && `${label}: `}
       {roundRemaining > 0
         ? `${held ? 'Waiting' : 'Checking'}: ${roundRemaining} left this round`
         : `Next checks around ${new Date(nextRoundAt).toLocaleString()}`}
@@ -563,66 +661,124 @@ function NextChecks({ schedule }: { schedule: WatchSchedule }) {
   );
 }
 
-/** Other logins' Watches, when checks run next, and how full the store is. */
+/** When each login's checks run next, and how full the store is. */
 function NavigationFoot({
-  list,
-  schedule,
+  storage,
+  schedules,
   showAvatarNote,
 }: {
-  list: WatchListResult;
-  schedule: WatchSchedule;
+  storage: WatchListResult['storage'];
+  schedules: readonly LoginSchedule[];
   showAvatarNote: boolean;
 }) {
-  const others = list.otherLoginWatchCount;
   return (
     <div className="opt-list-foot">
-      {others > 0 && (
-        <p className="opt-banner">
-          {others} {others === 1 ? 'Watch belongs' : 'Watches belong'} to another Instagram login.{' '}
-          {others === 1 ? 'It is' : 'They are'} paused and hidden until that login signs in again.
-        </p>
-      )}
       {showAvatarNote && <p className="opt-meta">{WATCH_AVATAR_NOTE}</p>}
-      <NextChecks schedule={schedule} />
-      <StorageMeter storage={list.storage} />
+      {schedules.map(schedule => (
+        <NextChecks key={schedule.label ?? 'main'} {...schedule} />
+      ))}
+      <StorageMeter storage={storage} />
     </div>
   );
 }
 
-function Navigation({
-  list,
+type Filter = 'all' | InstagramLogin;
+
+const FILTER_LABEL: Record<Filter, string> = { all: 'All', main: 'Main', linked: 'Linked' };
+
+/** Narrows the Watch list to the Watches of one of `logins`. */
+function OwnerFilter({
+  logins,
+  filter,
+  onChange,
+}: {
+  logins: readonly InstagramLogin[];
+  filter: Filter;
+  onChange: (filter: Filter) => void;
+}) {
+  return (
+    <div className="opt-filter" role="group" aria-label="Show Watches of">
+      {(['all', ...logins] as const).map(value => (
+        <button key={value} aria-pressed={filter === value} onClick={() => onChange(value)}>
+          {FILTER_LABEL[value]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The Watch rows, narrowed by owner while more than one owns a Watch. */
+function WatchListSection({
+  watches,
+  manyOwners,
   avatars,
-  avatarsLoaded,
-  schedule,
-  current,
-  attention,
   activeWatchId,
   onGo,
 }: {
-  list: WatchListResult;
-  avatars: WatchAvatarsResponse;
-  avatarsLoaded: boolean;
-  schedule: WatchSchedule;
-  current: View;
-  attention: number;
+  watches: readonly PageWatch[];
+  manyOwners: boolean;
+  avatars: WatchAvatarsResponse['watches'];
   activeWatchId: string | undefined;
   onGo: (view: View) => void;
 }) {
-  const inboxCount = list.watches.reduce((total, item) => total + item.inboxCount, 0);
+  const owning = InstagramLogin.literals.filter(login =>
+    watches.some(item => item.owner === login)
+  );
+  const [picked, setFilter] = useState<Filter>('all');
+  const filter = picked !== 'all' && owning.includes(picked) ? picked : 'all';
+  const shown = watches.filter(item => filter === 'all' || item.owner === filter);
+  return (
+    <>
+      <span className="opt-label opt-section">Watches ({shown.length})</span>
+      {manyOwners && <OwnerFilter logins={owning} filter={filter} onChange={setFilter} />}
+      <div className="opt-watch-list">
+        {shown.map(item => (
+          <WatchRow
+            key={item.watch.watchId}
+            item={item}
+            avatar={avatars[item.watch.watchId]}
+            active={item.watch.watchId === activeWatchId}
+            onOpen={() => onGo({ watchId: item.watch.watchId })}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Navigation({
+  page: { main, lists, watches, manyOwners, logins, schedules, attention },
+  avatars,
+  avatarsLoaded,
+  current,
+  activeWatchId,
+  onGo,
+  onLoginsChanged,
+}: {
+  page: PageModel;
+  avatars: WatchAvatarsResponse;
+  avatarsLoaded: boolean;
+  current: View;
+  activeWatchId: string | undefined;
+  onGo: (view: View) => void;
+  onLoginsChanged: () => void;
+}) {
+  const inboxCount = lists.reduce(
+    (total, { list }) => total + list.watches.reduce((sum, item) => sum + item.inboxCount, 0),
+    0
+  );
   return (
     <nav className="opt-list">
       <div className="opt-head">
         <Title />
         <span className="opt-viewer" title="Verified from your Instagram session">
-          <Avatar src={avatars.login} username={list.viewer.username} size="sm" />
-          <span className="opt-meta">
-            {pageLogin() === 'linked' ? 'Linked Instagram login' : 'Instagram login'}
-          </span>{' '}
-          <span className="opt-name" title={`@${list.viewer.username}`}>
-            @{list.viewer.username}
+          <Avatar src={avatars.login} username={main.viewer.username} size="sm" />
+          <span className="opt-meta">Instagram login</span>{' '}
+          <span className="opt-name" title={`@${main.viewer.username}`}>
+            @{main.viewer.username}
           </span>
         </span>
-        <LoginSwitch />
+        <LoginsSection logins={logins} onChange={onLoginsChanged} />
       </div>
       <button
         className={`opt-item ${current === 'attention' ? 'active' : ''}`}
@@ -640,18 +796,13 @@ function Navigation({
         <span className="opt-grow">All inbox</span>
         <span className="opt-count">{inboxCount}</span>
       </button>
-      <span className="opt-label opt-section">Watches ({list.watches.length})</span>
-      <div className="opt-watch-list">
-        {list.watches.map(item => (
-          <WatchRow
-            key={item.watchId}
-            watch={item}
-            avatar={avatars.watches[item.watchId]}
-            active={item.watchId === activeWatchId}
-            onOpen={() => onGo({ watchId: item.watchId })}
-          />
-        ))}
-      </div>
+      <WatchListSection
+        watches={watches}
+        manyOwners={manyOwners}
+        avatars={avatars.watches}
+        activeWatchId={activeWatchId}
+        onGo={onGo}
+      />
       <button
         className={`opt-item opt-add-item ${current === 'new' ? 'active' : ''}`}
         onClick={() => onGo('new')}
@@ -665,17 +816,17 @@ function Navigation({
         Export or import
       </button>
       <NavigationFoot
-        list={list}
-        schedule={schedule}
+        storage={main.storage}
+        schedules={schedules}
         showAvatarNote={
-          avatarsLoaded && list.watches.some(watch => !avatars.watches[watch.watchId])
+          avatarsLoaded && watches.some(({ watch }) => !avatars.watches[watch.watchId])
         }
       />
     </nav>
   );
 }
 
-/** The sign-in gate for a console whose login the browser session no longer verifies. */
+/** The sign-in gate for a console whose main login the browser session no longer verifies. */
 const signedOut = (loaded: Loaded): Loaded =>
   loaded.kind === 'ready'
     ? {
@@ -683,51 +834,88 @@ const signedOut = (loaded: Loaded): Loaded =>
         failure: CommandFailure.make({
           failure: OperationFailure.make({ code: 'IG_NOT_AUTHENTICATED', scope: 'batch' }),
           detail: StoredWatchCount.make({
-            count: loaded.list.watches.length + loaded.list.otherLoginWatchCount,
+            count:
+              loaded.lists.main.watches.length +
+              loaded.lists.main.heldWatches.length +
+              (loaded.lists.linked?.watches.length ?? 0),
           }),
         }),
       }
     : loaded;
 
+/** Linked-login failures the Logins section already explains. */
+const LINKED_GONE: ReadonlySet<FailureCode> = new Set([
+  'IG_LINKED_LOGIN_MISSING',
+  'IG_LINKED_LOGIN_ENDED',
+]);
+
+const linkedFailureOf = (response: WatchCommandResponse) =>
+  response.failure?._tag === 'CommandFailure' && LINKED_GONE.has(response.failure.failure.code)
+    ? undefined
+    : response.failure;
+
 /**
- * The verified Watch list. `verify` asks Instagram who is signed in, `refresh` rereads the known
- * login's Watches, and a viewer change another surface records in the browser session is followed.
+ * Both logins' verified Watch lists. `verify` asks Instagram who each login is, `refresh` rereads
+ * the known logins' Watches, and a viewer change another surface records in the browser session is
+ * followed. The linked list is read first, so a session it finds ended shows among the main list's
+ * held Watches.
  */
 function useWatchList() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const [version, setVersion] = useState(0);
   const [pending, setPending] = useState(0);
-  const [observed, setObserved] = useState<{ readonly accountId: string }>();
+  const [observed, setObserved] = useState<
+    Partial<Record<InstagramLogin, { readonly accountId: string | undefined }>>
+  >({});
   const latest = useRef(0);
-  const viewer = useRef<WatchViewer>(undefined);
+  const viewers = useRef<Partial<Record<InstagramLogin, WatchViewer>>>({});
+  const linkedFailure = useRef<WatchFailure>(undefined);
   const verification = useRef<Promise<void>>(undefined);
   const reverify = useRef(false);
 
-  const load = useCallback(async (send: () => Promise<WatchCommandResponse>) => {
-    const request = ++latest.current;
-    setPending(count => count + 1);
-    try {
-      const response = await send();
-      if (request !== latest.current) return;
-      if (response.failure) {
-        viewer.current = undefined;
-        setLoaded({ kind: 'failed', failure: response.failure });
-      } else if (response.result._tag === 'WatchListResult') {
-        viewer.current = response.result.viewer;
-        setLoaded({ kind: 'ready', list: response.result });
+  const load = useCallback(
+    async (read: (login: InstagramLogin) => Promise<WatchCommandResponse> | undefined) => {
+      const request = ++latest.current;
+      setPending(count => count + 1);
+      try {
+        const linked = await read('linked');
+        const main = await read('main');
+        const linkedState = await linkedLoginState();
+        if (request !== latest.current || !main) return;
+        if (main.failure) {
+          viewers.current = {};
+          setLoaded({ kind: 'failed', failure: main.failure });
+        } else if (main.result._tag === 'WatchListResult') {
+          const linkedList = linked?.result?._tag === 'WatchListResult' ? linked.result : undefined;
+          if (linked) linkedFailure.current = linkedFailureOf(linked);
+          viewers.current = {
+            main: main.result.viewer,
+            ...(linkedList ? { linked: linkedList.viewer } : {}),
+          };
+          setLoaded({
+            kind: 'ready',
+            lists: {
+              main: main.result,
+              linked: linkedList,
+              linkedFailure: linkedFailure.current,
+              linkedState,
+            },
+          });
+        }
+        setVersion(current => current + 1);
+      } finally {
+        setPending(count => count - 1);
       }
-      setVersion(current => current + 1);
-    } finally {
-      setPending(count => count - 1);
-    }
-  }, []);
+    },
+    []
+  );
   const verify = useCallback(() => {
     reverify.current = true;
     if (verification.current) latest.current += 1;
     verification.current ??= (async () => {
       do {
         reverify.current = false;
-        await load(() => runCommand(WatchList.make()));
+        await load(login => runCommand(WatchList.make(), login));
       } while (reverify.current);
     })().finally(() => {
       verification.current = undefined;
@@ -736,37 +924,57 @@ function useWatchList() {
   }, [load]);
   const refresh = useCallback(async () => {
     await verification.current;
-    const known = viewer.current;
-    if (known) await load(() => runRead(WatchList.make(), known));
+    const known = viewers.current;
+    if (!known.main) return;
+    await load(login => {
+      const viewer = known[login];
+      return viewer && runRead(WatchList.make(), viewer, login);
+    });
   }, [load]);
 
   useEffect(() => {
     const listener = (changes: StorageChanges) => {
-      const change = changes[VIEWER_KEYS[pageLogin()]];
-      if (!change) return;
-      const next = Option.getOrUndefined(decodeCachedViewer(change.newValue));
-      setObserved(next && { accountId: next.accountId });
-      if (next || !viewer.current) return;
-      latest.current += 1;
-      viewer.current = undefined;
-      setLoaded(signedOut);
+      for (const login of InstagramLogin.literals) {
+        const change = changes[VIEWER_KEYS[login]];
+        if (!change) continue;
+        const next = Option.getOrUndefined(decodeCachedViewer(change.newValue));
+        setObserved(current => ({ ...current, [login]: { accountId: next?.accountId } }));
+        if (login !== 'main' || next || !viewers.current.main) continue;
+        latest.current += 1;
+        viewers.current = {};
+        setLoaded(signedOut);
+      }
     };
     browser.sessionStorage.onChanged.addListener(listener);
     return () => {
       browser.sessionStorage.onChanged.removeListener(listener);
       reverify.current = false;
-      viewer.current = undefined;
+      viewers.current = {};
       latest.current += 1;
     };
   }, []);
   useEffect(() => {
-    if (pending > 0 || !observed) return;
-    setObserved(undefined);
-    if (observed.accountId !== viewer.current?.accountId) void verify();
+    const seen = InstagramLogin.literals.flatMap(login => {
+      const viewer = observed[login];
+      return viewer ? [{ login, accountId: viewer.accountId }] : [];
+    });
+    if (pending > 0 || seen.length === 0) return;
+    setObserved({});
+    if (seen.some(({ login, accountId }) => accountId !== viewers.current[login]?.accountId))
+      void verify();
   }, [pending, observed, verify]);
 
   return { loaded, version, verify, refresh };
 }
+
+const pauseChanged = (changes: StorageChanges) =>
+  InstagramLogin.literals.some(login => {
+    const ledger = changes[LEDGER_KEYS[login]];
+    return (
+      ledger &&
+      decodeLedger(ledger.oldValue)?.pause?.until !== decodeLedger(ledger.newValue)?.pause?.until
+    );
+  });
 
 /** The Watches console: navigation, the selected view, and the selected Watch's settings. */
 export function Watches() {
@@ -801,15 +1009,7 @@ export function Watches() {
   useEffect(() => {
     if (!ready) return;
     const listener = (changes: StorageChanges) => {
-      const ledger = changes[LEDGER_KEYS[pageLogin()]];
-      if (
-        STORE_KEY in changes ||
-        SCHEDULER_KEY in changes ||
-        (ledger &&
-          decodeLedger(ledger.oldValue)?.pause?.until !==
-            decodeLedger(ledger.newValue)?.pause?.until)
-      )
-        void refresh();
+      if (STORE_KEY in changes || SCHEDULER_KEY in changes || pauseChanged(changes)) void refresh();
     };
     browser.storage.onChanged.addListener(listener);
     void refresh();
@@ -820,15 +1020,16 @@ export function Watches() {
   if (loaded.kind === 'failed') return <LoginGate failure={loaded.failure} />;
   return (
     <Console
-      key={loaded.list.viewer.accountId}
-      list={loaded.list}
+      key={loaded.lists.main.viewer.accountId}
+      lists={loaded.lists}
       version={version}
       refresh={refresh}
+      verify={verify}
     />
   );
 }
 
-/** The cached Avatars of the login's Watches and the login's own, reread whenever `version` changes. */
+/** The cached Avatars of every Watch and the main login's own, reread when `version` changes. */
 function useWatchAvatars(viewerId: string, version: number) {
   const [avatars, setAvatars] = useState<WatchAvatarsResponse>();
   useEffect(() => {
@@ -843,29 +1044,32 @@ function useWatchAvatars(viewerId: string, version: number) {
   return { images: avatars ?? { watches: {} }, loaded: avatars !== undefined };
 }
 
-function useWatchSchedule(list: WatchListResult) {
-  const viewerId = list.viewer.accountId;
+/** When `login`'s checks run next and what holds them, followed live from storage. */
+function useWatchSchedule(list: WatchListResult | undefined, login: InstagramLogin) {
+  const viewerId = list?.viewer.accountId;
+  const ledgerKey = LEDGER_KEYS[login];
   const [records, setRecords] = useState<{
     scheduler: SchedulerState;
     ledger: LedgerView | undefined;
     at: number;
   }>();
   useEffect(() => {
+    if (!viewerId) return;
     let active = true;
     let latest = 0;
     const read = () => {
       const current = ++latest;
-      void browser.storage.get([SCHEDULER_KEY, LEDGER_KEYS[pageLogin()]]).then(stored => {
+      void browser.storage.get([SCHEDULER_KEY, ledgerKey]).then(stored => {
         if (!active || current !== latest) return;
         setRecords({
           scheduler: decodeSchedulerState(stored[SCHEDULER_KEY]),
-          ledger: decodeLedger(stored[LEDGER_KEYS[pageLogin()]]),
+          ledger: decodeLedger(stored[ledgerKey]),
           at: Date.now(),
         });
       });
     };
     const listener = (changes: StorageChanges) => {
-      if (SCHEDULER_KEY in changes || LEDGER_KEYS[pageLogin()] in changes) read();
+      if (SCHEDULER_KEY in changes || ledgerKey in changes) read();
     };
     browser.storage.onChanged.addListener(listener);
     read();
@@ -873,11 +1077,12 @@ function useWatchSchedule(list: WatchListResult) {
       active = false;
       browser.storage.onChanged.removeListener(listener);
     };
-  }, [viewerId]);
-  const schedule = records
-    ? watchSchedule(records.scheduler, records.ledger, viewerId, records.at, pageLogin())
-    : list.schedule;
-  const holdEnd = schedule.cappedUntil ?? schedule.pausedUntil;
+  }, [viewerId, ledgerKey]);
+  const schedule =
+    records && viewerId
+      ? watchSchedule(records.scheduler, records.ledger, viewerId, records.at, login)
+      : list?.schedule;
+  const holdEnd = schedule?.cappedUntil ?? schedule?.pausedUntil;
   useEffect(() => {
     if (holdEnd === undefined) return;
     const timer = setTimeout(
@@ -889,39 +1094,129 @@ function useWatchSchedule(list: WatchListResult) {
   return schedule;
 }
 
-/** Why unattended checks are not running right now, if something holds them back. */
-function ScheduleNotice({ schedule }: { schedule: WatchSchedule }) {
+/** Why one login's unattended checks are not running right now, if something holds them back. */
+function ScheduleNotice({ label, schedule }: LoginSchedule) {
+  const named = label ? `${label}: ` : '';
   if (schedule.suspended)
     return (
       <p className="opt-banner opt-banner-error">
-        <strong>Watches stopped.</strong> Instagram refused the signed-in session. Sign in to
+        <strong>{named}Watches stopped.</strong> Instagram refused the signed-in session. Sign in to
         Instagram again, then return to this page to resume checks.
       </p>
     );
   if (schedule.pausedUntil)
     return (
       <p className="opt-banner opt-banner-error">
-        <strong>Watches paused.</strong> Instagram rate limited a Watch request, so Watch checks
-        wait until {new Date(schedule.cappedUntil ?? schedule.pausedUntil).toLocaleTimeString()}.
-        Your own downloads still go first.
+        <strong>{named}Watches paused.</strong> Instagram rate limited a Watch request, so Watch
+        checks wait until{' '}
+        {new Date(schedule.cappedUntil ?? schedule.pausedUntil).toLocaleTimeString()}. Your own
+        downloads still go first.
       </p>
     );
   if (schedule.cappedUntil)
     return (
       <p className="opt-banner">
-        <strong>Watches waiting.</strong> Instagram requests in the last hour, your own included,
-        reached the hourly limit. Watch checks resume around{' '}
+        <strong>{named}Watches waiting.</strong> Instagram requests in the last hour, your own
+        included, reached the hourly limit. Watch checks resume around{' '}
         {new Date(schedule.cappedUntil).toLocaleTimeString()}, or later if more requests are made.
       </p>
     );
   return null;
 }
 
+const HELD_DETAIL: Record<HeldWatch['owner'], string> = {
+  linked:
+    'Your linked login was signed out, so this Watch is paused. Link that login again to resume it.',
+  other:
+    'Another Instagram login owns this Watch, so it is paused. Sign in to Instagram as that login to resume it.',
+};
+
+/** A Watch whose owner is not signed in. It is shown, never changed. */
+function HeldDetail({
+  item: { owner, watch },
+  avatar,
+}: {
+  item: Extract<PageWatch, { held: true }>;
+  avatar: string | undefined;
+}) {
+  return (
+    <>
+      <div className="opt-row opt-between">
+        <Avatar
+          src={avatar}
+          username={watch.username}
+          size="lg"
+          placeholderHint={WATCH_AVATAR_NOTE}
+        />
+        <div className="opt-account-text opt-grow">
+          <a
+            className="opt-h1 opt-profile-link"
+            href={`https://www.instagram.com/${watch.username}/`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            @{watch.username}
+          </a>
+          <span className="opt-meta">{OWNER_LABEL[owner]}</span>
+        </div>
+      </div>
+      <p className="opt-banner">{HELD_DETAIL[owner]} Its inbox and baselines are kept.</p>
+    </>
+  );
+}
+
+/** The selected Watch: its detail as its owner, or what holds it. */
+function SelectedWatch({
+  item,
+  lists,
+  avatar,
+  version,
+  onChanged,
+}: {
+  item: PageWatch;
+  lists: readonly LoginList[];
+  avatar: string | undefined;
+  version: number;
+  onChanged: () => void;
+}) {
+  if (item.held) return <HeldDetail item={item} avatar={avatar} />;
+  const owner = lists.find(({ login }) => login === item.owner);
+  return owner ? (
+    <WatchDetail
+      key={item.watch.watchId}
+      owner={owner}
+      watch={item.watch}
+      avatar={avatar}
+      version={version}
+      onChanged={onChanged}
+    />
+  ) : null;
+}
+
+/** What holds Watches back right now: the store, each login's schedule, and the last failure. */
+function Notices({
+  page,
+  actionFailure,
+}: {
+  page: PageModel;
+  actionFailure: WatchFailure | undefined;
+}) {
+  return (
+    <>
+      <StorageNotice storage={page.main.storage} />
+      {page.schedules.map(schedule => (
+        <ScheduleNotice key={schedule.label ?? 'main'} {...schedule} />
+      ))}
+      {page.linkedFailure && <FailureNotice label="Linked login" failure={page.linkedFailure} />}
+      {actionFailure && <FailureNotice failure={actionFailure} />}
+    </>
+  );
+}
+
 function Feed({
-  list,
-  schedule,
+  page,
   current,
-  watch,
+  selected,
   avatars,
   actionFailure,
   version,
@@ -930,40 +1225,36 @@ function Feed({
   onSend,
   onChanged,
 }: {
-  list: WatchListResult;
-  schedule: WatchSchedule;
+  page: PageModel;
   current: View;
-  watch: WatchSummary | undefined;
+  selected: PageWatch | undefined;
   avatars: WatchAvatarsResponse['watches'];
   actionFailure: WatchFailure | undefined;
   version: number;
   onGo: (view: View) => void;
-  onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
-  onSend: (command: WatchCommand) => Promise<WatchCommandResponse>;
+  onRun: Run;
+  onSend: (command: WatchCommand, login: InstagramLogin) => Promise<WatchCommandResponse>;
   onChanged: () => void;
 }) {
+  const { lists, logins } = page;
+  const open = (watchId: string) => onGo({ watchId });
   return (
     <section key={typeof current === 'object' ? current.watchId : current} className="opt-feed">
-      <StorageNotice storage={list.storage} />
-      <ScheduleNotice schedule={schedule} />
-      {actionFailure && <FailureNotice failure={actionFailure} />}
-      {current === 'attention' && (
-        <AttentionView list={list} onRun={onRun} onOpen={id => onGo({ watchId: id })} />
-      )}
-      {current === 'inbox' && <AllInbox viewer={list.viewer} version={version} />}
+      <Notices page={page} actionFailure={actionFailure} />
+      {current === 'attention' && <AttentionView lists={lists} onRun={onRun} onOpen={open} />}
+      {current === 'inbox' && <AllInbox lists={lists} version={version} />}
       {current === 'new' && (
         <>
           <h1 className="opt-h1">Add Watch</h1>
-          <AddWatchFlow onRun={onRun} onOpen={id => onGo({ watchId: id })} />
+          <AddWatchFlow logins={logins} onRun={onRun} onOpen={open} />
         </>
       )}
-      {current === 'transfer' && <WatchTransfer watches={list.watches} onSend={onSend} />}
-      {watch && (
-        <WatchDetail
-          key={watch.watchId}
-          viewer={list.viewer}
-          watch={watch}
-          avatar={avatars[watch.watchId]}
+      {current === 'transfer' && <WatchTransfer lists={lists} logins={logins} onSend={onSend} />}
+      {selected && (
+        <SelectedWatch
+          item={selected}
+          lists={lists}
+          avatar={avatars[selected.watch.watchId]}
           version={version}
           onChanged={onChanged}
         />
@@ -972,90 +1263,155 @@ function Feed({
   );
 }
 
+/**
+ * Both logins' lists as the page shows them: every Watch with its owner, each login's schedule,
+ * and how many things need the person.
+ */
+function usePageModel({ main, linked, linkedFailure, linkedState }: Lists) {
+  const lists = useMemo<readonly LoginList[]>(
+    () => [
+      { login: 'main', list: main },
+      ...(linked ? [{ login: 'linked', list: linked } satisfies LoginList] : []),
+    ],
+    [main, linked]
+  );
+  const watches = useMemo(() => pageWatches(lists, main.heldWatches), [lists, main]);
+  const mainSchedule = useWatchSchedule(main, 'main') ?? main.schedule;
+  const linkedSchedule = useWatchSchedule(linked, 'linked');
+  const ownerOf = (watchId: string | undefined) =>
+    watches.find(item => item.watch.watchId === watchId);
+  return {
+    main,
+    lists,
+    watches,
+    linkedFailure,
+    ownerOf,
+    loginOf: (watchId: string | undefined): InstagramLogin => {
+      const item = ownerOf(watchId);
+      return item && !item.held ? item.owner : 'main';
+    },
+    manyOwners: new Set(watches.map(item => item.owner)).size > 1,
+    logins: {
+      state: linkedState,
+      names: { main: main.viewer.username, ...(linked ? { linked: linked.viewer.username } : {}) },
+    } satisfies Logins,
+    schedules: [
+      { label: linked && OWNER_LABEL.main, schedule: mainSchedule },
+      ...(linkedSchedule ? [{ label: OWNER_LABEL.linked, schedule: linkedSchedule }] : []),
+    ] satisfies LoginSchedule[],
+    // Every list counts the shared store's problem, so the page counts it once, from the main list.
+    attention: lists.reduce(
+      (total, { list }) => total + list.attentionCount - (list.storage.status === 'ok' ? 0 : 1),
+      main.storage.status === 'ok' ? 0 : 1
+    ),
+  };
+}
+
+type PageModel = ReturnType<typeof usePageModel>;
+
+function Inspector({
+  exporter,
+  selected,
+  onRun,
+  onDeleted,
+}: {
+  exporter: ReturnType<typeof useInboxExport>;
+  selected: PageWatch | undefined;
+  onRun: Run;
+  onDeleted: () => void;
+}) {
+  if (exporter.active) return <InboxExportControls value={exporter} />;
+  if (!selected) return <p className="opt-meta">Pick a Watch on the left to change it.</p>;
+  if (selected.held)
+    return <p className="opt-meta">Sign in as the login that owns this Watch to change it.</p>;
+  return (
+    <WatchSettings
+      watch={selected.watch}
+      onRun={command => onRun(command, selected.owner)}
+      onDeleted={onDeleted}
+    />
+  );
+}
+
 function Console({
-  list,
+  lists,
   version,
   refresh,
+  verify,
 }: {
-  list: WatchListResult;
+  lists: Lists;
   version: number;
   refresh: () => Promise<void>;
+  verify: () => Promise<void>;
 }) {
-  const exporter = useInboxExport(() => void refresh());
+  const page = usePageModel(lists);
+  const { main, ownerOf, manyOwners, attention } = page;
+  const exporter = useInboxExport(() => void refresh(), page.loginOf);
   const { images: avatars, loaded: avatarsLoaded } = useWatchAvatars(
-    list.viewer.accountId,
+    main.viewer.accountId,
     version
   );
-  const schedule = useWatchSchedule(list);
   const [view, setView] = useState<View | undefined>(linkedView);
   const [actionFailure, setActionFailure] = useState<WatchFailure>();
-  const attention = list.attentionCount;
-  const known =
-    typeof view === 'object' && !list.watches.some(watch => watch.watchId === view.watchId)
-      ? undefined
-      : view;
+  const known = typeof view === 'object' && !ownerOf(view.watchId) ? undefined : view;
   const current = known ?? (attention > 0 ? 'attention' : 'inbox');
-  const watch =
-    typeof current === 'object'
-      ? list.watches.find(candidate => candidate.watchId === current.watchId)
-      : undefined;
+  const selected = typeof current === 'object' ? ownerOf(current.watchId) : undefined;
 
   const go = (next: View) => {
     exporter.clear();
     setActionFailure(undefined);
     setView(next);
   };
-  const send = async (command: WatchCommand) => {
-    const response = await runCommand(command);
+  const send = async (command: WatchCommand, login: InstagramLogin) => {
+    const response = await runCommand(command, login);
     setActionFailure(response.failure);
     await refresh();
     return response;
   };
-  const run = async (command: WatchCommand) => {
-    const response = await send(command);
+  const run: Run = async (command, login) => {
+    const response = await send(command, login);
     if (!response.failure && response.result._tag === 'WatchAddResult')
       setView({ watchId: response.result.watch.watchId });
     return response.failure;
   };
 
   return (
-    <InboxExportContext.Provider value={exporter}>
-      <div className="opt-console">
-        <Navigation
-          list={list}
-          avatars={avatars}
-          avatarsLoaded={avatarsLoaded}
-          schedule={schedule}
-          current={current}
-          attention={attention}
-          activeWatchId={watch?.watchId}
-          onGo={go}
-        />
+    <OwnerTagContext.Provider value={watchId => (manyOwners ? ownerOf(watchId)?.owner : undefined)}>
+      <InboxExportContext.Provider value={exporter}>
+        <div className="opt-console">
+          <Navigation
+            page={page}
+            avatars={avatars}
+            avatarsLoaded={avatarsLoaded}
+            current={current}
+            activeWatchId={selected?.watch.watchId}
+            onGo={go}
+            onLoginsChanged={() => void verify()}
+          />
 
-        <Feed
-          list={list}
-          schedule={schedule}
-          current={current}
-          watch={watch}
-          avatars={avatars.watches}
-          actionFailure={actionFailure}
-          version={version}
-          onGo={go}
-          onRun={run}
-          onSend={send}
-          onChanged={() => void refresh()}
-        />
+          <Feed
+            page={page}
+            current={current}
+            selected={selected}
+            avatars={avatars.watches}
+            actionFailure={actionFailure}
+            version={version}
+            onGo={go}
+            onRun={run}
+            onSend={send}
+            onChanged={() => void refresh()}
+          />
 
-        <section className="opt-inspector">
-          {exporter.active ? (
-            <InboxExportControls value={exporter} />
-          ) : watch ? (
-            <WatchSettings watch={watch} onRun={run} onDeleted={() => go('inbox')} />
-          ) : (
-            <p className="opt-meta">Pick a Watch on the left to change it.</p>
-          )}
-        </section>
-      </div>
-    </InboxExportContext.Provider>
+          <section className="opt-inspector">
+            <Inspector
+              exporter={exporter}
+              selected={selected}
+              onRun={run}
+              onDeleted={() => go('inbox')}
+            />
+          </section>
+        </div>
+      </InboxExportContext.Provider>
+    </OwnerTagContext.Provider>
   );
 }

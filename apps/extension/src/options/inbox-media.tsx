@@ -5,6 +5,7 @@ import {
   SilentExport,
   type DiscoverySummary,
   type ExportSettings,
+  type InstagramLogin,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
 import type { MessageResponse } from '../messaging/contracts.ts';
@@ -20,7 +21,6 @@ import { loadVideoMetadata } from '../popup/video-metadata.ts';
 import { useFrameSeekEffect } from '../popup/use-frame-seek.ts';
 import { withClampedFrameSecond, type FrameExportSetting } from '../frame-export/timestamp.ts';
 import { useMediaEdits } from '../popup/use-media-edits.ts';
-import { pageLogin } from './login-switch.tsx';
 
 type InboxItem = MediaItem & { entryId: string; child: number };
 
@@ -59,7 +59,11 @@ function previewResult(
   return { items, notices };
 }
 
-export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
+/** Previews selected inbox entries, each fetched as the login `loginOf` names for its Watch. */
+export function useInboxMedia(
+  loginOf: (watchId: string) => InstagramLogin,
+  onOwnerRefused: () => void = () => {}
+) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [runtimes, setRuntimes] = useState<ItemRuntimes>({});
   const [frames, setFrames] = useState<Record<number, FrameExportSetting>>({});
@@ -107,7 +111,7 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
         const response = await sendMessage({
           type: 'WATCH_INBOX_PREVIEW',
           entryId: entry.entryId,
-          login: pageLogin(),
+          login: loginOf(entry.watchId),
         });
         if (current !== generation.current) return;
         if (refusesOwner(response.failure)) {

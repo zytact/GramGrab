@@ -167,16 +167,15 @@ select {
 }
 
 /* A handle wider than its box never paints outside it. Navigation rows, the viewer chip and
-   the login tabs truncate the tail (the tooltip carries the full handle); status rows, the
+   the login names truncate the tail (the tooltip carries the full handle); status rows, the
    detail heading and its meta, and banners wrap mid-token instead. */
-.opt-name,
-.opt-login-tabs a {
+.opt-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .opt-viewer .opt-name,
-.opt-login-tabs a {
+.opt-login-names .opt-name {
   min-width: 0;
 }
 .opt-account-text,
@@ -506,24 +505,58 @@ select {
   border-color: var(--brand);
 }
 
-.opt-login-switch {
+.opt-logins {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.opt-login-tabs {
+.opt-login-names {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+}
+.opt-login-names li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.opt-login-names .opt-meta {
+  flex: 0 0 44px;
+}
+
+/* Which login owns a Watch, shown only while the page lists more than one owner. */
+.opt-owner {
+  margin-right: 6px;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border: 1px solid var(--rule-strong);
+  color: var(--text-mid);
+}
+.opt-owner-linked {
+  border-color: var(--brand);
+  color: var(--accent);
+}
+.opt-filter {
+  display: flex;
+  margin: 0 12px 8px;
   border: 1px solid var(--rule-strong);
 }
-.opt-login-tabs a {
+.opt-filter button {
   flex: 1;
-  padding: 5px 8px;
+  border: 0;
+  background: transparent;
   color: var(--text-mid);
-  font-size: 11px;
-  text-align: center;
-  text-decoration: none;
+  font: 400 11px var(--font-mono);
+  padding: 5px 8px;
+  cursor: pointer;
 }
-.opt-login-tabs a[aria-current='page'] {
+.opt-filter button[aria-pressed='true'] {
   background: var(--brand-dim);
   color: var(--accent);
 }

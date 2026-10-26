@@ -386,10 +386,20 @@ export class DiscoverySummary extends Schema.Class<DiscoverySummary>('DiscoveryS
   collect: Schema.optional(ActionOutcome),
 }) {}
 
+/**
+ * A Watch no signed-in login can check: the linked login's after Instagram ended its session, or
+ * one owned by a login that is neither the main nor the linked one. It stays paused until its
+ * owner signs in or is linked again.
+ */
+export class HeldWatch extends Schema.Class<HeldWatch>('HeldWatch')({
+  owner: Schema.Literal('linked', 'other'),
+  watch: WatchSummary,
+}) {}
+
 export class WatchListResult extends Schema.TaggedClass<WatchListResult>()('WatchListResult', {
   viewer: WatchViewer,
   schedule: WatchSchedule,
-  otherLoginWatchCount: Count,
+  heldWatches: Schema.Array(HeldWatch),
   storage: WatchStorage,
   attentionCount: Count,
   watches: Schema.Array(WatchSummary),

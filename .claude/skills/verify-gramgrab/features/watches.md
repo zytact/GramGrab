@@ -345,17 +345,19 @@ the row wide, so the button keeps its place whatever the line says.
 An open options page reloads its list, the open Watch and the inbox whenever the
 worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, or
 changes the rate-limit pause in `instagram-requests`. Those reloads go through the
-`WATCH_READ` message with the login the page shows. The worker answers without an
+`WATCH_READ` message, once per signed-in login. The worker answers without an
 Instagram request while that login is still the last one any viewer query found,
 and verifies again otherwise. Opening the page, returning to its tab or window,
 and every action verify the login once. Tab visibility and window focus events
 for one return share a verification. Storage reloads wait for that verification,
 and changing the login clears the previous login's selected view and inbox
 selections. A signed-out page rechecks on return too. There is no login polling.
-The page also follows the `watch-viewer` key in `chrome.storage.session`, which
-every viewer query writes, including the CLI's. When the key is removed, the page
-drops to the sign-in gate without a request. When it names another login, the
-page verifies once. Chromium fires no change event when a query rewrites the
+The page also follows the `watch-viewer` and `watch-viewer.linked` keys in
+`chrome.storage.session`, which every viewer query writes, including the CLI's.
+When `watch-viewer` is removed, the page drops to the sign-in gate without a
+request. When either key names another login, or `watch-viewer.linked` is
+removed, the page verifies once. A Watch the previous login owned stays in the
+list, held and paused. Chromium fires no change event when a query rewrites the
 same login.
 
 1. Read `nextRoundAt`, `remaining`, each kind's `lastCheckAt`, and the length of
@@ -713,28 +715,42 @@ reference, including explicit Silent re-encode approval.
 
 ## Linked login
 
-With a second login linked ([Linked login](./linked-login.md)), the page shows
-one login at a time: one tab per login under `.opt-login-switch`, named by its
-`@username`, the
-second at `options.html?login=linked`. Each Watch belongs to the login that
-added it, and adding or importing a Watch adds it to the login on show. A
-linked Watch's checks, actions, notifications, and Avatar lookups all run as
-the linked login and spend only `instagram-requests.linked`.
+With a second login linked ([Linked login](./linked-login.md)), `options.html`
+lists both logins' Watches in one sidebar. While the list holds more than one
+owner, each row, All inbox entry and Needs you item carries a `.opt-owner` tag
+(`Main`, `Linked` or `Other login`), and a filter (`.opt-filter button`,
+`aria-pressed`) narrows the rows: `All`, plus `Main` and `Linked` for each login
+that owns a listed Watch. Each Watch belongs to
+the login that added it. The page sends every command for a Watch as its owner,
+so a linked Watch's checks, actions, notifications, and Avatar lookups all run
+as the linked login and spend only `instagram-requests.linked`. Add Watch and
+Export or import show the `#instagram-login` picker, default `main`, and add to
+the login it names.
+
+Watches no signed-in login checks are held: greyed out, with no settings, and
+the row reads `Paused · link this login again to resume` for an ended linked
+login's Watch or `Paused · sign in as that login to resume` for another login's.
 
 1. Read both ledgers and `watch-scheduler` as counts and booleans.
-2. Open `options.html?login=linked`. Add the linked-only account with Add Watch.
-   Its preview shows the account, which the main login cannot see.
+2. Open `options.html`, click `+ Add Watch`, set `#instagram-login` to `linked`
+   the way [Linked login](./linked-login.md) sets the popup picker, and add the
+   linked-only account. Its preview shows the account, which the main login
+   cannot see.
 3. Click Check now once and follow [Check now](#check-now). Require the check
    to finish with an outcome per kind, `instagram-requests.linked` to gain
    attempts, and `instagram-requests` to gain none from the check itself.
-4. Open the main login's tab. The linked Watch is not listed there.
+4. The new row carries `Linked`, and the `Main` filter hides it.
 5. `gramgrab watch list --login linked --json` lists it, and `gramgrab watch
    list --json` does not.
 
-An ended linked session shows `Linked (signed out)`, a `Your linked login was
-signed out.` banner, and one `IG_LINKED_LOGIN_ENDED` item in `watch needs`.
-Forcing that state means logging the second account out, so leave it to the
-synthetic tests in `linked-login.test.ts` unless the person asks for it.
+An ended linked session shows `Signed out` under `LOGINS`, a `Your linked login
+was signed out.` banner, its Watches as held rows, and one
+`IG_LINKED_LOGIN_ENDED` item in `watch needs`. A held row needs no second
+account: seed a `linked-instagram-login` record with `ended: true` and a fixture
+account ID, plus fixture Watches whose `viewerId` is that ID or another unknown
+ID, from the worker. Restore both keys afterward. Forcing a real ended session
+means logging the second account out, so leave it to the synthetic tests in
+`linked-login.test.ts` unless the person asks for it.
 
 ## Evidence
 

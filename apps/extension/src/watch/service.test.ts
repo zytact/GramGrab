@@ -136,14 +136,14 @@ describe('adding a Watch', () => {
 });
 
 describe('owner-bound access', () => {
-  it('shows another login only the count of Watches it does not own', async () => {
+  it('lists Watches another login owns as held, and never acts on them', async () => {
     await addTarget();
     instagram.state.viewer = { id: '3003', username: 'someone.else' };
 
     const listed = await run(WatchList.make());
     expect(listed.result?._tag === 'WatchListResult' && listed.result).toMatchObject({
       viewer: { accountId: '3003' },
-      otherLoginWatchCount: 1,
+      heldWatches: [{ owner: 'other', watch: { accountId: TARGET.id, username: TARGET.username } }],
       watches: [],
     });
     const shown = await run(

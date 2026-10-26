@@ -29,8 +29,14 @@ export function useLogins(): Logins & { readonly reload: () => void } {
   return { ...logins, reload };
 }
 
+/** A picked login that reads as `main` whenever the linked login cannot run. */
+export function useLoginChoice(logins: Logins) {
+  const [picked, setPicked] = useState<InstagramLogin>('main');
+  return [logins.state === 'linked' ? picked : 'main', setPicked] as const;
+}
+
 /** The login's `@username` once known, else `Main` or `Linked`. */
-export function loginLabel(login: InstagramLogin, { state, names }: Logins): string {
+function loginLabel(login: InstagramLogin, { state, names }: Logins): string {
   const name = names[login];
   const label = name ? `@${name}` : login === 'main' ? 'Main' : 'Linked';
   return login === 'linked' && state === 'ended' ? `${label} (signed out)` : label;
