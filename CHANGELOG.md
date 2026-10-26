@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.4.0](https://github.com/zytact/GramGrab/compare/v4.3.0...v4.4.0) (2026-10-26)
+
+
+### Features
+
+* **watch:** show both logins' Watches on one page and pick the owner when adding ([#343](https://github.com/zytact/GramGrab/issues/343)) ([fa1adce](https://github.com/zytact/GramGrab/commit/fa1adcecb98a623fce2b619b90f9a5591cee3ddf))
+
+
+### Bug Fixes
+
+* **watch:** crop in the Watches inbox, and let Avatars rotate and crop ([#337](https://github.com/zytact/GramGrab/issues/337)) ([b6ce329](https://github.com/zytact/GramGrab/commit/b6ce32986602c0bce0d50c00a554a2d8afc24851))
+
 ## [4.3.0](https://github.com/zytact/GramGrab/compare/v4.2.1...v4.3.0) (2026-10-25)
 
 
