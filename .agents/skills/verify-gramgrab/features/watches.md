@@ -100,11 +100,17 @@ retention notice remains a separate deadline.
    playable video with real dimensions, not merely a mounted media element.
    Capture a screenshot with the verified login hidden. A fresh preview must
    leave browser downloads, History and Workspace draft/transfer state unchanged.
-2. Use the shared card's `Select item NN`, `Frame`, `Remove audio` and
-   `Rotate item NN` controls. Deselecting every card disables download. Frame and
+2. Use the shared card's `Select item NN`, `Frame`, `Remove audio`,
+   `Rotate item NN` and `Crop item NN` controls. Deselecting every card disables download. Frame and
    Silent are mutually exclusive. Frame download waits for measured metadata;
    its slider and video `currentTime` must agree at a nonzero timestamp. Rotate
    and check the preview's orientation and aspect ratio before download.
+   `Crop item NN` opens the same selector as the workspace on the card; a
+   later rotate turns `.crop-rect` with its subject. Downloading a cropped
+   video that is not a Frame first opens a `Some videos require re-encoding`
+   alertdialog reading `Cropping a video re-encodes it.`. `Cancel` starts
+   nothing; `Re-encode cropped videos` exports it, and History records `crop`
+   and `requestedExport.crop`.
    With Frame on, read each control's `getBoundingClientRect()`. `Frame`,
    `Remove audio` and the rotate button are one height, and every row they
    wrap into starts at the controls' left edge and fills its width. The
@@ -120,9 +126,14 @@ retention notice remains a separate deadline.
 4. Learned unavailable reasons remain on the discovery row when selection
    changes. An available Sidecar child keeps its recorded ordinal when another
    child is missing or deselected. Avatar cards offer Original only, without
-   Frame, Silent or rotation. Use natural entries for these routes; missing
-   Avatar changes, Sidecars or expired entries are explicit live prerequisites,
-   with adapter boundaries owned by the focused tests.
+   Frame or Silent, but with `Rotate item NN` and `Crop item NN`. Use natural
+   entries for these routes; missing Sidecars or expired entries are explicit
+   live prerequisites, with adapter boundaries owned by the focused tests.
+   Without a natural Avatar change, `scripts/watch-avatar.mjs seed` adds a
+   paused fixture Watch whose one Avatar entry records the picture the real
+   `instagram` Watch last saw, so it exports; `remove` drops it. Label its
+   screenshots synthetic. Rotated once with a `4:5` crop it saves a 864x1080
+   JPEG, and `gramgrab history redownload` of that receipt saves the same size.
 5. Navigate away and back, then reload once. Preview media and settings must
    clear without becoming a Workspace draft. Actual downloads create ordinary
    History receipts and keep discoveries in the inbox. A verified-login change

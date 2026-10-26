@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { Crop, ExportMode, ExportSettings, Rotation } from './export-modes.ts';
+import { Crop, ExportSettings, Rotation } from './export-modes.ts';
 export {
   DirectExport,
   FrameExport,
@@ -8,6 +8,7 @@ export {
   Rotation,
   Crop,
   ExportSettings,
+  deliversOriginal,
 } from './export-modes.ts';
 import { FailureCodeSchema } from './failures.ts';
 import { WatchCommand, WatchFailureDetail, WatchResult, WatchCheckProgress } from './watch.ts';
@@ -50,9 +51,7 @@ export class ExportOperation extends Schema.Class<ExportOperation>('ExportOperat
   operationId: OperationId,
   itemNumber: HumanItemNumber,
   mediaIdentity: Schema.optional(MediaIdentity),
-  mode: ExportMode,
-  rotation: Schema.optional(Rotation),
-  crop: Schema.optional(Crop),
+  ...ExportSettings.fields,
 }) {}
 
 export class Inspect extends Schema.TaggedClass<Inspect>()('Inspect', {

@@ -28,9 +28,12 @@ function requestedChildren(
   settings: ExportSettings
 ): readonly ExportSettings[] {
   const ref = discovery.ref;
-  if (ref._tag === 'Avatar') return [{ mode: DirectExport.make() }];
   const types =
-    ref._tag === 'Sidecar' ? ref.children.map(child => child.mediaType) : [ref.mediaType];
+    ref._tag === 'Avatar'
+      ? ['image']
+      : ref._tag === 'Sidecar'
+        ? ref.children.map(child => child.mediaType)
+        : [ref.mediaType];
   return types.map(type => ({
     ...settings,
     mode: type === 'video' ? settings.mode : DirectExport.make(),
@@ -82,11 +85,9 @@ export function requestedPlan(
   if (
     command._tag === 'WatchInboxExport' &&
     discovery.ref._tag === 'Avatar' &&
-    ((command.settings &&
-      (command.settings.mode._tag !== 'DirectExport' || command.settings.rotation)) ||
-      selections?.some(
-        item => item.settings.mode._tag !== 'DirectExport' || item.settings.rotation
-      ))
+    [command.settings, ...(selections ?? []).map(item => item.settings)].some(
+      settings => settings && settings.mode._tag !== 'DirectExport'
+    )
   )
     return undefined;
   if (command._tag === 'WatchInboxExport')

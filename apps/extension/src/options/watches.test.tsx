@@ -16,7 +16,7 @@ import {
   storyResponse,
   stubAvatarScaling,
 } from '../test/watch-instagram.ts';
-import { processingBrowser } from '../test/processing-browser.ts';
+import { processingBrowser, silentBrowser } from '../test/processing-browser.ts';
 import type { MessageResponse, WatchAvatarsResponse } from '../messaging/contracts.ts';
 import { WATCH_AVATAR_NOTE } from './copy.ts';
 import { Watches } from './watches.tsx';
@@ -431,7 +431,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(harness.browser.tabs.create).not.toHaveBeenCalled();
   });
 
-  it('restricts Avatar selections to Original with no rotation', async () => {
+  it('offers Avatars rotate and crop with Original only, and exports both', async () => {
     seedWatchWithProblemAndEntry([
       {
         id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
@@ -441,6 +441,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
         collect: { at: Date.now() - 120_000 },
       },
     ]);
+    await processingBrowser(harness, instagram);
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByText(/^All inbox$/));
@@ -450,8 +451,59 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await screen.findByAltText('Preview');
     expect(screen.queryByRole('checkbox', { name: 'Frame' })).toBeNull();
     expect(screen.queryByRole('checkbox', { name: 'Remove audio' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Rotate item/ })).toBeNull();
     expect(document.querySelector('.inbox-media time.item-expiry')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Rotate item 01/ }));
+    await user.click(screen.getByRole('button', { name: 'Crop item 01' }));
+    await user.click(screen.getByRole('button', { name: '1:1' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: 'Download selected (1)' }));
+    await waitFor(() => expect(harness.downloads).toHaveLength(1));
+    const history = await harness.send<MessageResponse<'GET_DOWNLOAD_HISTORY'>>({
+      type: 'GET_DOWNLOAD_HISTORY',
+    });
+    expect(history.entries).toMatchObject([
+      { exportMode: 'direct', rotation: 90, crop: expect.any(Object) },
+    ]);
+  });
+
+  it('asks before a cropped video re-encodes and records the crop', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: '1c9f4e6d-3b5a-4f7c-8d2e-8a9b0c1d2e3f',
+        ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'video', takenAt: 2 },
+        discoveredAt: Date.now() - 120_000,
+        collect: { at: Date.now() - 120_000 },
+      },
+    ]);
+    instagram.state.media.C200 = restMedia({ id: '200', video: true, takenAt: 2 });
+    await processingBrowser(harness, instagram);
+    silentBrowser();
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByText(/^All inbox$/));
+    const [, video] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
+    await user.click(video!);
+    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await user.click(await screen.findByRole('button', { name: 'Crop item 01' }));
+    await user.click(screen.getByRole('button', { name: '1:1' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: 'Download selected (1)' }));
+    const consent = screen.getByRole('alertdialog');
+    expect(consent.textContent).toContain('Cropping a video re-encodes it.');
+    await user.click(within(consent).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(harness.downloads).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: 'Download selected (1)' }));
+    await user.click(screen.getByRole('button', { name: 'Re-encode cropped videos' }));
+    await waitFor(() => expect(harness.downloads).toHaveLength(1));
+    const history = await harness.send<MessageResponse<'GET_DOWNLOAD_HISTORY'>>({
+      type: 'GET_DOWNLOAD_HISTORY',
+    });
+    expect(history.entries).toMatchObject([
+      { crop: expect.any(Object), requestedExport: { crop: expect.any(Object) } },
+    ]);
   });
 
   it('previews Sidecar children and exports only the selected recorded child', async () => {

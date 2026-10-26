@@ -144,7 +144,10 @@ Chromium snapshot from the same tool: snapshots cannot play H.264 or AAC, so
 Instagram video previews read `No preview available` and frame export fails.
 
 The browser runs headed when `DISPLAY` or `WAYLAND_DISPLAY` is set, and WSLg
-sets one, so on WSL the window appears on the Windows desktop.
+sets one, so on WSL the window appears on the Windows desktop. An agent shell
+on a GNOME desktop may inherit neither. Pass `DISPLAY=:0` and `XAUTHORITY` set
+to the `/run/user/$UID/.mutter-Xwaylandauth.*` file with `GRAMGRAB_HEADLESS=0`;
+`WAYLAND_DISPLAY` alone fails with `Missing X server or $DISPLAY`.
 `GRAMGRAB_HEADLESS=1` forces `--headless` in a 1280x900 window, and it is the
 default without a display. Headless loads the extension, starts the native
 host, and captures screenshots, but it cannot prove frame export: the runner's
@@ -404,5 +407,7 @@ fixture Watches for the long-list layout recipe in the same file.
 `scripts/watch-problem.mjs hold | seed CODE [REASON] | remove | quiet | release`
 holds Watch work and seeds a Posts check problem on the `instagram` Watch for the
 Check problem recipe.
+`scripts/watch-avatar.mjs seed | remove` adds or removes a paused fixture Avatar Watch with
+one exportable inbox entry for the Inbox preview recipe.
 `scripts/watch-seen.mjs seed [DAYS] | read | remove` adds, reads, or removes a paused
 fixture Watch of the `instagram` account for the Fetched media is seen recipe.

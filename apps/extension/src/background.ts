@@ -38,6 +38,7 @@ import {
   type EventPayload,
   type Request,
   type InstagramLogin,
+  deliversOriginal,
 } from '@gramgrab/protocol';
 import {
   canonicalizeInstagramUrl,
@@ -870,14 +871,7 @@ async function runExport(
   signal: AbortSignal,
   login: InstagramLogin | undefined
 ) {
-  if (
-    command.operations.every(
-      operation =>
-        operation.mode._tag === 'DirectExport' &&
-        operation.rotation === undefined &&
-        operation.crop === undefined
-    )
-  )
+  if (command.operations.every(deliversOriginal))
     return runDirectExport(command, emit, signal, login);
   let release = () => {};
   const turn = new Promise<void>(resolve => {

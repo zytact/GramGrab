@@ -21,7 +21,8 @@ media APIs a service worker does not have, so the background worker opens
   still, and a video crop re-encodes H.264 through the silent-video processor
   after the `Some videos require re-encoding` dialog. A direct video crop keeps
   its audio; a silent one drops it. Plans carry `crop` as fractions of the
-  turned frame.
+  turned frame. The Watches inbox offers the same `Crop` and asks before a
+  cropped video re-encodes, ahead of the download.
 - Batch selection: `SELECT ALL` and `DOWNLOAD SELECTED` across mixed modes.
 - Plans: `gramgrab export SOURCE --plan FILE|-` replays protocol
   `ExportOperation` objects with stable operation IDs, which is how a retry
@@ -37,7 +38,7 @@ different mode.
 The Watches inbox uses these same media cards after `Fetch media`. Its selection
 addresses recorded children, and download reacquires those exact identities.
 Follow [Watches inbox preview](./watches.md#inbox-preview) for isolation,
-unavailable reasons and Avatar's Original-only restriction.
+unavailable reasons, inbox crop and Avatar's Original-only mode.
 
 ## Driving it with the harness
 
