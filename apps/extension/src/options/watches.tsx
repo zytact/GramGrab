@@ -386,29 +386,34 @@ function AddWatchFlow({
   onOpen: (watchId: string) => void;
 }) {
   const [login, setLogin] = useLoginChoice(logins);
-  const [preview, setPreview] = useState<WatchPreviewResponse>();
   return (
     <>
-      <LoginPicker
-        logins={logins}
-        login={login}
-        disabled={false}
-        onChange={next => {
-          setLogin(next);
-          setPreview(undefined);
-        }}
-      />
-      {preview?.account ? (
-        <FoundAccount
-          preview={preview}
-          onRun={command => onRun(command, login)}
-          onChange={() => setPreview(undefined)}
-          onOpen={onOpen}
-        />
-      ) : (
-        <FindAccount key={login} login={login} onFound={setPreview} />
-      )}
+      <LoginPicker logins={logins} login={login} disabled={false} onChange={setLogin} />
+      <AccountStep key={login} login={login} onRun={onRun} onOpen={onOpen} />
     </>
+  );
+}
+
+/** Finds an account as `login` and adds it as the same login. */
+function AccountStep({
+  login,
+  onRun,
+  onOpen,
+}: {
+  login: InstagramLogin;
+  onRun: Run;
+  onOpen: (watchId: string) => void;
+}) {
+  const [preview, setPreview] = useState<WatchPreviewResponse>();
+  return preview?.account ? (
+    <FoundAccount
+      preview={preview}
+      onRun={command => onRun(command, login)}
+      onChange={() => setPreview(undefined)}
+      onOpen={onOpen}
+    />
+  ) : (
+    <FindAccount login={login} onFound={setPreview} />
   );
 }
 
