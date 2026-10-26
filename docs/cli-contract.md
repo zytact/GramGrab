@@ -74,7 +74,9 @@ fractions of the frame after rotation, which the extension applies after the tur
 crop re-encodes a JPEG and a frame export crops the still. A video crop always re-encodes to H.264
 through the silent-video processor: a direct crop keeps the audio and counts as consent to
 re-encode, while a silent crop follows `--reencode` and `forbid` skips it. History redownload
-reproduces a recorded rotation and crop.
+reproduces a recorded rotation and crop. `WatchInboxExport` settings carry the same `rotation` and
+`crop`, which an Avatar accepts with direct mode only. `gramgrab watch inbox export` sets rotation
+with `--rotate` and no crop.
 The `instants` commands never accept a Source. They inspect the authenticated active feed afresh,
 preserve its server order, and apply the same item numbering and export-mode rules.
 

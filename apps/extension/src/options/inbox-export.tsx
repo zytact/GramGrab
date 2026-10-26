@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useId, useState } from 'react';
 import {
   WatchInboxExport,
   WatchInboxRemove,
@@ -175,14 +175,10 @@ function ReencodeConsent({
   onDecline: () => void;
   onApprove: () => void;
 }) {
+  const title = useId();
   return (
-    <section
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="watch-reencode-title"
-      className="opt-card"
-    >
-      <h3 id="watch-reencode-title">Some videos require re-encoding</h3>
+    <section role="alertdialog" aria-modal="true" aria-labelledby={title} className="opt-card">
+      <h3 id={title}>Some videos require re-encoding</h3>
       <p>{reason} Re-encoding may change video quality.</p>
       <button className="opt-btn opt-ghost" onClick={onDecline}>
         {decline}
@@ -254,7 +250,7 @@ export function InboxExportControls({ value }: { value: ExportState }) {
           ? 'Starting downloads…'
           : `Download selected (${value.media.selections.length})`}
       </button>
-      {value.cropConsent && (
+      {value.cropConsent && value.media.cropsVideo && (
         <ReencodeConsent
           reason="Cropping a video re-encodes it."
           decline="Cancel"
