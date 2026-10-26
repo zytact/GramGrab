@@ -702,6 +702,45 @@ function OwnerFilter({
   );
 }
 
+/** The Watch rows, narrowed by owner while more than one owns a Watch. */
+function WatchListSection({
+  watches,
+  manyOwners,
+  avatars,
+  activeWatchId,
+  onGo,
+}: {
+  watches: readonly PageWatch[];
+  manyOwners: boolean;
+  avatars: WatchAvatarsResponse['watches'];
+  activeWatchId: string | undefined;
+  onGo: (view: View) => void;
+}) {
+  const owning = InstagramLogin.literals.filter(login =>
+    watches.some(item => item.owner === login)
+  );
+  const [picked, setFilter] = useState<Filter>('all');
+  const filter = picked !== 'all' && owning.includes(picked) ? picked : 'all';
+  const shown = watches.filter(item => filter === 'all' || item.owner === filter);
+  return (
+    <>
+      <span className="opt-label opt-section">Watches ({shown.length})</span>
+      {manyOwners && <OwnerFilter logins={owning} filter={filter} onChange={setFilter} />}
+      <div className="opt-watch-list">
+        {shown.map(item => (
+          <WatchRow
+            key={item.watch.watchId}
+            item={item}
+            avatar={avatars[item.watch.watchId]}
+            active={item.watch.watchId === activeWatchId}
+            onOpen={() => onGo({ watchId: item.watch.watchId })}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
 function Navigation({
   page: { main, lists, watches, manyOwners, logins, schedules, attention },
   avatars,
@@ -719,16 +758,10 @@ function Navigation({
   onGo: (view: View) => void;
   onLoginsChanged: () => void;
 }) {
-  const owning = InstagramLogin.literals.filter(login =>
-    watches.some(item => item.owner === login)
-  );
-  const [picked, setFilter] = useState<Filter>('all');
-  const filter = picked !== 'all' && owning.includes(picked) ? picked : 'all';
   const inboxCount = lists.reduce(
     (total, { list }) => total + list.watches.reduce((sum, item) => sum + item.inboxCount, 0),
     0
   );
-  const shown = watches.filter(item => filter === 'all' || item.owner === filter);
   return (
     <nav className="opt-list">
       <div className="opt-head">
@@ -758,19 +791,13 @@ function Navigation({
         <span className="opt-grow">All inbox</span>
         <span className="opt-count">{inboxCount}</span>
       </button>
-      <span className="opt-label opt-section">Watches ({shown.length})</span>
-      {manyOwners && <OwnerFilter logins={owning} filter={filter} onChange={setFilter} />}
-      <div className="opt-watch-list">
-        {shown.map(item => (
-          <WatchRow
-            key={item.watch.watchId}
-            item={item}
-            avatar={avatars.watches[item.watch.watchId]}
-            active={item.watch.watchId === activeWatchId}
-            onOpen={() => onGo({ watchId: item.watch.watchId })}
-          />
-        ))}
-      </div>
+      <WatchListSection
+        watches={watches}
+        manyOwners={manyOwners}
+        avatars={avatars.watches}
+        activeWatchId={activeWatchId}
+        onGo={onGo}
+      />
       <button
         className={`opt-item opt-add-item ${current === 'new' ? 'active' : ''}`}
         onClick={() => onGo('new')}
