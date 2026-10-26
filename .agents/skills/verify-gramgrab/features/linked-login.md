@@ -14,10 +14,11 @@ can fetch and watch private accounts only their second account can see.
   sidebar.
 - Link: the Watches page copies the Instagram cookies of an open Incognito
   window, confirms that account with the viewer query, and refuses it when it
-  is the main login. Refusals render under `.opt-login-switch`, one per
-  `LinkRefusalReason` in `src/options/login-switch.tsx`.
+  is the main login. Refusals render under `.opt-logins`, one per
+  `LinkRefusalReason` in `src/options/logins.tsx`.
 - Unlink: deletes `linked-instagram-login` from `storage.local` and the session
-  rule. A Linked tab sends the page back to Main.
+  rule. The page rereads its lists, and the unlinked login's Watches stay listed
+  as held rows of another login.
 - Routing: a linked request carries `gg_login=linked` and `credentials: 'omit'`.
   A `declarativeNetRequest` session rule that matches the marker, the
   `instagram.com` request domain, and `tabIds: [-1]` sets its `Cookie` header.
@@ -38,15 +39,17 @@ can fetch and watch private accounts only their second account can see.
    `LINK A SECOND LOGIN BETA`, click `Link this login`. The notice reads
    `Linked @<username>.` The Incognito window may close; logging out of it
    ends the linked session.
-4. The section heading turns to `LOGINS BETA`, and the Watches page gets one
-   tab per login (`?login=linked` for the second). The popup and workspace
-   swap the entry for a `Login` select (`#instagram-login`) next to Fetch.
-   Tabs and options read `@<username>`, or `Main` and `Linked` until the worker
-   answers `LOGIN_NAMES`. A signed-out linked login reads `Linked (signed out)`.
+4. The section heading turns to `LOGINS BETA` and names both logins as
+   `MAIN @<username>` and `LINKED @<username>`. The Watches page lists both
+   logins' Watches, see [Watches](./watches.md#linked-login). The popup and
+   workspace swap the entry for a `Login` select (`#instagram-login`) next to
+   Fetch. Its options read `@<username>`, or `Main` and `Linked` until the
+   worker answers `LOGIN_NAMES`. A signed-out linked login reads
+   `Linked (signed out)` there and `Signed out` under `LOGINS`.
 5. The CLI takes `--login main|linked` on `inspect`, `export`, `instants`,
    `history redownload`, and `watch` commands.
 
-Firefox has no `.opt-login-switch` and no picker.
+Firefox has no `.opt-logins` and no picker.
 
 ## Driving it with the harness
 
@@ -95,7 +98,7 @@ node $D eval js/background.js "new Promise(r=>chrome.cookies.get({url:'https://w
 
 The refusal states need no second account and send no Instagram request. Open
 an Incognito window with no Instagram tab, click `Link this login`, and read
-`.opt-login-switch`, then close every Incognito window again.
+`.opt-logins`, then close every Incognito window again.
 `chrome.windows.getAll` rejects an `incognito` filter, so filter the result:
 
 ```bash
@@ -106,7 +109,7 @@ node $D eval js/background.js \
 ```
 
 Link and unlink from the Watches page with `drive.mjs click` on the
-`.opt-login-switch button` whose text is `Link this login` or `Unlink`. After
+`.opt-logins button` whose text is `Link this login` or `Unlink`. After
 linking, prove the two logins differ without printing either ID:
 
 ```bash
@@ -137,15 +140,15 @@ node apps/cli/bin/gramgrab.mjs export "$LINKED_ONLY_POST" --login linked --json
 node apps/cli/bin/gramgrab.mjs inspect "$LINKED_ONLY_POST" --json; echo "exit=$?"   # main
 ```
 
-For a linked Watch, open `options.html?login=linked`, add the linked-only
-account, and follow the Check now recipe in [Watches](./watches.md#check-now)
-under that tab. Read both ledgers before and after. The Add Watch username
-field has no `type` attribute, so select it as `input`, not `input[type=text]`.
+For a linked Watch, open `options.html`, pick `linked` in Add Watch, add the
+linked-only account, and follow the Check now recipe in
+[Watches](./watches.md#check-now) on its row. Read both ledgers before and
+after. The Add Watch username field has no `type` attribute, so select it as `input`, not `input[type=text]`.
 Adding the Watch spends linked requests of its own for the preview and baseline.
 
 ## What proves it works
 
-- Link: the notice starts `Linked @`, the tabs appear named by `@username`, `linked-instagram-login`
+- Link: the notice starts `Linked @`, `LOGINS` names both by `@username`, `linked-instagram-login`
   exists, and the viewer probe reads `{"differ":true,"linkedVerified":true}`.
 - Refusal: each refusal stores nothing and names its next step. Without
   Incognito access it reads `Allow GramGrab in Incognito on the browser's
@@ -167,7 +170,7 @@ Adding the Watch spends linked requests of its own for the preview and baseline.
 - Main session: the `sessionid` hash is the same before and after.
 - Unlink: the record and the session rule are both gone, and the picker hides.
 - Entry: unlinked, the popup shows `.login-link-entry`, and clicking it adds an
-  `options.html` target whose `.opt-login-switch` reads `LINK A SECOND LOGIN`.
+  `options.html` target whose `.opt-logins` reads `LINK A SECOND LOGIN`.
   Linked, the entry is gone and `#instagram-login` shows instead.
 
 ## Gotchas
