@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { DirectExport, FrameExport, SilentExport, type DiscoverySummary } from '@gramgrab/protocol';
+import {
+  DirectExport,
+  FrameExport,
+  SilentExport,
+  type DiscoverySummary,
+  type ExportSettings,
+} from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
 import type { MessageResponse } from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
@@ -13,10 +19,10 @@ import {
 import { loadVideoMetadata } from '../popup/video-metadata.ts';
 import { useFrameSeekEffect } from '../popup/use-frame-seek.ts';
 import { withClampedFrameSecond, type FrameExportSetting } from '../frame-export/timestamp.ts';
-import { nextRotation } from '../rotation/contracts.ts';
+import { useMediaEdits } from '../popup/use-media-edits.ts';
 import { pageLogin } from './login-switch.tsx';
 
-type InboxItem = MediaItem & { entryId: string; child: number; avatar: boolean };
+type InboxItem = MediaItem & { entryId: string; child: number };
 
 function refusesOwner(failure: MessageResponse<'WATCH_INBOX_PREVIEW'>['failure']) {
   return (
@@ -49,7 +55,6 @@ function previewResult(
     selected: true,
     entryId: entry.entryId,
     child: item.itemIndex,
-    avatar: entry.mediaType === 'avatar',
   }));
   return { items, notices };
 }
@@ -59,6 +64,8 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
   const [runtimes, setRuntimes] = useState<ItemRuntimes>({});
   const [frames, setFrames] = useState<Record<number, FrameExportSetting>>({});
   const [silent, setSilent] = useState<ReadonlySet<number>>(new Set());
+  const [cropIndex, setCropIndex] = useState<number>();
+  const edits = useMediaEdits(setItems);
   const [loading, setLoading] = useState(false);
   const [notices, setNotices] = useState<ReadonlyMap<string, readonly string[]>>(new Map());
   const generation = useRef(0);
@@ -78,6 +85,7 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
     setRuntimes({});
     setFrames({});
     setSilent(new Set());
+    setCropIndex(undefined);
     videos.current = {};
     pendingFrameDefaults.current.clear();
     setLoading(false);
@@ -214,21 +222,22 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
         patchRuntime(item.index, runtime => ({ ...runtime, preview: 'failed' }));
     }
   };
-  const selections = items
-    .filter(item => item.selected)
-    .map(item => ({
-      entryId: item.entryId,
-      child: item.child,
-      settings: {
-        mode:
-          item.type === 'video' && frames[item.index]?.enabled
-            ? FrameExport.make({ timestampSeconds: frames[item.index]!.timestampSeconds })
-            : silent.has(item.index)
-              ? SilentExport.make({ reencode: 'forbid' })
-              : DirectExport.make(),
-        ...(item.rotation && !item.avatar ? { rotation: item.rotation } : {}),
-      },
-    }));
+  const settings = (item: InboxItem): ExportSettings => ({
+    mode:
+      item.type === 'video' && frames[item.index]?.enabled
+        ? FrameExport.make({ timestampSeconds: frames[item.index]!.timestampSeconds })
+        : silent.has(item.index)
+          ? SilentExport.make({ reencode: item.crop ? 'allow' : 'forbid' })
+          : DirectExport.make(),
+    ...(item.rotation ? { rotation: item.rotation } : {}),
+    ...(item.crop ? { crop: item.crop } : {}),
+  });
+  const chosen = items.filter(item => item.selected);
+  const selections = chosen.map(item => ({
+    entryId: item.entryId,
+    child: item.child,
+    settings: settings(item),
+  }));
   return {
     items,
     runtimes,
@@ -237,6 +246,11 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
     loading,
     notices: [...notices.values()].flat(),
     selections,
+    /** A selected video export is cropped, which re-encodes it, so it needs consent first. */
+    cropsVideo: chosen.some(
+      item => item.type === 'video' && item.crop && !frames[item.index]?.enabled
+    ),
+    cropIndex,
     canDownload:
       selections.length > 0 &&
       items.every(
@@ -259,12 +273,8 @@ export function useInboxMedia(onOwnerRefused: () => void = () => {}) {
         setItems(previous =>
           previous.map(item => ({ ...item, selected: !previous.every(item => item.selected) }))
         ),
-      onRotate: (index: number) =>
-        setItems(previous =>
-          previous.map(item =>
-            item.index === index ? { ...item, rotation: nextRotation(item.rotation) } : item
-          )
-        ),
+      ...edits,
+      onCrop: (index: number) => setCropIndex(current => (current === index ? undefined : index)),
       onToggleExportFrame: toggleFrame,
       onToggleRemoveAudio: toggleSilent,
       onChangeFrameTimestamp: (index: number, timestampSeconds: number) =>
@@ -304,7 +314,6 @@ export function InboxMediaPreview({
       ))}
       <MediaListSection
         workspaceMode
-        canRotate={item => !value.items.find(candidate => candidate.index === item.index)?.avatar}
         disabled={disabled}
         model={{
           mediaItems: value.items,
@@ -313,6 +322,7 @@ export function InboxMediaPreview({
           frameExportSettings: value.frames,
           removeAudioIndexes: value.silent,
           attempt: undefined,
+          cropIndex: value.cropIndex,
           emptyMessage: value.loading
             ? 'Fetching recorded media…'
             : 'Fetch media to preview it before downloading.',

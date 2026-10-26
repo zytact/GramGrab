@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
   AccountIdSelector,
+  DirectExport,
   FrameExport,
   SilentExport,
   WatchAdd,
@@ -279,7 +280,39 @@ describe('Watch inbox Export', () => {
     );
   });
 
-  it('refuses transformed Avatars and plan writes that cannot be persisted', async () => {
+  it('rotates and crops the recorded Avatar and keeps both in its History receipt', async () => {
+    await watching('avatar');
+    instagram.state.profile = avatarProfile({ ...TARGET, pictureId: 'PIC_B' });
+    await check();
+    const [entry] = await inbox();
+    const { context } = await processingBrowser(harness, instagram);
+    const crop = { x: 0.25, y: 0, width: 0.5, height: 1 };
+    const result = await run(
+      WatchInboxExport.make({
+        entryIds: [entry!.entryId],
+        items: [
+          {
+            entryId: entry!.entryId,
+            child: 0,
+            settings: { mode: DirectExport.make(), rotation: 90, crop },
+          },
+        ],
+      }),
+      'WatchInboxExportResult'
+    );
+    expect(result.outcomes[0]).toMatchObject({ accepted: 1, failures: [] });
+    expect(context.rotate).toHaveBeenCalledWith(Math.PI / 2);
+    expect(await history()).toMatchObject([
+      {
+        exportMode: 'direct',
+        rotation: 90,
+        crop,
+        requestedExport: { mode: { _tag: 'DirectExport' }, rotation: 90, crop },
+      },
+    ]);
+  });
+
+  it('refuses non-Original Avatar modes and plan writes that cannot be persisted', async () => {
     await watching('avatar');
     instagram.state.profile = avatarProfile({ ...TARGET, pictureId: 'PIC_B' });
     await check();

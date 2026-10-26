@@ -30,8 +30,14 @@ export const Crop = Schema.Struct({
 );
 export type Crop = Schema.Schema.Type<typeof Crop>;
 
+/** What to make of one item: its mode plus the rotation and crop applied to the output. */
 export const ExportSettings = Schema.Struct({
   mode: ExportMode,
   rotation: Schema.optional(Rotation),
+  crop: Schema.optional(Crop),
 });
 export type ExportSettings = Schema.Schema.Type<typeof ExportSettings>;
+
+/** Whether the settings deliver the file exactly as Instagram serves it. */
+export const deliversOriginal = (settings: ExportSettings): boolean =>
+  settings.mode._tag === 'DirectExport' && !settings.rotation && !settings.crop;

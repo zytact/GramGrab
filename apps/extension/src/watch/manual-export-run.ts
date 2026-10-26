@@ -9,6 +9,7 @@ import {
   MediaIdentity,
   OperationId,
   SilentExport,
+  deliversOriginal,
   type FailureCode,
   type ExportResult,
   type ExportSettings,
@@ -100,8 +101,7 @@ function processingRequest(
       itemIndex: Schema.decodeUnknownSync(MediaIdentity.fields.itemIndex)(index),
       ...(item.mediaId ? { mediaId: item.mediaId } : {}),
     }),
-    mode: settings.mode,
-    ...(settings.rotation ? { rotation: settings.rotation } : {}),
+    ...settings,
   });
   return {
     sourceUrl,
@@ -134,7 +134,7 @@ const deliver = Effect.fn(function* (
   child: Child
 ) {
   const settings = deliveredSettings(child);
-  if (settings.mode._tag === 'DirectExport' && !settings.rotation)
+  if (deliversOriginal(settings))
     return yield* Effect.promise(() => deliverOriginal(watch, discovery, item, index, child));
   const execution = yield* InboxExportExecution;
   return yield* Effect.tryPromise({

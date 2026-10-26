@@ -47,6 +47,7 @@ export function useInboxExport(onChanged: () => void) {
   });
   const [failure, setFailure] = useState<string>();
   const [consent, setConsent] = useState(false);
+  const [cropConsent, setCropConsent] = useState(false);
   const entries = [...selected.values()].filter(entry => entry.unavailable === undefined);
   const failed = [...outcomes.values()].filter(
     outcome =>
@@ -82,9 +83,12 @@ export function useInboxExport(onChanged: () => void) {
       onChanged();
     }
   };
-  const download = () => {
+  /** Downloads the selection, first asking before a cropped video re-encodes. */
+  const download = (approved = false) => {
     const items = media.selections;
     if (!media.canDownload) return;
+    setCropConsent(!approved && media.cropsVideo);
+    if (!approved && media.cropsVideo) return;
     void execute(
       WatchInboxExport.make({
         entryIds: [...new Set(items.map(item => item.entryId))],
@@ -117,6 +121,8 @@ export function useInboxExport(onChanged: () => void) {
     failure,
     consent,
     setConsent,
+    cropConsent,
+    setCropConsent,
     entries,
     failed,
     download,
@@ -130,6 +136,7 @@ export function useInboxExport(onChanged: () => void) {
     active: selected.size > 0 || busy || failed.length > 0 || media.notices.length > 0 || !!failure,
     clear: () => {
       media.clear();
+      setCropConsent(false);
       setSelected(new Map());
       setFailure(undefined);
       if (!busy) setOutcomes(new Map());
@@ -155,6 +162,38 @@ export function useInboxSelection() {
   return value;
 }
 
+function ReencodeConsent({
+  reason,
+  decline,
+  approve,
+  onDecline,
+  onApprove,
+}: {
+  reason: string;
+  decline: string;
+  approve: string;
+  onDecline: () => void;
+  onApprove: () => void;
+}) {
+  return (
+    <section
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="watch-reencode-title"
+      className="opt-card"
+    >
+      <h3 id="watch-reencode-title">Some videos require re-encoding</h3>
+      <p>{reason} Re-encoding may change video quality.</p>
+      <button className="opt-btn opt-ghost" onClick={onDecline}>
+        {decline}
+      </button>
+      <button className="opt-btn" onClick={onApprove}>
+        {approve}
+      </button>
+    </section>
+  );
+}
+
 function ExportRecovery({ value }: { value: ExportState }) {
   return (
     <>
@@ -178,21 +217,13 @@ function ExportRecovery({ value }: { value: ExportState }) {
         </button>
       )}
       {value.consent && (
-        <section
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="watch-reencode-title"
-          className="opt-card"
-        >
-          <h3 id="watch-reencode-title">Some videos require re-encoding</h3>
-          <p>Lossless packet copying is unavailable. Re-encoding may change video quality.</p>
-          <button className="opt-btn opt-ghost" onClick={() => value.setConsent(false)}>
-            Skip affected videos
-          </button>
-          <button className="opt-btn" onClick={() => value.retry('reencode')}>
-            Re-encode affected videos
-          </button>
-        </section>
+        <ReencodeConsent
+          reason="Lossless packet copying is unavailable."
+          decline="Skip affected videos"
+          approve="Re-encode affected videos"
+          onDecline={() => value.setConsent(false)}
+          onApprove={() => value.retry('reencode')}
+        />
       )}
     </>
   );
@@ -212,17 +243,26 @@ export function InboxExportControls({ value }: { value: ExportState }) {
       </button>
       <InboxMediaPreview value={value.media} disabled={value.busy} />
       {value.entries.some(entry => entry.mediaType === 'avatar') && (
-        <p className="opt-note">Avatar changes offer Original only.</p>
+        <p className="opt-note">Avatar changes offer Original only, with rotate and crop.</p>
       )}
       <button
         className="opt-btn"
         disabled={value.busy || !value.media.canDownload}
-        onClick={value.download}
+        onClick={() => value.download()}
       >
         {value.busy
           ? 'Starting downloads…'
           : `Download selected (${value.media.selections.length})`}
       </button>
+      {value.cropConsent && (
+        <ReencodeConsent
+          reason="Cropping a video re-encodes it."
+          decline="Cancel"
+          approve="Re-encode cropped videos"
+          onDecline={() => value.setCropConsent(false)}
+          onApprove={() => value.download(true)}
+        />
+      )}
       <ExportRecovery value={value} />
       {value.failure && <p className="opt-meta opt-error">{value.failure}</p>}
     </div>

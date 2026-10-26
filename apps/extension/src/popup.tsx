@@ -25,8 +25,7 @@ import {
 } from './frame-export/timestamp';
 import { executeFrameExport } from './frame-export/executor';
 import { executeModifiedExport } from './rotation/executor';
-import { nextRotation } from './rotation/contracts';
-import { normalizeCrop, rotateCropClockwise, type Crop } from './crop/contracts';
+import { useMediaEdits } from './popup/use-media-edits';
 import { canonicalizeInstagramUrl, isBusy as isWorkspaceBusy } from './workspace/contracts';
 import { useMediaFetch } from './workspace/use-media-fetch';
 import { useWorkspaceSurface, WORKSPACE_BUSY_MESSAGE } from './workspace/use-workspace-surface';
@@ -217,28 +216,7 @@ export default function Popup() {
     );
   }, []);
 
-  const rotateItem = useCallback((index: number) => {
-    setMediaItems(prev =>
-      prev.map(item => {
-        if (item.index !== index) return item;
-        const { rotation, crop, ...unmodified } = item;
-        const next = nextRotation(rotation);
-        return {
-          ...unmodified,
-          ...(next ? { rotation: next } : {}),
-          ...(crop ? { crop: rotateCropClockwise(crop) } : {}),
-        };
-      })
-    );
-  }, []);
-
-  const changeCrop = useCallback((index: number, crop: Crop | undefined) => {
-    setMediaItems(prev =>
-      prev.map(item =>
-        item.index === index ? { ...item, crop: crop && normalizeCrop(crop) } : item
-      )
-    );
-  }, []);
+  const { onRotate: rotateItem, onChangeCrop: changeCrop } = useMediaEdits(setMediaItems);
 
   const setFrameDuration = useCallback(
     (index: number, durationSeconds: number) => {
