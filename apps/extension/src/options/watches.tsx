@@ -32,7 +32,7 @@ import type {
   WatchPreviewResponse,
 } from '../messaging/contracts.ts';
 import { linkedLoginState } from '../instagram/linked-login.ts';
-import { LoginPicker, useLogins, type Logins } from '../popup/login-picker.tsx';
+import { LoginPicker, useLoginChoice, useLogins, type Logins } from '../popup/login-picker.tsx';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { watchFailure } from '../errors/contracts.ts';
 import { browser, type StorageChanges } from '../lib/browser.ts';
@@ -385,7 +385,7 @@ function AddWatchFlow({
   onRun: Run;
   onOpen: (watchId: string) => void;
 }) {
-  const [login, setLogin] = useState<InstagramLogin>('main');
+  const [login, setLogin] = useLoginChoice(logins);
   const [preview, setPreview] = useState<WatchPreviewResponse>();
   return (
     <>
@@ -681,19 +681,19 @@ type Filter = 'all' | InstagramLogin;
 
 const FILTER_LABEL: Record<Filter, string> = { all: 'All', main: 'Main', linked: 'Linked' };
 
-/** Narrows the Watch list to the Watches of one of the logins in `filters`. */
+/** Narrows the Watch list to the Watches of one of `logins`. */
 function OwnerFilter({
-  filters,
+  logins,
   filter,
   onChange,
 }: {
-  filters: readonly InstagramLogin[];
+  logins: readonly InstagramLogin[];
   filter: Filter;
   onChange: (filter: Filter) => void;
 }) {
   return (
     <div className="opt-filter" role="group" aria-label="Show Watches of">
-      {(['all', ...filters] as const).map(value => (
+      {(['all', ...logins] as const).map(value => (
         <button key={value} aria-pressed={filter === value} onClick={() => onChange(value)}>
           {FILTER_LABEL[value]}
         </button>
@@ -719,12 +719,16 @@ function Navigation({
   onGo: (view: View) => void;
   onLoginsChanged: () => void;
 }) {
-  const [filter, setFilter] = useState<Filter>('all');
+  const owning = InstagramLogin.literals.filter(login =>
+    watches.some(item => item.owner === login)
+  );
+  const [picked, setFilter] = useState<Filter>('all');
+  const filter = picked !== 'all' && owning.includes(picked) ? picked : 'all';
   const inboxCount = lists.reduce(
     (total, { list }) => total + list.watches.reduce((sum, item) => sum + item.inboxCount, 0),
     0
   );
-  const shown = watches.filter(item => !manyOwners || filter === 'all' || item.owner === filter);
+  const shown = watches.filter(item => filter === 'all' || item.owner === filter);
   return (
     <nav className="opt-list">
       <div className="opt-head">
@@ -755,15 +759,7 @@ function Navigation({
         <span className="opt-count">{inboxCount}</span>
       </button>
       <span className="opt-label opt-section">Watches ({shown.length})</span>
-      {manyOwners && (
-        <OwnerFilter
-          filters={InstagramLogin.literals.filter(login =>
-            watches.some(item => item.owner === login)
-          )}
-          filter={filter}
-          onChange={setFilter}
-        />
-      )}
+      {manyOwners && <OwnerFilter logins={owning} filter={filter} onChange={setFilter} />}
       <div className="opt-watch-list">
         {shown.map(item => (
           <WatchRow
@@ -1250,7 +1246,6 @@ function usePageModel({ main, linked, linkedFailure, linkedState }: Lists) {
   const watches = useMemo(() => pageWatches(lists, main.heldWatches), [lists, main]);
   const mainSchedule = useWatchSchedule(main, 'main') ?? main.schedule;
   const linkedSchedule = useWatchSchedule(linked, 'linked');
-  const storeProblem = main.storage.status === 'ok' ? 0 : 1;
   const ownerOf = (watchId: string | undefined) =>
     watches.find(item => item.watch.watchId === watchId);
   return {
@@ -1272,10 +1267,10 @@ function usePageModel({ main, linked, linkedFailure, linkedState }: Lists) {
       { label: linked && OWNER_LABEL.main, schedule: mainSchedule },
       ...(linkedSchedule ? [{ label: OWNER_LABEL.linked, schedule: linkedSchedule }] : []),
     ] satisfies LoginSchedule[],
-    // Every list counts the shared store's problem, so the page adds it back once.
+    // Every list counts the shared store's problem, so the page counts it once, from the main list.
     attention: lists.reduce(
-      (total, { list }) => total + list.attentionCount - storeProblem,
-      storeProblem
+      (total, { list }) => total + list.attentionCount - (list.storage.status === 'ok' ? 0 : 1),
+      main.storage.status === 'ok' ? 0 : 1
     ),
   };
 }

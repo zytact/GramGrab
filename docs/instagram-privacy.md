@@ -71,19 +71,19 @@ Watches are the one exception to request-in-the-moment access. See
   Highlight, or for an Avatar. An entry already in the Watch inbox stays there.
 
 - **Export and import.** The options page can save one verified login's Watches to a file and add
-  the Watches in such a file to one verified login, picked on the page while a login is linked. The file holds each target account ID and
-  username, its kinds and actions, and whether it is paused. It holds no viewer ID, baseline, media
-  reference, outcome, or Avatar image, and GramGrab sends it nowhere. Import shows what it will add,
-  requires the disclosure above, and confirms each account it adds with one ID-keyed profile request.
-  See
+  the Watches in such a file to one verified login, picked on the page while a login is linked.
+  The file holds each target account ID and username, its kinds and actions, and whether it is
+  paused. It holds no viewer ID, baseline, media reference, outcome, or Avatar image, and GramGrab
+  sends it nowhere. Import shows what it will add, requires the disclosure above, and confirms each
+  account it adds with one ID-keyed profile request. See
   [ADR 0006](./adr/0006-watches-file-carries-definitions-only.md).
 
 - **Ownership and lifetime.** Watch state belongs to the Instagram login that created it. Only
   that login's session checks it, and only that login can change it. The Watches page lists every
   stored Watch, and a Watch whose owner is not signed in shows as paused. See
-  [ADR 0008](./adr/0008-watches-page-shows-every-login.md). Inbox entries expire 30 days after discovery. The whole store
-  stays under a 2 MiB budget. Deleting a Watch removes its state, while downloaded files and History
-  receipts remain.
+  [ADR 0008](./adr/0008-watches-page-shows-every-login.md). Inbox entries expire 30 days after
+  discovery. The whole store stays under a 2 MiB budget. Deleting a Watch removes its state, while
+  downloaded files and History receipts remain.
 
 ## Linked login (Beta, Chromium)
 

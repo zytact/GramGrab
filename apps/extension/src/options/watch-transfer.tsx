@@ -16,7 +16,7 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { STORE_BUDGET_BYTES } from '../watch/contracts.ts';
 import { ACTION_LABEL, KIND_LABEL } from './copy.ts';
 import { askToNotify } from './notify-permission.ts';
-import { LoginPicker, type Logins } from '../popup/login-picker.tsx';
+import { LoginPicker, useLoginChoice, type Logins } from '../popup/login-picker.tsx';
 import type { LoginList } from './owners.tsx';
 
 const decodeFile = Schema.decodeUnknownEither(WatchesFile);
@@ -241,7 +241,7 @@ export function WatchTransfer({
   logins: Logins;
   onSend: (command: WatchCommand, login: InstagramLogin) => Promise<WatchCommandResponse>;
 }) {
-  const [login, setLogin] = useState<InstagramLogin>('main');
+  const [login, setLogin] = useLoginChoice(logins);
   const watches = lists.find(list => list.login === login)?.list.watches ?? [];
   const onSend: Send = command => sendAs(command, login);
   return (
