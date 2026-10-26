@@ -106,14 +106,12 @@ export async function refreshAvatarImage(
   await cacheImage(watch, observed, now);
 }
 
-/** The pictures the Watches page shows for `viewerId`: its own, and each of its Watches'. */
+/** The pictures the Watches page shows: `viewerId`'s own, and every Watch's. */
 export async function watchAvatars(viewerId: string): Promise<WatchAvatarsResponse> {
   const read = await readStore();
   const watches = Object.fromEntries(
     (read.kind === 'ok' ? read.store.watches : []).flatMap(watch =>
-      watch.viewerId === viewerId && watch.avatarImage
-        ? [[watch.id, dataUrl(watch.avatarImage.jpeg)]]
-        : []
+      watch.avatarImage ? [[watch.id, dataUrl(watch.avatarImage.jpeg)]] : []
     )
   );
   const login = await viewerJpeg(viewerId);

@@ -336,10 +336,14 @@ describe('when Instagram ends the linked session', () => {
       })
     );
     expect(refused.failure?.code).toBe('IG_LINKED_LOGIN_ENDED');
+    expect((await run(WatchList.make(), 'WatchListResult')).heldWatches).toMatchObject([
+      { owner: 'linked', watch: { accountId: TARGET.id } },
+    ]);
 
     linkedViewer = LINKED;
     expect(await link()).toMatchObject({ _tag: 'linked' });
     expect(stored()?.ended).toBeUndefined();
+    expect((await run(WatchList.make(), 'WatchListResult')).heldWatches).toEqual([]);
     expect((await run(WatchNeeds.make(), 'WatchNeedsResult')).items).not.toContainEqual(
       expect.objectContaining({ _tag: 'LinkedLoginAttention' })
     );

@@ -1,5 +1,6 @@
-import { createContext, useContext, useId, useState } from 'react';
+import { createContext, useContext, useId, useRef, useState } from 'react';
 import {
+  InstagramLogin,
   WatchInboxExport,
   WatchInboxRemove,
   WatchInboxRetry,
@@ -9,12 +10,20 @@ import {
   type FailureCode,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
+import type { WatchCommandResponse } from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { InboxMediaPreview, useInboxMedia } from './inbox-media.tsx';
-import { pageLogin } from './login-switch.tsx';
 
-const run = (command: WatchCommand) =>
-  sendMessage({ type: 'WATCH_COMMAND', command, login: pageLogin() });
+/** One command per login that owns some of `items`, so each runs as its owner. */
+const perLogin = <T,>(
+  items: readonly T[],
+  loginOf: (item: T) => InstagramLogin,
+  make: (group: readonly T[]) => WatchCommand
+) =>
+  InstagramLogin.literals.flatMap(login => {
+    const group = items.filter(item => loginOf(item) === login);
+    return group.length > 0 ? [[login, make(group)] as const] : [];
+  });
 
 function canRecover(code: FailureCode) {
   const policy = FAILURE_PRESENTATION[code];
@@ -36,11 +45,43 @@ function applicable(outcome: InboxExportOutcome, recovery?: 'original' | 'reenco
   });
 }
 
-export function useInboxExport(onChanged: () => void) {
+/** What one inbox action's per-login commands did together. */
+function combined(responses: readonly WatchCommandResponse[]) {
+  const results = responses.flatMap(response => (response.result ? [response.result] : []));
+  const exports = results.flatMap(result =>
+    result._tag === 'WatchInboxExportResult' ? [result] : []
+  );
+  const removals = results.flatMap(result =>
+    result._tag === 'WatchInboxRemoveResult' ? [result] : []
+  );
+  return {
+    failed: responses
+      .flatMap(({ failure }) => (failure?._tag === 'CommandFailure' ? [failure.failure.code] : []))
+      .at(-1),
+    exported: exports.length > 0 ? exports.flatMap(result => result.outcomes) : undefined,
+    removed:
+      removals.length > 0
+        ? new Set(
+            removals.flatMap(result => [...result.removedEntryIds, ...result.unknownEntryIds])
+          )
+        : undefined,
+  };
+}
+
+/** Inbox selection and its commands, each run as the login `loginOf` names for an entry's Watch. */
+export function useInboxExport(
+  onChanged: () => void,
+  loginOf: (watchId: string | undefined) => InstagramLogin
+) {
   const [selected, setSelected] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, InboxExportOutcome>>(new Map());
   const [busy, setBusy] = useState(false);
-  const media = useInboxMedia(() => {
+  const watchOf = useRef(new Map<string, string>());
+  const remember = (entries: readonly DiscoverySummary[]) => {
+    for (const entry of entries) watchOf.current.set(entry.entryId, entry.watchId);
+  };
+  const entryLogin = (entryId: string) => loginOf(watchOf.current.get(entryId));
+  const media = useInboxMedia(loginOf, () => {
     setSelected(new Map());
     setOutcomes(new Map());
     onChanged();
@@ -55,23 +96,21 @@ export function useInboxExport(onChanged: () => void) {
       (outcome.failures.some(failure => canRecover(failure.code)) || outcome.skipped?.length)
   );
 
-  const execute = async (command: WatchCommand) => {
+  const execute = async (commands: readonly (readonly [InstagramLogin, WatchCommand])[]) => {
     setBusy(true);
     setFailure(undefined);
     try {
-      const response = await run(command);
-      if (response.failure?._tag === 'CommandFailure')
-        setFailure(FAILURE_PRESENTATION[response.failure.failure.code].title);
-      if (response.result?._tag === 'WatchInboxExportResult') {
-        setOutcomes(new Map(response.result.outcomes.map(outcome => [outcome.entryId, outcome])));
+      const responses = [];
+      for (const [login, command] of commands)
+        responses.push(await sendMessage({ type: 'WATCH_COMMAND', command, login }));
+      const { failed, exported, removed } = combined(responses);
+      if (failed) setFailure(FAILURE_PRESENTATION[failed].title);
+      if (exported) {
+        setOutcomes(new Map(exported.map(outcome => [outcome.entryId, outcome])));
         setSelected(new Map());
         media.clearPreview();
       }
-      if (response.result?._tag === 'WatchInboxRemoveResult') {
-        const removed = new Set([
-          ...response.result.removedEntryIds,
-          ...response.result.unknownEntryIds,
-        ]);
+      if (removed) {
         setSelected(current => new Map([...current].filter(([id]) => !removed.has(id))));
         setOutcomes(current => new Map([...current].filter(([id]) => !removed.has(id))));
         media.clearPreview();
@@ -90,10 +129,15 @@ export function useInboxExport(onChanged: () => void) {
     setCropConsent(!approved && media.cropsVideo);
     if (!approved && media.cropsVideo) return;
     void execute(
-      WatchInboxExport.make({
-        entryIds: [...new Set(items.map(item => item.entryId))],
+      perLogin(
         items,
-      })
+        item => entryLogin(item.entryId),
+        group =>
+          WatchInboxExport.make({
+            entryIds: [...new Set(group.map(item => item.entryId))],
+            items: group,
+          })
+      )
     );
   };
   const restoreOutcomes = (entries: readonly DiscoverySummary[]) =>
@@ -111,7 +155,13 @@ export function useInboxExport(onChanged: () => void) {
       .flatMap(outcome =>
         outcome.planId ? [{ entryId: outcome.entryId, planId: outcome.planId }] : []
       );
-    void execute(WatchInboxRetry.make({ plans, ...(recovery ? { recovery } : {}) }));
+    void execute(
+      perLogin(
+        plans,
+        plan => entryLogin(plan.entryId),
+        group => WatchInboxRetry.make({ plans: group, ...(recovery ? { recovery } : {}) })
+      )
+    );
   };
   return {
     selected,
@@ -127,8 +177,16 @@ export function useInboxExport(onChanged: () => void) {
     failed,
     download,
     retry,
-    remove: (entryIds: readonly string[]) => void execute(WatchInboxRemove.make({ entryIds })),
+    remove: (entries: readonly DiscoverySummary[]) =>
+      void execute(
+        perLogin(
+          entries,
+          entry => loginOf(entry.watchId),
+          group => WatchInboxRemove.make({ entryIds: group.map(entry => entry.entryId) })
+        )
+      ),
     selectAll: (entries: readonly DiscoverySummary[]) => {
+      remember(entries);
       media.clearPreview();
       restoreOutcomes(entries);
       setSelected(new Map(entries.map(entry => [entry.entryId, entry])));
@@ -142,6 +200,7 @@ export function useInboxExport(onChanged: () => void) {
       if (!busy) setOutcomes(new Map());
     },
     toggle: (entry: DiscoverySummary) => {
+      remember([entry]);
       media.clearPreview();
       restoreOutcomes([entry]);
       setSelected(current => {

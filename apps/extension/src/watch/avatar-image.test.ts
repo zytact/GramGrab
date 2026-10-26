@@ -424,7 +424,7 @@ describe('Watch Avatar images', () => {
     expect(instagram.state.profileRequests).toHaveLength(!observed && room > 0 ? 1 : 0);
   });
 
-  it('shows the page only the asking login’s pictures, and its own picture from memory', async () => {
+  it('shows the page every Watch’s picture, and the asking login’s own picture from memory', async () => {
     instagram.state.viewer = { ...VIEWER, profile_pic_url: 'https://sanitized.invalid/viewer' };
     const { watch } = await addWatch('avatar');
     await checkLater();
@@ -434,7 +434,7 @@ describe('Watch Avatar images', () => {
       login: STUB_AVATAR,
       watches: { [watch.watchId]: STUB_AVATAR },
     });
-    expect(await avatars('1009')).toEqual({ watches: {} });
+    expect(await avatars('1009')).toEqual({ watches: { [watch.watchId]: STUB_AVATAR } });
     expect(harness.local.read('watch-store')).not.toHaveProperty('viewer');
 
     await run(

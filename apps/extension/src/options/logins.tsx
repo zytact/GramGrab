@@ -1,20 +1,7 @@
 import { useState } from 'react';
-import type { InstagramLogin } from '@gramgrab/protocol';
 import type { LinkRefusalReason } from '../messaging/contracts.ts';
 import { sendMessage } from '../messaging/send.ts';
-import { loginLabel, useLogins } from '../popup/login-picker.tsx';
-
-/** The login the Watches page shows, from its `login` query parameter. */
-export const pageLogin = (): InstagramLogin =>
-  new URLSearchParams(location.search).get('login') === 'linked' ? 'linked' : 'main';
-
-const pageFor = (login: InstagramLogin) => {
-  const url = new URL(location.href);
-  url.hash = '';
-  if (login === 'linked') url.searchParams.set('login', 'linked');
-  else url.searchParams.delete('login');
-  return url.href;
-};
+import type { Logins } from '../popup/login-picker.tsx';
 
 const REFUSAL: Record<LinkRefusalReason, string> = {
   'main-unverified':
@@ -32,23 +19,21 @@ const REFUSAL: Record<LinkRefusalReason, string> = {
 };
 
 /**
- * Switches the page between the main and the linked login, and links or unlinks the second login
- * (Beta). Hidden where the browser cannot link one.
+ * Names both logins and links or unlinks the second one (Beta). `onChange` runs after a link or
+ * unlink. Hidden where the browser cannot link one.
  */
-export function LoginSwitch() {
-  const logins = useLogins();
-  const { state, reload } = logins;
+export function LoginsSection({ logins, onChange }: { logins: Logins; onChange: () => void }) {
+  const { state, names } = logins;
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   if (!state || state === 'unsupported') return null;
-  const login = pageLogin();
 
   const link = async () => {
     setBusy(true);
     const response = await sendMessage({ type: 'LINK_LOGIN' });
     setBusy(false);
     if (response._tag === 'refused') return setNotice(REFUSAL[response.reason]);
-    reload();
+    onChange();
     setNotice(
       `Linked @${response.username}. You can close the Incognito window, but do not log out of it.`
     );
@@ -57,34 +42,29 @@ export function LoginSwitch() {
     setBusy(true);
     await sendMessage({ type: 'UNLINK_LOGIN' });
     setBusy(false);
-    if (login === 'linked') location.assign(pageFor('main'));
-    else reload();
+    onChange();
     setNotice(undefined);
   };
 
   return (
-    <div className="opt-login-switch">
+    <div className="opt-logins">
       <span className="opt-label">
         {state === 'unlinked' ? 'Link a second login' : 'Logins'}{' '}
         <span className="opt-beta">Beta</span>
       </span>
       {state !== 'unlinked' && (
-        <div className="opt-login-tabs">
-          <a
-            href={pageFor('main')}
-            title={loginLabel('main', logins)}
-            aria-current={login === 'main' ? 'page' : undefined}
-          >
-            {loginLabel('main', logins)}
-          </a>
-          <a
-            href={pageFor('linked')}
-            title={loginLabel('linked', logins)}
-            aria-current={login === 'linked' ? 'page' : undefined}
-          >
-            {loginLabel('linked', logins)}
-          </a>
-        </div>
+        <ul className="opt-login-names">
+          <li>
+            <span className="opt-meta">Main</span>
+            <span className="opt-name">{names.main && `@${names.main}`}</span>
+          </li>
+          <li>
+            <span className="opt-meta">Linked</span>
+            <span className="opt-name">
+              {state === 'ended' ? 'Signed out' : names.linked && `@${names.linked}`}
+            </span>
+          </li>
+        </ul>
       )}
       {state === 'ended' && (
         <p className="opt-banner opt-banner-error">

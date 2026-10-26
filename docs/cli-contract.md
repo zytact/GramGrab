@@ -1,6 +1,6 @@
 # CLI capability contract
 
-This document inventories the public GramGrab operations covered by protocol version 6. It is a
+This document inventories the public GramGrab operations covered by protocol version 7. It is a
 behavior contract, not a promise that the CLI transport is implemented before phase 3.
 
 ## Item identity
@@ -165,7 +165,7 @@ transport failure.
 | Download from history                                                    | `HistoryRedownload`                                       | Uses extension resolution and download behavior, never CLI-side media fetching                   |
 | Read supported diagnostics                                               | `DebugGet`                                                | `diagnostics`; structural-only version-2 report                                                  |
 | Export a diagnostic report                                               | `DebugExport`                                             | Exports the structural-only version-2 report                                                     |
-| List and inspect Watches                                                 | `WatchList`, `WatchShow`                                  | Verifies the signed-in login first; another login's Watches appear only as a count               |
+| List and inspect Watches                                                 | `WatchList`, `WatchShow`                                  | Verifies the signed-in login first; Watches no signed-in login checks appear as `heldWatches`    |
 | Add a Watch                                                              | `WatchAdd`                                                | Requires the per-call disclosure acknowledgement; duplicates return or point to the existing one |
 | Change a Watch's kinds or actions                                        | `WatchSet`                                                | Replaces the supplied sets; initialized baselines are kept                                       |
 | Pause, resume, or delete Watches                                         | `WatchLifecycle`                                          | Unknown selectors are reported per Watch; deletion keeps files and History                       |

@@ -5,6 +5,7 @@ import {
   WatchesExport,
   WatchesFile,
   WatchesImport,
+  type InstagramLogin,
   type WatchCommand,
   type WatchDefinition,
   type WatchSummary,
@@ -15,6 +16,8 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { STORE_BUDGET_BYTES } from '../watch/contracts.ts';
 import { ACTION_LABEL, KIND_LABEL } from './copy.ts';
 import { askToNotify } from './notify-permission.ts';
+import { LoginPicker, type Logins } from '../popup/login-picker.tsx';
+import type { LoginList } from './owners.tsx';
 
 const decodeFile = Schema.decodeUnknownEither(WatchesFile);
 
@@ -72,8 +75,9 @@ function ExportWatches({ count, onSend }: { count: number; onSend: Send }) {
   return (
     <div className="opt-add">
       <p className="opt-note">
-        Saves each Watch of this Instagram login to a file: the account, what to watch for, what to
-        do, and whether it is paused. The file holds no media, no inbox, and nothing a check found.
+        Saves each Watch of the chosen Instagram login to a file: the account, what to watch for,
+        what to do, and whether it is paused. The file holds no media, no inbox, and nothing a check
+        found.
       </p>
       <button
         className="opt-btn opt-primary"
@@ -183,8 +187,8 @@ function ImportWatches({ watches, onSend }: { watches: readonly WatchSummary[]; 
   return (
     <div className="opt-add">
       <p className="opt-note">
-        Adds the Watches in an exported file to the Instagram login signed in here. An account you
-        already watch is skipped, and its Watch stays as it is.
+        Adds the Watches in an exported file to the chosen Instagram login. An account it already
+        watches is skipped, and its Watch stays as it is.
       </p>
       <input
         key={imports}
@@ -224,21 +228,30 @@ function ImportWatches({ watches, onSend }: { watches: readonly WatchSummary[]; 
   );
 }
 
-/** Exports the login's Watches to a file, and previews a file before importing it. */
+/**
+ * Exports one login's Watches to a file, and previews a file before importing it. When a login is
+ * linked, the person picks which login both act as, once for the whole file.
+ */
 export function WatchTransfer({
-  watches,
-  onSend,
+  lists,
+  logins,
+  onSend: sendAs,
 }: {
-  watches: readonly WatchSummary[];
-  onSend: Send;
+  lists: readonly LoginList[];
+  logins: Logins;
+  onSend: (command: WatchCommand, login: InstagramLogin) => Promise<WatchCommandResponse>;
 }) {
+  const [login, setLogin] = useState<InstagramLogin>('main');
+  const watches = lists.find(list => list.login === login)?.list.watches ?? [];
+  const onSend: Send = command => sendAs(command, login);
   return (
     <>
       <h1 className="opt-h1">Export and import</h1>
+      <LoginPicker logins={logins} login={login} disabled={false} onChange={setLogin} />
       <h2 className="opt-h2">Export</h2>
       <ExportWatches count={watches.length} onSend={onSend} />
       <h2 className="opt-h2">Import</h2>
-      <ImportWatches watches={watches} onSend={onSend} />
+      <ImportWatches key={login} watches={watches} onSend={onSend} />
     </>
   );
 }

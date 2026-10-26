@@ -356,7 +356,10 @@ describe('Watch auto-download and recovery', () => {
     await find();
     expect(harness.downloads).toHaveLength(0);
     expect(children().map(child => child.status)).toEqual(['pending', 'pending']);
-    expect(await run(WatchList.make())).toMatchObject({ watches: [], otherLoginWatchCount: 1 });
+    expect(await run(WatchList.make())).toMatchObject({
+      watches: [],
+      heldWatches: [{ owner: 'other' }],
+    });
   });
 
   it('only dismisses final missing children and keeps successful sibling work', async () => {

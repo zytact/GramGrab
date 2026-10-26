@@ -82,6 +82,14 @@ _Avoid_: Primary account
 One second Instagram login linked from an Incognito window, whose requests carry its own copied session (Beta, Chromium only).
 _Avoid_: Second profile, alt account
 
+**Owner**:
+The login that created a Watch. Only the owner's session checks the Watch and only the owner can change it, but the Watches page shows every login's Watches.
+_Avoid_: Account (for the login), user
+
+**Held Watch**:
+A Watch whose owner is not signed in: a Linked login Instagram signed out, or a login that is neither the Main nor the Linked login. It stays paused until its owner is back.
+_Avoid_: Hidden Watch, orphan
+
 ### Operations
 
 **Failure code**:

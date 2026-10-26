@@ -6,6 +6,7 @@ import {
 } from '@gramgrab/protocol';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { KIND_LABEL, relativeTime } from './copy.ts';
+import { OwnerTag } from './owners.tsx';
 
 type Recovery = Extract<WatchCommand, { _tag: 'WatchRecover' }>;
 
@@ -44,7 +45,8 @@ function RecoveryRow({
     <div className="opt-line opt-row opt-top">
       <div className="opt-grow">
         <strong>
-          @{entry.username} · {KIND_LABEL[entry.kind]} · {action}
+          <OwnerTag watchId={entry.watchId} />@{entry.username} · {KIND_LABEL[entry.kind]} ·{' '}
+          {action}
           {child === undefined ? '' : ` item ${child + 1}`}
         </strong>
         <span className="opt-meta">
