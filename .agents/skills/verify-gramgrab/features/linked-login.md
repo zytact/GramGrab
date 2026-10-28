@@ -47,8 +47,9 @@ can fetch and watch private accounts only their second account can see.
    workspace swap the entry for a `Login` select (`#instagram-login`) next to
    Fetch. Its options read `@<username>`, or `Main` and `Linked` until the
    worker answers `LOGIN_NAMES`. A signed-out linked login reads
-   `Linked (signed out)` there. The closed control reads `+ signed out` beside a greyed Avatar and a red dot, and opened it reads `Signed out`
-   and offers `Link this login again`.
+   `Linked (signed out)` there. The closed control reads `+ signed out`
+   beside a greyed Avatar and a red dot, and opened it reads `Signed out` and
+   offers `Link this login again`.
 5. The CLI takes `--login main|linked` on `inspect`, `export`, `instants`,
    `history redownload`, and `watch` commands.
 

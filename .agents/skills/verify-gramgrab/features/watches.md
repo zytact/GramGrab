@@ -44,8 +44,8 @@ of the height, a one-line footer, and the `Export or import Watches` text link
 
 The footer's `<summary>` reads `Next check in 41m · 14% storage`, using the
 login whose checks run first: a login mid-round reads `Checking, N left this
-round` (`Waiting` while a hold applies), else the earliest next round. Its
-`title` holds the absolute time. Opening it shows each login's line, only while
+round` (`Waiting` while a hold applies), else the earliest next round. Unless
+a round is running, its `title` holds the absolute time. Opening it shows each login's line, only while
 both logins have one, then the `Watch storage` meter, then the Avatar note when
 it applies. The relative time re-renders every minute.
 
@@ -222,8 +222,8 @@ screenshots. Run `drive.mjs activate options.html` first.
 A username that is wider than its container must never escape it. Routes
 (materials differ, mechanism differs): a sidebar Watch row's `.opt-clamp`
 wraps mid-token to at most two lines and puts the full handle in `title`; the
-closed Logins control's `.opt-name` and an open Watch's chip truncate with an
-ellipsis; status surfaces (`.opt-grow`, `.opt-add strong`, `.opt-banner`) wrap
+closed Logins control's `.opt-name` (full handle in `title`) and an open
+Watch's chip truncate with an ellipsis; status surfaces (`.opt-grow`, `.opt-add strong`, `.opt-banner`) wrap
 with `overflow-wrap: anywhere`. The login-tab route lives in
 [Linked login](#linked-login): without a linked login, drive its rule through a
 synthetic styled duplicate in the page, labeled as such, and record the live
