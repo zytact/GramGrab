@@ -270,10 +270,14 @@ Prefer these handles, which the source owns and tests already depend on:
 | Diagnostics dialog   | `#diagnostics-dialog-title`                        |
 | Watch check problem  | `.opt-health-row.opt-health-problem`               |
 | Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
-| Watches file import  | `input[aria-label="Watches file"]`, button text `Export or import` |
+| Watches file import  | `input[aria-label="Watches file"]`, link `.opt-foot-link` |
 | Login picker         | `#instagram-login`                                 |
 | Link a second login  | `.login-link-entry`                                |
-| Link and Unlink      | `.opt-logins button`                               |
+| Logins control       | `.opt-logins-summary`; click it to open            |
+| Link and Unlink      | `.opt-logins button`, inside the open control      |
+| Needs you and Inbox  | `.opt-views button`                                |
+| Add Watch            | `.opt-list-head button` (`+ Add`)                  |
+| Next check, storage  | `.opt-list-foot summary`; click it to open         |
 | Watch owner tag      | `.opt-owner`, filter `.opt-filter button`          |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 

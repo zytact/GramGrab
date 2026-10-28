@@ -10,7 +10,7 @@ can fetch and watch private accounts only their second account can see.
 
 - Entry: while nothing is linked, the popup and workspace show `Link a second
   login` (`.login-link-entry`) beside `Load Instants`. It opens the Watches page
-  through `runtime.openOptionsPage`, where the linking section heads the
+  through `runtime.openOptionsPage`, where the Logins control heads the
   sidebar.
 - Link: the Watches page copies the Instagram cookies of an open Incognito
   window, confirms that account with the viewer query, and refuses it when it
@@ -35,21 +35,25 @@ can fetch and watch private accounts only their second account can see.
 
 1. On the browser's extensions page, turn on Allow in Incognito for GramGrab.
 2. Open an Incognito window and sign in to the second Instagram account there.
-3. Click `Link a second login` in the popup, or open the Watches page. Under
-   `LINK A SECOND LOGIN BETA`, click `Link this login`. The notice reads
+3. Click `Link a second login` in the popup, or open the Watches page. Open the
+   Logins control at the top of the sidebar, and under `LOGINS BETA` click
+   `Link a second login`. The notice reads
    `Linked @<username>.` The Incognito window may close; logging out of it
    ends the linked session.
-4. The section heading turns to `LOGINS BETA` and names both logins as
-   `MAIN @<username>` and `LINKED @<username>`. The Watches page lists both
+4. The closed control names both logins on two lines, `@<main>` and
+   `+ @<linked>`, over stacked Avatars. Opened, it lists `MAIN LOGIN @<username>`
+   and `LINKED LOGIN @<username>`, then `Unlink`. The Watches page lists both
    logins' Watches, see [Watches](./watches.md#linked-login). The popup and
    workspace swap the entry for a `Login` select (`#instagram-login`) next to
    Fetch. Its options read `@<username>`, or `Main` and `Linked` until the
    worker answers `LOGIN_NAMES`. A signed-out linked login reads
-   `Linked (signed out)` there and `Signed out` under `LOGINS`.
+   `Linked (signed out)` there. The closed control reads `+ signed out` beside a greyed Avatar and a red dot, and opened it reads `Signed out`
+   and offers `Link this login again`.
 5. The CLI takes `--login main|linked` on `inspect`, `export`, `instants`,
    `history redownload`, and `watch` commands.
 
-Firefox has no `.opt-logins` and no picker.
+Firefox has no `.opt-logins` and no picker. Its Logins control names the main
+login only and does not open.
 
 ## Driving it with the harness
 
@@ -97,8 +101,8 @@ node $D eval js/background.js "new Promise(r=>chrome.cookies.get({url:'https://w
 ```
 
 The refusal states need no second account and send no Instagram request. Open
-an Incognito window with no Instagram tab, click `Link this login`, and read
-`.opt-logins`, then close every Incognito window again.
+an Incognito window with no Instagram tab, open the Logins control, click
+`Link a second login`, and read `.opt-logins`, then close every Incognito window again.
 `chrome.windows.getAll` rejects an `incognito` filter, so filter the result:
 
 ```bash
@@ -108,8 +112,9 @@ node $D eval js/background.js \
   "chrome.windows.getAll().then(ws=>Promise.all(ws.filter(w=>w.incognito).map(w=>chrome.windows.remove(w.id)))).then(r=>String(r.length))"
 ```
 
-Link and unlink from the Watches page with `drive.mjs click` on the
-`.opt-logins button` whose text is `Link this login` or `Unlink`. After
+Link and unlink from the Watches page: `drive.mjs click` on
+`.opt-logins-summary` to open the control, then on the `.opt-logins button`
+whose text is `Link a second login`, `Link this login again` or `Unlink`. After
 linking, prove the two logins differ without printing either ID:
 
 ```bash
@@ -148,7 +153,7 @@ Adding the Watch spends linked requests of its own for the preview and baseline.
 
 ## What proves it works
 
-- Link: the notice starts `Linked @`, `LOGINS` names both by `@username`, `linked-instagram-login`
+- Link: the notice starts `Linked @`, the Logins control names both by `@username`, `linked-instagram-login`
   exists, and the viewer probe reads `{"differ":true,"linkedVerified":true}`.
 - Refusal: each refusal stores nothing and names its next step. Without
   Incognito access it reads `Allow GramGrab in Incognito on the browser's
@@ -170,7 +175,7 @@ Adding the Watch spends linked requests of its own for the preview and baseline.
 - Main session: the `sessionid` hash is the same before and after.
 - Unlink: the record and the session rule are both gone, and the picker hides.
 - Entry: unlinked, the popup shows `.login-link-entry`, and clicking it adds an
-  `options.html` target whose `.opt-logins` reads `LINK A SECOND LOGIN`.
+  `options.html` target whose opened `.opt-logins` offers `Link a second login`.
   Linked, the entry is gone and `#instagram-login` shows instead.
 
 ## Gotchas
