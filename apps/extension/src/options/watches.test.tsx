@@ -1334,13 +1334,13 @@ describe('Watches of both logins', { timeout: 15_000 }, () => {
       ended: true,
     });
     render(<Watches />);
-    await waitFor(() => expect(summary()?.textContent).toContain('Linked login signed out'));
+    await waitFor(() => expect(summary()?.textContent).toContain('+ signed out'));
     expect(summary()?.querySelector('.opt-dot')).not.toBeNull();
     expect(summary()?.querySelector('.opt-login-ended .opt-avatar')).not.toBeNull();
     expect(screen.getByRole('button', { name: /^Link this login again/ })).toBeDefined();
 
     await user.click(screen.getByRole('button', { name: 'Unlink' }));
-    await waitFor(() => expect(summary()?.textContent).not.toContain('Linked login'));
+    await waitFor(() => expect(summary()?.textContent).not.toContain('+ '));
     expect(screen.getByRole('button', { name: /^Link a second login/ })).toBeDefined();
   });
 

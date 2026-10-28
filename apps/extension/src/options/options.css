@@ -229,13 +229,17 @@ select {
   color: var(--accent);
 }
 .opt-list-foot {
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-top: 1px solid var(--rule-strong);
 }
-.opt-list-foot summary {
+/* 10px keeps "Next check in 41m · 14% storage" on one line. */
+.opt-foot-summary {
   cursor: pointer;
   color: var(--text-mid);
-  font-size: 11px;
+  font-size: 10px;
+}
+.opt-foot-summary::marker {
+  font-size: 8px;
 }
 .opt-list-foot[open] {
   display: flex;

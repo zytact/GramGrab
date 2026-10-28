@@ -694,7 +694,10 @@ function NavigationFoot({
   const [next] = checks.toSorted((a, b) => Number(b.running) - Number(a.running) || a.at - b.at);
   return (
     <details className="opt-list-foot">
-      <summary title={next && !next.running ? new Date(next.at).toLocaleString() : undefined}>
+      <summary
+        className="opt-foot-summary"
+        title={next && !next.running ? new Date(next.at).toLocaleString() : undefined}
+      >
         {next && `${next.text} · `}
         {storageText(storage)}
       </summary>

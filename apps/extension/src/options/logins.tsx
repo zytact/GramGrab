@@ -166,7 +166,7 @@ export function LoginsMenu({
         <span className="opt-name">{loginName('main', logins)}</span>
         {hasLinked(logins) && (
           <span className="opt-meta opt-name">
-            {state === 'ended' ? 'Linked login signed out' : `+ ${loginName('linked', logins)}`}
+            {state === 'ended' ? '+ signed out' : `+ ${loginName('linked', logins)}`}
           </span>
         )}
       </span>
