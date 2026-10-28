@@ -566,8 +566,10 @@ select {
   gap: 8px;
   align-items: center;
 }
-.opt-login-ended {
+.opt-login-avatar {
   display: inline-flex;
+}
+.opt-login-ended {
   opacity: 0.4;
   filter: grayscale(1);
 }
