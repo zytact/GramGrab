@@ -10,6 +10,10 @@ export interface Logins {
   readonly names: LoginNamesResponse;
 }
 
+/** A second login is linked, whether or not its session is still alive. */
+export const hasLinked = ({ state }: Pick<Logins, 'state'>) =>
+  state === 'linked' || state === 'ended';
+
 /**
  * Where the linked login stands and each login's username, read when the surface opens. `reload`
  * reads both again after a link or unlink.
@@ -20,7 +24,7 @@ export function useLogins(): Logins & { readonly reload: () => void } {
     void linkedLoginState()
       .then(async state => {
         setLogins(current => ({ ...current, state }));
-        if (state === 'linked' || state === 'ended')
+        if (hasLinked({ state }))
           setLogins({ state, names: await sendMessage({ type: 'LOGIN_NAMES' }) });
       })
       .catch(() => undefined);
@@ -70,7 +74,7 @@ export function LoginPicker({
   readonly disabled: boolean;
   readonly onChange: (login: InstagramLogin) => void;
 }) {
-  if (logins.state !== 'linked' && logins.state !== 'ended') return null;
+  if (!hasLinked(logins)) return null;
   return (
     <label className="login-picker">
       <span className="login-picker-label">Login</span>

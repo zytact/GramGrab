@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { InstagramLogin } from '@gramgrab/protocol';
 import type { LinkRefusalReason } from '../messaging/contracts.ts';
 import { sendMessage } from '../messaging/send.ts';
-import type { Logins } from '../popup/login-picker.tsx';
+import { hasLinked, type Logins } from '../popup/login-picker.tsx';
 import { Avatar } from './avatar.tsx';
 import { OWNER_LABEL } from './owners.tsx';
 
@@ -21,7 +21,8 @@ const REFUSAL: Record<LinkRefusalReason, string> = {
     'That Incognito window is signed in to your main login. Sign in to a different account there.',
 };
 
-const hasLinked = ({ state }: Logins) => state === 'linked' || state === 'ended';
+/** This browser can link a second login. */
+const canLink = ({ state }: Logins) => state !== undefined && state !== 'unsupported';
 
 const loginName = (login: InstagramLogin, { state, names }: Logins) => {
   if (login === 'linked' && state === 'ended') return 'Signed out';
@@ -37,7 +38,7 @@ function LoginAvatar({
 }: {
   login: InstagramLogin;
   logins: Logins;
-  mainAvatar: string | undefined;
+  mainAvatar?: string;
 }) {
   const avatar = (
     <Avatar
@@ -55,7 +56,7 @@ function LoginAvatar({
 
 /**
  * Each login's full username, then Link or Unlink for the second one (Beta). `onChange` runs after
- * a link or unlink. Link and Unlink are hidden where the browser cannot link a login.
+ * a link or unlink. Hidden where the browser cannot link a login.
  */
 export function LoginsPanel({
   logins,
@@ -72,6 +73,7 @@ export function LoginsPanel({
   const shown = (['main', 'linked'] as const).filter(login =>
     login === 'main' ? names.main !== undefined : hasLinked(logins)
   );
+  if (!canLink(logins)) return null;
 
   const link = async () => {
     setBusy(true);
@@ -121,54 +123,67 @@ export function LoginsPanel({
           Incognito window, then link it here.
         </p>
       )}
-      {state && state !== 'unsupported' && (
-        <div className="opt-login-actions">
-          {state !== 'linked' && (
-            <button className="opt-btn" disabled={busy} onClick={() => void link()}>
-              {state === 'ended' ? 'Link this login again' : 'Link a second login'}
-            </button>
-          )}
-          {state !== 'unlinked' && (
-            <button className="opt-btn opt-danger" disabled={busy} onClick={() => void unlink()}>
-              Unlink
-            </button>
-          )}
-        </div>
-      )}
+      <div className="opt-login-actions">
+        {state !== 'linked' && (
+          <button className="opt-btn" disabled={busy} onClick={() => void link()}>
+            {state === 'ended' ? 'Link this login again' : 'Link a second login'}
+          </button>
+        )}
+        {state !== 'unlinked' && (
+          <button className="opt-btn opt-danger" disabled={busy} onClick={() => void unlink()}>
+            Unlink
+          </button>
+        )}
+      </div>
       {notice && <p className="opt-meta">{notice}</p>}
     </div>
   );
 }
 
-/** The sidebar's Logins control. Closed, it names both logins; open, it shows `LoginsPanel`. */
+/**
+ * The sidebar's Logins control. Closed, it names both logins; open, it shows `LoginsPanel`. Where
+ * the browser cannot link a login, it only names the main one.
+ */
 export function LoginsMenu({
   logins,
   mainAvatar,
   onChange,
 }: {
   logins: Logins;
-  mainAvatar: string | undefined;
+  mainAvatar?: string;
   onChange: () => void;
 }) {
   const { state } = logins;
+  const named = (
+    <>
+      <span className="opt-avatar-stack">
+        <LoginAvatar login="main" logins={logins} mainAvatar={mainAvatar} />
+        {hasLinked(logins) && (
+          <LoginAvatar login="linked" logins={logins} mainAvatar={mainAvatar} />
+        )}
+      </span>
+      <span className="opt-grow">
+        <span className="opt-name">{loginName('main', logins)}</span>
+        {hasLinked(logins) && (
+          <span className="opt-meta opt-name">
+            {state === 'ended' ? 'Linked login signed out' : `+ ${loginName('linked', logins)}`}
+          </span>
+        )}
+      </span>
+      {state === 'ended' && <span className="opt-dot" />}
+    </>
+  );
+  const title = 'Verified from your Instagram session';
+  if (!canLink(logins))
+    return (
+      <div className="opt-logins-menu opt-logins-summary" title={title}>
+        {named}
+      </div>
+    );
   return (
     <details className="opt-logins-menu">
-      <summary className="opt-logins-summary" title="Verified from your Instagram session">
-        <span className="opt-avatar-stack">
-          <LoginAvatar login="main" logins={logins} mainAvatar={mainAvatar} />
-          {hasLinked(logins) && (
-            <LoginAvatar login="linked" logins={logins} mainAvatar={mainAvatar} />
-          )}
-        </span>
-        <span className="opt-grow">
-          <span className="opt-name">{loginName('main', logins)}</span>
-          {hasLinked(logins) && (
-            <span className="opt-meta opt-name">
-              {state === 'ended' ? 'Linked login signed out' : `+ ${loginName('linked', logins)}`}
-            </span>
-          )}
-        </span>
-        {state === 'ended' && <span className="opt-dot" />}
+      <summary className="opt-logins-summary" title={title}>
+        {named}
         <span className="opt-caret" aria-hidden="true">
           ▾
         </span>

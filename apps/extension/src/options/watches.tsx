@@ -154,9 +154,7 @@ function LoginGate({ failure }: { failure: WatchFailure }) {
           Open instagram.com
         </a>
       )}
-      {logins.state && logins.state !== 'unsupported' && (
-        <LoginsPanel logins={logins} onChange={logins.reload} />
-      )}
+      <LoginsPanel logins={logins} onChange={logins.reload} />
     </div>
   );
 }
@@ -685,18 +683,28 @@ function NavigationFoot({
   schedules: readonly LoginSchedule[];
   showAvatarNote: boolean;
 }) {
+  // Renders again each minute so the relative times stay current.
+  const [, setMinute] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setMinute(minute => minute + 1), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const checks = nextChecks(schedules);
   // A login mid-round checks first, then the earliest next round.
   const [next] = checks.toSorted((a, b) => Number(b.running) - Number(a.running) || a.at - b.at);
   return (
     <details className="opt-list-foot">
-      <summary title={next && new Date(next.at).toLocaleString()}>
+      <summary title={next && !next.running ? new Date(next.at).toLocaleString() : undefined}>
         {next && `${next.text} · `}
         {storageText(storage)}
       </summary>
       {checks.length > 1 &&
-        checks.map(({ label, at, text }) => (
-          <p key={label} className="opt-meta" title={new Date(at).toLocaleString()}>
+        checks.map(({ label, at, running, text }) => (
+          <p
+            key={label}
+            className="opt-meta"
+            title={running ? undefined : new Date(at).toLocaleString()}
+          >
             <span className="opt-owner">{label}</span>
             {text}
           </p>
@@ -782,7 +790,7 @@ function WatchListSection({
   );
 }
 
-/** A sidebar view with its count. */
+/** A sidebar view with its count. An `urgent` count is red, and hidden while it is zero. */
 function ViewTab({
   view,
   current,

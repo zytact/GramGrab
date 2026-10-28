@@ -579,8 +579,10 @@ select {
   gap: 8px;
   padding: 6px 8px;
   font-size: 11px;
-  cursor: pointer;
   list-style: none;
+}
+summary.opt-logins-summary {
+  cursor: pointer;
 }
 .opt-logins-summary::-webkit-details-marker {
   display: none;
