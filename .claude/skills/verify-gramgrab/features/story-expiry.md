@@ -68,7 +68,7 @@ Use a naturally recorded Story discovery. A signed-in profile with active
 Stories but no Story discoveries cannot establish this path. Preserve the
 request ledger and follow [Watches](./watches.md) for account constraints.
 
-Open `options.html`, then All inbox. Story rows must show their expiry before
+Open `options.html`, then the Inbox tab. Story rows must show their expiry before
 `Fetch media`. Open the owning Watch and check the same entry in Found and
 Inbox. Select it, click `Fetch media`, and require its preview card's
 `time.item-expiry[datetime]` to agree with the recorded deadline. Compare in

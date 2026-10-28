@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import type { InstagramLogin } from '@gramgrab/protocol';
 import type { LinkRefusalReason } from '../messaging/contracts.ts';
 import { sendMessage } from '../messaging/send.ts';
-import type { Logins } from '../popup/login-picker.tsx';
+import { hasLinked, type Logins } from '../popup/login-picker.tsx';
+import { Avatar } from './avatar.tsx';
+import { OWNER_LABEL } from './owners.tsx';
 
 const REFUSAL: Record<LinkRefusalReason, string> = {
   'main-unverified':
@@ -18,15 +21,68 @@ const REFUSAL: Record<LinkRefusalReason, string> = {
     'That Incognito window is signed in to your main login. Sign in to a different account there.',
 };
 
+/** The linked login's state has loaded, and this browser can link one. */
+const canLink = ({ state }: Logins) => state !== undefined && state !== 'unsupported';
+
+const loginName = (login: InstagramLogin, { state, names }: Logins) => {
+  if (login === 'linked' && state === 'ended') return 'Signed out';
+  const name = names[login];
+  return name ? `@${name}` : OWNER_LABEL[login];
+};
+
 /**
- * Names both logins and links or unlinks the second one (Beta). `onChange` runs after a link or
- * unlink. Hidden where the browser cannot link one.
+ * A login's Avatar, hidden from assistive tech since the username beside it names the login. Only
+ * the main login's picture is cached, and an ended login's is greyed.
  */
-export function LoginsSection({ logins, onChange }: { logins: Logins; onChange: () => void }) {
+function LoginAvatar({
+  login,
+  logins,
+  mainAvatar,
+}: {
+  login: InstagramLogin;
+  logins: Logins;
+  mainAvatar?: string;
+}) {
+  const avatar = (
+    <Avatar
+      src={login === 'main' ? mainAvatar : undefined}
+      username={logins.names[login] ?? OWNER_LABEL[login]}
+      size="sm"
+    />
+  );
+  const ended = login === 'linked' && logins.state === 'ended';
+  return (
+    <span
+      className={ended ? 'opt-login-avatar opt-login-ended' : 'opt-login-avatar'}
+      aria-hidden="true"
+    >
+      {avatar}
+    </span>
+  );
+}
+
+/**
+ * Each login's full username, then Link or Unlink for the second one (Beta). `onChange` runs after
+ * a link or unlink. Hidden where the browser cannot link a login.
+ */
+export function LoginsPanel({
+  logins,
+  mainAvatar,
+  onChange,
+}: {
+  logins: Logins;
+  mainAvatar?: string;
+  onChange: () => void;
+}) {
   const { state, names } = logins;
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
-  if (!state || state === 'unsupported') return null;
+  const shown: readonly InstagramLogin[] = hasLinked(logins)
+    ? ['main', 'linked']
+    : names.main
+      ? ['main']
+      : [];
+  if (!canLink(logins)) return null;
 
   const link = async () => {
     setBusy(true);
@@ -49,21 +105,19 @@ export function LoginsSection({ logins, onChange }: { logins: Logins; onChange: 
   return (
     <div className="opt-logins">
       <span className="opt-label">
-        {state === 'unlinked' ? 'Link a second login' : 'Logins'}{' '}
-        <span className="opt-beta">Beta</span>
+        Logins <span className="opt-beta">Beta</span>
       </span>
-      {state !== 'unlinked' && (
+      {shown.length > 0 && (
         <ul className="opt-login-names">
-          <li>
-            <span className="opt-meta">Main</span>
-            <span className="opt-name">{names.main && `@${names.main}`}</span>
-          </li>
-          <li>
-            <span className="opt-meta">Linked</span>
-            <span className="opt-name">
-              {state === 'ended' ? 'Signed out' : names.linked && `@${names.linked}`}
-            </span>
-          </li>
+          {shown.map(login => (
+            <li key={login}>
+              <LoginAvatar login={login} logins={logins} mainAvatar={mainAvatar} />
+              <span className="opt-grow">
+                <span className="opt-meta">{OWNER_LABEL[login]} login</span>
+                {loginName(login, logins)}
+              </span>
+            </li>
+          ))}
         </ul>
       )}
       {state === 'ended' && (
@@ -81,16 +135,66 @@ export function LoginsSection({ logins, onChange }: { logins: Logins; onChange: 
       <div className="opt-login-actions">
         {state !== 'linked' && (
           <button className="opt-btn" disabled={busy} onClick={() => void link()}>
-            Link this login
+            {state === 'ended' ? 'Link this login again' : 'Link a second login'}
           </button>
         )}
         {state !== 'unlinked' && (
-          <button className="opt-btn" disabled={busy} onClick={() => void unlink()}>
+          <button className="opt-btn opt-danger" disabled={busy} onClick={() => void unlink()}>
             Unlink
           </button>
         )}
       </div>
       {notice && <p className="opt-meta">{notice}</p>}
     </div>
+  );
+}
+
+/**
+ * The sidebar's Logins control. Closed, it names both logins; open, it shows `LoginsPanel`. Where
+ * the browser cannot link a login, it only names the main one.
+ */
+export function LoginsMenu({
+  logins,
+  mainAvatar,
+  onChange,
+}: {
+  logins: Logins;
+  mainAvatar?: string;
+  onChange: () => void;
+}) {
+  const { state } = logins;
+  const linked = hasLinked(logins);
+  const mainName = loginName('main', logins);
+  const linkedName = loginName('linked', logins);
+  const named = (
+    <>
+      <span className="opt-avatar-stack">
+        <LoginAvatar login="main" logins={logins} mainAvatar={mainAvatar} />
+        {linked && <LoginAvatar login="linked" logins={logins} mainAvatar={mainAvatar} />}
+      </span>
+      <span className="opt-grow">
+        <span className="opt-name" title={mainName}>
+          {mainName}
+        </span>
+        {linked && (
+          <span className="opt-meta opt-name" title={linkedName}>
+            {state === 'ended' ? '+ signed out' : `+ ${linkedName}`}
+          </span>
+        )}
+      </span>
+      {state === 'ended' && <span className="opt-dot" />}
+    </>
+  );
+  if (!canLink(logins)) return <div className="opt-logins-menu opt-logins-summary">{named}</div>;
+  return (
+    <details className="opt-logins-menu">
+      <summary className="opt-logins-summary">
+        {named}
+        <span className="opt-caret" aria-hidden="true">
+          ▾
+        </span>
+      </summary>
+      <LoginsPanel logins={logins} mainAvatar={mainAvatar} onChange={onChange} />
+    </details>
   );
 }

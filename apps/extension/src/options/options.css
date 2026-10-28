@@ -166,17 +166,21 @@ select {
   padding: 4px;
 }
 
-/* A handle wider than its box never paints outside it. Navigation rows, the viewer chip and
-   the login names truncate the tail (the tooltip carries the full handle); status rows, the
-   detail heading and its meta, and banners wrap mid-token instead. */
+/* A handle wider than its box never paints outside it. The closed Logins control truncates
+   the tail, Watch rows wrap to two lines, and status rows, the detail heading and its meta,
+   login names and banners wrap mid-token. */
 .opt-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.opt-viewer .opt-name,
-.opt-login-names .opt-name {
-  min-width: 0;
+.opt-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .opt-account-text,
 .opt-health-row strong,
@@ -220,16 +224,43 @@ select {
   text-align: left;
   cursor: pointer;
 }
-.opt-item .opt-meta {
-  margin-left: auto;
-}
 .opt-item.active {
   background: var(--panel);
   color: var(--accent);
 }
 .opt-list-foot {
-  margin-top: auto;
-  padding: 12px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--rule-strong);
+}
+/* 10px keeps "Next check in 41m · 14% storage" on one line. */
+.opt-foot-summary {
+  cursor: pointer;
+  color: var(--text-mid);
+  font-size: 10px;
+}
+.opt-foot-summary::marker {
+  font-size: 8px;
+}
+.opt-list-foot[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.opt-foot-link {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+  color: var(--accent);
+  font: 400 11px var(--font-mono);
+  padding: 8px 12px;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.opt-foot-link:hover,
+.opt-foot-link.active {
+  color: var(--text);
 }
 .opt-feed {
   padding: 16px 28px;
@@ -246,21 +277,6 @@ select {
   flex-direction: column;
   gap: 1px;
   text-align: left;
-}
-.opt-viewer {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 11px;
-  padding: 4px 8px 4px 4px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 999px;
-}
-.opt-viewer .opt-meta {
-  display: block;
-  font-size: 8px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 .opt-gate {
   max-width: 520px;
@@ -352,18 +368,10 @@ select {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 16px 12px;
-  border-bottom: 1px solid var(--rule-strong);
+  padding: 14px 12px 10px;
 }
 .opt-add > .opt-row {
   flex-wrap: nowrap;
-}
-.opt-icon {
-  flex: none;
-  width: 30px;
-  text-align: center;
-  color: var(--accent);
-  font-size: 14px;
 }
 .opt-count {
   font-size: 10px;
@@ -377,13 +385,47 @@ select {
   color: #fff;
 }
 .opt-section {
-  padding: 0 12px;
-  margin-top: 16px;
+  flex: 1;
+  margin: 0;
   font-size: 11px;
   font-weight: 500;
   color: var(--text-mid);
 }
-.opt-add-item {
+.opt-list-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 12px 8px;
+}
+.opt-list-head .opt-btn.active {
+  background: var(--brand-dim);
+  border-color: var(--brand);
+}
+
+/* Needs you and Inbox, side by side */
+.opt-views {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0 12px;
+  border: 1px solid var(--rule-strong);
+}
+.opt-views button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-mid);
+  font: 400 11px var(--font-mono);
+  cursor: pointer;
+}
+.opt-views button:last-child {
+  border-left: 1px solid var(--rule-strong);
+}
+.opt-views button.active {
+  background: var(--brand-dim);
   color: var(--accent);
 }
 
@@ -513,7 +555,7 @@ select {
 .opt-login-names {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -522,10 +564,60 @@ select {
 .opt-login-names li {
   display: flex;
   gap: 8px;
-  align-items: baseline;
+  align-items: center;
 }
-.opt-login-names .opt-meta {
-  flex: 0 0 44px;
+.opt-login-avatar {
+  display: inline-flex;
+}
+.opt-login-ended {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+/* The sidebar's Logins control: both logins closed, the Logins panel open. */
+.opt-logins-menu {
+  border: 1px solid var(--rule-strong);
+  background: var(--panel);
+}
+.opt-logins-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  list-style: none;
+}
+summary.opt-logins-summary {
+  cursor: pointer;
+}
+.opt-logins-summary::-webkit-details-marker {
+  display: none;
+}
+.opt-logins-summary .opt-grow {
+  gap: 1px;
+}
+.opt-logins-summary .opt-dot {
+  flex: none;
+  margin-left: 0;
+}
+.opt-logins-menu[open] .opt-logins-summary {
+  border-bottom: 1px solid var(--rule-strong);
+}
+.opt-logins-menu > .opt-logins {
+  padding: 8px;
+}
+.opt-caret {
+  color: var(--text-mid);
+}
+.opt-logins-menu[open] .opt-caret {
+  transform: rotate(180deg);
+}
+.opt-avatar-stack {
+  display: flex;
+  flex: none;
+}
+.opt-avatar-stack > :nth-child(2) {
+  margin-left: -8px;
 }
 
 /* Which login owns a Watch, shown only while the page lists more than one owner. */
@@ -544,6 +636,7 @@ select {
 }
 .opt-filter {
   display: flex;
+  flex: none;
   margin: 0 12px 8px;
   border: 1px solid var(--rule-strong);
 }
@@ -562,5 +655,6 @@ select {
 }
 .opt-login-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }

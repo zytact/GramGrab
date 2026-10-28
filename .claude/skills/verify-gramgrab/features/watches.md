@@ -27,10 +27,33 @@ below require an isolated QA account and a separately authorized run.
    `:focus-visible` and a visible outline, then capture the focused heading.
    `node $D key options.html Enter` must open the same profile in a new tab.
    Close the new tab afterward.
-4. Switch to All inbox and back. The link returns with the selected username's
+4. Switch to the Inbox tab and back. The link returns with the selected username's
    profile URL. If another Watch exists, select it and require both the heading
    and destination to follow that Watch. Record a missing second Watch as a
    live prerequisite rather than changing stored usernames to simulate one.
+
+## Sidebar layout
+
+From the top, the sidebar holds the title and the Logins control
+(`.opt-logins-summary`), the `Needs you` and `Inbox` tabs side by side
+(`.opt-views button`, each with its count; Needs you hides a zero count), the
+`WATCHES (N)` heading with a `+ Add` button (`.opt-list-head`), the owner
+filter while more than one login owns a Watch, the Watch rows filling the rest
+of the height, a one-line footer, and the `Export or import Watches` text link
+(`.opt-foot-link`).
+
+The footer's `<summary>` reads `Next check in 41m · 14% storage`, using the
+login whose checks run first: a login mid-round reads `Checking, N left this
+round` (`Waiting` while a hold applies), else the earliest next round. Unless
+a round is running, its `title` holds the absolute time. Opening it shows each
+login's line, only while both logins have one, then the `Watch storage` meter,
+then the Avatar note when it applies. The relative time re-renders every
+minute.
+
+1. Open `options.html`. Read the `.opt-views button` texts and the
+   `.opt-list-foot summary` text, then click the summary. Require the meter to
+   appear and the summary's percentage to match `usedBytes / budgetBytes`.
+2. Screenshot the sidebar closed and open. Blur the login names first.
 
 ## Sidebar heading
 
@@ -58,7 +81,7 @@ on the same Inbox tab.
    button texts in order and which has class `active`. Require Inbox first and
    active.
 2. Click `Found`. It becomes active and shows no `Select inbox item`
-   checkbox. Switch to All inbox and back to the Watch: Inbox is active again.
+   checkbox. Switch to the sidebar's Inbox tab and back to the Watch: Inbox is active again.
 3. In the worker, read the `instagram` Watch's `id` from `watch-store` and open
    `options.html#watch=<id>` in a new tab with `chrome.tabs.create`, so the ID
    stays in memory. Require Inbox active there. `drive.mjs targets` prints that
@@ -168,9 +191,11 @@ Storage-write failures keeping the selection belong to `watches.test.tsx`.
 
 The options page is three fixed-height panes. The Watch list, the feed and the
 inspector each scroll on their own, and the document itself never scrolls. The
-header, Needs you, All inbox, the Watches label, `+ Add Watch` and
-`Export or import` stay in place however long the list is. Below about 500px of height the list keeps a 120px
-floor and the whole sidebar scrolls instead.
+header with the Logins control, the Needs you and Inbox tabs, the Watches label
+with `+ Add`, the footer line and `Export or import Watches` stay in place
+however long the list is. Below about 500px of height, or with the Logins
+control or footer open on a short window, the list keeps a 120px floor and the
+whole sidebar scrolls instead.
 
 1. A long list needs more Watches than a shared account should check. Seed
    paused local fixtures on the verification profile only:
@@ -181,8 +206,8 @@ floor and the whole sidebar scrolls instead.
 2. Open `options.html`, select a Watch, and wheel over `.opt-watch-list` with
    CDP `Input.dispatchMouseEvent`. Require `document.scrollingElement.scrollTop`
    to stay `0` with `scrollHeight === innerHeight`, `.opt-watch-list` to scroll,
-   and `.opt-head` and both `.opt-add-item` buttons to keep their positions.
-3. Click `+ Add Watch` while the list is scrolled. The `Add Watch` heading, the
+   and `.opt-head`, `.opt-list-head` and `.opt-foot-link` to keep their positions.
+3. Click `+ Add` while the list is scrolled. The `Add Watch` heading, the
    account input and `Find account` must sit inside the viewport with no scroll.
 4. Select a fixture Watch, which has 40 discoveries, and wheel over
    `.opt-feed`. The feed scrolls and the sidebar does not move.
@@ -196,10 +221,12 @@ screenshots. Run `drive.mjs activate options.html` first.
 ## Long usernames
 
 A username that is wider than its container must never escape it. Routes
-(materials differ, mechanism differs): a sidebar Watch row's `.opt-name` and
-an open Watch's chip truncate with an ellipsis and put the full handle in
-`title`; status surfaces (`.opt-grow`, `.opt-add strong`, `.opt-banner`) wrap
-with `overflow-wrap: anywhere`. The login-tab route lives in
+(materials differ, mechanism differs): a sidebar Watch row's `.opt-clamp`
+wraps mid-token to at most two lines and puts the full handle in `title`; the
+closed Logins control's `.opt-name` (full handle in `title`, or `Signed out`
+for an ended linked login) and an open Watch's chip truncate with an
+ellipsis; status surfaces (`.opt-grow`, `.opt-add strong`, `.opt-banner`)
+wrap with `overflow-wrap: anywhere`. The login-tab route lives in
 [Linked login](#linked-login): without a linked login, drive its rule through a
 synthetic styled duplicate in the page, labeled as such, and record the live
 gap.
@@ -207,9 +234,9 @@ gap.
 1. On `options.html`, seed a paused long-handle Watch (fixture script target
    ID only, the same way as Long Watch list). Measure the row name with
    `getBoundingClientRect()` and `scrollWidth`/`clientWidth` whenever the
-   element hides its overflow: `scrollWidth` may exceed `clientWidth`, and the
-   row must hold `text-overflow: ellipsis` with the full handle in `title`.
-   Record the two widths.
+   element hides its overflow. The row name must hold `-webkit-line-clamp: 2`
+   with `scrollWidth === clientWidth`, a height of at most two line heights,
+   and the full handle in `title`. Record the widths and the height.
 2. Select the long Watch. The chip's name element truncates the same way and
    its `title` carries the full handle; the chip stays inside the viewer
    header.
@@ -226,7 +253,7 @@ gap.
 
 ## Export and import
 
-`Export or import` in the sidebar saves the verified login's Watches to a file
+`Export or import Watches` at the bottom of the sidebar saves the verified login's Watches to a file
 and adds the Watches in such a file. The file holds each account ID and
 username, its kinds and actions, and whether it is paused. It holds no login,
 baseline, discovery or Avatar image. `docs/adr/0006` records why. There is no
@@ -236,7 +263,7 @@ Import spends one viewer request and one profile request per account it adds.
 An account already watched costs none, so steps 1 to 3 are safe on a shared
 account. Step 4 adds a Watch and needs the same authorization as Check now.
 
-1. Open `options.html` and click the `Export or import` sidebar button. The feed
+1. Open `options.html` and click the `Export or import Watches` sidebar link. The feed
    shows `Export and import` with an `Export N Watches` button, where N is the
    sidebar count. Click it. A `gramgrab-watches-YYYY-MM-DD.json` file lands in
    `$GRAMGRAB_VERIFY_DOWNLOADS` with no Save As dialog. Require
@@ -305,13 +332,13 @@ described in Live page below.
    finished kinds and `Still to check: ...`. When pacing stops the check part
    way, the button reads `Waiting…` until that time, the same line adds the
    reason and time it continues, and that survives navigation too.
-2. Switch to All inbox and back, then reload `options.html`. Both times the
+2. Switch to the Inbox tab and back, then reload `options.html`. Both times the
    button still reads `Checking…` (or `Waiting…` while held) with the same or
    later progress. A second
    click is impossible while it is disabled. `watch check instagram --json`
    during the check returns `deferredReason: "queued"` and the `manual` array
    in `watch-scheduler` still holds one job for the Watch.
-3. Stay on All inbox until storage reports `ManualCheckFinished`, using the
+3. Stay on the Inbox tab until storage reports `ManualCheckFinished`, using the
    live page or a bounded worker-storage wait. CLI Watch reads verify the viewer
    and consume requests, so they are not a polling mechanism. A check took 2 to 11
    minutes in live runs, longer while an unattended round shares the queue.
@@ -362,15 +389,16 @@ same login.
 
 1. Read `nextRoundAt`, `remaining`, each kind's `lastCheckAt`, and the length of
    `attempts` in `instagram-requests` from the worker's storage. Open
-   `options.html`, leave it on All inbox and screenshot it.
+   `options.html`, leave it on the Inbox tab and screenshot it.
 2. Let a round run while the page stays open. A launch on an overdue profile
    starts one after the two-minute startup hold. Otherwise make the deadline
    overdue as in `docs/watch-live-verification.md` step 5: set `nextRoundAt` to
    a past time from the worker. The pump alarm runs every minute. Poll storage
    from the worker, not the CLI, so waiting costs no request.
-3. While the round runs, the footer reads `Checking: N left this round`, and the
-   row's `Checked` time moves without a reload. When `remaining` is empty, the
-   footer reads `Next checks around` the new `nextRoundAt`. Screenshot both.
+3. While the round runs, the footer summary starts `Checking, N left this round`,
+   and the row's `Checked` time moves without a reload. When `remaining` is
+   empty, it starts `Next check in` the time until the new `nextRoundAt`, and its
+   `title` is that time. Screenshot both.
 4. Compare `attempts` with the Watch requests the round made. The page adds
    none. Pause and then resume the Watch from the page: each action adds exactly
    one viewer request, and the reload after it adds none.
@@ -396,15 +424,17 @@ same login.
 
 ## Avatars
 
-The options page shows an Avatar beside the Instagram login at the top of the
-sidebar, beside each Watch in the sidebar list, and beside the username in an
+The options page shows an Avatar for the main login in the Logins control at
+the top of the sidebar, beside each Watch in the sidebar list, and beside the username in an
 open Watch's header. Each one is an `img.opt-avatar`, or a `span.opt-avatar`
 holding the username's first letter while no picture exists.
 
 Initials have a muted fill and a thin dashed ring. Watch initials carry the
 tooltip and accessible image label `Initials stand in for pictures. Pictures
 update during Watch checks.` The login's hint is only `Initials stand in for
-pictures.` A sidebar footer shows the full Watch explanation once the initial
+pictures.` The linked login always shows its initial, since only the main
+login's picture is held. The opened sidebar footer shows the full Watch
+explanation once the initial
 cache read has finished and any Watch lacks a cached picture. It disappears
 when every Watch has a cached picture; an empty Watch list shows no note.
 Opening the page does not start an Avatar lookup.
@@ -437,8 +467,8 @@ Opening the page does not start an Avatar lookup.
    initial. Open the Watch by its sidebar button and confirm its account and
    status remain the button's accessible name. The row and header initials
    have the full Watch hint in `title` and `aria-label`, and their computed
-   `border-style` is `dashed`. The footer explanation appears once, above the
-   next-check time. It is muted, rather than a warning. A pending initial cache
+   `border-style` is `dashed`. Opening the footer shows the explanation once,
+   below the storage meter. It is muted, rather than a warning. A pending initial cache
    read shows no footer explanation; the focused Watches UI test owns that
    delayed-response boundary.
    Reuse an already queued check or let the natural round run. Check now
@@ -732,7 +762,7 @@ the row reads `Paused · link this login again to resume` for an ended linked
 login's Watch or `Paused · sign in as that login to resume` for another login's.
 
 1. Read both ledgers and `watch-scheduler` as counts and booleans.
-2. Open `options.html`, click `+ Add Watch`, set `#instagram-login` to `linked`
+2. Open `options.html`, click `+ Add`, set `#instagram-login` to `linked`
    the way [Linked login](./linked-login.md) sets the popup picker, and add the
    linked-only account. Its preview shows the account, which the main login
    cannot see.
@@ -743,9 +773,12 @@ login's Watch or `Paused · sign in as that login to resume` for another login's
 5. `gramgrab watch list --login linked --json` lists it, and `gramgrab watch
    list --json` does not.
 
-An ended linked session shows `Signed out` under `LOGINS`, a `Your linked login
-was signed out.` banner, its Watches as held rows, and one
-`IG_LINKED_LOGIN_ENDED` item in `watch needs`. A held row needs no second
+An ended linked session greys the linked Avatar in the closed Logins control,
+adds a red dot, and reads `+ signed out`. Opened, the control shows
+`Signed out` for the linked login, a `Your linked login was signed out.`
+banner, `Link this login again` and `Unlink`. The page lists its Watches as
+held rows, and `watch needs` has one
+`IG_LINKED_LOGIN_ENDED` item. A held row needs no second
 account: seed a `linked-instagram-login` record with `ended: true` and a fixture
 account ID, plus fixture Watches whose `viewerId` is that ID or another unknown
 ID, from the worker. Restore both keys afterward. Forcing a real ended session

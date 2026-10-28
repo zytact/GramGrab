@@ -21,6 +21,8 @@ import type { MessageResponse, WatchAvatarsResponse } from '../messaging/contrac
 import { WATCH_AVATAR_NOTE } from './copy.ts';
 import { Watches } from './watches.tsx';
 
+/** The sidebar's Inbox view, named with its count. */
+const INBOX_TAB = /^Inbox\s*\d+$/;
 const WATCH_ID = '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f';
 const CHECK_ID = '3e1a7c5b-9d2f-4a6e-8b0c-1d2e3f4a5b6c';
 let harness: ExtensionHarness;
@@ -43,7 +45,7 @@ afterEach(() => {
 });
 
 async function addWatch(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByText('+ Add Watch'));
+  await user.click(await screen.findByRole('button', { name: '+ Add' }));
   await user.type(screen.getByPlaceholderText(/username or instagram.com/), TARGET.username);
   await user.click(screen.getByText('Find account'));
   await screen.findByText(/Followed by account ID|You already watch this account/);
@@ -115,7 +117,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       if (surface === 'Watch inbox') {
         await user.click(await screen.findByRole('button', { name: /@instagram/ }));
         await user.click(await screen.findByRole('button', { name: /^Inbox \(/ }));
-      } else await user.click(await screen.findByText(/^All inbox$/));
+      } else await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
 
       const checkboxes = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
       expect(screen.getByRole('button', { name: 'Remove selected (0)' })).toHaveProperty(
@@ -166,7 +168,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     seedWatchWithProblemAndEntry();
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     await user.click(await screen.findByRole('button', { name: 'Select all' }));
     harness.local.set.mockRejectedValue(new Error('Storage write refused'));
     await user.click(screen.getByRole('button', { name: 'Remove selected (1)' }));
@@ -204,7 +206,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     ]);
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     await user.click(await screen.findByRole('button', { name: 'Select all' }));
     expect(screen.getByRole('button', { name: 'Retry failed exports' })).toBeDefined();
   });
@@ -216,7 +218,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
 
     expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeDefined();
     expect(screen.getByText(/Instagram's format has changed/)).toBeDefined();
-    await user.click(screen.getByText(/^All inbox$/));
+    await user.click(screen.getByRole('button', { name: INBOX_TAB }));
     expect((await screen.findByRole('link', { name: 'Video' })).parentElement?.textContent).toBe(
       `@${TARGET.username} · Video`
     );
@@ -320,7 +322,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     ]);
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
     await user.click(await screen.findByRole('button', { name: /@instagram/ }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
@@ -363,7 +365,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       ]);
       const user = userEvent.setup();
       render(<Watches />);
-      await user.click(await screen.findByText(/^All inbox$/));
+      await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
       const [story, instant] = await screen.findAllByRole('checkbox', {
         name: 'Select inbox item',
       });
@@ -405,7 +407,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const { seek } = await processingBrowser(harness, instagram);
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     const [, video] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
     await user.click(video!);
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
@@ -444,7 +446,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await processingBrowser(harness, instagram);
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     const [, avatar] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
     await user.click(avatar!);
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
@@ -481,7 +483,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     silentBrowser();
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     const [, video] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
     await user.click(video!);
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
@@ -528,7 +530,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     instagram.state.media.C600 = restMedia({ id: '600', takenAt: 2, children: ['601', '602'] });
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     const row = (await screen.findByText(/Carousel/)).closest('.opt-line');
     if (!(row instanceof HTMLElement)) throw new Error('Missing Sidecar entry');
     await user.click(within(row).getByRole('checkbox', { name: 'Select inbox item' }));
@@ -629,7 +631,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     instagram.state.profile = { data: { user: { id: '4004', pk: '4004', username: 'instagram' } } };
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText('Export or import'));
+    await user.click(await screen.findByText('Export or import Watches'));
     await user.upload(screen.getByLabelText('Watches file'), file);
 
     expect(await screen.findByText('Will be added (1)')).toBeDefined();
@@ -655,7 +657,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
   it('refuses a file that is not a Watches file of a version it knows', async () => {
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText('Export or import'));
+    await user.click(await screen.findByText('Export or import Watches'));
     await user.upload(
       screen.getByLabelText('Watches file'),
       new File([JSON.stringify({ format: 'gramgrab-watches', version: 2, watches: [] })], 'w.json')
@@ -703,7 +705,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       STUB_AVATAR,
       STUB_AVATAR,
     ]);
-    expect(container.querySelector('.opt-viewer .opt-avatar')?.textContent).toBe('I');
+    expect(container.querySelector('.opt-logins-menu summary .opt-avatar')?.textContent).toBe('I');
     expect(screen.queryByText(WATCH_AVATAR_NOTE)).toBeNull();
     fireEvent.error(pictures()[0]!);
     expect(container.querySelector('.opt-item .opt-avatar')?.textContent).toBe('I');
@@ -769,7 +771,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
 
     expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
     expect(screen.getByText('0 Watches stored in this browser.')).toBeDefined();
-    expect(screen.queryByText('+ Add Watch')).toBeNull();
+    expect(screen.queryByRole('button', { name: '+ Add' })).toBeNull();
   });
 
   it('keeps the displayed login image during cached reads after the worker restarts', async () => {
@@ -777,7 +779,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     seedWatchWithProblemAndEntry();
     instagram.state.viewer = { ...VIEWER, profile_pic_url: 'https://sanitized.invalid/viewer' };
     const { container } = render(<Watches />);
-    const login = () => container.querySelector('.opt-viewer img.opt-avatar');
+    const login = () => container.querySelector('.opt-logins-menu summary img.opt-avatar');
     await waitFor(() => expect(login()?.getAttribute('src')).toBe(STUB_AVATAR));
     await harness.loadWorker();
     const verified = instagram.state.viewerRequests;
@@ -837,7 +839,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
         `Still to check: Stories. Watch requests are spaced out. This check can run at ${new Date(resumeAt).toLocaleTimeString()}.`
       )
     ).toBeDefined();
-    await user.click(screen.getByText(/^All inbox$/));
+    await user.click(screen.getByRole('button', { name: INBOX_TAB }));
     await openWatch();
     expect(await screen.findByRole('button', { name: 'Waiting…' })).toBeDefined();
 
@@ -887,7 +889,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     harness.local.write('watch-scheduler', schedule(now, [WATCH_ID]));
     render(<Watches />);
     expect(await screen.findByText('First check pending')).toBeDefined();
-    expect(screen.getByText('Checking: 1 left this round')).toBeDefined();
+    expect(screen.getByText(/^Checking, 1 left this round · /)).toBeDefined();
     const viewerRequests = instagram.state.viewerRequests;
 
     const nextRoundAt = now + 12 * 60 * 60_000;
@@ -904,9 +906,8 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     });
     await harness.local.set({ 'watch-scheduler': schedule(nextRoundAt, []) });
 
-    expect(
-      await screen.findByText(`Next checks around ${new Date(nextRoundAt).toLocaleString()}`)
-    ).toBeDefined();
+    const next = await screen.findByText(/^Next check in 12h · \d+% storage$/);
+    expect(next.getAttribute('title')).toBe(new Date(nextRoundAt).toLocaleString());
     expect(screen.queryByText('First check pending')).toBeNull();
     expect(instagram.state.viewerRequests).toBe(viewerRequests);
   });
@@ -915,7 +916,9 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     seedWatchWithProblemAndEntry();
     render(<Watches />);
     expect(
-      await screen.findByText(`@${VIEWER.username}`, { selector: '.opt-viewer .opt-name' })
+      await screen.findByText(`@${VIEWER.username}`, {
+        selector: '.opt-logins-menu summary .opt-name',
+      })
     ).toBeDefined();
     const viewerRequests = instagram.state.viewerRequests;
 
@@ -924,7 +927,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
 
     expect(
-      await screen.findByText('@instagram', { selector: '.opt-viewer .opt-name' })
+      await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
   });
@@ -933,7 +936,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     seedWatchWithProblemAndEntry();
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText(/^All inbox$/));
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     await user.click(await screen.findByRole('checkbox', { name: 'Select inbox item' }));
     expect(screen.getByRole('button', { name: 'Fetch media' })).toHaveProperty('disabled', false);
     const viewerRequests = instagram.state.viewerRequests;
@@ -943,7 +946,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     fireEvent(window, new Event('focus'));
 
     expect(
-      await screen.findByText('@instagram', { selector: '.opt-viewer .opt-name' })
+      await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
     expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
@@ -1061,7 +1064,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     release();
 
     expect(
-      await screen.findByText('@instagram', { selector: '.opt-viewer .opt-name' })
+      await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
     expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
@@ -1091,7 +1094,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     release();
 
     expect(
-      await screen.findByText('@instagram', { selector: '.opt-viewer .opt-name' })
+      await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
     expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(instagram.state.viewerRequests).toBe(2);
@@ -1167,7 +1170,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       },
     });
     render(<Watches />);
-    expect(await screen.findByText('Checking: 1 left this round')).toBeDefined();
+    expect(await screen.findByText(/^Checking, 1 left this round · /)).toBeDefined();
 
     const resumeAt = Date.now() + 3_000;
     await harness.local.set({
@@ -1184,11 +1187,11 @@ describe('Watches options page', { timeout: 15_000 }, () => {
         exact: false,
       })
     ).toBeDefined();
-    expect(screen.getByText('Waiting: 1 left this round')).toBeDefined();
+    expect(screen.getByText(/^Waiting, 1 left this round · /)).toBeDefined();
     await waitFor(() => expect(screen.queryByText('Watches waiting.')).toBeNull(), {
       timeout: 6_000,
     });
-    expect(screen.getByText('Checking: 1 left this round')).toBeDefined();
+    expect(screen.getByText(/^Checking, 1 left this round · /)).toBeDefined();
   });
 
   it('shows when a rate-limit pause and a full hourly cap together let checks resume', async () => {
@@ -1318,10 +1321,36 @@ describe('Watches of both logins', { timeout: 15_000 }, () => {
     expect(storedWatches().filter(stored => stored.enabled)).toHaveLength(2);
   });
 
+  it('names both logins in the Logins control, and marks an ended one until it is unlinked', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<Watches />);
+    const summary = () => document.querySelector('.opt-logins-menu summary');
+    await waitFor(() => expect(summary()?.textContent).toContain('+ @creators'));
+    expect(
+      [...summary()!.querySelectorAll('.opt-name')].map(name => name.getAttribute('title'))
+    ).toEqual(['@instagram', '@creators']);
+    expect(summary()?.querySelector('.opt-dot')).toBeNull();
+    unmount();
+
+    harness.local.write('linked-instagram-login', {
+      ...(harness.local.read('linked-instagram-login') as object),
+      ended: true,
+    });
+    render(<Watches />);
+    await waitFor(() => expect(summary()?.textContent).toContain('+ signed out'));
+    expect(summary()?.querySelector('.opt-dot')).not.toBeNull();
+    expect(summary()?.querySelector('.opt-login-ended .opt-avatar')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /^Link this login again/ })).toBeDefined();
+
+    await user.click(screen.getByRole('button', { name: 'Unlink' }));
+    await waitFor(() => expect(summary()?.textContent).not.toContain('+ '));
+    expect(screen.getByRole('button', { name: /^Link a second login/ })).toBeDefined();
+  });
+
   it('adds a Watch as the login picked in Add Watch', async () => {
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByText('+ Add Watch'));
+    await user.click(await screen.findByRole('button', { name: '+ Add' }));
     await user.selectOptions(screen.getByRole('combobox'), 'linked');
     await user.type(screen.getByPlaceholderText(/username or instagram.com/), TARGET.username);
     await user.click(screen.getByText('Find account'));

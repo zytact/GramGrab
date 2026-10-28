@@ -41,3 +41,13 @@ export function relativeTime(at: number, now = Date.now()): string {
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }
+
+/** "in 41m" until `at`, or "due now" once it has passed. */
+export function relativeUntil(at: number, now = Date.now()): string {
+  const minutes = Math.ceil((at - now) / 60_000);
+  if (minutes < 1) return 'due now';
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  return `in ${Math.floor(hours / 24)}d`;
+}

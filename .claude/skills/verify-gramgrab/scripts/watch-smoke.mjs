@@ -77,11 +77,11 @@ try {
   await drive('open', `chrome-extension://${process.env.GRAMGRAB_EXT_ID}/options.html`);
   await drive('wait', 'options.html', 'WATCHES', '15000');
   results.page = JSON.parse(await drive('eval', 'options.html', `(() => {
-    const buttons = [...document.querySelectorAll('.opt-list button')];
+    const buttons = [...document.querySelectorAll('.opt-views button')];
     const count = label => Number(buttons.find(button => button.textContent.includes(label))?.querySelector('.opt-count')?.textContent ?? 0);
-    return !!document.querySelector('.opt-beta') && count('Needs you') === ${list.value.attentionCount} && count('All inbox') === ${inboxCount};
+    return !!document.querySelector('.opt-beta') && count('Needs you') === ${list.value.attentionCount} && count('Inbox') === ${inboxCount};
   })()`));
-  await drive('eval', 'options.html', "[...document.querySelectorAll('.opt-list button')].find(button => button.textContent.includes('All inbox'))?.click()");
+  await drive('eval', 'options.html', "[...document.querySelectorAll('.opt-views button')].find(button => button.textContent.includes('Inbox'))?.click()");
   results.inboxPage = JSON.parse(await drive('eval', 'options.html', "document.querySelector('h1')?.textContent === 'All inbox'"));
 } catch {
   results.completed = false;
