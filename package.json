@@ -14,6 +14,7 @@
     "dev": "BROWSER=chromium vp build --watch",
     "dev:chromium": "BROWSER=chromium vp build --watch",
     "dev:firefox": "BROWSER=firefox vp build --watch",
+    "prototype:sidebar": "vp dev apps/extension --config vite.config.ts --port 5344 --open /templates/watches-prototype.html",
     "lint": "vp lint .",
     "lint:fix": "vp lint . --fix",
     "fallow": "fallow audit --base origin/main",
