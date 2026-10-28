@@ -50,6 +50,7 @@ import {
   KIND_LABEL,
   KIND_NOTE,
   relativeTime,
+  relativeUntil,
   WATCH_AVATAR_NOTE,
 } from './copy.ts';
 import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox-export.tsx';
@@ -59,7 +60,7 @@ import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
 import { WatchTransfer } from './watch-transfer.tsx';
 import { askToNotify } from './notify-permission.ts';
-import { LoginsSection } from './logins.tsx';
+import { LoginsMenu, LoginsPanel } from './logins.tsx';
 import {
   OWNER_LABEL,
   OwnerTag,
@@ -153,7 +154,9 @@ function LoginGate({ failure }: { failure: WatchFailure }) {
           Open instagram.com
         </a>
       )}
-      <LoginsSection logins={logins} onChange={logins.reload} />
+      {logins.state && logins.state !== 'unsupported' && (
+        <LoginsPanel logins={logins} onChange={logins.reload} />
+      )}
     </div>
   );
 }
@@ -169,8 +172,14 @@ function Title() {
   );
 }
 
+const storageUnreadable = (storage: WatchListResult['storage']) =>
+  storage.status === 'unreadable' || storage.status === 'unsupported';
+
+const storagePercent = (storage: WatchListResult['storage']) =>
+  Math.min(100, (storage.usedBytes / storage.budgetBytes) * 100);
+
 function StorageMeter({ storage }: { storage: WatchListResult['storage'] }) {
-  const unreadable = storage.status === 'unreadable' || storage.status === 'unsupported';
+  const unreadable = storageUnreadable(storage);
   const mib = (bytes: number) => (bytes / 1024 / 1024).toFixed(2);
   return (
     <div className="opt-storage">
@@ -183,9 +192,7 @@ function StorageMeter({ storage }: { storage: WatchListResult['storage'] }) {
         </span>
       </div>
       <div className={`opt-bar ${storage.status === 'ok' ? '' : 'opt-bar-error'}`}>
-        <div
-          style={{ width: `${Math.min(100, (storage.usedBytes / storage.budgetBytes) * 100)}%` }}
-        />
+        <div style={{ width: `${storagePercent(storage)}%` }} />
       </div>
     </div>
   );
@@ -628,7 +635,7 @@ function WatchRow({
         placeholderHint={WATCH_AVATAR_NOTE}
       />
       <span id={`watch-account-${watch.watchId}`} className="opt-account-text opt-grow">
-        <span className="opt-name" title={`@${watch.username}`}>
+        <span className="opt-clamp" title={`@${watch.username}`}>
           @{watch.username}
         </span>
         <span className="opt-meta">
@@ -647,21 +654,28 @@ interface LoginSchedule {
   readonly schedule: WatchSchedule;
 }
 
-function NextChecks({ label, schedule }: LoginSchedule) {
-  const { nextRoundAt, roundRemaining, suspended, pausedUntil, cappedUntil } = schedule;
-  const held = suspended || pausedUntil !== undefined || cappedUntil !== undefined;
-  if (!nextRoundAt) return null;
-  return (
-    <p className="opt-meta">
-      {label && `${label}: `}
-      {roundRemaining > 0
-        ? `${held ? 'Waiting' : 'Checking'}: ${roundRemaining} left this round`
-        : `Next checks around ${new Date(nextRoundAt).toLocaleString()}`}
-    </p>
-  );
-}
+/** Each login whose next round is known: when it starts, and where its checks stand now. */
+const nextChecks = (schedules: readonly LoginSchedule[]) =>
+  schedules.flatMap(({ label, schedule }) => {
+    const { nextRoundAt, roundRemaining, suspended, pausedUntil, cappedUntil } = schedule;
+    if (nextRoundAt === undefined) return [];
+    const held = suspended || pausedUntil !== undefined || cappedUntil !== undefined;
+    const running = roundRemaining > 0;
+    const text = running
+      ? `${held ? 'Waiting' : 'Checking'}, ${roundRemaining} left this round`
+      : `Next check ${relativeUntil(nextRoundAt)}`;
+    return [{ label, at: nextRoundAt, running, text }];
+  });
 
-/** When each login's checks run next, and how full the store is. */
+const storageText = (storage: WatchListResult['storage']) =>
+  storageUnreadable(storage)
+    ? `Storage ${storage.status}`
+    : `${storagePercent(storage).toFixed(0)}% storage`;
+
+/**
+ * The soonest check and how full the store is on one line. Opening it shows each login's next
+ * check while both have one, and the storage meter.
+ */
 function NavigationFoot({
   storage,
   schedules,
@@ -671,14 +685,25 @@ function NavigationFoot({
   schedules: readonly LoginSchedule[];
   showAvatarNote: boolean;
 }) {
+  const checks = nextChecks(schedules);
+  // A login mid-round checks first, then the earliest next round.
+  const [next] = checks.toSorted((a, b) => Number(b.running) - Number(a.running) || a.at - b.at);
   return (
-    <div className="opt-list-foot">
-      {showAvatarNote && <p className="opt-meta">{WATCH_AVATAR_NOTE}</p>}
-      {schedules.map(schedule => (
-        <NextChecks key={schedule.label ?? 'main'} {...schedule} />
-      ))}
+    <details className="opt-list-foot">
+      <summary title={next && new Date(next.at).toLocaleString()}>
+        {next && `${next.text} · `}
+        {storageText(storage)}
+      </summary>
+      {checks.length > 1 &&
+        checks.map(({ label, at, text }) => (
+          <p key={label} className="opt-meta" title={new Date(at).toLocaleString()}>
+            <span className="opt-owner">{label}</span>
+            {text}
+          </p>
+        ))}
       <StorageMeter storage={storage} />
-    </div>
+      {showAvatarNote && <p className="opt-meta">{WATCH_AVATAR_NOTE}</p>}
+    </details>
   );
 }
 
@@ -712,12 +737,14 @@ function WatchListSection({
   watches,
   manyOwners,
   avatars,
+  current,
   activeWatchId,
   onGo,
 }: {
   watches: readonly PageWatch[];
   manyOwners: boolean;
   avatars: WatchAvatarsResponse['watches'];
+  current: View;
   activeWatchId: string | undefined;
   onGo: (view: View) => void;
 }) {
@@ -729,7 +756,16 @@ function WatchListSection({
   const shown = watches.filter(item => filter === 'all' || item.owner === filter);
   return (
     <>
-      <span className="opt-label opt-section">Watches ({shown.length})</span>
+      <div className="opt-list-head">
+        <span className="opt-label opt-section">Watches ({shown.length})</span>
+        <button
+          className={`opt-btn ${current === 'new' ? 'active' : ''}`}
+          aria-current={current === 'new' ? 'page' : undefined}
+          onClick={() => onGo('new')}
+        >
+          + Add
+        </button>
+      </div>
       {manyOwners && <OwnerFilter logins={owning} filter={filter} onChange={setFilter} />}
       <div className="opt-watch-list">
         {shown.map(item => (
@@ -743,6 +779,36 @@ function WatchListSection({
         ))}
       </div>
     </>
+  );
+}
+
+/** A sidebar view with its count. */
+function ViewTab({
+  view,
+  current,
+  count,
+  urgent,
+  onGo,
+  children,
+}: {
+  view: 'attention' | 'inbox';
+  current: View;
+  count: number;
+  urgent?: boolean;
+  onGo: (view: View) => void;
+  children: string;
+}) {
+  return (
+    <button
+      className={current === view ? 'active' : ''}
+      aria-current={current === view ? 'page' : undefined}
+      onClick={() => onGo(view)}
+    >
+      {children}
+      {(count > 0 || !urgent) && (
+        <span className={`opt-count ${urgent ? 'opt-count-error' : ''}`}>{count}</span>
+      )}
+    </button>
   );
 }
 
@@ -771,50 +837,24 @@ function Navigation({
     <nav className="opt-list">
       <div className="opt-head">
         <Title />
-        <span className="opt-viewer" title="Verified from your Instagram session">
-          <Avatar src={avatars.login} username={main.viewer.username} size="sm" />
-          <span className="opt-meta">Instagram login</span>{' '}
-          <span className="opt-name" title={`@${main.viewer.username}`}>
-            @{main.viewer.username}
-          </span>
-        </span>
-        <LoginsSection logins={logins} onChange={onLoginsChanged} />
+        <LoginsMenu logins={logins} mainAvatar={avatars.login} onChange={onLoginsChanged} />
       </div>
-      <button
-        className={`opt-item ${current === 'attention' ? 'active' : ''}`}
-        onClick={() => onGo('attention')}
-      >
-        <span className="opt-icon">!</span>
-        <span className="opt-grow">Needs you</span>
-        {attention > 0 && <span className="opt-count opt-count-error">{attention}</span>}
-      </button>
-      <button
-        className={`opt-item ${current === 'inbox' ? 'active' : ''}`}
-        onClick={() => onGo('inbox')}
-      >
-        <span className="opt-icon">▤</span>
-        <span className="opt-grow">All inbox</span>
-        <span className="opt-count">{inboxCount}</span>
-      </button>
+      <div className="opt-views">
+        <ViewTab view="attention" current={current} count={attention} urgent onGo={onGo}>
+          Needs you
+        </ViewTab>
+        <ViewTab view="inbox" current={current} count={inboxCount} onGo={onGo}>
+          Inbox
+        </ViewTab>
+      </div>
       <WatchListSection
         watches={watches}
         manyOwners={manyOwners}
         avatars={avatars.watches}
+        current={current}
         activeWatchId={activeWatchId}
         onGo={onGo}
       />
-      <button
-        className={`opt-item opt-add-item ${current === 'new' ? 'active' : ''}`}
-        onClick={() => onGo('new')}
-      >
-        + Add Watch
-      </button>
-      <button
-        className={`opt-item opt-add-item ${current === 'transfer' ? 'active' : ''}`}
-        onClick={() => onGo('transfer')}
-      >
-        Export or import
-      </button>
       <NavigationFoot
         storage={main.storage}
         schedules={schedules}
@@ -822,6 +862,13 @@ function Navigation({
           avatarsLoaded && watches.some(({ watch }) => !avatars.watches[watch.watchId])
         }
       />
+      <button
+        className={`opt-foot-link ${current === 'transfer' ? 'active' : ''}`}
+        aria-current={current === 'transfer' ? 'page' : undefined}
+        onClick={() => onGo('transfer')}
+      >
+        Export or import Watches
+      </button>
     </nav>
   );
 }
