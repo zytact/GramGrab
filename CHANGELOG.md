@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.0](https://github.com/zytact/GramGrab/compare/v4.4.0...v4.5.0) (2026-10-28)
+
+
+### Features
+
+* **watch:** give the Watch list the whole sidebar with one compact Logins control ([#345](https://github.com/zytact/GramGrab/issues/345)) ([3d56729](https://github.com/zytact/GramGrab/commit/3d567297cb8e8d6255a8521e9a2baf825f278b9d))
+
 ## [4.4.0](https://github.com/zytact/GramGrab/compare/v4.3.0...v4.4.0) (2026-10-26)
 
 
