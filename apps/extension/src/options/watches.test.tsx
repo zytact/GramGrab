@@ -1326,6 +1326,9 @@ describe('Watches of both logins', { timeout: 15_000 }, () => {
     const { unmount } = render(<Watches />);
     const summary = () => document.querySelector('.opt-logins-menu summary');
     await waitFor(() => expect(summary()?.textContent).toContain('+ @creators'));
+    expect(
+      [...summary()!.querySelectorAll('.opt-name')].map(name => name.getAttribute('title'))
+    ).toEqual(['@instagram', '@creators']);
     expect(summary()?.querySelector('.opt-dot')).toBeNull();
     unmount();
 

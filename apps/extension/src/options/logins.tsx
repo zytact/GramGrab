@@ -52,7 +52,10 @@ function LoginAvatar({
   );
   const ended = login === 'linked' && logins.state === 'ended';
   return (
-    <span className={`opt-login-avatar ${ended ? 'opt-login-ended' : ''}`} aria-hidden="true">
+    <span
+      className={ended ? 'opt-login-avatar opt-login-ended' : 'opt-login-avatar'}
+      aria-hidden="true"
+    >
       {avatar}
     </span>
   );
