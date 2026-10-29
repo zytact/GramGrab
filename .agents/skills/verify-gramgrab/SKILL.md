@@ -282,6 +282,8 @@ Prefer these handles, which the source owns and tests already depend on:
 | Add Watch            | `.opt-list-head button` (`+ Add`)                  |
 | Next check, storage  | `.opt-list-foot summary`; click it to open         |
 | Watch owner tag      | `.opt-owner`, filter `.opt-filter button`          |
+| Watch search         | `.opt-search` (`Search Watches`)                   |
+| All inbox filters    | `.opt-chip-filter[aria-label="Account"] button`, `[aria-label="Media type"]` |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 
 One limit worth knowing before planning a run: anything gated on the _active
@@ -417,5 +419,7 @@ holds Watch work and seeds a Posts check problem on the `instagram` Watch for th
 Check problem recipe.
 `scripts/watch-avatar.mjs seed | remove` adds or removes a paused fixture Avatar Watch with
 one exportable inbox entry for the Inbox preview recipe.
+`scripts/watch-filters.mjs seed | remove` adds or removes a paused fixture `creators` Watch
+with a Photo and a Carousel for the Inbox filters and Watch search recipe.
 `scripts/watch-seen.mjs seed [DAYS] | read | remove` adds, reads, or removes a paused
 fixture Watch of the `instagram` account for the Fetched media is seen recipe.
