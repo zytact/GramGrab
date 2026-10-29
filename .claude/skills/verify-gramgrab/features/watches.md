@@ -37,7 +37,8 @@ below require an isolated QA account and a separately authorized run.
 From the top, the sidebar holds the title and the Logins control
 (`.opt-logins-summary`), the `Needs you` and `Inbox` tabs side by side
 (`.opt-views button`, each with its count; Needs you hides a zero count), the
-`WATCHES (N)` heading with a `+ Add` button (`.opt-list-head`), the owner
+`WATCHES (N)` heading with a `+ Add` button (`.opt-list-head`), the
+`Search Watches` box (`.opt-search`) while any Watch exists, the owner
 filter while more than one login owns a Watch, the Watch rows filling the rest
 of the height, a one-line footer, and the `Export or import Watches` text link
 (`.opt-foot-link`).
@@ -186,6 +187,42 @@ authorization, and label any screenshot as synthetic.
    `Retry failed exports`, the same as ticking it alone.
 
 Storage-write failures keeping the selection belong to `watches.test.tsx`.
+
+## Inbox filters and Watch search
+
+All inbox has two chip rows, `.opt-chip-filter` groups labelled `Account` and
+`Media type`; the picked chip has `aria-pressed="true"`. Account holds
+`All accounts`, then `Main` and `Linked` while both logins collected entries,
+then one `@username` chip per Watch with entries. Media type holds
+`Everything`, `Photos`, `Videos`, `Carousels` and `Stories`, which do not
+overlap: Stories are their own type, a new picture counts as a photo. The rows
+combine, an empty result reads `Nothing matches these filters.`, and picking a
+different chip clears the selection. Each row's `.opt-entry-head` starts with
+the account's Avatar. The sidebar's `Search Watches` box narrows the rows and
+the `WATCHES (N)` count by username as you type, ignoring case and a leading
+`@`, and reads `No Watch matches` when empty. Neither is stored, so a reload
+resets both.
+
+A shared account usually has one Watch, so seed a second account first:
+`node .agents/skills/verify-gramgrab/scripts/watch-filters.mjs seed` adds a
+paused `creators` Watch with one Photo and one Carousel of 2. It is never
+checked. Run `watch-filters.mjs remove` in a `finally` step, and label its
+screenshots synthetic. Do not click its entry links; their shortcodes are fake.
+
+1. Open `options.html` and the sidebar's Inbox tab. Read each group's chip
+   texts and every `.opt-feed .opt-entry-head` text and Avatar element.
+2. Click `Select all`, then a Media type chip. Require zero ticked checkboxes.
+   Walk `Videos`, `Stories`, then `@creators` with `Stories` for the empty
+   message, then `Carousels` and `Photos`. Require each result to match the
+   seeded and natural entries' kinds.
+3. Type `@CREATORS` into `.opt-search`: one `@creators` row and `WATCHES (1)`.
+   Replace it with `nobody`: `No Watch matches` and `WATCHES (0)`.
+4. Reload. Require `All accounts`, `Everything` and an empty search box, and no
+   new key in `chrome.storage.local` or the page's `localStorage`.
+
+The `Main` and `Linked` chips need a linked second login with collected
+entries. Without one, record it as a live prerequisite;
+`watches.test.tsx` owns it.
 
 ## Long Watch list
 

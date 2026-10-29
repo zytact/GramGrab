@@ -743,7 +743,7 @@ function OwnerFilter({
   );
 }
 
-/** The Watch rows, narrowed by owner while more than one owns a Watch. */
+/** The Watch rows, narrowed by owner while more than one owns a Watch, and by username search. */
 function WatchListSection({
   watches,
   manyOwners,
@@ -764,7 +764,13 @@ function WatchListSection({
   );
   const [picked, setFilter] = useState<Filter>('all');
   const filter = picked !== 'all' && owning.includes(picked) ? picked : 'all';
-  const shown = watches.filter(item => filter === 'all' || item.owner === filter);
+  const [query, setQuery] = useState('');
+  const needle = query.trim().replace(/^@/, '').toLowerCase();
+  const shown = watches.filter(
+    item =>
+      (filter === 'all' || item.owner === filter) &&
+      item.watch.username.toLowerCase().includes(needle)
+  );
   return (
     <>
       <div className="opt-list-head">
@@ -777,8 +783,23 @@ function WatchListSection({
           + Add
         </button>
       </div>
+      {watches.length > 0 && (
+        <input
+          type="search"
+          className="opt-search"
+          placeholder="Search Watches"
+          aria-label="Search Watches"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+        />
+      )}
       {manyOwners && <OwnerFilter logins={owning} filter={filter} onChange={setFilter} />}
       <div className="opt-watch-list">
+        {watches.length > 0 && shown.length === 0 && (
+          <p className="opt-meta opt-list-empty" role="status">
+            No Watch matches
+          </p>
+        )}
         {shown.map(item => (
           <WatchRow
             key={item.watch.watchId}
@@ -1300,7 +1321,7 @@ function Feed({
     <section key={typeof current === 'object' ? current.watchId : current} className="opt-feed">
       <Notices page={page} actionFailure={actionFailure} />
       {current === 'attention' && <AttentionView lists={lists} onRun={onRun} onOpen={open} />}
-      {current === 'inbox' && <AllInbox lists={lists} version={version} />}
+      {current === 'inbox' && <AllInbox lists={lists} avatars={avatars} version={version} />}
       {current === 'new' && (
         <>
           <h1 className="opt-h1">Add Watch</h1>

@@ -653,6 +653,46 @@ summary.opt-logins-summary {
   background: var(--brand-dim);
   color: var(--accent);
 }
+.opt-search {
+  flex: none;
+  margin: 0 12px 8px;
+  border: 1px solid var(--rule-strong);
+  background: var(--panel);
+  color: var(--text);
+  font: 400 11px var(--font-mono);
+  padding: 5px 8px;
+}
+.opt-search:focus-visible {
+  outline: 1px solid var(--brand);
+  outline-offset: -1px;
+}
+.opt-list-empty {
+  padding: 8px 12px;
+}
+.opt-chip-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.opt-chip-filter button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--text-mid);
+  font: 400 11px var(--font-mono);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.opt-chip-filter button[aria-pressed='true'] {
+  background: var(--brand-dim);
+  border-color: var(--brand);
+  color: var(--accent);
+}
+.opt-entry-head {
+  flex-wrap: nowrap;
+}
 .opt-login-actions {
   display: flex;
   flex-wrap: wrap;

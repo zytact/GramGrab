@@ -45,6 +45,10 @@ afterEach(() => {
   globalThis.fetch = savedFetch;
 });
 
+/** A sidebar button, which no All inbox account chip can match. */
+const findSidebarButton = async (name: RegExp) =>
+  within(await screen.findByRole('navigation')).findByRole('button', { name });
+
 async function addWatch(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: '+ Add' }));
   await user.type(screen.getByPlaceholderText(/username or instagram.com/), TARGET.username);
@@ -227,6 +231,114 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(screen.getByText('Expired')).toBeDefined();
   });
 
+  /** Adds a Watch of `creators`, Instagram's other account, that collected one Post video. */
+  function addCreatorsWatch() {
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    const now = Date.now();
+    harness.local.write('watch-store', {
+      ...store,
+      watches: [
+        ...store.watches,
+        {
+          id: '9c4e5d2b-0f6a-4ebc-8b4c-5d6e7f8091a2',
+          viewerId: VIEWER.id,
+          targetId: '5005',
+          username: 'creators',
+          createdAt: now - 60_000,
+          enabled: false,
+          kinds: ['posts'],
+          actions: ['collect'],
+          tracking: {},
+          discoveries: [
+            {
+              id: '4e1b6a8f-5d7c-4e9f-8a4b-0c1d2e3f4a5b',
+              checkId: CHECK_ID,
+              ref: {
+                _tag: 'Post',
+                mediaId: '500',
+                shortcode: 'C500',
+                mediaType: 'video',
+                takenAt: 2,
+              },
+              discoveredAt: now - 30_000,
+              collect: { at: now - 30_000 },
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  it('filters All inbox by account and media type, and shows each account with its Avatar', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: {
+          _tag: 'Sidecar',
+          mediaId: '300',
+          shortcode: 'C300',
+          takenAt: 2,
+          children: [{ mediaId: '301', mediaType: 'image' }],
+        },
+        discoveredAt: Date.now() - 180_000,
+        collect: { at: Date.now() - 180_000 },
+      },
+    ]);
+    addCreatorsWatch();
+    const user = userEvent.setup();
+    const { container } = render(<Watches />);
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+    await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
+    const chips = (group: string) =>
+      within(screen.getByRole('group', { name: group })).getAllByRole('button');
+    const rows = () =>
+      [...container.querySelectorAll('.opt-feed .opt-entry-head')].map(row => row.textContent);
+
+    expect(chips('Account').map(chip => chip.textContent)).toEqual([
+      'All accounts',
+      '@creators',
+      '@instagram',
+    ]);
+    expect(rows()).toEqual([
+      'C@creators · Video',
+      'I@instagram · Video',
+      'I@instagram · Carousel of 1',
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Select all' }));
+    await user.click(screen.getByRole('button', { name: 'Videos' }));
+    expect(rows()).toEqual(['C@creators · Video']);
+    expect(screen.getByRole('button', { name: 'Remove selected (0)' })).toBeDefined();
+    await user.click(screen.getByRole('button', { name: 'Stories' }));
+    expect(rows()).toEqual(['I@instagram · Video']);
+    await user.click(screen.getByRole('button', { name: '@creators' }));
+    expect(screen.getByText('Nothing matches these filters.')).toBeDefined();
+    await user.click(screen.getByRole('button', { name: 'Everything' }));
+    expect(rows()).toEqual(['C@creators · Video']);
+    expect(screen.getByRole('button', { name: '@creators' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    );
+  });
+
+  it('searches the Watch list by username', async () => {
+    seedWatchWithProblemAndEntry();
+    addCreatorsWatch();
+    const user = userEvent.setup();
+    render(<Watches />);
+    const search = await screen.findByRole('searchbox', { name: 'Search Watches' });
+    const watchRows = () =>
+      screen.queryAllByRole('button', { name: /^@/ }).map(row => row.textContent);
+    await screen.findByRole('button', { name: /^@creators/ });
+
+    await user.type(search, '@CRE');
+    expect(watchRows()).toEqual([expect.stringMatching(/^C@creators/)]);
+    expect(screen.getByText('Watches (1)')).toBeDefined();
+    await user.clear(search);
+    await user.type(search, 'nobody');
+    expect(screen.getByText('No Watch matches')).toBeDefined();
+    expect(watchRows()).toEqual([]);
+  });
+
   it('links Found and Inbox entries to their Instagram page in a new tab', async () => {
     seedWatchWithProblemAndEntry([
       {
@@ -263,7 +375,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     ]);
     const user = userEvent.setup();
     render(<Watches />);
-    await user.click(await screen.findByRole('button', { name: /@instagram/ }));
+    await user.click(await findSidebarButton(/@instagram/));
     const links = () =>
       screen
         .getAllByRole('link')
@@ -308,7 +420,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     render(<Watches />);
 
-    await user.click(await screen.findByRole('button', { name: /@instagram/ }));
+    await user.click(await findSidebarButton(/@instagram/));
     await user.click(await screen.findByRole('button', { name: 'Preview diagnostics' }));
 
     expect(screen.getByText(/"reason": "not-json"/)).toBeDefined();
@@ -325,7 +437,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     render(<Watches />);
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
-    await user.click(await screen.findByRole('button', { name: /@instagram/ }));
+    await user.click(await findSidebarButton(/@instagram/));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
     expect(screen.getByRole('button', { name: /^Inbox \(/ }).className).toBe('active');
     await user.click(screen.getByRole('button', { name: /^Found \(/ }));
@@ -532,7 +644,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
-    const row = (await screen.findByText(/Carousel/)).closest('.opt-line');
+    const row = (await screen.findByRole('link', { name: /Carousel/ })).closest('.opt-line');
     if (!(row instanceof HTMLElement)) throw new Error('Missing Sidecar entry');
     await user.click(within(row).getByRole('checkbox', { name: 'Select inbox item' }));
     await user.click(screen.getByRole('button', { name: 'Fetch media' }));
@@ -828,7 +940,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     render(<Watches />);
     const openWatch = async () =>
-      user.click(await screen.findByRole('button', { name: new RegExp(`^@${TARGET.username}`) }));
+      user.click(await findSidebarButton(new RegExp(`^@${TARGET.username}`)));
     await openWatch();
 
     expect(await screen.findByRole('button', { name: 'Waiting…' })).toHaveProperty(
@@ -1320,6 +1432,57 @@ describe('Watches of both logins', { timeout: 15_000 }, () => {
       })
     );
     expect(storedWatches().filter(stored => stored.enabled)).toHaveLength(2);
+  });
+
+  it('filters All inbox by login while both logins collected entries', async () => {
+    seedWatchWithProblemAndEntry();
+    const now = Date.now();
+    harness.local.write('watch-store', {
+      version: 2,
+      watches: [
+        ...storedWatches(),
+        {
+          id: LINKED_WATCH_ID,
+          viewerId: LINKED.id,
+          targetId: TARGET.id,
+          username: TARGET.username,
+          createdAt: now,
+          enabled: true,
+          kinds: ['posts'],
+          actions: ['collect'],
+          tracking: {},
+          discoveries: [
+            {
+              id: '4e1b6a8f-5d7c-4e9f-8a4b-0c1d2e3f4a5b',
+              checkId: CHECK_ID,
+              ref: {
+                _tag: 'Post',
+                mediaId: '200',
+                shortcode: 'C200',
+                mediaType: 'image',
+                takenAt: 2,
+              },
+              discoveredAt: now - 30_000,
+              collect: { at: now - 30_000 },
+            },
+          ],
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    const { container } = render(<Watches />);
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+    const account = await screen.findByRole('group', { name: 'Account' });
+    const rows = () =>
+      [...container.querySelectorAll('.opt-feed .opt-entry-head')].map(row => row.textContent);
+
+    expect(
+      within(account)
+        .getAllByRole('button')
+        .map(chip => chip.textContent)
+    ).toEqual(['All accounts', 'Main', 'Linked', 'Main@instagram', 'Linked@instagram']);
+    await user.click(within(account).getByRole('button', { name: 'Linked' }));
+    expect(rows()).toEqual(['ILinked@instagram · Photo']);
   });
 
   it('names both logins in the Logins control, and marks an ended one until it is unlinked', async () => {
