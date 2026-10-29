@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   AccountIdSelector,
+  InstagramLogin,
   WatchCheck,
   WatchInboxList,
   WatchShow,
@@ -11,20 +12,24 @@ import {
   type KindCheckOutcome,
   type KindHealth,
   type ManualCheck,
-  type InstagramLogin,
   type WatchCommand,
   type WatchSummary,
   type WatchViewer,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
-import type { WatchCommandResponse, WatchFailure, WatchRead } from '../messaging/contracts.ts';
+import type {
+  WatchAvatarsResponse,
+  WatchCommandResponse,
+  WatchFailure,
+  WatchRead,
+} from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { StoryExpiry } from '../popup/story-expiry.tsx';
 import { KIND_LABEL, relativeTime, WATCH_AVATAR_NOTE } from './copy.ts';
 import { useInboxSelection } from './inbox-export.tsx';
 import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
-import { OwnerTag, type LoginList } from './owners.tsx';
+import { OWNER_LABEL, OwnerTag, type LoginList } from './owners.tsx';
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -218,14 +223,41 @@ function DiscoveryCheckbox({
   );
 }
 
+type Avatars = WatchAvatarsResponse['watches'];
+
+/** The entry's media link, after its account and Avatar when `avatars` is given. */
+function EntryHeading({ entry, avatars }: { entry: DiscoverySummary; avatars?: Avatars }) {
+  const link = (
+    <a className="opt-entry-link" href={entry.instagramUrl} target="_blank" rel="noreferrer">
+      {MEDIA_LABEL[entry.mediaType]}
+      {entry.childCount ? ` of ${entry.childCount}` : ''}
+    </a>
+  );
+  if (!avatars) return <div className="opt-entry-head">{link}</div>;
+  return (
+    <div className="opt-row opt-entry-head">
+      <Avatar
+        src={avatars[entry.watchId]}
+        username={entry.username}
+        size="sm"
+        placeholderHint={WATCH_AVATAR_NOTE}
+      />
+      <span>
+        <OwnerTag watchId={entry.watchId} />@{entry.username} · {link}
+      </span>
+    </div>
+  );
+}
+
+/** Discovery rows. Given `avatars`, each row names its account with its Avatar. */
 function DiscoveryList({
   entries,
-  showAccount,
+  avatars,
   onRemove,
   selection,
 }: {
   entries: readonly DiscoverySummary[];
-  showAccount: boolean;
+  avatars?: Avatars;
   onRemove?: (entry: DiscoverySummary) => void;
   selection?: Selection;
 }) {
@@ -238,22 +270,7 @@ function DiscoveryList({
           <div key={entry.entryId} className="opt-line opt-row opt-top">
             {selection && <DiscoveryCheckbox entry={entry} selection={selection} />}
             <div className="opt-grow">
-              <div>
-                {showAccount && (
-                  <>
-                    <OwnerTag watchId={entry.watchId} />@{entry.username} ·{' '}
-                  </>
-                )}
-                <a
-                  className="opt-entry-link"
-                  href={entry.instagramUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {MEDIA_LABEL[entry.mediaType]}
-                  {entry.childCount ? ` of ${entry.childCount}` : ''}
-                </a>
-              </div>
+              <EntryHeading entry={entry} avatars={avatars} />
               <EntryMeta entry={entry} />
               <StoryExpiry expiresAt={entry.expiresAt} />
               <OutcomeChips entry={entry} />
@@ -280,10 +297,10 @@ function DiscoveryList({
  */
 function InboxList({
   entries,
-  showAccount,
+  avatars,
 }: {
   entries: readonly DiscoverySummary[];
-  showAccount: boolean;
+  avatars?: Avatars;
 }) {
   const exporter = useInboxSelection();
   const selectedEntries = entries.filter(entry => exporter.selected.has(entry.entryId));
@@ -316,7 +333,7 @@ function InboxList({
       )}
       <DiscoveryList
         entries={entries}
-        showAccount={showAccount}
+        avatars={avatars}
         onRemove={entry => exporter.remove([entry])}
         selection={{
           selected: new Set(exporter.selected.keys()),
@@ -332,8 +349,161 @@ function InboxList({
   );
 }
 
+/** One chip of an All inbox filter row. */
+interface FilterOption {
+  readonly key: string;
+  readonly label: ReactNode;
+  readonly matches: (entry: DiscoverySummary) => boolean;
+}
+
+const everything = () => true;
+const isStory = (entry: DiscoverySummary) => entry.kind === 'stories';
+
+/** Media types without overlap: Stories are their own type, and a new picture counts as a photo. */
+const MEDIA_FILTERS: readonly FilterOption[] = [
+  { key: 'all', label: 'Everything', matches: everything },
+  {
+    key: 'photos',
+    label: 'Photos',
+    matches: entry =>
+      !isStory(entry) && (entry.mediaType === 'image' || entry.mediaType === 'avatar'),
+  },
+  {
+    key: 'videos',
+    label: 'Videos',
+    matches: entry => !isStory(entry) && entry.mediaType === 'video',
+  },
+  { key: 'carousels', label: 'Carousels', matches: entry => entry.mediaType === 'sidecar' },
+  { key: 'stories', label: 'Stories', matches: isStory },
+];
+
+/**
+ * All accounts, then each login while more than one owns an entry, then each Watch with an entry
+ * by username.
+ */
+function accountFilters(
+  entries: readonly DiscoverySummary[],
+  lists: readonly LoginList[]
+): FilterOption[] {
+  const loginOf = new Map(
+    lists.flatMap(({ login, list }) => list.watches.map(watch => [watch.watchId, login] as const))
+  );
+  const logins = InstagramLogin.literals.filter(login =>
+    entries.some(entry => loginOf.get(entry.watchId) === login)
+  );
+  const watches = [...new Map(entries.map(entry => [entry.watchId, entry.username]))].toSorted(
+    ([, left], [, right]) => left.localeCompare(right)
+  );
+  return [
+    { key: 'all', label: 'All accounts', matches: everything },
+    ...(logins.length > 1
+      ? logins.map(login => ({
+          key: `login:${login}`,
+          label: OWNER_LABEL[login],
+          matches: (entry: DiscoverySummary) => loginOf.get(entry.watchId) === login,
+        }))
+      : []),
+    ...watches.map(([watchId, username]) => ({
+      key: watchId,
+      label: (
+        <>
+          <OwnerTag watchId={watchId} />@{username}
+        </>
+      ),
+      matches: (entry: DiscoverySummary) => entry.watchId === watchId,
+    })),
+  ];
+}
+
+/** A row of chips that picks one option. A picked key no longer offered falls back to the first. */
+function useFilter(options: readonly FilterOption[]) {
+  const [key, setKey] = useState('all');
+  const picked = options.find(option => option.key === key) ?? options[0]!;
+  return { options, picked, setKey };
+}
+
+function FilterChips({
+  label,
+  filter: { options, picked, setKey },
+  disabled,
+  onChange,
+}: {
+  label: string;
+  filter: ReturnType<typeof useFilter>;
+  disabled: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <div className="opt-chip-filter" role="group" aria-label={label}>
+      {options.map(option => (
+        <button
+          key={option.key}
+          aria-pressed={option === picked}
+          disabled={disabled}
+          onClick={() => {
+            setKey(option.key);
+            onChange();
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Inbox entries narrowed by account and media type. Changing a filter clears the selection, so
+ * nothing hidden stays selected.
+ */
+function FilteredInbox({
+  entries,
+  lists,
+  avatars,
+}: {
+  entries: readonly DiscoverySummary[];
+  lists: readonly LoginList[];
+  avatars: Avatars;
+}) {
+  const exporter = useInboxSelection();
+  const account = useFilter(accountFilters(entries, lists));
+  const media = useFilter(MEDIA_FILTERS);
+  const shown = entries.filter(
+    entry => account.picked.matches(entry) && media.picked.matches(entry)
+  );
+  return (
+    <>
+      <FilterChips
+        label="Account"
+        filter={account}
+        disabled={exporter.busy}
+        onChange={exporter.clear}
+      />
+      <FilterChips
+        label="Media type"
+        filter={media}
+        disabled={exporter.busy}
+        onChange={exporter.clear}
+      />
+      {shown.length > 0 ? (
+        <InboxList entries={shown} avatars={avatars} />
+      ) : (
+        <p className="opt-meta">Nothing matches these filters.</p>
+      )}
+    </>
+  );
+}
+
 /** Every collected entry of the signed-in logins, newest first, reloaded when `version` changes. */
-export function AllInbox({ lists, version }: { lists: readonly LoginList[]; version: number }) {
+export function AllInbox({
+  lists,
+  avatars,
+  version,
+}: {
+  lists: readonly LoginList[];
+  avatars: Avatars;
+  version: number;
+}) {
   const [entries, setEntries] = useState<readonly DiscoverySummary[]>();
   useEffect(() => {
     let current = true;
@@ -360,7 +530,13 @@ export function AllInbox({ lists, version }: { lists: readonly LoginList[]; vers
         Everything your Watches collected. Entries stay 30 days from when they were found, but
         Instagram can remove media sooner.
       </p>
-      {entries ? <InboxList entries={entries} showAccount /> : <p className="opt-meta">Loading…</p>}
+      {!entries ? (
+        <p className="opt-meta">Loading…</p>
+      ) : entries.length === 0 ? (
+        <p className="opt-meta">Nothing here yet.</p>
+      ) : (
+        <FilteredInbox entries={entries} lists={lists} avatars={avatars} />
+      )}
     </>
   );
 }
@@ -547,9 +723,9 @@ export function WatchDetail({
       </div>
       {found && inbox ? (
         tab === 'inbox' ? (
-          <InboxList entries={inbox} showAccount={false} />
+          <InboxList entries={inbox} />
         ) : (
-          <DiscoveryList entries={found} showAccount={false} />
+          <DiscoveryList entries={found} />
         )
       ) : (
         <p className="opt-meta">Loading…</p>
