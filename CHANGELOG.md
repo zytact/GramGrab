@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.6.0](https://github.com/zytact/GramGrab/compare/v4.5.0...v4.6.0) (2026-10-29)
+
+
+### Features
+
+* **watch:** filter All inbox by account and media type, and search the Watch list ([#353](https://github.com/zytact/GramGrab/issues/353)) ([741f108](https://github.com/zytact/GramGrab/commit/741f108ff46a3d5b4f7918252aba52947159bef2))
+* **watch:** show save progress and errors next to each Watch setting ([#352](https://github.com/zytact/GramGrab/issues/352)) ([e9493f1](https://github.com/zytact/GramGrab/commit/e9493f1669ceb686abcec793dac54e33dd14742a))
+
+
+### Bug Fixes
+
+* **export:** finish Frame exports from the Watch inbox and CLI in a hidden runner window ([#351](https://github.com/zytact/GramGrab/issues/351)) ([eab095f](https://github.com/zytact/GramGrab/commit/eab095f577423c0b99ce519c1febdc2c7fcd40e0))
+* **test:** stop the hourly-cap Watches test from racing the real clock ([#349](https://github.com/zytact/GramGrab/issues/349)) ([f0e6d4f](https://github.com/zytact/GramGrab/commit/f0e6d4f9e673213361ed53bb41e4184fd4825df3))
+
 ## [4.5.0](https://github.com/zytact/GramGrab/compare/v4.4.0...v4.5.0) (2026-10-28)
 
 
