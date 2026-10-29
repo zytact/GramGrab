@@ -355,6 +355,28 @@ select {
   flex-direction: column;
   gap: 2px;
 }
+.opt-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-mid);
+  font-size: 11px;
+}
+.opt-saved {
+  color: var(--success);
+}
+.opt-save-failed {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+/* Lines the status up with the option text, past the checkbox. */
+.opt-option-list > .opt-save,
+.opt-option-list > .opt-save-failed {
+  padding-left: 21px;
+}
 .opt-disclosure {
   border: 1px solid var(--accent);
   background: var(--accent-dim);
