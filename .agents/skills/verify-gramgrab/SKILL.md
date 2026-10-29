@@ -283,7 +283,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Next check, storage  | `.opt-list-foot summary`; click it to open         |
 | Watch owner tag      | `.opt-owner`, filter `.opt-filter button`          |
 | Watch search         | `.opt-search` (`Search Watches`)                   |
-| All inbox filters    | `.opt-chip-filter[aria-label="Account"] button`, `[aria-label="Media type"]` |
+| All inbox filters    | `.opt-chip-filter[aria-label="Account"] button`, `.opt-chip-filter[aria-label="Media type"] button` |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 
 One limit worth knowing before planning a run: anything gated on the _active

@@ -1480,7 +1480,7 @@ describe('Watches of both logins', { timeout: 15_000 }, () => {
       within(account)
         .getAllByRole('button')
         .map(chip => chip.textContent)
-    ).toEqual(['All accounts', 'Main', 'Linked', 'Linked@instagram', 'Main@instagram']);
+    ).toEqual(['All accounts', 'Main', 'Linked', 'Main@instagram', 'Linked@instagram']);
     await user.click(within(account).getByRole('button', { name: 'Linked' }));
     expect(rows()).toEqual(['ILinked@instagram · Photo']);
   });

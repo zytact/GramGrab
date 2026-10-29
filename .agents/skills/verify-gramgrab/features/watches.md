@@ -215,7 +215,7 @@ screenshots synthetic. Do not click its entry links; their shortcodes are fake.
    Walk `Videos`, `Stories`, then `@creators` with `Stories` for the empty
    message, then `Carousels` and `Photos`. Require each result to match the
    seeded and natural entries' kinds.
-3. Type `@CRE` into `.opt-search`: one `@creators` row and `WATCHES (1)`.
+3. Type `@CREATORS` into `.opt-search`: one `@creators` row and `WATCHES (1)`.
    Replace it with `nobody`: `No Watch matches` and `WATCHES (0)`.
 4. Reload. Require `All accounts`, `Everything` and an empty search box, and no
    new key in `chrome.storage.local` or the page's `localStorage`.

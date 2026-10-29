@@ -796,7 +796,9 @@ function WatchListSection({
       {manyOwners && <OwnerFilter logins={owning} filter={filter} onChange={setFilter} />}
       <div className="opt-watch-list">
         {watches.length > 0 && shown.length === 0 && (
-          <p className="opt-meta opt-list-empty">No Watch matches</p>
+          <p className="opt-meta opt-list-empty" role="status">
+            No Watch matches
+          </p>
         )}
         {shown.map(item => (
           <WatchRow

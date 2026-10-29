@@ -349,18 +349,20 @@ function InboxList({
   );
 }
 
-/** One chip of an All inbox filter row. */
 interface FilterOption {
   readonly key: string;
   readonly label: ReactNode;
   readonly matches: (entry: DiscoverySummary) => boolean;
 }
 
+/** A chip row's options; the first is the fallback pick. */
+type FilterOptions = readonly [FilterOption, ...FilterOption[]];
+
 const everything = () => true;
 const isStory = (entry: DiscoverySummary) => entry.kind === 'stories';
 
 /** Media types without overlap: Stories are their own type, and a new picture counts as a photo. */
-const MEDIA_FILTERS: readonly FilterOption[] = [
+const MEDIA_FILTERS: FilterOptions = [
   { key: 'all', label: 'Everything', matches: everything },
   {
     key: 'photos',
@@ -379,20 +381,23 @@ const MEDIA_FILTERS: readonly FilterOption[] = [
 
 /**
  * All accounts, then each login while more than one owns an entry, then each Watch with an entry
- * by username.
+ * by username and login.
  */
 function accountFilters(
   entries: readonly DiscoverySummary[],
   lists: readonly LoginList[]
-): FilterOption[] {
+): FilterOptions {
   const loginOf = new Map(
     lists.flatMap(({ login, list }) => list.watches.map(watch => [watch.watchId, login] as const))
   );
   const logins = InstagramLogin.literals.filter(login =>
     entries.some(entry => loginOf.get(entry.watchId) === login)
   );
+  const loginOrder = (watchId: string) =>
+    InstagramLogin.literals.indexOf(loginOf.get(watchId) ?? 'main');
   const watches = [...new Map(entries.map(entry => [entry.watchId, entry.username]))].toSorted(
-    ([, left], [, right]) => left.localeCompare(right)
+    ([leftId, left], [rightId, right]) =>
+      left.localeCompare(right) || loginOrder(leftId) - loginOrder(rightId)
   );
   return [
     { key: 'all', label: 'All accounts', matches: everything },
@@ -416,9 +421,9 @@ function accountFilters(
 }
 
 /** A row of chips that picks one option. A picked key no longer offered falls back to the first. */
-function useFilter(options: readonly FilterOption[]) {
-  const [key, setKey] = useState('all');
-  const picked = options.find(option => option.key === key) ?? options[0]!;
+function useFilter(options: FilterOptions) {
+  const [key, setKey] = useState(options[0].key);
+  const picked = options.find(option => option.key === key) ?? options[0];
   return { options, picked, setKey };
 }
 
@@ -489,7 +494,9 @@ function FilteredInbox({
       {shown.length > 0 ? (
         <InboxList entries={shown} avatars={avatars} />
       ) : (
-        <p className="opt-meta">Nothing matches these filters.</p>
+        <p className="opt-meta" role="status">
+          Nothing matches these filters.
+        </p>
       )}
     </>
   );
