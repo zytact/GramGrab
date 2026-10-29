@@ -1174,7 +1174,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     render(<Watches />);
     expect(await screen.findByText(/^Checking, 1 left this round · /)).toBeDefined();
 
-    const resumeAt = Date.now() + 3_000;
+    const resumeAt = Date.now() + 10 * 60_000;
     await harness.local.set({
       'instagram-requests': {
         version: 1,
