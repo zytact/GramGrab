@@ -382,7 +382,11 @@ login once, so it costs one viewer request.
 
 A real save settles too fast to capture, and a real failure needs a broken
 store. Slow or fail only the `watch-store` write from the worker. This is
-in-memory and ends when the worker restarts:
+in-memory and ends when the worker restarts. It hooks the promise form of
+`storage.local.set`, which the worker uses only when the browser has a native
+`browser` namespace. Require `typeof browser` to read `object` in the worker
+first (Chrome for Testing 156 does). Otherwise the worker's callback shim
+writes, and the hook leaves the save on `Saving`:
 
 ```bash
 node $D eval "js/background.js" "(() => { const l = chrome.storage.local; l.__set ??= l.set.bind(l);
