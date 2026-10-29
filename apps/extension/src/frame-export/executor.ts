@@ -35,14 +35,12 @@ export async function executeFrameExport(
   sourceUrl: string,
   options: FrameExecutorOptions = {}
 ): Promise<DownloadOperationResult> {
-  let mediaObjectUrl: string | undefined;
   try {
     options.onPhase?.('frame-metadata');
     const response = await fetch(operation.url, { credentials: 'omit' });
     if (!response.ok) throw new Error(`Video request failed with status ${response.status}.`);
-    mediaObjectUrl = URL.createObjectURL(await response.blob());
     const captured = await captureFrameFromSource(
-      mediaObjectUrl,
+      await response.blob(),
       operation.frameTimestampSeconds ?? 0,
       operation
     );
@@ -95,7 +93,5 @@ export async function executeFrameExport(
       status: 'failed',
       failure: normalizeFrameFailure('unexpected', cause),
     });
-  } finally {
-    if (mediaObjectUrl) URL.revokeObjectURL(mediaObjectUrl);
   }
 }

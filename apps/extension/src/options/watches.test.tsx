@@ -405,7 +405,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       },
     ]);
     instagram.state.media.C200 = restMedia({ id: '200', video: true, takenAt: 2 });
-    const { seek } = await processingBrowser(harness, instagram);
+    const { decodeFrame } = await processingBrowser(harness, instagram);
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
@@ -430,7 +430,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       type: 'GET_DOWNLOAD_HISTORY',
     });
     expect(history.entries).toMatchObject([{ exportMode: 'frame', frameTimestampSeconds: 8 }]);
-    expect(seek.mock.calls.some(([second]) => second === 8)).toBe(true);
+    expect(decodeFrame.mock.calls.some(([second]) => second === 8)).toBe(true);
     expect(harness.browser.tabs.create).not.toHaveBeenCalled();
   });
 

@@ -1,36 +1,105 @@
-// @vitest-environment jsdom
-
 import { Either } from 'effect';
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { VideoFrameExtractionFailed } from '../effect/errors.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { canvasToJpeg, drawModified } from '../rotation/media.ts';
 import { captureFrameFromSource } from './capture-source.ts';
+
+const media = vi.hoisted(() => ({
+  track: undefined as
+    | {
+        computeDuration: () => Promise<number>;
+        getFirstTimestamp: () => Promise<number>;
+      }
+    | undefined,
+  getCanvas: vi.fn<(timestamp: number) => Promise<{ canvas: object } | null>>(),
+  dispose: vi.fn(),
+}));
+
+vi.mock('mediabunny', () => ({
+  ALL_FORMATS: [],
+  BlobSource: class {},
+  Input: class {
+    getPrimaryVideoTrack = () => Promise.resolve(media.track);
+    dispose = media.dispose;
+  },
+  CanvasSink: class {
+    getCanvas = media.getCanvas;
+  },
+}));
+
+vi.mock('../rotation/media.ts', () => ({ drawModified: vi.fn(), canvasToJpeg: vi.fn() }));
+
+const frame = { width: 640, height: 360 };
+const canvas = {};
+const jpeg = new Blob(['jpeg'], { type: 'image/jpeg' });
+
+function videoTrack(duration: number, firstTimestamp = 0) {
+  media.track = {
+    computeDuration: () => Promise.resolve(duration),
+    getFirstTimestamp: () => Promise.resolve(firstTimestamp),
+  };
+}
+
+const capture = (timestampSeconds: number) =>
+  captureFrameFromSource(new Blob(['video']), timestampSeconds, { rotation: 90 });
+
+async function failureReason(timestampSeconds = 3) {
+  const result = await capture(timestampSeconds);
+  return Either.isLeft(result) ? result.left.reason : undefined;
+}
 
 describe('captureFrameFromSource', () => {
   beforeEach(() => {
-    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
+    vi.resetAllMocks();
+    videoTrack(10);
+    media.getCanvas.mockResolvedValue({ canvas: frame });
+    vi.mocked(drawModified).mockReturnValue(canvas as HTMLCanvasElement);
+    vi.mocked(canvasToJpeg).mockResolvedValue(jpeg);
   });
 
-  it('recreates the video and retries one metadata timeout', async () => {
-    const capture = vi
-      .fn()
-      .mockResolvedValueOnce(Either.left(new VideoFrameExtractionFailed({ reason: 'timeout' })))
-      .mockResolvedValueOnce(Either.right(new Blob(['frame'])));
+  afterEach(() => vi.useRealTimers());
 
-    const result = await captureFrameFromSource('blob:video', 0, undefined, capture);
-
-    expect(Either.isRight(result)).toBe(true);
-    expect(capture).toHaveBeenCalledTimes(2);
-    expect(capture.mock.calls[0]?.[0]).not.toBe(capture.mock.calls[1]?.[0]);
-    expect(document.querySelectorAll('video')).toHaveLength(0);
+  it('encodes the decoded frame with its modifiers and frees the input', async () => {
+    expect(await capture(4.5)).toEqual(Either.right(jpeg));
+    expect(media.getCanvas).toHaveBeenCalledWith(4.5);
+    expect(drawModified).toHaveBeenCalledWith(frame, 640, 360, { rotation: 90 });
+    expect(media.dispose).toHaveBeenCalledOnce();
   });
 
-  it('does not retry a non-timeout frame failure', async () => {
-    const capture = vi
-      .fn()
-      .mockResolvedValue(Either.left(new VideoFrameExtractionFailed({ reason: 'no-frame' })));
+  it('clamps the timestamp to the last whole second and the first frame', async () => {
+    await capture(30);
+    videoTrack(10, 0.5);
+    await capture(0);
 
-    await captureFrameFromSource('blob:video', 0, undefined, capture);
+    expect(media.getCanvas.mock.calls).toEqual([[9], [0.5]]);
+  });
 
-    expect(capture).toHaveBeenCalledTimes(1);
+  it('names why a frame could not be produced', async () => {
+    media.track = undefined;
+    expect(await failureReason()).toBe('no-frame');
+
+    videoTrack(0);
+    expect(await failureReason()).toBe('no-duration');
+
+    videoTrack(10);
+    media.getCanvas.mockRejectedValueOnce(new Error('unsupported codec'));
+    expect(await failureReason()).toBe('no-frame');
+
+    vi.mocked(drawModified).mockReturnValueOnce(undefined);
+    expect(await failureReason()).toBe('no-canvas');
+
+    vi.mocked(canvasToJpeg).mockResolvedValueOnce(null);
+    expect(await failureReason()).toBe('no-blob');
+    expect(media.dispose).toHaveBeenCalledTimes(5);
+  });
+
+  it('times out a decode that never finishes and still frees the input', async () => {
+    vi.useFakeTimers();
+    media.getCanvas.mockReturnValue(new Promise(() => {}));
+
+    const result = failureReason();
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(await result).toBe('timeout');
+    expect(media.dispose).toHaveBeenCalledOnce();
   });
 });

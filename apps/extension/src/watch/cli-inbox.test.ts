@@ -207,7 +207,7 @@ describe('native Watch attention and inbox', () => {
     await find();
     const entry = (await inbox()).entries[0]!;
     expect(entry.remainingRetentionMs).toBeGreaterThan(0);
-    const { seek } = await processingBrowser(harness, instagram);
+    const { decodeFrame } = await processingBrowser(harness, instagram);
     const { browser } = await import('../lib/browser.ts');
     const download = vi.mocked(browser.downloads.download);
     download
@@ -234,7 +234,7 @@ describe('native Watch attention and inbox', () => {
     );
     expect(retry).toMatchObject({ outcomes: [{ accepted: 2, failures: [] }] });
     expect(harness.downloads).toHaveLength(2);
-    expect(seek).toHaveBeenCalledWith(8.5);
+    expect(decodeFrame).toHaveBeenCalledWith(8.5);
     await result(
       WatchInboxExport.make({ entryIds: [entry.entryId], settings: { mode: DirectExport.make() } })
     );

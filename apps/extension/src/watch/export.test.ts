@@ -187,7 +187,7 @@ describe('Watch inbox Export', () => {
   it('runs Frame with rotation through the real runner and writes requested and delivered History', async () => {
     const { entryId, post } = await discoverPost({ id: '200', video: true });
     instagram.state.media.C200 = restMedia(post);
-    const { seek, context } = await processingBrowser(harness, instagram);
+    const { decodeFrame, context } = await processingBrowser(harness, instagram);
     const result = await run(
       WatchInboxExport.make({
         entryIds: [entryId],
@@ -196,7 +196,7 @@ describe('Watch inbox Export', () => {
       'WatchInboxExportResult'
     );
     expect(result.outcomes[0]).toMatchObject({ accepted: 1, failures: [] });
-    expect(seek).toHaveBeenCalledWith(8.5);
+    expect(decodeFrame).toHaveBeenCalledWith(8.5);
     expect(context.rotate).toHaveBeenCalledWith(Math.PI / 2);
     expect(await history()).toMatchObject([
       {
@@ -214,7 +214,7 @@ describe('Watch inbox Export', () => {
   it('retries the frozen failed child after processing failure without repeating accepted siblings', async () => {
     const { entryId, post } = await discoverPost({ id: '210', children: ['211', '212'] });
     instagram.state.media.C210 = restMedia(post);
-    const { seek } = await processingBrowser(harness, instagram);
+    const { decodeFrame } = await processingBrowser(harness, instagram);
     const download = vi.mocked(harness.browser.downloads.download);
     download
       .mockImplementationOnce(download.getMockImplementation()!)
@@ -237,7 +237,7 @@ describe('Watch inbox Export', () => {
     );
     expect(retried.outcomes[0]).toMatchObject({ accepted: 2, failures: [] });
     expect(harness.downloads).toHaveLength(2);
-    expect(seek.mock.calls.every(([second]) => second === 9)).toBe(true);
+    expect(decodeFrame.mock.calls.every(([second]) => second === 9)).toBe(true);
     expect(await history()).toMatchObject([
       { exportMode: 'frame', frameTimestampSeconds: 9 },
       { exportMode: 'direct' },

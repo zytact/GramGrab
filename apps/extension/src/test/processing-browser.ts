@@ -41,10 +41,27 @@ export async function processingBrowser(
   vi.spyOn(HTMLMediaElement.prototype, 'duration', 'get').mockReturnValue(60);
   vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(640);
   vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(480);
-  const seek = vi
-    .spyOn(HTMLMediaElement.prototype, 'currentTime', 'set')
-    .mockImplementation(function (this: HTMLMediaElement) {
+  vi.spyOn(HTMLMediaElement.prototype, 'currentTime', 'set').mockImplementation(
+    function (this: HTMLMediaElement) {
       setTimeout(() => this.dispatchEvent(new Event('seeked')), 1);
+    }
+  );
+  const { CanvasSink, Input, InputVideoTrack } = await import('mediabunny');
+  const track: InstanceType<typeof InputVideoTrack> = Object.assign(
+    Object.create(InputVideoTrack.prototype),
+    {
+      computeDuration: () => Promise.resolve(60),
+      getFirstTimestamp: () => Promise.resolve(0),
+    }
+  );
+  vi.spyOn(Input.prototype, 'getPrimaryVideoTrack').mockResolvedValue(track);
+  const decodeFrame = vi
+    .spyOn(CanvasSink.prototype, 'getCanvas')
+    .mockImplementation(async timestamp => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 480;
+      return { canvas, timestamp, duration: 0.04 };
     });
   const context = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() };
   vi.stubGlobal('createImageBitmap', async () => ({ width: 640, height: 480, close: vi.fn() }));
@@ -54,7 +71,7 @@ export async function processingBrowser(
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback =>
     callback(new Blob(['frame'], { type: 'image/jpeg' }))
   );
-  return { seek, context };
+  return { decodeFrame, context };
 }
 
 export function silentBrowser() {
