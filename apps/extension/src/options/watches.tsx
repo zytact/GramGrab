@@ -480,10 +480,15 @@ function useSettingSave(onSave: (command: WatchCommand) => Promise<WatchFailure 
   }, [status]);
   const save = (row: SettingRow, command: SettingSave['command']) => {
     setStatus({ row, command, state: 'saving' });
-    void onSave(command).then(failure =>
-      setStatus(
-        failure ? { row, command, state: 'failed', failure } : { row, command, state: 'saved' }
-      )
+    void onSave(command).then(
+      failure =>
+        setStatus(
+          failure ? { row, command, state: 'failed', failure } : { row, command, state: 'saved' }
+        ),
+      (error: unknown) => {
+        setStatus(undefined);
+        throw error;
+      }
     );
   };
   const saving = status?.state === 'saving';
@@ -1017,6 +1022,22 @@ const linkedFailureOf = (response: WatchCommandResponse) =>
  * followed. The linked list is read first, so a session it finds ended shows among the main list's
  * held Watches.
  */
+/** Wraps `start` so a call settles only after the newest call has, since the newest result replaces older ones. */
+function useNewestLoad<A extends unknown[]>(start: (...args: A) => Promise<void>) {
+  const newest = useRef<Promise<void>>(undefined);
+  return useCallback(
+    async (...args: A) => {
+      let awaited: Promise<void> | undefined = start(...args);
+      newest.current = awaited;
+      while (awaited) {
+        await awaited;
+        awaited = newest.current === awaited ? undefined : newest.current;
+      }
+    },
+    [start]
+  );
+}
+
 function useWatchList() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const [version, setVersion] = useState(0);
@@ -1030,7 +1051,7 @@ function useWatchList() {
   const verification = useRef<Promise<void>>(undefined);
   const reverify = useRef(false);
 
-  const load = useCallback(
+  const readLists = useCallback(
     async (read: (login: InstagramLogin) => Promise<WatchCommandResponse> | undefined) => {
       const request = ++latest.current;
       setPending(count => count + 1);
@@ -1066,6 +1087,7 @@ function useWatchList() {
     },
     []
   );
+  const load = useNewestLoad(readLists);
   const verify = useCallback(() => {
     reverify.current = true;
     if (verification.current) latest.current += 1;
@@ -1531,6 +1553,7 @@ function Console({
   };
   /** Saves a Watch setting, whose row shows the outcome instead of the banner. */
   const save: Run = async (command, login) => {
+    setActionFailure(undefined);
     const { failure } = await runCommand(command, login);
     await refresh();
     return failure;
