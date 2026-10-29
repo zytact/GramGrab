@@ -150,10 +150,13 @@ to the `/run/user/$UID/.mutter-Xwaylandauth.*` file with `GRAMGRAB_HEADLESS=0`;
 `WAYLAND_DISPLAY` alone fails with `Missing X server or $DISPLAY`.
 `GRAMGRAB_HEADLESS=1` forces `--headless` in a 1280x900 window, and it is the
 default without a display. Headless loads the extension, starts the native
-host, and captures screenshots, but it cannot prove frame export: the runner's
-minimized window counts as hidden there, its video never loads, and the export
-fails with `FRAME_TIMEOUT`. Human checkpoints need a window too. `signin.sh`
-always launches headed.
+host, captures screenshots, and runs every export mode, Frame included. Human
+checkpoints need a window. `signin.sh` always launches headed.
+
+The runner's minimized window reports `document.visibilityState` `hidden`,
+headed or headless, and Chromium never loads a `<video>` in a hidden page that
+has not played media. Frame export decodes with WebCodecs for that reason (#340).
+A runner `<video>` stuck at `readyState` 0 means that route came back.
 
 ### Signing in
 

@@ -84,7 +84,7 @@ export async function exportWhatsAppFrame(
       });
     }
     const captured = await captureFrameFromSource(
-      handle.snapshot.objectUrl(),
+      handle.snapshot.blob,
       operation.frameTimestampSeconds ?? 0
     );
     if (Either.isLeft(captured)) {

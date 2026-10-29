@@ -34,15 +34,12 @@ describe('executeFrameExport', () => {
         blob: () => Promise.resolve(new Blob(['video'])),
       })
     );
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:media');
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     vi.mocked(captureFrameFromSource).mockResolvedValue(Either.right(new Blob(['frame'])));
     vi.spyOn(browser.runtime, 'sendMessage').mockResolvedValue({ error: undefined });
   });
 
   it('preserves a non-zero timestamp through capture, download, and history', async () => {
     const phases: string[] = [];
-    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL');
 
     const result = await executeFrameExport(
       operation,
@@ -51,7 +48,7 @@ describe('executeFrameExport', () => {
     );
 
     expect(result.status).toBe('started');
-    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 7.5, expect.any(Object));
+    expect(captureFrameFromSource).toHaveBeenCalledWith(expect.any(Blob), 7.5, expect.any(Object));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'DOWNLOAD_FRAME_EXPORT',
@@ -59,7 +56,6 @@ describe('executeFrameExport', () => {
       })
     );
     expect(phases).toEqual(['frame-metadata', 'frame-export']);
-    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:media');
   });
 
   it('crops the captured frame and records the crop for redownload', async () => {
@@ -68,7 +64,7 @@ describe('executeFrameExport', () => {
     await executeFrameExport({ ...operation, crop }, 'https://www.instagram.com/stories/example/');
 
     expect(captureFrameFromSource).toHaveBeenCalledWith(
-      'blob:media',
+      expect.any(Blob),
       7.5,
       expect.objectContaining({ crop })
     );
@@ -85,7 +81,7 @@ describe('executeFrameExport', () => {
 
     await executeFrameExport(withoutTimestamp, 'https://www.instagram.com/p/example/');
 
-    expect(captureFrameFromSource).toHaveBeenCalledWith('blob:media', 0, expect.any(Object));
+    expect(captureFrameFromSource).toHaveBeenCalledWith(expect.any(Blob), 0, expect.any(Object));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ item: expect.objectContaining({ frameTimestampSeconds: 0 }) })
     );

@@ -48,10 +48,7 @@ const descriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
 describe('exportWhatsAppFrame', () => {
   beforeEach(() => {
     resetBrowserMocks();
-    createObjectUrl = vi
-      .spyOn(URL, 'createObjectURL')
-      .mockReturnValueOnce('blob:captured-status')
-      .mockReturnValueOnce('blob:exported-frame');
+    createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce('blob:exported-frame');
     revokeObjectUrl = vi.fn<(url: string) => void>();
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeObjectUrl);
     vi.mocked(captureFrameFromSource).mockResolvedValue(Either.right(new Blob(['frame'])));
@@ -64,6 +61,7 @@ describe('exportWhatsAppFrame', () => {
 
   it('releases the capture immediately and the frame URL when the download terminates', async () => {
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
+    const captured = snapshot.blob;
     const release = vi.fn(() => snapshot.release());
     let resolveHistory: ((response: { saved: false }) => void) | undefined;
     getMockBrowser().runtime.sendMessage.mockReturnValueOnce(
@@ -84,8 +82,8 @@ describe('exportWhatsAppFrame', () => {
     );
 
     await vi.waitFor(() => expect(getDownloadCalls()).toHaveLength(1));
+    expect(captureFrameFromSource).toHaveBeenCalledWith(captured, operation.frameTimestampSeconds);
     expect(release).toHaveBeenCalledOnce();
-    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:captured-status');
     expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:exported-frame');
 
     const onChanged = getMockBrowser().downloads.onChanged.addListener.mock.calls[0]?.[0];

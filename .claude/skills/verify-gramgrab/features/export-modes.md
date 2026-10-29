@@ -180,9 +180,9 @@ re-encoded video prints `video,720,720` and `audio`.
 
 - Direct downloads use `saveAs: false` and complete on their own. Only
   `debug export` prompts.
-- Frame export needs a headed browser. Under `GRAMGRAB_HEADLESS=1` the
-  minimized runner counts as hidden, its video never loads, and every frame
-  export fails with `FRAME_TIMEOUT`. Direct and silent exports work headless.
+- Every export mode works headless. The runner is hidden in both modes, so a
+  Frame export that ends in `FRAME_TIMEOUT` points at the decoder, not the
+  window. See [Browser choice](../SKILL.md#browser-choice).
 - The runner window is minimized, not hidden. It appears in the window list
   during an export and closes afterwards; do not treat it as a stray window and
   kill it mid-run.
