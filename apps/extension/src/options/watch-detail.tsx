@@ -233,7 +233,7 @@ function EntryHeading({ entry, avatars }: { entry: DiscoverySummary; avatars?: A
       {entry.childCount ? ` of ${entry.childCount}` : ''}
     </a>
   );
-  if (!avatars) return <div className="opt-entry-head">{link}</div>;
+  if (!avatars) return <div>{link}</div>;
   return (
     <div className="opt-row opt-entry-head">
       <Avatar
@@ -441,6 +441,7 @@ function FilterChips({
           aria-pressed={option === picked}
           disabled={disabled}
           onClick={() => {
+            if (option === picked) return;
             setKey(option.key);
             onChange();
           }}
@@ -453,8 +454,8 @@ function FilterChips({
 }
 
 /**
- * Inbox entries narrowed by account and media type. Changing a filter clears the selection, so
- * nothing hidden stays selected.
+ * Inbox entries narrowed by account and media type. Changing a filter clears the selection and
+ * export state, as changing views does, so nothing hidden stays selected.
  */
 function FilteredInbox({
   entries,
