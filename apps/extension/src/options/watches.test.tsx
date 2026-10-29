@@ -1245,6 +1245,73 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(harness.badge).toBe('');
   });
 
+  it('shows a setting saving, then saved, on the row that changed', async () => {
+    seedWatchWithProblemAndEntry();
+    const write = harness.local.set.getMockImplementation()!;
+    let release = () => {};
+    const held = new Promise<void>(resolve => (release = resolve));
+    harness.local.set.mockImplementation(async items => {
+      if ('watch-store' in items) await held;
+      return write(items);
+    });
+    const user = userEvent.setup();
+    const { container } = render(<Watches />);
+    await user.click(
+      await screen.findByRole('button', { name: new RegExp(`^@${TARGET.username}`) })
+    );
+    const inspector = within(container.querySelector<HTMLElement>('.opt-inspector')!);
+    await user.click(inspector.getByRole('checkbox', { name: /^Posts/ }));
+
+    expect(inspector.getByRole('status').textContent).toBe('Saving');
+    expect(inspector.getByRole('checkbox', { name: /^Posts/ })).toMatchObject({
+      checked: true,
+      disabled: true,
+    });
+    expect(inspector.getByRole('button', { name: 'Pause checks' })).toHaveProperty(
+      'disabled',
+      true
+    );
+    release();
+
+    expect(await inspector.findByText('✓ Saved')).toBeDefined();
+    expect(inspector.getByRole('checkbox', { name: /^Posts/ })).toMatchObject({
+      checked: true,
+      disabled: false,
+    });
+    expect(harness.local.read('watch-store')).toMatchObject({
+      watches: [{ kinds: ['posts', 'stories'] }],
+    });
+    await waitFor(() => expect(inspector.queryByText('✓ Saved')).toBeNull(), { timeout: 3_000 });
+  });
+
+  it('shows a failed setting change under its row, not in the feed, and retries it', async () => {
+    seedWatchWithProblemAndEntry();
+    const user = userEvent.setup();
+    const { container } = render(<Watches />);
+    await user.click(
+      await screen.findByRole('button', { name: new RegExp(`^@${TARGET.username}`) })
+    );
+    const inspector = within(container.querySelector<HTMLElement>('.opt-inspector')!);
+    harness.local.failWrites = true;
+    await user.click(inspector.getByRole('button', { name: 'Pause checks' }));
+
+    const alert = await inspector.findByRole('alert');
+    expect(alert.textContent).toContain('The browser refused to save Watch data');
+    expect(inspector.getByRole('button', { name: 'Pause checks' })).toHaveProperty(
+      'disabled',
+      false
+    );
+    expect(container.querySelector('.opt-feed > p.opt-banner-error')).toBeNull();
+
+    harness.local.failWrites = false;
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+
+    expect(await inspector.findByText('✓ Saved')).toBeDefined();
+    expect(inspector.queryByRole('alert')).toBeNull();
+    expect(inspector.getByRole('button', { name: 'Resume checks' })).toBeDefined();
+    expect(harness.local.read('watch-store')).toMatchObject({ watches: [{ enabled: false }] });
+  });
+
   it('says why and until when a rate-limit pause holds Check now back', async () => {
     seedWatchWithProblemAndEntry();
     const until = Date.now() + 30 * 60_000;

@@ -1,5 +1,5 @@
 import { Option } from 'effect';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AccountIdSelector,
   CommandFailure,
@@ -223,12 +223,17 @@ function OptionList<T extends string>({
   chosen,
   label,
   note,
+  disabled = false,
+  status,
   onToggle,
 }: {
   all: readonly T[];
   chosen: readonly T[];
   label: Record<T, string>;
   note: (value: T) => string;
+  disabled?: boolean;
+  /** Shown under the option, such as its save progress. */
+  status?: (value: T) => ReactNode;
   onToggle: (value: T) => void;
 }) {
   return (
@@ -236,18 +241,21 @@ function OptionList<T extends string>({
       {all.map(value => {
         const checked = chosen.includes(value);
         return (
-          <label key={value} className="opt-option">
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={checked && chosen.length === 1}
-              onChange={() => onToggle(value)}
-            />
-            <span>
-              {label[value]}
-              <span className="opt-meta">{note(value)}</span>
-            </span>
-          </label>
+          <Fragment key={value}>
+            <label className="opt-option">
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={disabled || (checked && chosen.length === 1)}
+                onChange={() => onToggle(value)}
+              />
+              <span>
+                {label[value]}
+                <span className="opt-meta">{note(value)}</span>
+              </span>
+            </label>
+            {status?.(value)}
+          </Fragment>
         );
       })}
     </div>
@@ -448,18 +456,95 @@ function FoundAccount({
   );
 }
 
+/** A setting row: a kind, an action, or whether checks run. */
+type SettingRow = WatchKind | WatchAction | 'checks';
+
+type SettingSave = {
+  readonly row: SettingRow;
+  readonly command: WatchSet | WatchLifecycle;
+} & (
+  | { readonly state: 'saving' }
+  | { readonly state: 'saved' }
+  | { readonly state: 'failed'; readonly failure: WatchFailure }
+);
+
+const SAVED_MS = 2_000;
+
+/** Saves one setting at a time and tracks its progress for the row that changed it. */
+function useSettingSave(onSave: (command: WatchCommand) => Promise<WatchFailure | undefined>) {
+  const [status, setStatus] = useState<SettingSave>();
+  useEffect(() => {
+    if (status?.state !== 'saved') return;
+    const timer = setTimeout(() => setStatus(undefined), SAVED_MS);
+    return () => clearTimeout(timer);
+  }, [status]);
+  const save = (row: SettingRow, command: SettingSave['command']) => {
+    setStatus({ row, command, state: 'saving' });
+    void onSave(command).then(
+      failure =>
+        setStatus(
+          failure ? { row, command, state: 'failed', failure } : { row, command, state: 'saved' }
+        ),
+      (error: unknown) => {
+        setStatus(undefined);
+        throw error;
+      }
+    );
+  };
+  const saving = status?.state === 'saving';
+  return {
+    save,
+    saving,
+    /** The change in flight, shown until the saved Watch replaces it. */
+    pending: saving && status.command._tag === 'WatchSet' ? status.command : undefined,
+    statusOf: (row: SettingRow) =>
+      status?.row === row && (
+        <SaveStatus status={status} onRetry={() => save(status.row, status.command)} />
+      ),
+  };
+}
+
+function SaveStatus({ status, onRetry }: { status: SettingSave; onRetry: () => void }) {
+  if (status.state === 'saving')
+    return (
+      <span className="opt-save" role="status">
+        <span className="btn-spinner" aria-hidden="true" />
+        Saving
+      </span>
+    );
+  if (status.state === 'saved')
+    return (
+      <span className="opt-save opt-saved" role="status">
+        ✓ Saved
+      </span>
+    );
+  return (
+    <div className="opt-save-failed" role="alert">
+      <FailureNotice failure={status.failure} />
+      <button className="opt-btn opt-ghost" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  );
+}
+
 function WatchSettings({
   watch,
+  onSave,
   onRun,
   onDeleted,
 }: {
   watch: WatchSummary;
+  /** Saves a setting change. Its outcome shows on the changed row. */
+  onSave: (command: WatchCommand) => Promise<WatchFailure | undefined>;
   onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
   onDeleted: () => void;
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const { save, saving, pending, statusOf } = useSettingSave(onSave);
   const selector = AccountIdSelector.make({ accountId: watch.accountId });
-  const kinds = watch.kinds.filter(kind => kind._tag !== 'KindOff').map(kind => kind.kind);
+  const kinds =
+    pending?.kinds ?? watch.kinds.filter(kind => kind._tag !== 'KindOff').map(kind => kind.kind);
+  const actions = pending?.actions ?? watch.actions;
   return (
     <>
       <span className="opt-label">Watch for</span>
@@ -468,8 +553,11 @@ function WatchSettings({
         chosen={kinds}
         label={KIND_LABEL}
         note={kind => KIND_NOTE[kind]}
+        disabled={saving}
+        status={statusOf}
         onToggle={kind =>
-          void onRun(
+          save(
+            kind,
             WatchSet.make({ watch: selector, kinds: ordered(WATCH_KINDS, toggled(kinds, kind)) })
           )
         }
@@ -477,61 +565,77 @@ function WatchSettings({
       <span className="opt-label">When something new appears</span>
       <OptionList
         all={WATCH_ACTIONS}
-        chosen={watch.actions}
+        chosen={actions}
         label={ACTION_LABEL}
-        note={actionNote(watch.actions)}
+        note={actionNote(actions)}
+        disabled={saving}
+        status={statusOf}
         onToggle={action => {
-          const next = ordered(WATCH_ACTIONS, toggled(watch.actions, action));
-          if (!watch.actions.includes('notify')) askToNotify(next);
-          void onRun(WatchSet.make({ watch: selector, actions: next }));
+          const next = ordered(WATCH_ACTIONS, toggled(actions, action));
+          if (!actions.includes('notify')) askToNotify(next);
+          save(action, WatchSet.make({ watch: selector, actions: next }));
         }}
       />
       <span className="opt-label">Watch</span>
       <div className="opt-col">
-        <button
-          className="opt-btn"
-          onClick={() =>
-            void onRun(
-              WatchLifecycle.make({
-                operation: watch.enabled ? 'pause' : 'resume',
-                watches: [selector],
-              })
-            )
-          }
-        >
-          {watch.enabled ? 'Pause checks' : 'Resume checks'}
-        </button>
+        <div className="opt-row">
+          <button
+            className="opt-btn"
+            disabled={saving}
+            onClick={() =>
+              save(
+                'checks',
+                WatchLifecycle.make({
+                  operation: watch.enabled ? 'pause' : 'resume',
+                  watches: [selector],
+                })
+              )
+            }
+          >
+            {watch.enabled ? 'Pause checks' : 'Resume checks'}
+          </button>
+          {statusOf('checks')}
+        </div>
         {watch.enabled && (
           <p className="opt-meta">
             Pausing keeps baselines and the inbox. Resuming catches up on the last 30 days.
           </p>
         )}
-        <button className="opt-btn opt-danger" onClick={() => setConfirmDelete(true)}>
-          Delete Watch
-        </button>
-        {confirmDelete && (
-          <div className="opt-banner opt-banner-error">
-            Delete the Watch for @{watch.username}? Its settings, seen media, Watch inbox, and
-            pending actions go away. Downloaded files and History stay. Adding it again starts a
-            fresh baseline.
-            <div className="opt-row">
-              <button
-                className="opt-btn opt-danger"
-                onClick={() =>
-                  void onRun(
-                    WatchLifecycle.make({ operation: 'delete', watches: [selector] })
-                  ).then(failure => failure || onDeleted())
-                }
-              >
-                Delete Watch
-              </button>
-              <button className="opt-btn opt-ghost" onClick={() => setConfirmDelete(false)}>
-                Keep
-              </button>
-            </div>
-          </div>
-        )}
+        <DeleteWatch
+          username={watch.username}
+          onDelete={() =>
+            void onRun(WatchLifecycle.make({ operation: 'delete', watches: [selector] })).then(
+              failure => failure || onDeleted()
+            )
+          }
+        />
       </div>
+    </>
+  );
+}
+
+function DeleteWatch({ username, onDelete }: { username: string; onDelete: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <button className="opt-btn opt-danger" onClick={() => setConfirming(true)}>
+        Delete Watch
+      </button>
+      {confirming && (
+        <div className="opt-banner opt-banner-error">
+          Delete the Watch for @{username}? Its settings, seen media, Watch inbox, and pending
+          actions go away. Downloaded files and History stay. Adding it again starts a fresh
+          baseline.
+          <div className="opt-row">
+            <button className="opt-btn opt-danger" onClick={onDelete}>
+              Delete Watch
+            </button>
+            <button className="opt-btn opt-ghost" onClick={() => setConfirming(false)}>
+              Keep
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -934,6 +1038,26 @@ const linkedFailureOf = (response: WatchCommandResponse) =>
     : response.failure;
 
 /**
+ * Wraps `start` so a call settles only after the newest call has, since the newest result replaces
+ * older ones. Only a call's own load can reject it.
+ */
+function useNewestLoad<A extends unknown[]>(start: (...args: A) => Promise<void>) {
+  const newest = useRef<Promise<void>>(undefined);
+  return useCallback(
+    async (...args: A) => {
+      let awaited = start(...args);
+      newest.current = awaited;
+      await awaited;
+      while (newest.current && newest.current !== awaited) {
+        awaited = newest.current;
+        await awaited.catch(() => undefined);
+      }
+    },
+    [start]
+  );
+}
+
+/**
  * Both logins' verified Watch lists. `verify` asks Instagram who each login is, `refresh` rereads
  * the known logins' Watches, and a viewer change another surface records in the browser session is
  * followed. The linked list is read first, so a session it finds ended shows among the main list's
@@ -952,7 +1076,7 @@ function useWatchList() {
   const verification = useRef<Promise<void>>(undefined);
   const reverify = useRef(false);
 
-  const load = useCallback(
+  const readLists = useCallback(
     async (read: (login: InstagramLogin) => Promise<WatchCommandResponse> | undefined) => {
       const request = ++latest.current;
       setPending(count => count + 1);
@@ -988,6 +1112,7 @@ function useWatchList() {
     },
     []
   );
+  const load = useNewestLoad(readLists);
   const verify = useCallback(() => {
     reverify.current = true;
     if (verification.current) latest.current += 1;
@@ -1391,11 +1516,13 @@ type PageModel = ReturnType<typeof usePageModel>;
 function Inspector({
   exporter,
   selected,
+  onSave,
   onRun,
   onDeleted,
 }: {
   exporter: ReturnType<typeof useInboxExport>;
   selected: PageWatch | undefined;
+  onSave: Run;
   onRun: Run;
   onDeleted: () => void;
 }) {
@@ -1405,7 +1532,9 @@ function Inspector({
     return <p className="opt-meta">Sign in as the login that owns this Watch to change it.</p>;
   return (
     <WatchSettings
+      key={selected.watch.watchId}
       watch={selected.watch}
+      onSave={command => onSave(command, selected.owner)}
       onRun={command => onRun(command, selected.owner)}
       onDeleted={onDeleted}
     />
@@ -1447,6 +1576,13 @@ function Console({
     await refresh();
     return response;
   };
+  /** Saves a Watch setting, whose row shows the outcome instead of the banner. */
+  const save: Run = async (command, login) => {
+    setActionFailure(undefined);
+    const { failure } = await runCommand(command, login);
+    await refresh();
+    return failure;
+  };
   const run: Run = async (command, login) => {
     const response = await send(command, login);
     if (!response.failure && response.result._tag === 'WatchAddResult')
@@ -1485,6 +1621,7 @@ function Console({
             <Inspector
               exporter={exporter}
               selected={selected}
+              onSave={save}
               onRun={run}
               onDeleted={() => go('inbox')}
             />
