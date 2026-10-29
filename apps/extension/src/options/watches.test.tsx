@@ -38,6 +38,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   globalThis.browser = savedBrowser;
@@ -1157,6 +1158,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
   });
 
   it('says checks wait for the hourly cap while it holds, without reloading', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     seedWatchWithProblemAndEntry();
     const now = Date.now();
     harness.local.write('watch-scheduler', {
@@ -1172,7 +1174,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     render(<Watches />);
     expect(await screen.findByText(/^Checking, 1 left this round · /)).toBeDefined();
 
-    const resumeAt = Date.now() + 3_000;
+    const resumeAt = Date.now() + 10 * 60_000;
     await harness.local.set({
       'instagram-requests': {
         version: 1,
@@ -1188,9 +1190,8 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       })
     ).toBeDefined();
     expect(screen.getByText(/^Waiting, 1 left this round · /)).toBeDefined();
-    await waitFor(() => expect(screen.queryByText('Watches waiting.')).toBeNull(), {
-      timeout: 6_000,
-    });
+    await act(() => vi.advanceTimersByTimeAsync(resumeAt - Date.now()));
+    expect(screen.queryByText('Watches waiting.')).toBeNull();
     expect(screen.getByText(/^Checking, 1 left this round · /)).toBeDefined();
   });
 
