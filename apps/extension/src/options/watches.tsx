@@ -1017,27 +1017,31 @@ const linkedFailureOf = (response: WatchCommandResponse) =>
     : response.failure;
 
 /**
- * Both logins' verified Watch lists. `verify` asks Instagram who each login is, `refresh` rereads
- * the known logins' Watches, and a viewer change another surface records in the browser session is
- * followed. The linked list is read first, so a session it finds ended shows among the main list's
- * held Watches.
+ * Wraps `start` so a call settles only after the newest call has, since the newest result replaces
+ * older ones. Only a call's own load can reject it.
  */
-/** Wraps `start` so a call settles only after the newest call has, since the newest result replaces older ones. */
 function useNewestLoad<A extends unknown[]>(start: (...args: A) => Promise<void>) {
   const newest = useRef<Promise<void>>(undefined);
   return useCallback(
     async (...args: A) => {
-      let awaited: Promise<void> | undefined = start(...args);
+      let awaited = start(...args);
       newest.current = awaited;
-      while (awaited) {
-        await awaited;
-        awaited = newest.current === awaited ? undefined : newest.current;
+      await awaited;
+      while (newest.current && newest.current !== awaited) {
+        awaited = newest.current;
+        await awaited.catch(() => undefined);
       }
     },
     [start]
   );
 }
 
+/**
+ * Both logins' verified Watch lists. `verify` asks Instagram who each login is, `refresh` rereads
+ * the known logins' Watches, and a viewer change another surface records in the browser session is
+ * followed. The linked list is read first, so a session it finds ended shows among the main list's
+ * held Watches.
+ */
 function useWatchList() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
   const [version, setVersion] = useState(0);
