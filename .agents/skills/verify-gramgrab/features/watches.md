@@ -367,6 +367,51 @@ the row wide, so the button keeps its place whatever the line says.
 3. Crop the header row plus a small margin, with the verified login out of
    frame.
 
+## Setting save status
+
+Each Watch setting in the inspector saves on click: a kind, an action, or
+`Pause checks` / `Resume checks`. The changed row shows `Saving` with a
+spinner (`.opt-save`, `role="status"`) and every setting control is disabled
+until the save settles. The checkbox shows its new value meanwhile. Success
+reads `✓ Saved` for about 2 seconds. A failure puts the checkbox or button
+back, and shows the error under that row (`.opt-save-failed`, `role="alert"`)
+with `Try again`. Setting failures never use the middle column's action banner
+(`.opt-feed > p.opt-banner-error`). A failed store write still raises the
+separate `Watches stopped.` storage notice there. Each save verifies the
+login once, so it costs one viewer request.
+
+A real save settles too fast to capture, and a real failure needs a broken
+store. Slow or fail only the `watch-store` write from the worker. This is
+in-memory and ends when the worker restarts:
+
+```bash
+node $D eval "js/background.js" "(() => { const l = chrome.storage.local; l.__set ??= l.set.bind(l);
+  globalThis.__fault = { delay: 0, fail: false };
+  l.set = (items, cb) => !('watch-store' in items) ? l.__set(items, cb) : new Promise((ok, no) =>
+    setTimeout(() => __fault.fail ? no(new Error('injected')) : l.__set(items).then(ok, no), __fault.delay));
+  return 'installed'; })()"
+node $D eval "js/background.js" "globalThis.__fault = { delay: 1500, fail: false }; 1"
+```
+
+1. Open `options.html` and select the `instagram` Watch. Prefer `Notify me`
+   or `Download automatically` over a kind: turning a kind back on starts a
+   fresh baseline. Install the hook with a 1500ms delay and click the
+   checkbox. Within the delay, require the new `checked` value, `disabled` on
+   every inspector input and on the checks button, and `Saving` in the row's
+   `role="status"`. After it, require `✓ Saved`, the action in `watch-store`,
+   and no status 2 seconds later. Capture the inspector at both points.
+2. Set `fail: true` and toggle the same row back. Require the old `checked`
+   value, the error and `Try again` under that row, and no
+   `.opt-feed > p.opt-banner-error`. Set `fail: false`, click `Try again`, and
+   require `✓ Saved` with `watch-store` changed. This also restores the
+   setting.
+3. Repeat on `Pause checks`: `Saving` sits beside the button and success
+   relabels it `Resume checks`. Fail the resume to see the error under the
+   button. Do not let a resume succeed only to restore state, since resuming
+   starts a catch-up check. Pause and resume on a copied profile change only
+   that copy.
+4. Reset with `globalThis.__fault = { delay: 0, fail: false }`.
+
 ## Live page
 
 An open options page reloads its list, the open Watch and the inbox whenever the
