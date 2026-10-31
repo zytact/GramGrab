@@ -200,12 +200,10 @@ export function normalizeReelsMediaItems(
 ): MediaItem[] {
   return reels.flatMap(reel =>
     reel.items.flatMap(item => {
-      const media = normalizeReelItem(String(reel.id), item);
+      const media = normalizeReelItem(reel.id, item);
       const expiresAt =
-        kind === 'story' &&
-        'expiring_at_timestamp' in item &&
-        item.expiring_at_timestamp !== undefined
-          ? new Date(item.expiring_at_timestamp * 1000).toJSON()
+        kind === 'story' && 'expiring_at' in item
+          ? new Date(item.expiring_at * 1000).toJSON()
           : null;
       return expiresAt ? media.map(entry => ({ ...entry, expiresAt })) : media;
     })
@@ -414,52 +412,37 @@ function sortResourcesByWidth<T extends { config_width?: number; config_height?:
 }
 
 function normalizeReelItem(reelId: string, item: ReelItem['items'][number]): MediaItem[] {
-  if (item.__typename === 'GraphStoryVideo') {
-    const normalized = createStoryVideoItem(reelId, item as StoryVideoItem);
-    return normalized ? [normalized] : [];
+  if (!('pk' in item)) {
+    console.warn('[GramGrab] unknown story item __typename:', item.__typename);
+    return [];
   }
-
-  if (item.__typename === 'GraphStoryImage') {
-    const normalized = createStoryImageItem(reelId, item as StoryImageItem);
-    return normalized ? [normalized] : [];
-  }
-
-  console.warn('[GramGrab] unknown story item __typename:', item.__typename);
-  return [];
+  const normalized = item.media_type === 2 ? storyVideo(item) : storyImage(item);
+  return normalized
+    ? [
+        {
+          itemIndex: 0,
+          mediaId: item.pk,
+          ...normalized,
+          width: item.original_width,
+          height: item.original_height,
+          takenAt: item.taken_at,
+          filenameHint: `${highlightIdTail(reelId)}_${item.pk}`,
+        },
+      ]
+    : [];
 }
 
-function createStoryVideoItem(reelId: string, item: StoryVideoItem): MediaItem | undefined {
-  const best = pickBestResource(item.video_resources);
-  return best
-    ? {
-        itemIndex: 0,
-        mediaId: String(item.id),
-        type: 'video',
-        url: best,
-        previewUrl: pickPreviewSrc(item.display_resources, item.display_url),
-        width: item.dimensions?.width,
-        height: item.dimensions?.height,
-        takenAt: item.taken_at_timestamp,
-        filenameHint: `${reelId}_${item.id}`,
-      }
+function storyVideo(item: StoryVideoItem) {
+  const video = firstUniqueProgressiveVideo(item.video_versions);
+  const poster = bestImageCandidate(item.image_versions2.candidates);
+  return video
+    ? { type: 'video' as const, url: video.url, ...(poster ? { previewUrl: poster.url } : {}) }
     : undefined;
 }
 
-function createStoryImageItem(reelId: string, item: StoryImageItem): MediaItem | undefined {
-  const best = pickBestResource(item.display_resources) ?? item.display_url;
-  return best
-    ? {
-        itemIndex: 0,
-        mediaId: String(item.id),
-        type: 'image',
-        url: best,
-        previewUrl: pickPreviewSrc(item.display_resources, item.display_url),
-        width: item.dimensions?.width,
-        height: item.dimensions?.height,
-        takenAt: item.taken_at_timestamp,
-        filenameHint: `${reelId}_${item.id}`,
-      }
-    : undefined;
+function storyImage(item: StoryImageItem) {
+  const image = bestImageCandidate(item.image_versions2.candidates);
+  return image ? { type: 'image' as const, url: image.url } : undefined;
 }
 
 function sanitizedUsername(value: string): string {
@@ -480,7 +463,7 @@ function validMediaUrl(value: string): boolean {
   }
 }
 
-function bestInstantImage(candidates: readonly { width: number; height: number; url: string }[]) {
+function bestImageCandidate(candidates: readonly { width: number; height: number; url: string }[]) {
   return candidates
     .filter(
       candidate => candidate.width > 0 && candidate.height > 0 && validMediaUrl(candidate.url)
@@ -488,9 +471,7 @@ function bestInstantImage(candidates: readonly { width: number; height: number; 
     .sort((a, b) => b.width * b.height - a.width * a.height)[0];
 }
 
-function firstUniqueProgressiveVideo(
-  candidates: readonly { width: number; height: number; url: string }[]
-) {
+function firstUniqueProgressiveVideo<T extends { url: string }>(candidates: readonly T[]) {
   const seen = new Set<string>();
   return candidates.find(candidate => {
     if (!validMediaUrl(candidate.url) || seen.has(candidate.url)) return false;
@@ -504,7 +485,7 @@ function instantFilename(username: string, mediaId: string, takenAt: number): st
 }
 
 function normalizeInstantPhoto(item: InstantPhoto): MediaItem | undefined {
-  const image = bestInstantImage(item.image_versions2.candidates);
+  const image = bestImageCandidate(item.image_versions2.candidates);
   if (!image) return undefined;
   const username = sanitizedUsername(item.user.username);
   return {
@@ -527,7 +508,7 @@ function normalizeInstantVideo(
   if (!video && item.video_dash_manifest)
     return Effect.fail(new MediaDashOnlyUnsupported({ mediaId: item.id }));
   if (!video) return Effect.succeed(undefined);
-  const poster = bestInstantImage(item.image_versions2?.candidates ?? []);
+  const poster = bestImageCandidate(item.image_versions2?.candidates ?? []);
   const username = sanitizedUsername(item.user.username);
   return Effect.succeed({
     itemIndex: 0,

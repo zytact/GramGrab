@@ -4,6 +4,7 @@ import instantVideo from '../effect/__fixtures__/instants-video.json';
 import postsFixture from '../effect/__fixtures__/profile-posts.json';
 import restVideoFixture from '../effect/__fixtures__/shortcode-rest-video.json';
 import storyFixture from '../effect/__fixtures__/story.json';
+import { protocolConfig } from '../instagram-protocol/config.ts';
 import { shortcodeMediaId } from '../instagram/rest-shortcode.ts';
 import { json } from './extension-harness.ts';
 
@@ -33,34 +34,44 @@ export interface FakeStory {
   readonly expiresAt?: number;
 }
 
+/** The reel a Story request asks for and the token it sent, or undefined for any other request. */
+export function storyRequest(init?: RequestInit) {
+  const body = init?.body instanceof URLSearchParams ? init.body : undefined;
+  if (body?.get('doc_id') !== protocolConfig.operations.reelsMedia.candidates[0]!.id) return;
+  const reelId = String(JSON.parse(body.get('variables') ?? '{}').reel_ids_arr[0]);
+  return { reelId, dtsgToken: body.get('fb_dtsg') };
+}
+
+/** Instagram's answer for an account without active Stories. */
+export const NO_STORIES = { data: { xdt_api__v1__feed__reels_media: { reels_media: [] } } };
+
 /**
  * A Story response in the shape of the sanitized `story.json` capture, with numeric identities in
  * place of its sanitized tokens so Watch acquisition can accept it.
  */
 export function storyResponse(targetId: string, stories: readonly FakeStory[]) {
-  const [reel] = storyFixture.data.reels_media;
-  const [item] = reel!.items;
+  const [reel] = storyFixture.data.xdt_api__v1__feed__reels_media.reels_media;
+  const image = reel!.items.find(item => item.media_type === 1)!;
+  const video = reel!.items.find(item => item.media_type === 2)!;
   return {
     data: {
-      reels_media: [
-        {
-          ...reel,
-          id: targetId,
-          owner: { ...reel!.owner, id: targetId },
-          user: { ...reel!.user, id: targetId },
-          items: stories.map(story => ({
-            ...item,
-            __typename: story.video === false ? 'GraphStoryImage' : 'GraphStoryVideo',
-            is_video: story.video !== false,
-            id: story.id,
-            owner: { ...item!.owner, id: targetId },
-            taken_at_timestamp: story.takenAt,
-            expiring_at_timestamp: story.expiresAt ?? story.takenAt + 86_400,
-          })),
-        },
-      ],
+      xdt_api__v1__feed__reels_media: {
+        reels_media: [
+          {
+            ...reel,
+            id: targetId,
+            user: { ...reel!.user, pk: targetId, id: targetId },
+            items: stories.map(story => ({
+              ...(story.video === false ? image : video),
+              id: `${story.id}_${targetId}`,
+              pk: story.id,
+              taken_at: story.takenAt,
+              expiring_at: story.expiresAt ?? story.takenAt + 86_400,
+            })),
+          },
+        ],
+      },
     },
-    errors: storyFixture.errors,
   };
 }
 
@@ -234,8 +245,6 @@ export function createWatchInstagram() {
     mediaRequests: 0,
   };
 
-  const variable = (query: URLSearchParams) =>
-    String(JSON.parse(query.get('variables') ?? '{}').reel_ids?.[0]);
   const formDocument = (init?: RequestInit) =>
     init?.body instanceof URLSearchParams ? init.body.get('doc_id') : null;
 
@@ -258,10 +267,12 @@ export function createWatchInstagram() {
       hostname === 'sanitized.invalid'
         ? new Response(new Blob(['picture'], { type: 'image/jpeg' }))
         : undefined,
-    ({ searchParams }) => {
-      if (searchParams.get('query_hash') !== '45246d3fe16ccc6577e0bd297a5db1ab') return undefined;
-      const targetId = variable(searchParams);
-      return json(state.stories[targetId] ?? { data: { reels_media: [] } }, state.storyStatus);
+    (_url, init) => {
+      const request = storyRequest(init);
+      if (!request) return undefined;
+      if (request.dtsgToken !== state.dtsgToken)
+        return new Response('<html>', { headers: { 'Content-Type': 'text/html' } });
+      return json(state.stories[request.reelId] ?? NO_STORIES, state.storyStatus);
     },
     ({ pathname }) => {
       const id = /^\/api\/v1\/media\/(\d+)\/info\/$/.exec(pathname)?.[1];

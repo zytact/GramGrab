@@ -163,62 +163,33 @@ describe('HighlightsTrayResponseSchema', () => {
 // ---------------------------------------------------------------------------
 
 describe('ReelsMediaResponseSchema', () => {
-  it('decodes an empty reels_media array', async () => {
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(ReelsMediaResponseSchema)({ data: { reels_media: [] } })
-    );
-    expect(result.data.reels_media).toEqual([]);
+  const response = (items: readonly unknown[]) => ({
+    data: { xdt_api__v1__feed__reels_media: { reels_media: [{ id: '123', items }] } },
   });
+  const decode = (input: unknown) =>
+    Effect.runPromise(Schema.decodeUnknown(ReelsMediaResponseSchema)(input).pipe(Effect.either));
 
   it('fails when data wrapper is absent (required field)', async () => {
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(ReelsMediaResponseSchema)({}).pipe(Effect.either)
-    );
-    expect(result._tag).toBe('Left');
+    expect((await decode({}))._tag).toBe('Left');
   });
 
   it('succeeds with unknown story item __typename (Unknown passthrough)', async () => {
-    // A new IG story type must not reject the whole reel
-    const input = {
-      data: {
-        reels_media: [
-          {
-            id: '123',
-            items: [{ __typename: 'GraphStoryCarouselV2', id: 'abc' }],
-          },
-        ],
-      },
-    };
-    const result = await Effect.runPromise(Schema.decodeUnknown(ReelsMediaResponseSchema)(input));
-    expect(result.data.reels_media[0]?.items[0]?.__typename).toBe('GraphStoryCarouselV2');
+    const result = await decode(response([{ __typename: 'XDTStoryCarouselV2' }]));
+    expect(result._tag).toBe('Right');
   });
 
-  it('fails when a story video is missing video_resources (required on video variant)', async () => {
-    // GraphStoryVideo requires video_resources — decode falls through to Unknown, succeeds
-    // (the normalizer skips it; schema does not reject it)
-    const input = {
-      data: {
-        reels_media: [
-          {
-            id: '123',
-            items: [
-              {
-                __typename: 'GraphStoryVideo',
-                id: 'abc',
-                is_video: true,
-                display_url: 'https://cdn.instagram.com/img.jpg',
-                display_resources: [],
-                // video_resources absent
-              },
-            ],
-          },
-        ],
-      },
+  it('fails when a known story video is missing video_versions', async () => {
+    const video = {
+      __typename: 'XDTMediaDict',
+      pk: '1',
+      media_type: 2,
+      taken_at: 1,
+      expiring_at: 2,
+      original_width: 720,
+      original_height: 1280,
+      image_versions2: { candidates: [] },
+      video_versions: null,
     };
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(ReelsMediaResponseSchema)(input).pipe(Effect.either)
-    );
-    // Falls to Unknown passthrough — response succeeds, normalizer warns + skips
-    expect(result._tag).toBe('Right');
+    expect((await decode(response([video])))._tag).toBe('Left');
   });
 });

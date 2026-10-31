@@ -25,6 +25,7 @@ import {
   instantsFeed,
   postsPage,
   restMedia,
+  NO_STORIES,
   storyResponse,
   stubAvatarScaling,
   type FakeInstant,
@@ -176,7 +177,7 @@ describe('Story checks', () => {
 
   it('records a baseline from an account without active Stories', async () => {
     await addWatch();
-    instagram.state.stories[TARGET.id] = { data: { reels_media: [] } };
+    instagram.state.stories[TARGET.id] = NO_STORIES;
 
     expect((await checkLater()).kinds[0]?._tag).toBe('KindBaselineRecorded');
   });

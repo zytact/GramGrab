@@ -40,7 +40,8 @@ import {
   saveTraversal,
   type Traversal,
 } from './posts.ts';
-import { readStories, fetchStories } from './stories.ts';
+import { readStories } from './stories.ts';
+import { requestReels } from '../effect/instagram.ts';
 import { readInstants, sharedInstantsFeed } from './instants.ts';
 import { fetchAvatar, readAvatar, type ObservedAvatar } from './avatar.ts';
 import { UsernameUnconfirmed, confirmProfile, fetchViewer, type Profile } from './identity.ts';
@@ -97,7 +98,7 @@ const readPage = (watch: Watch, after: string | undefined, nowSeconds: number) =
 /** How each timed kind acquires its baseline, and Stories and Instants every later check too. */
 const ACQUIRERS: Record<TimedKind, Acquirer> = {
   stories: (watch, nowSeconds) =>
-    fetchStories(watch.targetId).pipe(
+    requestReels(watch.targetId).pipe(
       Effect.flatMap(raw => readStories(raw, watch.targetId, nowSeconds))
     ),
   instants: (watch, nowSeconds, feedScope) =>

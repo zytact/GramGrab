@@ -27,7 +27,6 @@
   void (async () => {
     const { appId: APP_ID, asbdId: ASBD_ID } = PROTOCOL_CONFIG.client;
     const SHORTCODE_CANDIDATES = PROTOCOL_CONFIG.operations.mediaByShortcode.candidates;
-    const REELS_CANDIDATES = PROTOCOL_CONFIG.operations.reelsMedia.candidates;
     const INSTANTS_OPERATION = PROTOCOL_CONFIG.operations.instantsFeed;
 
     // Arrays under these keys hold tagged-union variants (story items can be
@@ -208,32 +207,73 @@
       );
     }
 
-    async function reelsFetch(vars) {
-      const failures = [];
-      for (const candidate of REELS_CANDIDATES) {
-        for (const request of candidate.requests) {
-          try {
-            const { status, json, text } = await configuredGraphqlFetch(candidate, request, vars);
-            if (
-              status >= 200 &&
-              status < 300 &&
-              Array.isArray(json?.data?.reels_media) &&
-              json.data.reels_media.length > 0
-            ) {
-              return json;
-            }
-            failures.push({
-              id: candidate.id,
-              status,
-              errors: json?.errors ?? null,
-              text: text ?? null,
-            });
-          } catch (e) {
-            failures.push({ id: candidate.id, error: String(e) });
-          }
-        }
+    async function webQuery(operation, variables) {
+      const candidate = operation.candidates[0];
+      const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '';
+      const home = await (await fetch('/', { credentials: 'include' })).text();
+      const dtsg = /"DTSGInitialData",\[\],\{"token":"([^"]+)"/.exec(home)?.[1] ?? '';
+      const response = await fetch(candidate.requests[0].endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-IG-App-ID': APP_ID,
+          'X-ASBD-ID': ASBD_ID,
+          'X-CSRFToken': csrf,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          [candidate.kind]: candidate.id,
+          fb_dtsg: dtsg,
+          variables: JSON.stringify(variables),
+        }),
+      });
+      return readJsonResponse(response);
+    }
+
+    // Reads one reel: an account ID for its Stories, `highlight:<id>` for a Highlight. Keeps only
+    // the fields GramGrab reads, so the sanitizer reviews a small shape.
+    async function reelsFetch(reelId) {
+      const { status, json, text } = await webQuery(PROTOCOL_CONFIG.operations.reelsMedia, {
+        media_id: null,
+        reel_ids_arr: [reelId],
+        __relay_internal__pv__PolarisCommunityNoteStoriesLabelEnabledrelayprovider: true,
+      });
+      const reels = json?.data?.xdt_api__v1__feed__reels_media?.reels_media;
+      if (status !== 200 || !Array.isArray(reels) || reels.length === 0) {
+        throw new Error(`No reels media (${status}): ${text ?? JSON.stringify(json?.errors)}`);
       }
-      throw new Error(`No reels media: ${JSON.stringify(failures)}`);
+      const version = ({ url, width, height }) => ({ url, width, height });
+      return {
+        data: {
+          xdt_api__v1__feed__reels_media: {
+            reels_media: reels.map(reel => ({
+              id: reel.id,
+              reel_type: reel.reel_type,
+              latest_reel_media: reel.latest_reel_media,
+              user: { pk: reel.user.pk, id: reel.user.id, username: reel.user.username },
+              items: reel.items.map(item => ({
+                __typename: item.__typename,
+                id: item.id,
+                pk: item.pk,
+                media_type: item.media_type,
+                product_type: item.product_type,
+                taken_at: item.taken_at,
+                expiring_at: item.expiring_at,
+                original_width: item.original_width,
+                original_height: item.original_height,
+                image_versions2: {
+                  candidates: item.image_versions2.candidates.slice(0, 3).map(version),
+                },
+                video_versions:
+                  item.video_versions &&
+                  item.video_versions.slice(0, 3).map(({ type, url }) => ({ type, url })),
+                video_duration: item.video_duration,
+              })),
+            })),
+          },
+        },
+        ...(json.errors ? { errors: json.errors } : {}),
+      };
     }
 
     async function instantsFetch() {
@@ -285,39 +325,20 @@
       };
     }
 
-    async function profilePostsFetch(username) {
-      const candidate = PROTOCOL_CONFIG.operations.profilePosts.candidates[0];
-      const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '';
-      const home = await (await fetch('/', { credentials: 'include' })).text();
-      const dtsg = /"DTSGInitialData",\[\],\{"token":"([^"]+)"/.exec(home)?.[1] ?? '';
-      const response = await fetch(candidate.requests[0].endpoint, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'X-IG-App-ID': APP_ID,
-          'X-ASBD-ID': ASBD_ID,
-          'X-CSRFToken': csrf,
-          'Content-Type': 'application/x-www-form-urlencoded',
+    function profilePostsFetch(username) {
+      return webQuery(PROTOCOL_CONFIG.operations.profilePosts, {
+        data: {
+          count: 12,
+          include_reel_media_seen_timestamp: true,
+          include_relationship_info: true,
+          latest_besties_reel_media: true,
+          latest_reel_media: true,
         },
-        body: new URLSearchParams({
-          [candidate.kind]: candidate.id,
-          fb_dtsg: dtsg,
-          variables: JSON.stringify({
-            data: {
-              count: 12,
-              include_reel_media_seen_timestamp: true,
-              include_relationship_info: true,
-              latest_besties_reel_media: true,
-              latest_reel_media: true,
-            },
-            username,
-            __relay_internal__pv__PolarisMultiCaptionCarouselEnabledrelayprovider: true,
-            __relay_internal__pv__PolarisShortDramaEnabledrelayprovider: false,
-            __relay_internal__pv__PolarisReelsRecoDebugOverlayEnabledrelayprovider: false,
-          }),
-        }),
+        username,
+        __relay_internal__pv__PolarisMultiCaptionCarouselEnabledrelayprovider: true,
+        __relay_internal__pv__PolarisShortDramaEnabledrelayprovider: false,
+        __relay_internal__pv__PolarisReelsRecoDebugOverlayEnabledrelayprovider: false,
       });
-      return readJsonResponse(response);
     }
 
     const steps = [
@@ -349,34 +370,15 @@
         },
       },
       {
-        label: 'highlights.json (reels_media / GraphHighlightReel)',
+        label: 'highlights.json (reels_media, highlight reel)',
         run: async () => {
-          const j = await reelsFetch({
-            highlight_reel_ids: [HIGHLIGHT_ID],
-            reel_ids: [],
-            location_ids: [],
-            precomposed_overlay: false,
-          });
-          dl('highlights.json', { data: trim(j.data), errors: j.errors ?? null });
+          dl('highlights.json', await reelsFetch(`highlight:${HIGHLIGHT_ID}`));
         },
       },
       {
-        label: `story.json (reels_media / GraphReel) for @${STORY_USERNAME}`,
+        label: `story.json (reels_media, user reel) for @${STORY_USERNAME}`,
         run: async () => {
-          const userId = await userIdFromUsername(STORY_USERNAME);
-          const j = await reelsFetch({
-            reel_ids: [userId],
-            highlight_reel_ids: [],
-            location_ids: [],
-            precomposed_overlay: false,
-          });
-          const reels = j?.data?.reels_media;
-          if (!reels || reels.length === 0) {
-            console.warn(
-              `  story user "${STORY_USERNAME}" has no active stories right now — pick another username`
-            );
-          }
-          dl('story.json', { data: trim(j.data), errors: j.errors ?? null });
+          dl('story.json', await reelsFetch(await userIdFromUsername(STORY_USERNAME)));
         },
       },
       {

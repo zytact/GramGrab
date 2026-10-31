@@ -1,5 +1,7 @@
 import { Effect, Schedule, Schema } from 'effect';
 import { blobToDataUrl } from '../lib/data-url.ts';
+import { protocolConfig } from '../instagram-protocol/config.ts';
+import { postWebQuery } from '../instagram/dtsg.ts';
 import {
   InstagramRequests,
   type InstagramRequestInit,
@@ -17,7 +19,7 @@ import {
   InstantsFeedResponseSchema,
   ReelsMediaResponseSchema,
 } from './schemas.ts';
-import type { HighlightsTrayItem, ReelItem } from './schemas.ts';
+import type { HighlightsTrayItem } from './schemas.ts';
 import type { InstantItem } from './schemas.ts';
 
 const GRAPHQL_RETRY_SCHEDULE = Schedule.exponential('200 millis').pipe(
@@ -259,27 +261,23 @@ const fetchDecodedJson = <A, I>(
     );
   });
 
-export const fetchReelsMedia = (
-  graphqlUrl: string,
-  operationKey: 'doc_id' | 'query_hash',
-  operationId: string,
-  variables: Record<string, unknown>,
-  headers: Record<string, string>,
-  method: 'GET' | 'POST' = 'GET'
-): Effect.Effect<
-  readonly ReelItem[],
-  NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
-  InstagramRequests
-> =>
-  Effect.gen(function* () {
-    const raw = yield* method === 'POST'
-      ? graphqlPost(graphqlUrl, operationId, variables, headers, operationKey)
-      : graphqlFetch(graphqlUrl, operationKey, operationId, variables, headers);
-    const decoded = yield* Schema.decodeUnknown(ReelsMediaResponseSchema)(raw).pipe(
-      Effect.mapError(() => new ResponseShapeUnknown({ context: 'reels_media' }))
-    );
-    return decoded.data.reels_media;
+/** Reads reels by ID: an account ID for its active Stories, `highlight:<id>` for a Highlight. */
+export const requestReels = (reelId: string) =>
+  postWebQuery(protocolConfig.operations.reelsMedia, {
+    media_id: null,
+    reel_ids_arr: [reelId],
+    __relay_internal__pv__PolarisCommunityNoteStoriesLabelEnabledrelayprovider: true,
   });
+
+export const fetchReelsMedia = (reelId: string) =>
+  requestReels(reelId).pipe(
+    Effect.flatMap(raw =>
+      Schema.decodeUnknown(ReelsMediaResponseSchema)(raw).pipe(
+        Effect.mapError(() => new ResponseShapeUnknown({ context: 'reels_media' }))
+      )
+    ),
+    Effect.map(decoded => decoded.data.xdt_api__v1__feed__reels_media.reels_media)
+  );
 
 export const fetchHighlightsTray = (
   userId: string,

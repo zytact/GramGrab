@@ -20,41 +20,23 @@ import {
   ShortcodeMediaResponseSchema,
 } from './schemas.ts';
 import { PostsResponse } from '../watch/posts.ts';
-import type {
-  ShortcodeImage,
-  ShortcodeSidecar,
-  ShortcodeVideo,
-  StoryVideoItem,
-} from './schemas.ts';
+import type { ShortcodeImage, ShortcodeSidecar, ShortcodeVideo } from './schemas.ts';
 
 function loadFixture(name: string): unknown {
   const raw = readFileSync(join(import.meta.dirname, '__fixtures__', name), 'utf-8');
   return JSON.parse(raw);
 }
 
-describe('fixtures: highlights.json', () => {
-  it('decodes successfully', async () => {
-    const json = loadFixture('highlights.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(ReelsMediaResponseSchema)(json));
-    expect(result.data.reels_media.length).toBeGreaterThan(0);
-  });
-
-  it('first reel has __typename GraphHighlightReel', async () => {
-    const json = loadFixture('highlights.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(ReelsMediaResponseSchema)(json));
-    expect(result.data.reels_media[0]?.__typename).toBe('GraphHighlightReel');
-  });
-
-  it('first reel has items with video_resources', async () => {
-    const json = loadFixture('highlights.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(ReelsMediaResponseSchema)(json));
-    const firstItem = result.data.reels_media[0]?.items[0];
-    expect(firstItem?.__typename).toBe('GraphStoryVideo');
-    if (firstItem?.__typename !== 'GraphStoryVideo') return;
-    const video = firstItem as StoryVideoItem;
-    expect(video.video_resources.length).toBeGreaterThan(0);
-    expect(typeof video.video_resources[0]?.src).toBe('string');
-    expect(typeof video.display_url).toBe('string');
+describe.each(['highlights.json', 'story.json'])('fixtures: %s', name => {
+  it('decodes every item as a known image or video Story', async () => {
+    const result = await Effect.runPromise(
+      Schema.decodeUnknown(ReelsMediaResponseSchema)(loadFixture(name))
+    );
+    const items = result.data.xdt_api__v1__feed__reels_media.reels_media.flatMap(
+      reel => reel.items
+    );
+    const types = items.map(item => ('pk' in item ? item.media_type : item.__typename));
+    expect(new Set(types)).toEqual(new Set([1, 2]));
   });
 });
 
@@ -108,33 +90,6 @@ describe('fixtures: active Instants', () => {
     expect(item?.__typename).toBe('XDTMediaDict');
     if (!Schema.is(InstantVideoSchema)(item) || !item.video_versions) return;
     expect(typeof item.video_versions[0]?.id).toBe('string');
-  });
-});
-
-describe('fixtures: story.json', () => {
-  it('decodes successfully', async () => {
-    const json = loadFixture('story.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(ReelsMediaResponseSchema)(json));
-    expect(result.data.reels_media.length).toBeGreaterThan(0);
-  });
-
-  it('first reel has __typename GraphReel', async () => {
-    const json = loadFixture('story.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(ReelsMediaResponseSchema)(json));
-    expect(result.data.reels_media[0]?.__typename).toBe('GraphReel');
-  });
-
-  it('items have required display_url and video_resources', async () => {
-    const json = loadFixture('story.json');
-    const result = await Effect.runPromise(Schema.decodeUnknown(ReelsMediaResponseSchema)(json));
-    const items = result.data.reels_media[0]?.items ?? [];
-    expect(items.length).toBeGreaterThan(0);
-    for (const item of items) {
-      if (item.__typename !== 'GraphStoryVideo') continue;
-      const video = item as StoryVideoItem;
-      expect(typeof video.display_url).toBe('string');
-      expect(video.video_resources.length).toBeGreaterThan(0);
-    }
   });
 });
 

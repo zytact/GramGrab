@@ -897,8 +897,8 @@ describe('background dispatcher', () => {
     });
 
     it.each([
-      ['instants-photo.json', 'https://sanitized.invalid/media/46/instant-image'],
-      ['instants-video.json', 'https://sanitized.invalid/media/50/instant-video'],
+      ['instants-photo.json', 'https://sanitized.invalid/media/48/instant-image'],
+      ['instants-video.json', 'https://sanitized.invalid/media/52/instant-video'],
     ])('selects the verified candidate policy for %s', async (name, url) => {
       const fixture = instantFixture(name) as {
         data: {
@@ -1205,73 +1205,96 @@ describe('background dispatcher', () => {
     const storyUrl = 'https://www.instagram.com/stories/instagram/';
     const storyReels = {
       data: {
-        reels_media: [
-          {
-            __typename: 'GraphReel',
-            id: '4242',
-            items: [
-              {
-                __typename: 'GraphStoryImage',
-                id: '99',
-                is_video: false,
-                display_url: 'https://sanitized.invalid/story.jpg',
-                display_resources: [
-                  { src: 'https://sanitized.invalid/story.jpg', config_width: 1, config_height: 1 },
-                ],
-              },
-            ],
-          },
-        ],
+        xdt_api__v1__feed__reels_media: {
+          reels_media: [
+            {
+              id: '4242',
+              items: [
+                {
+                  __typename: 'XDTMediaDict',
+                  pk: '99',
+                  media_type: 1,
+                  taken_at: 1_700_000_000,
+                  expiring_at: 1_700_086_400,
+                  original_width: 1,
+                  original_height: 1,
+                  image_versions2: {
+                    candidates: [
+                      { url: 'https://sanitized.invalid/story.jpg', width: 1, height: 1 },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
       },
     };
 
-    it.each([undefined, 1_700_000_000])(
-      'returns Story expiry through native inspect: %s',
-      async timestamp => {
-        const raw: unknown = JSON.parse(
-          readFileSync(join(import.meta.dirname, 'effect/__fixtures__/story.json'), 'utf8')
-        );
-        const decoded = Schema.decodeUnknownSync(ReelsMediaResponseSchema)(raw);
-        const payload = {
-          data: {
-            reels_media: decoded.data.reels_media.map(reel => ({
+    it('returns Story expiry through native inspect', async () => {
+      const raw: unknown = JSON.parse(
+        readFileSync(join(import.meta.dirname, 'effect/__fixtures__/story.json'), 'utf8')
+      );
+      const { reels_media } =
+        Schema.decodeUnknownSync(ReelsMediaResponseSchema)(raw).data.xdt_api__v1__feed__reels_media;
+      const payload = {
+        data: {
+          xdt_api__v1__feed__reels_media: {
+            reels_media: reels_media.map(reel => ({
               ...reel,
-              items: reel.items.map(item => ({ ...item, expiring_at_timestamp: timestamp })),
+              items: reel.items.map(item => ({ ...item, expiring_at: 1_700_000_000 })),
             })),
           },
-        };
-        globalThis.fetch = lookupFetchMock({
-          posts: () => jsonResponse(postsOf({ pk: '4242', username: 'instagram' })),
-          other: () => jsonResponse(payload),
-        });
-        await loadBackground();
-        const request = Schema.decodeUnknownSync(Request)({
-          version: PROTOCOL_VERSION,
-          requestId: crypto.randomUUID(),
-          command: Inspect.make({ sourceUrl: storyUrl }),
-        });
-        fakeBrowserObj.getNativeMessageListener()?.(Schema.encodeSync(Request)(request));
-        await vi.waitFor(() => {
-          const terminal = fakeBrowserObj.nativeMessages
-            .map(message => Schema.decodeUnknownSync(Event)(message))
-            .find(({ event }) => event._tag === 'Completed');
-          expect(terminal?.event._tag).toBe('Completed');
-          if (
-            terminal?.event._tag !== 'Completed' ||
-            terminal.event.result._tag !== 'InspectResult'
-          )
-            throw new Error('Expected an inspect result');
-          expect(terminal.event.result.items.length).toBeGreaterThan(0);
-          for (const item of terminal.event.result.items) {
-            const encoded = Schema.encodeSync(Event)(terminal).event;
-            expect(JSON.stringify(encoded).includes('expiresAt')).toBe(timestamp !== undefined);
-            expect(item.expiresAt).toBe(
-              timestamp === undefined ? undefined : '2023-11-14T22:13:20.000Z'
-            );
-          }
-        });
-      }
-    );
+        },
+      };
+      globalThis.fetch = lookupFetchMock({
+        posts: () => jsonResponse(postsOf({ pk: '4242', username: 'instagram' })),
+        other: () => jsonResponse(payload),
+      });
+      await loadBackground();
+      const request = Schema.decodeUnknownSync(Request)({
+        version: PROTOCOL_VERSION,
+        requestId: crypto.randomUUID(),
+        command: Inspect.make({ sourceUrl: storyUrl }),
+      });
+      fakeBrowserObj.getNativeMessageListener()?.(Schema.encodeSync(Request)(request));
+      await vi.waitFor(() => {
+        const terminal = fakeBrowserObj.nativeMessages
+          .map(message => Schema.decodeUnknownSync(Event)(message))
+          .find(({ event }) => event._tag === 'Completed');
+        expect(terminal?.event._tag).toBe('Completed');
+        if (terminal?.event._tag !== 'Completed' || terminal.event.result._tag !== 'InspectResult')
+          throw new Error('Expected an inspect result');
+        expect(terminal.event.result.items.length).toBeGreaterThan(0);
+        for (const item of terminal.event.result.items)
+          expect(item.expiresAt).toBe('2023-11-14T22:13:20.000Z');
+      });
+    });
+
+    it('requests a Highlight by its prefixed reel ID and names it by the bare ID', async () => {
+      const highlightReels = structuredClone(storyReels);
+      highlightReels.data.xdt_api__v1__feed__reels_media.reels_media[0]!.id = 'highlight:17900';
+      const fetchSpy = lookupFetchMock({
+        posts: () => jsonResponse(postsOf()),
+        other: () => jsonResponse(highlightReels),
+      });
+      globalThis.fetch = fetchSpy;
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/stories/highlights/17900/',
+      });
+
+      expect(result).toMatchObject({ media: [{ filenameHint: '17900_99' }] });
+      const reels = vi
+        .mocked(fetchSpy)
+        .mock.calls.map(([, init]) => bodyOf(init))
+        .find(body => body.includes('reel_ids_arr'));
+      expect(JSON.parse(new URLSearchParams(reels).get('variables')!)).toMatchObject({
+        reel_ids_arr: ['highlight:17900'],
+      });
+    });
 
     it('preserves a username lookup rate limit', async () => {
       globalThis.fetch = fetchMock(async () => jsonResponse({}, 429));
@@ -1298,9 +1321,11 @@ describe('background dispatcher', () => {
       expect(result).toMatchObject({ media: [{ type: 'image' }] });
       const reels = vi
         .mocked(fetchSpy)
-        .mock.calls.map(([input]) => urlOf(input))
-        .find(url => url.includes('reel_ids'));
-      expect(decodeURIComponent(reels ?? '')).toContain('"reel_ids":["4242"]');
+        .mock.calls.map(([, init]) => bodyOf(init))
+        .find(body => body.includes('reel_ids_arr'));
+      expect(JSON.parse(new URLSearchParams(reels).get('variables')!)).toMatchObject({
+        reel_ids_arr: ['4242'],
+      });
     });
 
     it('reads the account ID from the profile page when the account has no Posts', async () => {

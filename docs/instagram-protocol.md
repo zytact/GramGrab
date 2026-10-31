@@ -49,9 +49,13 @@ live. Check this list before debugging an Instagram failure.
   the home page's `"PolarisViewer",[],{"data":…}` block instead (`fetchViewer` in
   `apps/extension/src/watch/identity.ts`). A signed-out page names `"data":null`. The same read
   refreshes the login's `fb_dtsg` token (`readHomePage` in `apps/extension/src/instagram/dtsg.ts`).
-- **Only the `query_hash` Stories request still works.** The `reelsMedia` `doc_id` request answers
-  `execution error` with no data. The `query_hash` request returns the reels with errors only on
-  `story_cta_url` and `story_view_count`, which GramGrab ignores.
+- **The Stories query moved to Instagram Web's Story page query.** Since late October 2026, the
+  `reelsMedia` `query_hash` request, GET or POST, answers the instagram.com home page as HTML
+  ([#357](https://github.com/zytact/GramGrab/issues/357)). GramGrab sends
+  `PolarisStoriesV3ReelPageStandaloneQuery` to `/api/graphql` with `fb_dtsg` (`requestReels` in
+  `apps/extension/src/effect/instagram.ts`). One query serves both kinds: `reel_ids_arr` holds an
+  account ID for its Stories or `highlight:<id>` for a Highlight. Items are `XDTMediaDict`s whose
+  `id` is `<pk>_<owner ID>`, so GramGrab names a Story by its `pk`.
 - **A Posts page can carry a `field_exception` on a field GramGrab never reads.** In October 2026
   one Post's `location.profile_pic_url` errored while all 12 edges and the cursor came back. A
   Watch ignores an error whose path ends under a Post field `PostNode` does not decode.
@@ -99,7 +103,7 @@ The updater requires an explicit operation because it does not classify captured
 | `profilePostsPage` | Watches: a later Posts grid page, by cursor             |
 
 These are configuration keys for existing code paths. They do not represent separate discovery
-problems, and values such as `shortcode`, `reel_ids`, and `highlight_reel_ids` are runtime inputs,
+problems, and values such as `shortcode` and `reel_ids_arr` are runtime inputs,
 not protocol metadata.
 
 ## Capture a relevant request
@@ -109,14 +113,14 @@ Use a browser profile that is already logged in to Instagram:
 1. Open DevTools and select the Network panel.
 2. Trigger the GramGrab request family that needs updating:
    - open a Post, Reel, or sidecar for `mediaByShortcode`
-   - open a Story or Highlight for `reelsMedia`
    - open an account's profile for `profilePosts` (the `PolarisProfilePostsQuery` request)
    - scroll that profile's grid for `profilePostsPage` (the
      `PolarisProfilePostsTabContentQuery_connection` request)
 3. Select the relevant Instagram GraphQL request.
 4. Choose **Copy** > **Copy as fetch**.
 
-`instantsFeed` has no web request to capture; see [Update the configuration](#update-the-configuration).
+`instantsFeed` has no web request to capture, and `reelsMedia` usually has none either; see
+[Update the configuration](#update-the-configuration).
 
 One relevant copied request is enough for each operation being refreshed. If both request families
 need updating, repeat the updater once for each operation. You do not need separate requests for
@@ -133,11 +137,11 @@ For Posts, Reels, and sidecars, run:
 vp run update:ig-protocol --operation mediaByShortcode
 ```
 
-For Stories and Highlights, run:
-
-```bash
-vp run update:ig-protocol --operation reelsMedia
-```
+Instagram Web embeds the Stories query in a Story page's HTML instead of sending it. Open
+`view-source:` on a Story or Highlight URL and search for `PolarisStoriesV3ReelPageStandaloneQuery`.
+The `queryID` next to it is the `doc_id`. Replace the `reelsMedia` candidate's `id` in `config.json`
+by hand. If DevTools does show that request, the updater accepts it with
+`vp run update:ig-protocol --operation reelsMedia`.
 
 Active Instants have no captured request to paste, so the updater does not accept `instantsFeed`.
 Replace the `client_doc_id` in the `instantsFeed` candidate of `config.json` by hand with the
