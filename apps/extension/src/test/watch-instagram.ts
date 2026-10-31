@@ -34,11 +34,12 @@ export interface FakeStory {
   readonly expiresAt?: number;
 }
 
-/** The reel a Story request asks for, or undefined for any other request. */
-export function storyRequestTarget(init?: RequestInit): string | undefined {
+/** The reel a Story request asks for and the token it sent, or undefined for any other request. */
+export function storyRequest(init?: RequestInit) {
   const body = init?.body instanceof URLSearchParams ? init.body : undefined;
   if (body?.get('doc_id') !== protocolConfig.operations.reelsMedia.candidates[0]!.id) return;
-  return String(JSON.parse(body.get('variables') ?? '{}').reel_ids_arr[0]);
+  const reelId = String(JSON.parse(body.get('variables') ?? '{}').reel_ids_arr[0]);
+  return { reelId, dtsgToken: body.get('fb_dtsg') };
 }
 
 /** Instagram's answer for an account without active Stories. */
@@ -267,11 +268,11 @@ export function createWatchInstagram() {
         ? new Response(new Blob(['picture'], { type: 'image/jpeg' }))
         : undefined,
     (_url, init) => {
-      const reelId = storyRequestTarget(init);
-      if (reelId === undefined) return undefined;
-      if ((init!.body as URLSearchParams).get('fb_dtsg') !== state.dtsgToken)
+      const request = storyRequest(init);
+      if (!request) return undefined;
+      if (request.dtsgToken !== state.dtsgToken)
         return new Response('<html>', { headers: { 'Content-Type': 'text/html' } });
-      return json(state.stories[reelId] ?? NO_STORIES, state.storyStatus);
+      return json(state.stories[request.reelId] ?? NO_STORIES, state.storyStatus);
     },
     ({ pathname }) => {
       const id = /^\/api\/v1\/media\/(\d+)\/info\/$/.exec(pathname)?.[1];

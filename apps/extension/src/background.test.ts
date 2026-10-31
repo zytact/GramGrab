@@ -1271,6 +1271,31 @@ describe('background dispatcher', () => {
       });
     });
 
+    it('requests a Highlight by its prefixed reel ID and names it without a colon', async () => {
+      const highlightReels = structuredClone(storyReels);
+      highlightReels.data.xdt_api__v1__feed__reels_media.reels_media[0]!.id = 'highlight:17900';
+      const fetchSpy = lookupFetchMock({
+        posts: () => jsonResponse(postsOf()),
+        other: () => jsonResponse(highlightReels),
+      });
+      globalThis.fetch = fetchSpy;
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, {
+        type: 'FETCH_MEDIA',
+        url: 'https://www.instagram.com/stories/highlights/17900/',
+      });
+
+      expect(result).toMatchObject({ media: [{ filenameHint: 'highlight_17900_99' }] });
+      const reels = vi
+        .mocked(fetchSpy)
+        .mock.calls.map(([, init]) => bodyOf(init))
+        .find(body => body.includes('reel_ids_arr'));
+      expect(new URLSearchParams(reels).get('variables')).toContain(
+        '"reel_ids_arr":["highlight:17900"]'
+      );
+    });
+
     it('preserves a username lookup rate limit', async () => {
       globalThis.fetch = fetchMock(async () => jsonResponse({}, 429));
 

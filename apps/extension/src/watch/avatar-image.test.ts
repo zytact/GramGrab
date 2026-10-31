@@ -18,7 +18,7 @@ import {
   avatarProfile,
   createWatchInstagram,
   stubAvatarScaling,
-  storyRequestTarget,
+  storyRequest,
 } from '../test/watch-instagram.ts';
 import type { WatchAvatarsResponse, WatchCommandResponse } from '../messaging/contracts.ts';
 import { Schema } from 'effect';
@@ -230,7 +230,7 @@ describe('Watch Avatar images', () => {
         const response = instagram.handle(url, init);
         const finished =
           stage === 'stories'
-            ? storyRequestTarget(init) !== undefined
+            ? storyRequest(init) !== undefined
             : init?.body instanceof URLSearchParams &&
               init.body.get('doc_id') === '28036671149327607';
         if (finished)

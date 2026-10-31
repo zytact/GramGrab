@@ -49,7 +49,7 @@ live. Check this list before debugging an Instagram failure.
   the home page's `"PolarisViewer",[],{"data":…}` block instead (`fetchViewer` in
   `apps/extension/src/watch/identity.ts`). A signed-out page names `"data":null`. The same read
   refreshes the login's `fb_dtsg` token (`readHomePage` in `apps/extension/src/instagram/dtsg.ts`).
-- **The Stories query moved to Instagram Web's Story page query.** Since November 2026, the
+- **The Stories query moved to Instagram Web's Story page query.** Since late October 2026, the
   `reelsMedia` `query_hash` request, GET or POST, answers the instagram.com home page as HTML
   ([#357](https://github.com/zytact/GramGrab/issues/357)). GramGrab sends
   `PolarisStoriesV3ReelPageStandaloneQuery` to `/api/graphql` with `fb_dtsg` (`requestReels` in

@@ -10,7 +10,7 @@ import {
 } from '@gramgrab/protocol';
 import { Schema } from 'effect';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
-import { TARGET, createWatchInstagram, storyRequestTarget } from '../test/watch-instagram.ts';
+import { TARGET, createWatchInstagram, storyRequest } from '../test/watch-instagram.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
 
 const START = Date.UTC(2026, 9, 1, 12);
@@ -62,9 +62,8 @@ const check = () =>
     ],
   });
 const storyRequests = () =>
-  vi
-    .mocked(globalThis.fetch)
-    .mock.calls.filter(([, init]) => storyRequestTarget(init) !== undefined).length;
+  vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => storyRequest(init) !== undefined)
+    .length;
 
 describe('native Watch checks', () => {
   it('emits accepted, each registered kind, and one terminal result while retaining unknown selectors', async () => {

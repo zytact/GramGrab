@@ -200,7 +200,7 @@ export function normalizeReelsMediaItems(
 ): MediaItem[] {
   return reels.flatMap(reel =>
     reel.items.flatMap(item => {
-      const media = normalizeReelItem(String(reel.id), item);
+      const media = normalizeReelItem(reel.id, item);
       const expiresAt =
         kind === 'story' && 'expiring_at' in item
           ? new Date(item.expiring_at * 1000).toJSON()
@@ -426,7 +426,7 @@ function normalizeReelItem(reelId: string, item: ReelItem['items'][number]): Med
           width: item.original_width,
           height: item.original_height,
           takenAt: item.taken_at,
-          filenameHint: `${reelId}_${item.pk}`,
+          filenameHint: `${reelId.replace(':', '_')}_${item.pk}`,
         },
       ]
     : [];

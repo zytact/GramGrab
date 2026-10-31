@@ -17,7 +17,7 @@ import {
   isHomePage,
   postsPage,
   storyResponse,
-  storyRequestTarget,
+  storyRequest,
 } from '../test/watch-instagram.ts';
 import type { WatchKind } from '@gramgrab/protocol';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
@@ -81,13 +81,13 @@ const add = (username: string, kinds: readonly [WatchKind, ...WatchKind[]] = ['s
 
 /** Story requests made so far, in order, by target ID. */
 const storyRequests = () =>
-  vi.mocked(globalThis.fetch).mock.calls.flatMap(([, init]) => storyRequestTarget(init) ?? []);
+  vi.mocked(globalThis.fetch).mock.calls.flatMap(([, init]) => storyRequest(init)?.reelId ?? []);
 
 /** Every Story and Posts request so far, in order, as `stories:<target>` or `posts:<cursor>`. */
 const acquisitions = () =>
   vi.mocked(globalThis.fetch).mock.calls.flatMap(([, init]) => {
-    const target = storyRequestTarget(init);
-    if (target !== undefined) return [`stories:${target}`];
+    const story = storyRequest(init);
+    if (story) return [`stories:${story.reelId}`];
     const body = init?.body instanceof URLSearchParams ? init.body : undefined;
     if (!body?.get('variables')?.includes('"username"')) return [];
     return [`posts:${JSON.parse(body.get('variables')!).after ?? ''}`];
@@ -149,7 +149,7 @@ describe('Watch scheduling', () => {
     await add(OTHER.username);
     harness.setFetch((url, init) => {
       const response = instagram.handle(url, init);
-      if (storyRequestTarget(init) !== undefined)
+      if (storyRequest(init) !== undefined)
         instagram.state.viewer = { id: '4004', username: 'instagram' };
       return response;
     });
@@ -200,7 +200,7 @@ describe('Watch scheduling', () => {
       vi.mocked(globalThis.fetch).mockClear();
       harness.setFetch((url, init) => {
         const response = instagram.handle(url, init);
-        if (storyRequestTarget(init) !== undefined)
+        if (storyRequest(init) !== undefined)
           instagram.state.viewer =
             mode === 'changed' ? { id: '4004', username: 'instagram' } : null;
         return response;
