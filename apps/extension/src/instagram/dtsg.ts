@@ -9,13 +9,14 @@ const cachedTokens: Partial<Record<InstagramLogin, string>> = {};
 
 /**
  * Reads Instagram Web's home page for the requests' login, and keeps the `fb_dtsg` token it names
- * for `withDtsgToken`.
+ * for `withDtsgToken`. A refused page forgets the token, so the next request reads it first.
  */
 export const readHomePage = Effect.gen(function* () {
   const requests = yield* InstagramRequests;
   const response = yield* requests.fetch('https://www.instagram.com/', {
     headers: { Accept: 'text/html' },
   });
+  delete cachedTokens[requests.login];
   yield* requireOk(response);
   const page = yield* Effect.tryPromise({
     try: () => response.text(),
@@ -26,7 +27,7 @@ export const readHomePage = Effect.gen(function* () {
   return { page, token };
 });
 
-/** The home page's token, or none when Instagram refuses the page. */
+/** The home page's token, or an empty one when Instagram refuses the page. */
 const readToken = readHomePage.pipe(
   Effect.map(({ token }) => token ?? ''),
   Effect.catchTags({
