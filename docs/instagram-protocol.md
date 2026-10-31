@@ -43,6 +43,12 @@ live. Check this list before debugging an Instagram failure.
   `apps/extension/src/instagram/origin.ts` adds a session rule that sets it on the extension's own
   POSTs to instagram.com. `withDtsgToken` in `apps/extension/src/instagram/dtsg.ts` reads the
   token from the home page, and reads it again once when a cached token gets HTML back.
+- **The `viewer` query is gone.** Since October 2026, the `query_hash` viewer query, GET or POST,
+  and `api/v1/accounts/current_user/` answer the instagram.com home page as HTML
+  ([#354](https://github.com/zytact/GramGrab/issues/354)). Watches read the signed-in viewer from
+  the home page's `"PolarisViewer",[],{"data":…}` block instead (`fetchViewer` in
+  `apps/extension/src/watch/identity.ts`). A signed-out page names `"data":null`. The same read
+  refreshes the login's `fb_dtsg` token (`readHomePage` in `apps/extension/src/instagram/dtsg.ts`).
 - **Only the `query_hash` Stories request still works.** The `reelsMedia` `doc_id` request answers
   `execution error` with no data. The `query_hash` request returns the reels with errors only on
   `story_cta_url` and `story_view_count`, which GramGrab ignores.
@@ -88,7 +94,6 @@ The updater requires an explicit operation because it does not classify captured
 | ------------------ | ------------------------------------------------------- |
 | `mediaByShortcode` | Posts, Reels, and sidecars fetched from a shortcode     |
 | `reelsMedia`       | Stories and Highlights fetched through reels media data |
-| `viewer`           | Watches: the signed-in viewer's account ID              |
 | `profileById`      | An account's current username and Avatar by ID          |
 | `profilePosts`     | An account's first Posts page, and a username's ID      |
 | `profilePostsPage` | Watches: a later Posts grid page, by cursor             |

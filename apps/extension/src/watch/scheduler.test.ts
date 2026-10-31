@@ -14,6 +14,7 @@ import {
   TARGET,
   VIEWER,
   createWatchInstagram,
+  isHomePage,
   postsPage,
   storyResponse,
 } from '../test/watch-instagram.ts';
@@ -187,11 +188,7 @@ describe('Watch scheduling', () => {
         instagram.state.viewer = { id: '4004', username: 'instagram' };
         return json({ data: { user: { id: '9999', username: TARGET.username } } });
       }
-      if (
-        new URL(url).searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3' &&
-        instagram.state.viewer?.id !== VIEWER.id
-      )
-        rejectedViewerQueries++;
+      if (isHomePage(url) && instagram.state.viewer?.id !== VIEWER.id) rejectedViewerQueries++;
       return instagram.handle(url, init);
     });
     await wake();

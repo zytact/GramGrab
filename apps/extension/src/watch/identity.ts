@@ -2,7 +2,8 @@ import { noteViewerPicture } from './viewer-avatar.ts';
 import { Data, Effect, Option, Schema } from 'effect';
 import { AccountId, InstagramUsername, type InstagramLogin } from '@gramgrab/protocol';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS } from '../instagram/headers.ts';
+import { readHomePage } from '../instagram/dtsg.ts';
+import { IG_API_GRAPHQL_HEADERS } from '../instagram/headers.ts';
 import { InstagramRequests } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
 import { markLinkedEnded } from '../instagram/linked-login.ts';
@@ -15,7 +16,7 @@ import {
   ResponseShapeUnknown,
 } from '../effect/errors.ts';
 
-/** The session query answered, but with no signed-in viewer. */
+/** Instagram's home page named no signed-in viewer. */
 class ViewerMissing extends Data.TaggedError('ViewerMissing') {}
 
 /** An ID-keyed profile response that cannot confirm the stored target's current username. */
@@ -47,18 +48,38 @@ export const WireAccountId = Schema.Union(
   )
 );
 
-const ViewerResponse = Schema.Struct({
-  data: Schema.Struct({
-    user: Schema.NullOr(
+const PolarisViewer = Schema.parseJson(
+  Schema.Struct({
+    data: Schema.NullOr(
       Schema.Struct({
         id: WireAccountId,
         username: InstagramUsername,
         profile_pic_url: Schema.optional(Schema.NullOr(Schema.String)),
       })
     ),
-  }),
-  errors: Schema.optional(Schema.Array(Schema.Unknown)),
-});
+  })
+);
+const VIEWER_MARKER = '"PolarisViewer",[],';
+
+/** A JSON string, consumed whole so its braces never count, or a brace. */
+const JSON_BRACE = /"(?:[^"\\]|\\.)*"|[{}]/g;
+
+/** The JSON object that opens at `start`, found by matching its braces. */
+function objectAt(text: string, start: number) {
+  if (text[start] !== '{') return undefined;
+  let depth = 0;
+  for (const { 0: token, index } of text.slice(start).matchAll(JSON_BRACE)) {
+    if (token === '{') depth++;
+    else if (token === '}' && --depth === 0) return text.slice(start, start + index + 1);
+  }
+  return undefined;
+}
+
+/** The home page's `PolarisViewer` block, which Instagram Web renders for the signed-in viewer. */
+const viewerBlock = (page: string) => {
+  const marker = page.indexOf(VIEWER_MARKER);
+  return marker < 0 ? undefined : objectAt(page, marker + VIEWER_MARKER.length);
+};
 
 const ProfileResponse = Schema.Struct({
   data: Schema.Struct({
@@ -108,26 +129,21 @@ export const verifiedViewerId = async (login: InstagramLogin) =>
   (await cachedViewer(login))?.accountId;
 
 /**
- * Identifies the viewer of the requests' login from the dedicated session query, never from a
- * cookie, and records it for `cachedViewer`. When no viewer is signed in it drops
- * that record, and a linked login is marked ended.
+ * Identifies the viewer of the requests' login from Instagram's home page, never from a cookie, and
+ * records it for `cachedViewer`. When no viewer is signed in it drops that record, and a linked
+ * login is marked ended.
  */
 export const fetchViewer = Effect.gen(function* () {
-  const candidate = protocolConfig.operations.viewer.candidates[0]!;
-  const request = candidate.requests[0]!;
-  const query = new URLSearchParams({ [candidate.kind]: candidate.id, variables: '{}' });
   const requests = yield* InstagramRequests;
   const key = VIEWER_KEYS[requests.login];
-  const response = yield* requests.fetch(`${request.endpoint}?${query}`, {
-    headers: IG_GRAPHQL_HEADERS,
-  });
+  const { response, page } = yield* readHomePage;
   return yield* Effect.gen(function* () {
     if (response.status === 401) return yield* Effect.fail(new ViewerMissing());
-    const decoded = yield* Schema.decodeUnknown(ViewerResponse)(yield* readJson(response)).pipe(
+    yield* requireOk(response);
+    const { data: user } = yield* Schema.decodeUnknown(PolarisViewer)(viewerBlock(page)).pipe(
       Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' }))
     );
-    const user = decoded.data.user;
-    if (!user || (decoded.errors?.length ?? 0) > 0) return yield* Effect.fail(new ViewerMissing());
+    if (!user) return yield* Effect.fail(new ViewerMissing());
     return {
       accountId: user.id,
       username: user.username,

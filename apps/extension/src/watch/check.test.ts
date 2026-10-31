@@ -438,10 +438,23 @@ describe('Posts checks', () => {
     }
   );
 
-  it('reads fb_dtsg again once Instagram stops accepting it', async () => {
+  it('sends the fb_dtsg the viewer read named', async () => {
     await baselined();
     instagram.state.dtsgToken = 'DTSG_B';
     instagram.state.postTokens = [];
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ _tag: 'KindCheckSucceeded' });
+    expect(instagram.state.postTokens).toEqual(['DTSG_B']);
+  });
+
+  it('reads fb_dtsg again once Instagram stops accepting it', async () => {
+    await baselined();
+    instagram.state.postTokens = [];
+    harness.setFetch((url, init) => {
+      if (init?.body instanceof URLSearchParams && init.body.has('fb_dtsg'))
+        instagram.state.dtsgToken = 'DTSG_B';
+      return instagram.handle(url, init);
+    });
 
     expect((await checkLater()).kinds[0]).toMatchObject({ _tag: 'KindCheckSucceeded' });
     expect(instagram.state.postTokens).toEqual(['DTSG_A', 'DTSG_B']);

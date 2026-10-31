@@ -7,7 +7,11 @@ const DTSG_TOKEN = /"DTSGInitialData",\[\],\{"token":"([^"]+)"/;
 /** Each login's token, kept in this worker's memory only and never stored. */
 const cachedTokens: Partial<Record<InstagramLogin, string>> = {};
 
-const readToken = Effect.gen(function* () {
+/**
+ * Reads Instagram Web's home page for the requests' login, and keeps the `fb_dtsg` token it names
+ * for `withDtsgToken`. A refused response reads as an empty page.
+ */
+export const readHomePage = Effect.gen(function* () {
   const requests = yield* InstagramRequests;
   const response = yield* requests.fetch('https://www.instagram.com/', {
     headers: { Accept: 'text/html' },
@@ -20,8 +24,10 @@ const readToken = Effect.gen(function* () {
     : '';
   const token = DTSG_TOKEN.exec(page)?.[1];
   cachedTokens[requests.login] = token;
-  return token ?? '';
+  return { response, page, token };
 });
+
+const readToken = Effect.map(readHomePage, ({ token }) => token ?? '');
 
 const isPage = (response: Response) =>
   response.headers.get('content-type')?.includes('text/html') ?? false;

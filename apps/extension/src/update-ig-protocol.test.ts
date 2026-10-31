@@ -50,15 +50,6 @@ const initialConfig = {
         },
       ],
     },
-    viewer: {
-      candidates: [
-        {
-          kind: 'query_hash',
-          id: 'viewer-query-hash',
-          requests: [{ endpoint: 'https://www.instagram.com/graphql/query/', transport: 'query' }],
-        },
-      ],
-    },
     profileById: {
       candidates: [
         {

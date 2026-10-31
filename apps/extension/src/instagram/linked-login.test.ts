@@ -8,7 +8,13 @@ import {
   type WatchResult,
 } from '@gramgrab/protocol';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
-import { TARGET, VIEWER, createWatchInstagram } from '../test/watch-instagram.ts';
+import {
+  TARGET,
+  VIEWER,
+  createWatchInstagram,
+  homePage,
+  isHomePage,
+} from '../test/watch-instagram.ts';
 import type {
   LinkLoginResponse,
   LoginNamesResponse,
@@ -36,8 +42,6 @@ const savedBrowser = globalThis.browser;
 const savedFetch = globalThis.fetch;
 
 const marked = (url: string) => new URL(url).searchParams.get('gg_login') === 'linked';
-const isViewerQuery = (url: string) =>
-  new URL(url).searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3';
 
 beforeEach(async () => {
   vi.useFakeTimers({ now: START });
@@ -46,8 +50,7 @@ beforeEach(async () => {
   harness = createExtensionHarness();
   instagram = createWatchInstagram();
   harness.setFetch((url, init) => {
-    if (marked(url) && isViewerQuery(url))
-      return linkedViewer ? json({ data: { user: linkedViewer } }) : json({}, 401);
+    if (marked(url) && isHomePage(url)) return homePage(linkedViewer);
     if (init?.body instanceof URLSearchParams && init.body.get('doc_id') === '28036671149327607')
       return json({ data: { user: { id: TARGET.id, username: TARGET.username } } });
     return instagram.handle(url, init);

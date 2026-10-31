@@ -6,12 +6,14 @@ import userEvent from '@testing-library/user-event';
 import { UNATTENDED_DISCLOSURE, WatchList } from '@gramgrab/protocol';
 import { Schema } from 'effect';
 import { WatchStore } from '../watch/contracts.ts';
-import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
+import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
 import {
   STUB_AVATAR,
   TARGET,
   VIEWER,
   createWatchInstagram,
+  homePage,
+  isHomePage,
   restMedia,
   storyResponse,
   stubAvatarScaling,
@@ -1159,8 +1161,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     });
     harness.setFetch(async (url, init) => {
       const response = instagram.handle(url, init);
-      if (new URL(url).searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3')
-        await pending;
+      if (isHomePage(url)) await pending;
       return response;
     });
     instagram.state.viewer = { id: '1002', username: 'instagram' };
@@ -1195,8 +1196,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     });
     harness.setFetch(async (url, init) => {
       const response = instagram.handle(url, init);
-      if (new URL(url).searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3')
-        await pending;
+      if (isHomePage(url)) await pending;
       return response;
     });
     render(<Watches />);
@@ -1440,13 +1440,11 @@ describe('Watches of both logins', { timeout: 15_000 }, () => {
       accountId: LINKED.id,
       cookies: { sessionid: 'linked-session', ds_user_id: LINKED.id, csrftoken: 'linked-csrf' },
     });
-    harness.setFetch((url, init) => {
-      const { searchParams } = new URL(url);
-      return searchParams.get('gg_login') === 'linked' &&
-        searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3'
-        ? json({ data: { user: LINKED } })
-        : instagram.handle(url, init);
-    });
+    harness.setFetch((url, init) =>
+      new URL(url).searchParams.get('gg_login') === 'linked' && isHomePage(url)
+        ? homePage(LINKED)
+        : instagram.handle(url, init)
+    );
   });
 
   const storedWatches = () =>
