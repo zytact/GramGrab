@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import type { InstagramLogin } from '@gramgrab/protocol';
 import { NetworkError } from '../effect/errors.ts';
-import { InstagramRequests } from './requests.ts';
+import { InstagramRequests, requireOk } from './requests.ts';
 
 const DTSG_TOKEN = /"DTSGInitialData",\[\],\{"token":"([^"]+)"/;
 /** Each login's token, kept in this worker's memory only and never stored. */
@@ -9,25 +9,31 @@ const cachedTokens: Partial<Record<InstagramLogin, string>> = {};
 
 /**
  * Reads Instagram Web's home page for the requests' login, and keeps the `fb_dtsg` token it names
- * for `withDtsgToken`. A refused response reads as an empty page.
+ * for `withDtsgToken`.
  */
 export const readHomePage = Effect.gen(function* () {
   const requests = yield* InstagramRequests;
   const response = yield* requests.fetch('https://www.instagram.com/', {
     headers: { Accept: 'text/html' },
   });
-  const page = response.ok
-    ? yield* Effect.tryPromise({
-        try: () => response.text(),
-        catch: cause => new NetworkError({ cause }),
-      })
-    : '';
+  yield* requireOk(response);
+  const page = yield* Effect.tryPromise({
+    try: () => response.text(),
+    catch: cause => new NetworkError({ cause }),
+  });
   const token = DTSG_TOKEN.exec(page)?.[1];
   cachedTokens[requests.login] = token;
-  return { response, page, token };
+  return { page, token };
 });
 
-const readToken = Effect.map(readHomePage, ({ token }) => token ?? '');
+/** The home page's token, or none when Instagram refuses the page. */
+const readToken = readHomePage.pipe(
+  Effect.map(({ token }) => token ?? ''),
+  Effect.catchTags({
+    RateLimited: () => Effect.succeed(''),
+    GraphQLRequestFailed: () => Effect.succeed(''),
+  })
+);
 
 const isPage = (response: Response) =>
   response.headers.get('content-type')?.includes('text/html') ?? false;

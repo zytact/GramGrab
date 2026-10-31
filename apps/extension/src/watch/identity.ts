@@ -4,17 +4,11 @@ import { AccountId, InstagramUsername, type InstagramLogin } from '@gramgrab/pro
 import { protocolConfig } from '../instagram-protocol/config.ts';
 import { readHomePage } from '../instagram/dtsg.ts';
 import { IG_API_GRAPHQL_HEADERS } from '../instagram/headers.ts';
-import { InstagramRequests } from '../instagram/requests.ts';
+import { InstagramRequests, requireOk } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
 import { markLinkedEnded } from '../instagram/linked-login.ts';
 import { CachedViewer, VIEWER_KEYS, decodeCachedViewer } from './contracts.ts';
-import {
-  AnswerUntrusted,
-  GraphQLRequestFailed,
-  NetworkError,
-  RateLimited,
-  ResponseShapeUnknown,
-} from '../effect/errors.ts';
+import { AnswerUntrusted, NetworkError, ResponseShapeUnknown } from '../effect/errors.ts';
 
 /** Instagram's home page named no signed-in viewer. */
 class ViewerMissing extends Data.TaggedError('ViewerMissing') {}
@@ -98,14 +92,6 @@ const ProfileResponse = Schema.Struct({
   errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
 
-/** Fails a refused response: a 429 as a rate limit, any other error status as a failed request. */
-export const requireOk = (response: Response) =>
-  Effect.gen(function* () {
-    if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
-    if (!response.ok)
-      return yield* Effect.fail(new GraphQLRequestFailed({ status: response.status }));
-  });
-
 /** The JSON body of a successful response. A body that is not JSON is one bad answer. */
 export const readJson = (response: Response) =>
   Effect.gen(function* () {
@@ -136,9 +122,8 @@ export const verifiedViewerId = async (login: InstagramLogin) =>
 export const fetchViewer = Effect.gen(function* () {
   const requests = yield* InstagramRequests;
   const key = VIEWER_KEYS[requests.login];
-  const { response, page } = yield* readHomePage;
+  const { page } = yield* readHomePage;
   return yield* Effect.gen(function* () {
-    yield* requireOk(response);
     const { data: user } = yield* Schema.decodeUnknown(PolarisViewer)(viewerBlock(page)).pipe(
       Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' }))
     );

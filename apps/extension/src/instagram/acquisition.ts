@@ -23,7 +23,7 @@ import {
   UsernameUnresolved,
 } from '../effect/errors.ts';
 import { fetchPostsPage } from '../watch/posts.ts';
-import { confirmProfile, requireOk, WireAccountId } from '../watch/identity.ts';
+import { confirmProfile, WireAccountId } from '../watch/identity.ts';
 import { fetchedMedia, type FetchedMedia } from '../watch/contracts.ts';
 import { decodeRestShortcodeMedia, fetchRestShortcodeRaw, fetchedPost } from './rest-shortcode.ts';
 import {
@@ -36,7 +36,7 @@ import {
   type MediaItem,
 } from './normalize.ts';
 import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS } from './headers.ts';
-import { InstagramRequests, type WatchRequestDeferred } from './requests.ts';
+import { InstagramRequests, requireOk, type WatchRequestDeferred } from './requests.ts';
 
 type ParsedUrl = InstagramTarget;
 
