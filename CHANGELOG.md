@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.1](https://github.com/zytact/GramGrab/compare/v4.6.0...v4.6.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **watch:** unpause Watches by reading the signed-in viewer from Instagram's home page ([#355](https://github.com/zytact/GramGrab/issues/355)) ([d3739c0](https://github.com/zytact/GramGrab/commit/d3739c0fa2eaaab8ebbba78f6cc26969fd985ece))
+
 ## [4.6.0](https://github.com/zytact/GramGrab/compare/v4.5.0...v4.6.0) (2026-10-29)
 
 
