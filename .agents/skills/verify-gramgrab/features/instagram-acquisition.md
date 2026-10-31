@@ -71,8 +71,10 @@ node apps/cli/bin/gramgrab.mjs instants inspect --json
 A profile URL is its own path, so drive it on its own. It spends three or four
 requests: the account's first Posts page, its profile page when it has no Posts,
 then the ID-keyed profile for the Avatar and the Highlights tray together. A
-Story URL spends the same lookup, then the Story request. The first Posts page
-a worker requests adds one read of the instagram.com home page for the `fb_dtsg`
+Story URL spends the same lookup, then the Story request. A Highlight URL
+spends only its Highlight request, which is the Story request with
+`highlight:<id>` as its reel ID. The first Posts, Story or Highlight request a
+worker sends adds one read of the instagram.com home page for the `fb_dtsg`
 token, which the worker then keeps in memory.
 
 ```bash
@@ -97,6 +99,10 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   a failure of this path, not an account with nothing to show. An Avatar with no
   covers means Instagram refused the tray; see the gotcha below before calling
   it a regression.
+- A Highlight URL such as `/stories/highlights/18194686561332120/` (one of
+  `instagram`'s) exits 0 with one item per Highlight item. Each `filenameHint`
+  is `<highlight ID>_<media pk>`, with no `highlight:` prefix, so the download
+  name has no colon.
 - On failure, the UI shows the code from `docs/error-model.md` in
   `.download-attempt-summary code` and offers only the recoveries that failure
   allows. Capture the code, not a paraphrase of the message.
@@ -119,8 +125,9 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   what to do when the request shape itself stopped working.
 - Read _Known server behavior_ in `docs/instagram-protocol.md` before calling
   an Instagram failure a bug. It covers the retired REST username lookups
-  (#301), the Posts queries' Origin and `fb_dtsg` (#313), the Highlights tray
-  403, and the Instants query on the web host. A
+  (#301), the Posts queries' Origin and `fb_dtsg` (#313), the Stories query that
+  moved to `/api/graphql` (#357), the Highlights tray 403, and the Instants
+  query on the web host. A
   person's 429 never pauses Watches; see [Watches](./watches.md#rate-limit-pause).
 - `SOURCE_SERVER_FAILED` on every profile and Story URL is the #313 failure:
   Instagram answered the Posts query with its home page. Confirm the worker's
