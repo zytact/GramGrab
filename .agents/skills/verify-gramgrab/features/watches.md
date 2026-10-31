@@ -459,14 +459,14 @@ An open options page reloads its list, the open Watch and the inbox whenever the
 worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, or
 changes the rate-limit pause in `instagram-requests`. Those reloads go through the
 `WATCH_READ` message, once per signed-in login. The worker answers without an
-Instagram request while that login is still the last one any viewer query found,
+Instagram request while that login is still the last one any viewer read found,
 and verifies again otherwise. Opening the page, returning to its tab or window,
 and every action verify the login once. Tab visibility and window focus events
 for one return share a verification. Storage reloads wait for that verification,
 and changing the login clears the previous login's selected view and inbox
 selections. A signed-out page rechecks on return too. There is no login polling.
 The page also follows the `watch-viewer` and `watch-viewer.linked` keys in
-`chrome.storage.session`, which every viewer query writes, including the CLI's.
+`chrome.storage.session`, which every viewer read writes, including the CLI's.
 When `watch-viewer` is removed, the page drops to the sign-in gate without a
 request. When either key names another login, or `watch-viewer.linked` is
 removed, the page verifies once. A Watch the previous login owned stays in the
@@ -503,7 +503,7 @@ same login.
    and the page keeps its marker and console. To drive the page's login-loss
    path without signing out, run
    `chrome.storage.session.remove('watch-viewer')` from the worker, which is
-   what a viewer query that finds no login does. The page shows `Sign in to
+   what a viewer read that finds no login does. The page shows `Sign in to
    Instagram` with the stored count, keeps its marker, and adds no request.
    Return to the tab: one viewer request restores the console. This injects
    session state only. A real sign-out stays a reported live gap.
@@ -542,10 +542,10 @@ Opening the page does not start an Avatar lookup.
   storage warning. A check that loses login verification does not refresh images.
   Ownership is checked after request spacing. An unspent lookup cancelled by a
   login change leaves the cooldown unchanged.
-- The login's picture comes from successful viewer queries, is held in worker
+- The login's picture comes from successful viewer reads, is held in worker
   memory, and is never stored. Opening the page costs no extra Instagram request
   for it. The open page keeps its login image across empty cache reads after a
-  worker restart, until a viewer query repopulates worker memory.
+  worker restart, until a viewer read repopulates worker memory.
 
 1. Read the store from the worker as booleans only: whether each Watch has
    `avatarImage` and the `jpeg` length. Never print the base64 or the IDs.
@@ -573,7 +573,7 @@ Opening the page does not start an Avatar lookup.
    fields stay current. Keep lookup timestamps and the request ledger unchanged.
    The focused UI test covers this transition too.
 3. Reload `options.html` and compare `attempts` in `instagram-requests` before
-   and after. The reload adds one attempt, the viewer query, and nothing for
+   and after. The reload adds one attempt, the viewer read, and nothing for
    Avatars.
 4. A copied profile's Watch may already hold `avatarImage`, or a queued check.
    Record that first and reuse the existing check. Do not repeat Check now,
@@ -764,11 +764,10 @@ and must not be run against a shared personal account:
    `watch list --json` has no `schedule.pausedUntil`. `watch needs` has no
    `PauseAttention`, and the options page shows no `Watches paused` banner.
 4. Stop the throttle. A manual check verifies the viewer once as the person and
-   then again as Watch work, through the viewer query
-   `d6f4427fbe92d846298cf93df0b937d3` (`operations.viewer` in
-   `apps/extension/src/instagram-protocol/config.json`). Start `throttle.mjs
-   d6f4427fbe92d846298cf93df0b937d3 429 --pass 1` and run `watch check
-   instagram --json`, then stop the throttle at once, since `watch list` and
+   then again as Watch work, each by reading the instagram.com home page
+   (`fetchViewer` in `apps/extension/src/watch/identity.ts`). Start
+   `throttle.mjs https://www.instagram.com/ 429 --pass 1 --exact` and run `watch
+   check instagram --json`, then stop the throttle at once, since `watch list` and
    `watch needs` verify the viewer too. The log shows one `passed` line, then
    one 429. The Watch request's 429 sets `schedule.pausedUntil` about 30 minutes out, `watch
    needs` has a `PauseAttention` with `IG_RATE_LIMITED`, and the options page
