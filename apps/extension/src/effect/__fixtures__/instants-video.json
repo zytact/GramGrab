@@ -3,9 +3,9 @@
     "xdt_get_quick_snaps": {
       "items_ordered_by_time": [
         {
-          "strong_id__": "SANITIZED_MEDIA_50_ID",
+          "strong_id__": "SANITIZED_MEDIA_52_ID",
           "context__": null,
-          "id": "SANITIZED_MEDIA_50_ID",
+          "id": "SANITIZED_MEDIA_52_ID",
           "taken_at": 1785221938,
           "media_type": 2,
           "video_duration": 1.5329999923706055,
@@ -16,19 +16,19 @@
               {
                 "width": 640,
                 "height": 640,
-                "url": "https://sanitized.invalid/media/50/instant-image",
+                "url": "https://sanitized.invalid/media/52/instant-image",
                 "scans_profile": null
               },
               {
                 "width": 480,
                 "height": 480,
-                "url": "https://sanitized.invalid/media/50/instant-image",
+                "url": "https://sanitized.invalid/media/52/instant-image",
                 "scans_profile": null
               },
               {
                 "width": 320,
                 "height": 320,
-                "url": "https://sanitized.invalid/media/50/instant-image",
+                "url": "https://sanitized.invalid/media/52/instant-image",
                 "scans_profile": null
               }
             ]
@@ -38,21 +38,21 @@
               "height": 720,
               "id": "SANITIZED_INSTANT_VIDEO_VERSION_ID_1",
               "type": 101,
-              "url": "https://sanitized.invalid/media/50/instant-video",
+              "url": "https://sanitized.invalid/media/52/instant-video",
               "width": 720
             },
             {
               "height": 720,
               "id": "SANITIZED_INSTANT_VIDEO_VERSION_ID_1",
               "type": 102,
-              "url": "https://sanitized.invalid/media/50/instant-video",
+              "url": "https://sanitized.invalid/media/52/instant-video",
               "width": 720
             },
             {
               "height": 720,
               "id": "SANITIZED_INSTANT_VIDEO_VERSION_ID_1",
               "type": 103,
-              "url": "https://sanitized.invalid/media/50/instant-video",
+              "url": "https://sanitized.invalid/media/52/instant-video",
               "width": 720
             }
           ],
@@ -68,7 +68,7 @@
             "full_name": "SANITIZED_PERSON_12_FULL_NAME",
             "username": "SANITIZED_PERSON_12_USERNAME",
             "account_badges": [],
-            "profile_pic_id": "SANITIZED_MEDIA_51_PROFILE_PICTURE_ID",
+            "profile_pic_id": "SANITIZED_MEDIA_53_PROFILE_PICTURE_ID",
             "profile_pic_url": "https://sanitized.invalid/person/12/profile-picture"
           },
           "source_type": 1,

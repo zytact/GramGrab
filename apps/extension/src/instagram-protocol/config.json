@@ -50,12 +50,12 @@
     "reelsMedia": {
       "candidates": [
         {
-          "kind": "query_hash",
-          "id": "45246d3fe16ccc6577e0bd297a5db1ab",
+          "kind": "doc_id",
+          "id": "29341065465524437",
           "requests": [
             {
-              "endpoint": "https://www.instagram.com/graphql/query/",
-              "transport": "query"
+              "endpoint": "https://www.instagram.com/api/graphql",
+              "transport": "form"
             }
           ]
         }

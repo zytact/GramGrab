@@ -3,9 +3,9 @@
     "xdt_get_quick_snaps": {
       "items_ordered_by_time": [
         {
-          "strong_id__": "SANITIZED_MEDIA_46_ID",
+          "strong_id__": "SANITIZED_MEDIA_48_ID",
           "context__": null,
-          "id": "SANITIZED_MEDIA_46_ID",
+          "id": "SANITIZED_MEDIA_48_ID",
           "taken_at": 1785212527,
           "media_type": 1,
           "video_duration": null,
@@ -16,19 +16,19 @@
               {
                 "width": 984,
                 "height": 984,
-                "url": "https://sanitized.invalid/media/46/instant-image",
+                "url": "https://sanitized.invalid/media/48/instant-image",
                 "scans_profile": null
               },
               {
                 "width": 720,
                 "height": 720,
-                "url": "https://sanitized.invalid/media/46/instant-image",
+                "url": "https://sanitized.invalid/media/48/instant-image",
                 "scans_profile": null
               },
               {
                 "width": 640,
                 "height": 640,
-                "url": "https://sanitized.invalid/media/46/instant-image",
+                "url": "https://sanitized.invalid/media/48/instant-image",
                 "scans_profile": null
               }
             ]
@@ -46,7 +46,7 @@
             "full_name": "SANITIZED_PERSON_11_FULL_NAME",
             "username": "SANITIZED_PERSON_11_USERNAME",
             "account_badges": [],
-            "profile_pic_id": "SANITIZED_MEDIA_47_PROFILE_PICTURE_ID",
+            "profile_pic_id": "SANITIZED_MEDIA_49_PROFILE_PICTURE_ID",
             "profile_pic_url": "https://sanitized.invalid/person/11/profile-picture"
           },
           "source_type": 3,
@@ -57,9 +57,9 @@
           "__is_XDTMediaDict": true
         },
         {
-          "strong_id__": "SANITIZED_MEDIA_48_ID",
+          "strong_id__": "SANITIZED_MEDIA_50_ID",
           "context__": null,
-          "id": "SANITIZED_MEDIA_48_ID",
+          "id": "SANITIZED_MEDIA_50_ID",
           "taken_at": 1785212536,
           "media_type": 1,
           "video_duration": null,
@@ -70,19 +70,19 @@
               {
                 "width": 984,
                 "height": 984,
-                "url": "https://sanitized.invalid/media/48/instant-image",
+                "url": "https://sanitized.invalid/media/50/instant-image",
                 "scans_profile": null
               },
               {
                 "width": 720,
                 "height": 720,
-                "url": "https://sanitized.invalid/media/48/instant-image",
+                "url": "https://sanitized.invalid/media/50/instant-image",
                 "scans_profile": null
               },
               {
                 "width": 640,
                 "height": 640,
-                "url": "https://sanitized.invalid/media/48/instant-image",
+                "url": "https://sanitized.invalid/media/50/instant-image",
                 "scans_profile": null
               }
             ]
@@ -108,7 +108,7 @@
             "full_name": "SANITIZED_PERSON_11_FULL_NAME",
             "username": "SANITIZED_PERSON_11_USERNAME",
             "account_badges": [],
-            "profile_pic_id": "SANITIZED_MEDIA_47_PROFILE_PICTURE_ID",
+            "profile_pic_id": "SANITIZED_MEDIA_49_PROFILE_PICTURE_ID",
             "profile_pic_url": "https://sanitized.invalid/person/11/profile-picture"
           },
           "source_type": 3,
@@ -119,9 +119,9 @@
           "__is_XDTMediaDict": true
         },
         {
-          "strong_id__": "SANITIZED_MEDIA_49_ID",
+          "strong_id__": "SANITIZED_MEDIA_51_ID",
           "context__": null,
-          "id": "SANITIZED_MEDIA_49_ID",
+          "id": "SANITIZED_MEDIA_51_ID",
           "taken_at": 1785217817,
           "media_type": 1,
           "video_duration": null,
@@ -132,19 +132,19 @@
               {
                 "width": 984,
                 "height": 984,
-                "url": "https://sanitized.invalid/media/49/instant-image",
+                "url": "https://sanitized.invalid/media/51/instant-image",
                 "scans_profile": null
               },
               {
                 "width": 720,
                 "height": 720,
-                "url": "https://sanitized.invalid/media/49/instant-image",
+                "url": "https://sanitized.invalid/media/51/instant-image",
                 "scans_profile": null
               },
               {
                 "width": 640,
                 "height": 640,
-                "url": "https://sanitized.invalid/media/49/instant-image",
+                "url": "https://sanitized.invalid/media/51/instant-image",
                 "scans_profile": null
               }
             ]
@@ -162,7 +162,7 @@
             "full_name": "SANITIZED_PERSON_11_FULL_NAME",
             "username": "SANITIZED_PERSON_11_USERNAME",
             "account_badges": [],
-            "profile_pic_id": "SANITIZED_MEDIA_47_PROFILE_PICTURE_ID",
+            "profile_pic_id": "SANITIZED_MEDIA_49_PROFILE_PICTURE_ID",
             "profile_pic_url": "https://sanitized.invalid/person/11/profile-picture"
           },
           "source_type": 3,

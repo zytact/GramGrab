@@ -1,6 +1,8 @@
 import { Effect, Either, Schema } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
+import { protocolConfig } from '../instagram-protocol/config.ts';
+import { configuredRequests } from './acquisition.ts';
 
 let harness: ExtensionHarness;
 const savedBrowser = globalThis.browser;
@@ -45,23 +47,23 @@ describe('Instagram request accounting', () => {
 
   it('counts every automatic retry of a requested operation', async () => {
     vi.useFakeTimers();
-    harness.setFetch(url =>
-      url === 'https://www.instagram.com/'
-        ? new Response('<html></html>', { headers: { 'content-type': 'text/html' } })
-        : new Response('unavailable', { status: 503 })
-    );
+    harness.setFetch(() => new Response('unavailable', { status: 503 }));
     await harness.loadWorker();
 
     const response = await settled(
       harness.send<{ failure?: { code: string } }>({
         type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/stories/highlights/17900000000000000/',
+        url: 'https://www.instagram.com/p/C0000000000/',
       })
     );
 
     expect(response.failure?.code).toBe('SOURCE_SERVER_FAILED');
     const calls = instagramCalls();
-    expect(calls).toHaveLength(4);
+    // After the REST read fails, each configured GraphQL request runs with its three retries.
+    const graphqlRequests = configuredRequests(protocolConfig.operations.mediaByShortcode).length;
+    expect(
+      calls.filter(([url]) => typeof url === 'string' && url.includes('graphql'))
+    ).toHaveLength(graphqlRequests * 4);
     expect((await ledger()).attempts).toHaveLength(calls.length);
   });
 

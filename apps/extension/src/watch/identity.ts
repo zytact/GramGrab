@@ -4,11 +4,11 @@ import { AccountId, InstagramUsername, type InstagramLogin } from '@gramgrab/pro
 import { protocolConfig } from '../instagram-protocol/config.ts';
 import { readHomePage } from '../instagram/dtsg.ts';
 import { IG_API_GRAPHQL_HEADERS } from '../instagram/headers.ts';
-import { InstagramRequests, requireOk } from '../instagram/requests.ts';
+import { InstagramRequests, readJson } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
 import { markLinkedEnded } from '../instagram/linked-login.ts';
 import { CachedViewer, VIEWER_KEYS, decodeCachedViewer } from './contracts.ts';
-import { AnswerUntrusted, NetworkError, ResponseShapeUnknown } from '../effect/errors.ts';
+import { ResponseShapeUnknown } from '../effect/errors.ts';
 
 /** Instagram's home page named no signed-in viewer. */
 class ViewerMissing extends Data.TaggedError('ViewerMissing') {}
@@ -91,19 +91,6 @@ const ProfileResponse = Schema.Struct({
   }),
   errors: Schema.optional(Schema.Array(Schema.Unknown)),
 });
-
-/** The JSON body of a successful response. A body that is not JSON is one bad answer. */
-export const readJson = (response: Response) =>
-  Effect.gen(function* () {
-    yield* requireOk(response);
-    return yield* Effect.tryPromise({
-      try: (): Promise<unknown> => response.json(),
-      catch: cause =>
-        cause instanceof SyntaxError
-          ? new AnswerUntrusted({ reason: 'not-json' })
-          : new NetworkError({ cause }),
-    });
-  });
 
 export async function cachedViewer(login: InstagramLogin): Promise<Account | undefined> {
   const key = VIEWER_KEYS[login];

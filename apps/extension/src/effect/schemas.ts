@@ -116,80 +116,62 @@ export const ShortcodeMediaResponseSchema = Schema.Struct({
 });
 
 // ---------------------------------------------------------------------------
-// Reels media (stories + highlight reels) — tagged union on __typename
+// Reels media (Stories and Highlights) - strict known shapes with unknown typename passthrough
 // ---------------------------------------------------------------------------
 
-const StoryResourceSchema = Schema.Struct({
-  src: Schema.String,
-  config_width: Schema.optional(Schema.Number),
-  config_height: Schema.optional(Schema.Number),
-  mime_type: Schema.optional(Schema.String),
-  profile: Schema.optional(Schema.String),
+const StoryCandidateSchema = Schema.Struct({
+  url: Schema.String,
+  width: Schema.Number,
+  height: Schema.Number,
 });
 
-const StoryDimensionsSchema = Schema.Struct({
-  height: Schema.Number,
-  width: Schema.Number,
+const StoryItemFields = {
+  __typename: Schema.Literal('XDTMediaDict'),
+  pk: Schema.String,
+  taken_at: Schema.Number,
+  expiring_at: Schema.Number,
+  original_width: Schema.Number,
+  original_height: Schema.Number,
+  image_versions2: Schema.Struct({ candidates: Schema.Array(StoryCandidateSchema) }),
+} as const;
+
+const StoryImageItemSchema = Schema.Struct({
+  ...StoryItemFields,
+  media_type: Schema.Literal(1),
 });
 
 const StoryVideoItemSchema = Schema.Struct({
-  __typename: Schema.Literal('GraphStoryVideo'),
-  id: Schema.String,
-  is_video: Schema.Literal(true),
-  display_url: Schema.String,
-  display_resources: Schema.Array(MediaResourceSchema),
-  // video_resources is the preferred download source for story videos
-  video_resources: Schema.Array(StoryResourceSchema),
-  dimensions: Schema.optional(StoryDimensionsSchema),
-  taken_at_timestamp: Schema.optional(Schema.Number),
-  expiring_at_timestamp: Schema.optional(Schema.Number),
-  video_duration: Schema.optional(Schema.Number),
+  ...StoryItemFields,
+  media_type: Schema.Literal(2),
+  // Story video versions carry no dimensions; the item's original size describes them.
+  video_versions: Schema.Array(Schema.Struct({ url: Schema.String })),
 });
 
-const StoryImageItemSchema = Schema.Struct({
-  __typename: Schema.Literal('GraphStoryImage'),
-  id: Schema.String,
-  is_video: Schema.Literal(false),
-  display_url: Schema.String,
-  display_resources: Schema.Array(MediaResourceSchema),
-  dimensions: Schema.optional(StoryDimensionsSchema),
-  taken_at_timestamp: Schema.optional(Schema.Number),
-  expiring_at_timestamp: Schema.optional(Schema.Number),
-});
-
-// Unknown passthrough — skip unrecognised story types, log the typename
 const StoryUnknownItemSchema = Schema.Struct({
-  __typename: Schema.optional(Schema.String),
-  id: Schema.optional(Schema.String),
+  __typename: Schema.String.pipe(
+    Schema.filter(value => value !== 'XDTMediaDict', {
+      message: () => 'known Story typename must match its strict shape',
+    })
+  ),
 });
 
 const StoryItemSchema = Schema.Union(
-  StoryVideoItemSchema,
   StoryImageItemSchema,
+  StoryVideoItemSchema,
   StoryUnknownItemSchema
 );
 
-export type StoryVideoItem = Schema.Schema.Type<typeof StoryVideoItemSchema>;
 export type StoryImageItem = Schema.Schema.Type<typeof StoryImageItemSchema>;
-
-const ReelOwnerSchema = Schema.Struct({
-  __typename: Schema.optional(Schema.String),
-  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  username: Schema.optional(Schema.String),
-  profile_pic_url: Schema.optional(Schema.String),
-});
+export type StoryVideoItem = Schema.Schema.Type<typeof StoryVideoItemSchema>;
 
 const ReelSchema = Schema.Struct({
-  __typename: Schema.optional(Schema.String),
-  id: Schema.Union(Schema.String, Schema.Number),
-  latest_reel_media: Schema.optional(Schema.NullOr(Schema.Number)),
-  owner: Schema.optional(ReelOwnerSchema),
+  id: Schema.String,
   items: Schema.Array(StoryItemSchema),
 });
 
 export const ReelsMediaResponseSchema = Schema.Struct({
   data: Schema.Struct({
-    reels_media: Schema.Array(ReelSchema),
+    xdt_api__v1__feed__reels_media: Schema.Struct({ reels_media: Schema.Array(ReelSchema) }),
   }),
 });
 

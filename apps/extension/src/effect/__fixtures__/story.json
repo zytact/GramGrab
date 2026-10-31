@@ -1,103 +1,97 @@
 {
   "data": {
-    "reels_media": [
-      {
-        "__typename": "GraphReel",
-        "id": "SANITIZED_MEDIA_44_ID",
-        "latest_reel_media": 1782920565,
-        "owner": {
-          "__typename": "GraphUser",
-          "id": "SANITIZED_PERSON_10_ID",
-          "profile_pic_url": "https://sanitized.invalid/person/10/profile-picture",
-          "username": "SANITIZED_PERSON_10_USERNAME"
-        },
-        "expiring_at": 1783006965,
-        "seen": 1782920565,
-        "user": {
-          "id": "SANITIZED_PERSON_10_ID",
-          "profile_pic_url": "https://sanitized.invalid/person/10/profile-picture",
-          "username": "SANITIZED_PERSON_10_USERNAME",
-          "followed_by_viewer": true,
-          "requested_by_viewer": false
-        },
-        "items": [
-          {
-            "__typename": "GraphStoryVideo",
-            "id": "SANITIZED_MEDIA_45_ID",
-            "dimensions": {
-              "height": 1920,
-              "width": 1080
-            },
-            "display_resources": [
-              {
-                "src": "https://sanitized.invalid/media/45/resource",
-                "config_width": 640,
-                "config_height": 1137
+    "xdt_api__v1__feed__reels_media": {
+      "reels_media": [
+        {
+          "id": "SANITIZED_MEDIA_45_ID",
+          "reel_type": "user_reel",
+          "latest_reel_media": 1793452103,
+          "user": {
+            "pk": "SANITIZED_PERSON_10_ID",
+            "id": "SANITIZED_PERSON_10_ID",
+            "username": "SANITIZED_PERSON_10_USERNAME"
+          },
+          "items": [
+            {
+              "__typename": "XDTMediaDict",
+              "id": "SANITIZED_MEDIA_46_COMPOSITE_ID",
+              "pk": "SANITIZED_MEDIA_46_ID",
+              "media_type": 1,
+              "product_type": "story",
+              "taken_at": 1793449500,
+              "expiring_at": 1793535900,
+              "original_width": 963,
+              "original_height": 1712,
+              "image_versions2": {
+                "candidates": [
+                  {
+                    "url": "https://sanitized.invalid/media/46/image",
+                    "width": 963,
+                    "height": 1712
+                  },
+                  {
+                    "url": "https://sanitized.invalid/media/46/image",
+                    "width": 720,
+                    "height": 1280
+                  },
+                  {
+                    "url": "https://sanitized.invalid/media/46/image",
+                    "width": 640,
+                    "height": 1138
+                  }
+                ]
               },
-              {
-                "src": "https://sanitized.invalid/media/45/resource",
-                "config_width": 750,
-                "config_height": 1333
-              },
-              {
-                "src": "https://sanitized.invalid/media/45/resource",
-                "config_width": 1080,
-                "config_height": 1920
-              }
-            ],
-            "display_url": "https://sanitized.invalid/media/45/display",
-            "media_preview": "SANITIZED_MEDIA_PREVIEW_33",
-            "taken_at_timestamp": 1782920565,
-            "expiring_at_timestamp": 1783006965,
-            "story_cta_url": null,
-            "story_view_count": null,
-            "is_video": true,
-            "owner": {
-              "id": "SANITIZED_PERSON_10_ID",
-              "username": "SANITIZED_PERSON_10_USERNAME",
-              "profile_pic_url": "https://sanitized.invalid/person/10/profile-picture"
+              "video_versions": null,
+              "video_duration": null
             },
-            "should_log_client_event": false,
-            "tracking_token": "SANITIZED_TRACKING_TOKEN_36",
-            "overlay_image_resources": null,
-            "video_duration": 15,
-            "video_resources": [
-              {
-                "src": "https://sanitized.invalid/media/45/resource",
-                "config_width": 480,
-                "config_height": 853,
-                "mime_type": "video/mp4; codecs=\"avc1.42E01E\"",
-                "profile": "BASELINE"
-              }
-            ],
-            "tappable_objects": [
-              {
-                "__typename": "GraphTappableFeedMedia",
-                "x": 0.5,
-                "y": 0.49977678000000003,
-                "width": 0.8,
-                "height": 0.4736607,
-                "rotation": 0,
-                "custom_title": null,
-                "attribution": null
-              }
-            ],
-            "story_app_attribution": null
-          }
-        ]
-      }
-    ]
-  },
-  "errors": [
-    {
-      "message": "execution error",
-      "path": ["reels_media", 0, "items", 0, "story_cta_url"],
-      "severity": "ERROR"
-    },
-    {
-      "message": "execution error",
-      "path": ["reels_media", 0, "items", 0, "story_view_count"],
-      "severity": "ERROR"
+            {
+              "__typename": "XDTMediaDict",
+              "id": "SANITIZED_MEDIA_47_COMPOSITE_ID",
+              "pk": "SANITIZED_MEDIA_47_ID",
+              "media_type": 2,
+              "product_type": "story",
+              "taken_at": 1793452103,
+              "expiring_at": 1793538503,
+              "original_width": 720,
+              "original_height": 1280,
+              "image_versions2": {
+                "candidates": [
+                  {
+                    "url": "https://sanitized.invalid/media/47/image",
+                    "width": 640,
+                    "height": 1136
+                  },
+                  {
+                    "url": "https://sanitized.invalid/media/47/image",
+                    "width": 480,
+                    "height": 852
+                  },
+                  {
+                    "url": "https://sanitized.invalid/media/47/image",
+                    "width": 320,
+                    "height": 568
+                  }
+                ]
+              },
+              "video_versions": [
+                {
+                  "type": 101,
+                  "url": "https://sanitized.invalid/media/47/video"
+                },
+                {
+                  "type": 102,
+                  "url": "https://sanitized.invalid/media/47/video"
+                },
+                {
+                  "type": 103,
+                  "url": "https://sanitized.invalid/media/47/video"
+                }
+              ],
+              "video_duration": 20.015
+            }
+          ]
+        }
+      ]
     }
-  ]
+  }
 }

@@ -1,6 +1,11 @@
 import { Context, Data, Effect, Layer, Schema } from 'effect';
 import type { InstagramLogin } from '@gramgrab/protocol';
-import { GraphQLRequestFailed, NetworkError, RateLimited } from '../effect/errors.ts';
+import {
+  AnswerUntrusted,
+  GraphQLRequestFailed,
+  NetworkError,
+  RateLimited,
+} from '../effect/errors.ts';
 import { browser } from '../lib/browser.ts';
 import { linkedRoute, readLinkedLogin } from './linked-login.ts';
 import {
@@ -19,6 +24,19 @@ export const requireOk = (response: Response) =>
     if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
     if (!response.ok)
       return yield* Effect.fail(new GraphQLRequestFailed({ status: response.status }));
+  });
+
+/** The JSON body of a successful response. A body that is not JSON is one bad answer. */
+export const readJson = (response: Response) =>
+  Effect.gen(function* () {
+    yield* requireOk(response);
+    return yield* Effect.tryPromise({
+      try: (): Promise<unknown> => response.json(),
+      catch: cause =>
+        cause instanceof SyntaxError
+          ? new AnswerUntrusted({ reason: 'not-json' })
+          : new NetworkError({ cause }),
+    });
   });
 
 /** What a caller says about an Instagram request. The service picks credentials for the login. */

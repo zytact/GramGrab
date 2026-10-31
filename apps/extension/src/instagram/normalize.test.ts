@@ -2,48 +2,33 @@ import { Effect, Schema } from 'effect';
 import { describe, expect, it } from 'vite-plus/test';
 import { normalizeInstantItems, normalizeReelsMediaItems } from './normalize.ts';
 import { ReelsMediaResponseSchema } from '../effect/schemas.ts';
+import storyFixture from '../effect/__fixtures__/story.json';
 
-describe('Story expiry normalization', () => {
-  function reels(expiresAt?: number, typename = 'GraphStoryImage') {
-    return Schema.decodeUnknownSync(ReelsMediaResponseSchema)({
-      data: {
-        reels_media: [
-          {
-            id: '1',
-            items: [
-              {
-                __typename: typename,
-                id: '2',
-                is_video: typename === 'GraphStoryVideo',
-                display_url: 'https://sanitized.invalid/story.jpg',
-                display_resources: [{ src: 'https://sanitized.invalid/story.jpg' }],
-                video_resources: [{ src: 'https://sanitized.invalid/story.mp4' }],
-                ...(expiresAt === undefined ? {} : { expiring_at_timestamp: expiresAt }),
-              },
-            ],
-          },
-        ],
-      },
-    }).data.reels_media;
-  }
+describe('normalizeReelsMediaItems', () => {
+  const [reel] =
+    Schema.decodeUnknownSync(ReelsMediaResponseSchema)(storyFixture).data
+      .xdt_api__v1__feed__reels_media.reels_media;
 
-  it.each(['GraphStoryImage', 'GraphStoryVideo'])(
-    'preserves %s expiry as UTC ISO 8601',
-    typename => {
-      expect(normalizeReelsMediaItems(reels(1_700_000_000, typename), 'story')[0]).toMatchObject({
-        expiresAt: '2023-11-14T22:13:20.000Z',
-      });
-    }
-  );
-
-  it('omits expiry when Instagram does not provide it', () => {
-    expect(normalizeReelsMediaItems(reels(), 'story')[0]).not.toHaveProperty('expiresAt');
+  it('reads each Story by its media pk, original size, and expiry', () => {
+    const [image, video] = normalizeReelsMediaItems([reel!], 'story');
+    expect(image).toMatchObject({
+      mediaId: 'SANITIZED_MEDIA_46_ID',
+      type: 'image',
+      url: 'https://sanitized.invalid/media/46/image',
+      width: 963,
+      height: 1712,
+      filenameHint: 'SANITIZED_MEDIA_45_ID_SANITIZED_MEDIA_46_ID',
+      expiresAt: new Date(1_793_535_900_000).toJSON(),
+    });
+    expect(video).toMatchObject({
+      type: 'video',
+      url: 'https://sanitized.invalid/media/47/video',
+      previewUrl: 'https://sanitized.invalid/media/47/image',
+    });
   });
 
   it('omits expiry on Highlights even when their Story payload has a timestamp', () => {
-    expect(normalizeReelsMediaItems(reels(1_700_000_000), 'highlight')[0]).not.toHaveProperty(
-      'expiresAt'
-    );
+    expect(normalizeReelsMediaItems([reel!], 'highlight')[0]).not.toHaveProperty('expiresAt');
   });
 });
 

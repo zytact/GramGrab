@@ -1,5 +1,6 @@
 import { Effect, Either, Schema } from 'effect';
 import { ResponseShapeUnknown } from '../effect/errors.ts';
+import { requestReels } from '../effect/instagram.ts';
 import { ReelsMediaResponseSchema } from '../effect/schemas.ts';
 import { historySource } from '../history/source.ts';
 import type { DownloadHistoryEntry } from '../history/contracts.ts';
@@ -13,7 +14,7 @@ import { fetchRestShortcodeMedia } from '../instagram/rest-shortcode.ts';
 import { instagramPage, type Discovery, type MediaRef, type Watch } from './contracts.ts';
 import { fetchAvatar } from './avatar.ts';
 import { readInstants } from './instants.ts';
-import { fetchStories, readStories } from './stories.ts';
+import { readStories } from './stories.ts';
 import { fetchViewer } from './identity.ts';
 import { readStore } from './store.ts';
 
@@ -56,12 +57,12 @@ const restItems = (watch: Watch, ref: Extract<MediaRef, { _tag: 'Post' | 'Sideca
 
 const storyItems = (targetId: string, nowSeconds: number) =>
   Effect.gen(function* () {
-    const raw = yield* fetchStories(targetId);
+    const raw = yield* requestReels(targetId);
     yield* readStories(raw, targetId, nowSeconds);
     const { data } = yield* Schema.decodeUnknown(ReelsMediaResponseSchema)(raw).pipe(
       Effect.mapError(untrusted)
     );
-    return normalizeReelsMediaItems(data.reels_media, 'story');
+    return normalizeReelsMediaItems(data.xdt_api__v1__feed__reels_media.reels_media, 'story');
   });
 
 const instantItems = (targetId: string, nowSeconds: number) =>

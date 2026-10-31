@@ -5,19 +5,19 @@ captures are local-only sensitive data and must never be committed.
 
 ## Files
 
-| File                        | Endpoint                                                          | What it covers                                                                                                   |
-| --------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `highlights.json`           | `graphql/query/?query_hash=452...` with `highlight_reel_ids`      | `ReelsMediaResponseSchema` — `GraphHighlightReel` envelope, `GraphStoryVideo` items                              |
-| `story.json`                | `graphql/query/?query_hash=452...` with `reel_ids`                | `ReelsMediaResponseSchema` — `GraphReel` envelope, `GraphStoryVideo` items                                       |
-| `highlights-tray.json`      | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/`         | `HighlightsTrayResponseSchema` — `tray[]` listing with `cover_media`                                             |
-| `shortcode-image.json`      | `graphql/query/?doc_id=8845...` with `{ shortcode }` (image post) | `ShortcodeMediaResponseSchema` — `GraphImage` / `XDTGraphImage` branch                                           |
-| `shortcode-video.json`      | `graphql/query/?doc_id=8845...` with `{ shortcode }` (video reel) | `ShortcodeMediaResponseSchema` — `GraphVideo` / `XDTGraphVideo` branch                                           |
-| `shortcode-rest-video.json` | `api/v1/media/{id}/info/` (video reel)                            | `RestShortcodeResponseSchema` - captured REST video shape with only structural media fields and replacement URLs |
-| `shortcode-sidecar.json`    | `graphql/query/?doc_id=8845...` with `{ shortcode }` (carousel)   | `ShortcodeMediaResponseSchema` — `GraphSidecar` / `XDTGraphSidecar` branch with mixed image/video children       |
-| `instants-photo.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - active photo shape and image candidates                                               |
-| `instants-video.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - video nullability, posters, duplicate progressive URLs, and DASH metadata             |
-| `instants-empty.json`       | `graphql/query` with the Instants client document ID              | `InstantsResponseSchema` - successful empty active feed                                                          |
-| `profile-posts.json`        | `api/graphql` with the `profilePosts` document ID and `fb_dtsg`   | Watch `PostsResponse` - one Posts grid page, trimmed to the fields a Watch reads, with mixed Sidecars            |
+| File                        | Endpoint                                                             | What it covers                                                                                                   |
+| --------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `highlights.json`           | `api/graphql` with the `reelsMedia` document ID and `highlight:<id>` | `ReelsMediaResponseSchema` - a Highlight reel, trimmed to the fields GramGrab reads, with image and video items  |
+| `story.json`                | `api/graphql` with the `reelsMedia` document ID and an account ID    | `ReelsMediaResponseSchema` - a Story reel, trimmed to the fields GramGrab reads, with image and video items      |
+| `highlights-tray.json`      | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/`            | `HighlightsTrayResponseSchema` — `tray[]` listing with `cover_media`                                             |
+| `shortcode-image.json`      | `graphql/query/?doc_id=8845...` with `{ shortcode }` (image post)    | `ShortcodeMediaResponseSchema` — `GraphImage` / `XDTGraphImage` branch                                           |
+| `shortcode-video.json`      | `graphql/query/?doc_id=8845...` with `{ shortcode }` (video reel)    | `ShortcodeMediaResponseSchema` — `GraphVideo` / `XDTGraphVideo` branch                                           |
+| `shortcode-rest-video.json` | `api/v1/media/{id}/info/` (video reel)                               | `RestShortcodeResponseSchema` - captured REST video shape with only structural media fields and replacement URLs |
+| `shortcode-sidecar.json`    | `graphql/query/?doc_id=8845...` with `{ shortcode }` (carousel)      | `ShortcodeMediaResponseSchema` — `GraphSidecar` / `XDTGraphSidecar` branch with mixed image/video children       |
+| `instants-photo.json`       | `graphql/query` with the Instants client document ID                 | `InstantsResponseSchema` - active photo shape and image candidates                                               |
+| `instants-video.json`       | `graphql/query` with the Instants client document ID                 | `InstantsResponseSchema` - video nullability, posters, duplicate progressive URLs, and DASH metadata             |
+| `instants-empty.json`       | `graphql/query` with the Instants client document ID                 | `InstantsResponseSchema` - successful empty active feed                                                          |
+| `profile-posts.json`        | `api/graphql` with the `profilePosts` document ID and `fb_dtsg`      | Watch `PostsResponse` - one Posts grid page, trimmed to the fields a Watch reads, with mixed Sidecars            |
 
 ## Notes
 
@@ -25,11 +25,8 @@ captures are local-only sensitive data and must never be committed.
   temporarily. Every URL in committed fixtures uses `https://sanitized.invalid/`.
 - **Timestamps are preserved** — capture, creation, taken-at, expiry, and update timestamps are
   structural regression evidence and remain unchanged.
-- **Partial GraphQL errors** — every reels response includes `errors[]` for `story_cta_url` and
-  `story_view_count` (fields the API refuses to serve). These are non-fatal; the extension ignores
-  `errors[]` entirely (E1 posture). The fixture `errors` arrays are retained to confirm the schema
-  decodes successfully in the presence of partial errors. Their `message`, `path`, severity, and
-  related structural data are deliberately preserved.
+- **Reels are trimmed** - the capture keeps only the reel and item fields GramGrab reads, as it
+  does for Posts, so the sanitizer reviews a small shape.
 - **`scans_profile` is preserved** — this is image encoding metadata, not profile identity.
 - **Search social context is opaque** — `social_context` and `search_social_context` name other
   accounts ("Followed by ..."), so they are replaced rather than preserved.

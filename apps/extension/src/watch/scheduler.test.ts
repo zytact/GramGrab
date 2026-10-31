@@ -17,6 +17,7 @@ import {
   isHomePage,
   postsPage,
   storyResponse,
+  storyRequestTarget,
 } from '../test/watch-instagram.ts';
 import type { WatchKind } from '@gramgrab/protocol';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
@@ -80,18 +81,13 @@ const add = (username: string, kinds: readonly [WatchKind, ...WatchKind[]] = ['s
 
 /** Story requests made so far, in order, by target ID. */
 const storyRequests = () =>
-  vi
-    .mocked(globalThis.fetch)
-    .mock.calls.map(([input]) => new URL(input instanceof Request ? input.url : input))
-    .filter(url => url.searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
-    .map(url => JSON.parse(url.searchParams.get('variables') ?? '{}').reel_ids[0] as string);
+  vi.mocked(globalThis.fetch).mock.calls.flatMap(([, init]) => storyRequestTarget(init) ?? []);
 
 /** Every Story and Posts request so far, in order, as `stories:<target>` or `posts:<cursor>`. */
 const acquisitions = () =>
-  vi.mocked(globalThis.fetch).mock.calls.flatMap(([input, init]) => {
-    const url = new URL(input instanceof Request ? input.url : input);
-    if (url.searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
-      return [`stories:${JSON.parse(url.searchParams.get('variables') ?? '{}').reel_ids[0]}`];
+  vi.mocked(globalThis.fetch).mock.calls.flatMap(([, init]) => {
+    const target = storyRequestTarget(init);
+    if (target !== undefined) return [`stories:${target}`];
     const body = init?.body instanceof URLSearchParams ? init.body : undefined;
     if (!body?.get('variables')?.includes('"username"')) return [];
     return [`posts:${JSON.parse(body.get('variables')!).after ?? ''}`];
@@ -153,7 +149,7 @@ describe('Watch scheduling', () => {
     await add(OTHER.username);
     harness.setFetch((url, init) => {
       const response = instagram.handle(url, init);
-      if (new URL(url).searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
+      if (storyRequestTarget(init) !== undefined)
         instagram.state.viewer = { id: '4004', username: 'instagram' };
       return response;
     });
@@ -204,7 +200,7 @@ describe('Watch scheduling', () => {
       vi.mocked(globalThis.fetch).mockClear();
       harness.setFetch((url, init) => {
         const response = instagram.handle(url, init);
-        if (new URL(url).searchParams.get('query_hash') === '45246d3fe16ccc6577e0bd297a5db1ab')
+        if (storyRequestTarget(init) !== undefined)
           instagram.state.viewer =
             mode === 'changed' ? { id: '4004', username: 'instagram' } : null;
         return response;

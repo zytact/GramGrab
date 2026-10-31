@@ -2,12 +2,9 @@ import { Effect, Either, Schema } from 'effect';
 import { InstagramUsername, type CheckIncompleteReason } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { IG_API_GRAPHQL_HEADERS } from '../instagram/headers.ts';
-import { withDtsgToken } from '../instagram/dtsg.ts';
-import { InstagramRequests } from '../instagram/requests.ts';
+import { postWebQuery } from '../instagram/dtsg.ts';
 import { AnswerUntrusted, ResponseShapeUnknown } from '../effect/errors.ts';
 import { MediaId, Shortcode, type TimedRef } from './contracts.ts';
-import { readJson } from './identity.ts';
 
 const PAGE_SIZE = 12;
 /** A Watch turn reads at most this many Posts pages; a longer traversal continues later. */
@@ -188,28 +185,13 @@ function pageRequest(username: string, after: string | undefined) {
 }
 
 /** Requests one page of the account's Posts by its verified current username. */
-export const fetchPostsPage = (username: string, after: string | undefined) =>
-  Effect.gen(function* () {
-    const { operation, variables } = pageRequest(
-      Schema.decodeUnknownSync(InstagramUsername)(username),
-      after
-    );
-    const candidate = operation.candidates[0]!;
-    const request = candidate.requests[0]!;
-    const requests = yield* InstagramRequests;
-    const send = (dtsgToken: string) =>
-      requests.fetch(request.endpoint, {
-        method: 'POST',
-        csrf: true,
-        headers: { ...IG_API_GRAPHQL_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          [candidate.kind]: candidate.id,
-          variables: JSON.stringify(variables),
-          fb_dtsg: dtsgToken,
-        }),
-      });
-    return yield* readJson(yield* withDtsgToken(send));
-  });
+export const fetchPostsPage = (username: string, after: string | undefined) => {
+  const { operation, variables } = pageRequest(
+    Schema.decodeUnknownSync(InstagramUsername)(username),
+    after
+  );
+  return postWebQuery(operation, variables);
+};
 
 const TRAVERSALS_KEY = 'watch-posts-traversals';
 

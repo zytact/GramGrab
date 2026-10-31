@@ -113,7 +113,7 @@ export const resolveUsernameToId = (username: string) =>
 // Shared Effect pipelines — parse → fetch → normalize
 // ---------------------------------------------------------------------------
 
-export function configuredGraphqlHeaders(request: ProtocolRequest): Record<string, string> {
+function configuredGraphqlHeaders(request: ProtocolRequest): Record<string, string> {
   return {
     ...(request.transport === 'form' ? IG_API_GRAPHQL_HEADERS : IG_GRAPHQL_HEADERS),
   };
@@ -246,44 +246,8 @@ const fetchShortcodeMedia = (shortcode: string) =>
     return { items, fetched: [] } satisfies Resolution;
   });
 
-function createReelsRequestVariables(kind: 'highlight' | 'story', id: string) {
-  return kind === 'highlight'
-    ? {
-        highlight_reel_ids: [id],
-        reel_ids: [],
-        location_ids: [],
-        precomposed_overlay: false,
-      }
-    : {
-        reel_ids: [id],
-        highlight_reel_ids: [],
-        location_ids: [],
-        precomposed_overlay: false,
-      };
-}
-
-const fetchConfiguredReelsMedia = (variables: Record<string, unknown>) =>
-  Effect.gen(function* () {
-    let lastError: GraphQLRequestFailed | NetworkError | ResponseShapeUnknown | undefined;
-    for (const { candidate, request } of configuredRequests(protocolConfig.operations.reelsMedia)) {
-      const result = yield* fetchReelsMedia(
-        request.endpoint,
-        candidate.kind === 'client_doc_id' ? 'doc_id' : candidate.kind,
-        candidate.id,
-        variables,
-        configuredGraphqlHeaders(request),
-        request.transport === 'form' ? 'POST' : 'GET'
-      ).pipe(Effect.either);
-      if (result._tag === 'Right') return result.right;
-      if (result.left._tag === 'RateLimited' || result.left._tag === 'WatchRequestDeferred')
-        return yield* Effect.fail(result.left);
-      lastError = result.left;
-    }
-    return yield* Effect.fail(lastError ?? new ResponseShapeUnknown({ context: 'reels_media' }));
-  });
-
 const fetchHighlightMedia = (highlightId: string) =>
-  fetchConfiguredReelsMedia(createReelsRequestVariables('highlight', highlightId)).pipe(
+  fetchReelsMedia(`highlight:${highlightId}`).pipe(
     Effect.map(
       (reels): Resolution => ({ items: normalizeReelsMediaItems(reels, 'highlight'), fetched: [] })
     )
@@ -297,16 +261,15 @@ const fetchStoryMedia = (username: string) =>
       return yield* Effect.fail(new UsernameUnresolved({ username }));
     }
 
-    const reels = yield* fetchConfiguredReelsMedia(createReelsRequestVariables('story', userId));
+    const reels = yield* fetchReelsMedia(userId);
 
     const fetched = fetchedMedia(
       reels.flatMap(reel =>
-        reel.items.map(item => ({
-          kind: 'stories',
-          owners: [String(reel.id)],
-          mediaId: item.id,
-          takenAt: 'taken_at_timestamp' in item ? item.taken_at_timestamp : undefined,
-        }))
+        reel.items.flatMap(item =>
+          'pk' in item
+            ? [{ kind: 'stories', owners: [reel.id], mediaId: item.pk, takenAt: item.taken_at }]
+            : []
+        )
       )
     );
     return { items: normalizeReelsMediaItems(reels, 'story'), fetched } satisfies Resolution;

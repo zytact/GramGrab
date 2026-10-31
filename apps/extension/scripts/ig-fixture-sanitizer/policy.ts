@@ -131,49 +131,30 @@ const resource = (prefix: string, mediaRecord: string): ReadonlyArray<PolicyRule
   preserve(`${prefix}.config_width`, ['number']),
 ];
 
-const storyItem = (prefix: string): ReadonlyArray<PolicyRule> => [
-  preserve(`${prefix}.__typename`),
-  entityField(`${prefix}.id`, 'MEDIA', prefix, 'ID', ['string', 'number'], 'MEDIA_ID'),
-  preserve(`${prefix}.is_video`, ['boolean']),
-  url(`${prefix}.display_url`, 'DISPLAY', 'MEDIA', prefix),
-  ...resource(`${prefix}.display_resources[]`, prefix),
-  ...resource(`${prefix}.video_resources[]`, prefix),
-  preserve(`${prefix}.video_resources[].mime_type`),
-  preserve(`${prefix}.video_resources[].profile`),
-  ...dimensions(`${prefix}.dimensions`),
-  preserve(`${prefix}.taken_at_timestamp`, ['number']),
-  preserve(`${prefix}.expiring_at_timestamp`, ['number']),
-  preserve(`${prefix}.video_duration`, ['number']),
-  preserve(`${prefix}.should_log_client_event`, ['boolean']),
-  url(`${prefix}.story_cta_url`, 'STORY_CTA', 'MEDIA', prefix),
-  preserve(`${prefix}.story_view_count`, ['number']),
-  opaque(`${prefix}.media_preview`, 'MEDIA_PREVIEW'),
-  opaque(`${prefix}.tracking_token`, 'TRACKING_TOKEN'),
-  ...person(`${prefix}.owner`),
-  preserve(`${prefix}.tappable_objects[].__typename`),
-  preserve(`${prefix}.tappable_objects[].height`, ['number']),
-  preserve(`${prefix}.tappable_objects[].rotation`, ['number']),
-  preserve(`${prefix}.tappable_objects[].width`, ['number']),
-  preserve(`${prefix}.tappable_objects[].x`, ['number']),
-  preserve(`${prefix}.tappable_objects[].y`, ['number']),
-  opaque(`${prefix}.tappable_objects[].id`, 'TAPPABLE_ID'),
-  opaque(`${prefix}.tappable_objects[].short_name`, 'TAPPABLE_TEXT'),
-  opaque(`${prefix}.tappable_objects[].custom_title`, 'TAPPABLE_TEXT'),
-  opaque(`${prefix}.tappable_objects[].attribution`, 'TAPPABLE_TEXT'),
-];
-
-const reel = (prefix: string): ReadonlyArray<PolicyRule> => [
-  preserve(`${prefix}.__typename`),
-  entityField(`${prefix}.id`, 'MEDIA', prefix, 'ID', ['string', 'number'], 'MEDIA_ID'),
-  preserve(`${prefix}.latest_reel_media`, ['number']),
-  preserve(`${prefix}.expiring_at`, ['number']),
-  preserve(`${prefix}.seen`, ['number']),
-  ...person(`${prefix}.owner`),
-  preserve(`${prefix}.owner.__typename`),
-  ...person(`${prefix}.user`),
-  preserve(`${prefix}.user.followed_by_viewer`, ['boolean']),
-  preserve(`${prefix}.user.requested_by_viewer`, ['boolean']),
-  ...storyItem(`${prefix}.items[]`),
+const reels = 'data.xdt_api__v1__feed__reels_media.reels_media[]';
+const storyItem = `${reels}.items[]`;
+/** The capture keeps only the fields GramGrab reads from a reel and its items. */
+const reelRules: ReadonlyArray<PolicyRule> = [
+  entityField(`${reels}.id`, 'MEDIA', reels, 'ID', ['string'], 'MEDIA_ID'),
+  preserve(`${reels}.reel_type`),
+  preserve(`${reels}.latest_reel_media`, ['number']),
+  ...person(`${reels}.user`),
+  preserve(`${storyItem}.__typename`),
+  // `<pk>_<owner ID>`, which no other namespace shares.
+  entityField(`${storyItem}.id`, 'MEDIA', storyItem, 'COMPOSITE_ID'),
+  entityField(`${storyItem}.pk`, 'MEDIA', storyItem, 'ID', ['string'], 'MEDIA_ID'),
+  preserve(`${storyItem}.media_type`, ['number']),
+  preserve(`${storyItem}.product_type`),
+  preserve(`${storyItem}.taken_at`, ['number']),
+  preserve(`${storyItem}.expiring_at`, ['number']),
+  preserve(`${storyItem}.original_width`, ['number']),
+  preserve(`${storyItem}.original_height`, ['number']),
+  url(`${storyItem}.image_versions2.candidates[].url`, 'IMAGE', 'MEDIA', storyItem),
+  preserve(`${storyItem}.image_versions2.candidates[].width`, ['number']),
+  preserve(`${storyItem}.image_versions2.candidates[].height`, ['number']),
+  url(`${storyItem}.video_versions[].url`, 'VIDEO', 'MEDIA', storyItem),
+  preserve(`${storyItem}.video_versions[].type`, ['number']),
+  preserve(`${storyItem}.video_duration`, ['number']),
 ];
 
 const graphqlErrors: ReadonlyArray<PolicyRule> = [
@@ -425,11 +406,6 @@ const trayRules: ReadonlyArray<PolicyRule> = [
   preserve(`${tray}.user.is_creator_agent_enabled`, ['boolean']),
 ];
 
-const storyEmptyContainers: FixturePolicy['emptyContainers'] = [
-  emptyArray('data.reels_media[].items[].overlay_image_resources'),
-  emptyObject('data.reels_media[].items[].story_app_attribution'),
-];
-
 const shortcodeEmptyContainers: FixturePolicy['emptyContainers'] = [
   emptyObject(`${shortcodeRoot}.gating_info`),
   emptyObject(`${shortcodeRoot}.sensitivity_friction_info`),
@@ -550,10 +526,7 @@ export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> 
       emptyArray(`${tray}.user.account_badges`),
     ],
   },
-  'highlights.json': {
-    rules: [...reel('data.reels_media[]'), ...graphqlErrors],
-    emptyContainers: storyEmptyContainers,
-  },
+  'highlights.json': { rules: [...reelRules, ...graphqlErrors] },
   'instants-photo.json': { rules: instantRules, emptyContainers: instantEmptyContainers },
   'instants-video.json': { rules: instantRules, emptyContainers: instantEmptyContainers },
   'instants-empty.json': { rules: instantRules, emptyContainers: instantEmptyContainers },
@@ -587,10 +560,7 @@ export const FIXTURE_POLICIES: Readonly<Record<FixtureFilename, FixturePolicy>> 
     ],
     emptyContainers: [emptyArray('items[].carousel_media')],
   },
-  'story.json': {
-    rules: [...reel('data.reels_media[]'), ...graphqlErrors],
-    emptyContainers: storyEmptyContainers,
-  },
+  'story.json': { rules: [...reelRules, ...graphqlErrors] },
   'profile-posts.json': {
     rules: profilePostsRules,
     emptyContainers: [emptyArray(`${postsConnection}.edges`)],

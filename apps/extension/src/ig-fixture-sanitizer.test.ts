@@ -225,7 +225,6 @@ describe('IG fixture sanitizer policy and transformation', () => {
         [
           'highlights.json',
           {
-            data: { reels_media: [] },
             errors: [
               {
                 message: 'Synthetic GraphQL structural message',
