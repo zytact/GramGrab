@@ -438,10 +438,23 @@ describe('Posts checks', () => {
     }
   );
 
-  it('reads fb_dtsg again once Instagram stops accepting it', async () => {
+  it('sends the fb_dtsg the viewer read named', async () => {
     await baselined();
     instagram.state.dtsgToken = 'DTSG_B';
     instagram.state.postTokens = [];
+
+    expect((await checkLater()).kinds[0]).toMatchObject({ _tag: 'KindCheckSucceeded' });
+    expect(instagram.state.postTokens).toEqual(['DTSG_B']);
+  });
+
+  it('reads fb_dtsg again once Instagram stops accepting it', async () => {
+    await baselined();
+    instagram.state.postTokens = [];
+    harness.setFetch((url, init) => {
+      if (init?.body instanceof URLSearchParams && init.body.has('fb_dtsg'))
+        instagram.state.dtsgToken = 'DTSG_B';
+      return instagram.handle(url, init);
+    });
 
     expect((await checkLater()).kinds[0]).toMatchObject({ _tag: 'KindCheckSucceeded' });
     expect(instagram.state.postTokens).toEqual(['DTSG_A', 'DTSG_B']);
@@ -644,13 +657,13 @@ describe('Media the person fetched', () => {
     instagram.state.viewer = VIEWER;
     expect((await checkLater()).kinds[0]).toMatchObject({ newCount: 1 });
 
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
     instagram.state.accounts.other = { id: '4004' };
     instagram.state.stories['4004'] = storyResponse('4004', [
       { id: '82', takenAt: seconds(Date.now()) },
     ]);
     await fetchByHand({ type: 'FETCH_MEDIA', url: 'https://www.instagram.com/stories/other/' });
-    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+    expect(instagram.state.homePageReads).toBe(homePageReads);
   });
 });
 

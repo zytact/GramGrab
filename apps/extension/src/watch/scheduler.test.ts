@@ -14,6 +14,7 @@ import {
   TARGET,
   VIEWER,
   createWatchInstagram,
+  isHomePage,
   postsPage,
   storyResponse,
 } from '../test/watch-instagram.ts';
@@ -178,7 +179,7 @@ describe('Watch scheduling', () => {
       const queued = await queueManual(VIEWER.id, crypto.randomUUID(), store.watches);
       queued.release();
     }
-    let rejectedViewerQueries = 0;
+    let rejectedViewerReads = 0;
     harness.setFetch((url, init) => {
       if (
         init?.body instanceof URLSearchParams &&
@@ -187,16 +188,12 @@ describe('Watch scheduling', () => {
         instagram.state.viewer = { id: '4004', username: 'instagram' };
         return json({ data: { user: { id: '9999', username: TARGET.username } } });
       }
-      if (
-        new URL(url).searchParams.get('query_hash') === 'd6f4427fbe92d846298cf93df0b937d3' &&
-        instagram.state.viewer?.id !== VIEWER.id
-      )
-        rejectedViewerQueries++;
+      if (isHomePage(url) && instagram.state.viewer?.id !== VIEWER.id) rejectedViewerReads++;
       return instagram.handle(url, init);
     });
     await wake();
     expect(storyRequests()).toEqual([TARGET.id]);
-    expect(rejectedViewerQueries).toBe(1);
+    expect(rejectedViewerReads).toBe(1);
     expect(harness.local.read('watch-scheduler')).toMatchObject({ suspended: true });
   });
 

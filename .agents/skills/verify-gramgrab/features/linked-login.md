@@ -13,7 +13,7 @@ can fetch and watch private accounts only their second account can see.
   through `runtime.openOptionsPage`, where the Logins control heads the
   sidebar.
 - Link: the Watches page copies the Instagram cookies of an open Incognito
-  window, confirms that account with the viewer query, and refuses it when it
+  window, confirms that account with the viewer read, and refuses it when it
   is the main login. Refusals render under `.opt-logins`, one per
   `LinkRefusalReason` in `src/options/logins.tsx`.
 - Unlink: deletes `linked-instagram-login` from `storage.local` and the session
@@ -27,7 +27,7 @@ can fetch and watch private accounts only their second account can see.
   worker responses into the stored copy and the rule.
 - Separate ledgers: `instagram-requests` for main, `instagram-requests.linked`
   for linked. A 429 on one never pauses the other.
-- Ended session: a viewer query that finds no linked viewer marks the record
+- Ended session: a viewer read that finds no linked viewer marks the record
   `ended`, pauses its Watches behind one `IG_LINKED_LOGIN_ENDED` attention item,
   and shows `Linked (signed out)`. Linking the same account again resumes them.
 
@@ -186,4 +186,4 @@ Adding the Watch spends linked requests of its own for the preview and baseline.
   of every log, evidence file, and PR.
 - Firefox hides the feature, so a Firefox run proving nothing here is correct.
 - Logging out of the second account anywhere ends the linked session. The next
-  linked viewer query then shows the ended state, which is the feature working.
+  linked viewer read then shows the ended state, which is the feature working.

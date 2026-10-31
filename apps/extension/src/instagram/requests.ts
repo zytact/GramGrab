@@ -1,6 +1,6 @@
 import { Context, Data, Effect, Layer, Schema } from 'effect';
 import type { InstagramLogin } from '@gramgrab/protocol';
-import { NetworkError } from '../effect/errors.ts';
+import { GraphQLRequestFailed, NetworkError, RateLimited } from '../effect/errors.ts';
 import { browser } from '../lib/browser.ts';
 import { linkedRoute, readLinkedLogin } from './linked-login.ts';
 import {
@@ -12,6 +12,14 @@ import {
   watchHold,
   type LedgerView,
 } from './request-state.ts';
+
+/** Fails a refused response: a 429 as a rate limit, any other error status as a failed request. */
+export const requireOk = (response: Response) =>
+  Effect.gen(function* () {
+    if (response.status === 429) return yield* Effect.fail(new RateLimited({ status: 429 }));
+    if (!response.ok)
+      return yield* Effect.fail(new GraphQLRequestFailed({ status: response.status }));
+  });
 
 /** What a caller says about an Instagram request. The service picks credentials for the login. */
 export interface InstagramRequestInit {

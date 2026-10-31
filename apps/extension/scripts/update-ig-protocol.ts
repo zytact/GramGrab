@@ -21,7 +21,6 @@ const defaultConfigPath = resolve(
 const OperationName = Schema.Literal(
   'mediaByShortcode',
   'reelsMedia',
-  'viewer',
   'profileById',
   'profilePosts',
   'profilePostsPage'
@@ -251,7 +250,7 @@ export function parseOperation(arguments_: readonly string[]): OperationName {
   const normalizedArguments = arguments_[0] === '--' ? arguments_.slice(1) : arguments_;
   if (normalizedArguments.length !== 2 || normalizedArguments[0] !== '--operation') {
     throw new Error(
-      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|viewer|profileById|profilePosts|profilePostsPage>'
+      'Usage: vp run update:ig-protocol --operation <mediaByShortcode|reelsMedia|profileById|profilePosts|profilePostsPage>'
     );
   }
   return Schema.decodeUnknownSync(OperationName)(normalizedArguments[1]);

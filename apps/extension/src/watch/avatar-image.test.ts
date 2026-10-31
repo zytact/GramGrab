@@ -339,7 +339,7 @@ describe('Watch Avatar images', () => {
     expect((await scheduleOf(VIEWER.id)).schedule.suspended).toBe(true);
   });
 
-  it('restores the memory-only login image from a background viewer query after restart', async () => {
+  it('restores the memory-only login image from a background viewer read after restart', async () => {
     instagram.state.viewer = { ...VIEWER, profile_pic_url: 'https://sanitized.invalid/viewer' };
     await addWatch('avatar');
     expect((await avatars(VIEWER.id)).login).toBe(STUB_AVATAR);

@@ -10,6 +10,22 @@ import { json } from './extension-harness.ts';
 export const VIEWER = { id: '1001', username: 'instagram' };
 export const TARGET = { id: '2002', username: 'instagram' };
 
+type FakeViewer = { id: string; username: string; profile_pic_url?: string };
+
+/** Instagram Web's home page, naming its `fb_dtsg` token and the signed-in viewer, or none. */
+export const homePage = (viewer: FakeViewer | null, token = 'DTSG_A') =>
+  new Response(
+    `<script>["DTSGInitialData",[],{"token":"${token}"},258],` +
+      `["PolarisViewer",[],${JSON.stringify({ data: viewer, id: viewer?.id ?? null })},7365]</script>`,
+    { headers: { 'Content-Type': 'text/html' } }
+  );
+
+/** Whether `url` reads Instagram Web's home page, where Watches learn the signed-in viewer. */
+export const isHomePage = (url: string) => {
+  const { hostname, pathname } = new URL(url);
+  return hostname === 'www.instagram.com' && pathname === '/';
+};
+
 export interface FakeStory {
   readonly id: string;
   readonly video?: boolean;
@@ -191,8 +207,8 @@ export function avatarProfile(account: {
  */
 export function createWatchInstagram() {
   const state = {
-    viewer: VIEWER as { id: string; username: string; profile_pic_url?: string } | null,
-    viewerRequests: 0,
+    viewer: VIEWER as FakeViewer | null,
+    homePageReads: 0,
     profile: avatarProfile({ ...TARGET, pictureId: 'PIC_A' }) as Record<string, unknown>,
     /** The account ID of every ID-keyed profile request. */
     profileRequests: [] as string[],
@@ -243,11 +259,6 @@ export function createWatchInstagram() {
         ? new Response(new Blob(['picture'], { type: 'image/jpeg' }))
         : undefined,
     ({ searchParams }) => {
-      if (searchParams.get('query_hash') !== 'd6f4427fbe92d846298cf93df0b937d3') return undefined;
-      state.viewerRequests += 1;
-      return state.viewer ? json({ data: { user: state.viewer } }) : json({}, 401);
-    },
-    ({ searchParams }) => {
       if (searchParams.get('query_hash') !== '45246d3fe16ccc6577e0bd297a5db1ab') return undefined;
       const targetId = variable(searchParams);
       return json(state.stories[targetId] ?? { data: { reels_media: [] } }, state.storyStatus);
@@ -259,12 +270,11 @@ export function createWatchInstagram() {
       const code = Object.keys(state.media).find(shortcode => shortcodeMediaId(shortcode) === id);
       return code ? json(state.media[code]) : json({}, 404);
     },
-    ({ hostname, pathname }) =>
-      hostname === 'www.instagram.com' && pathname === '/'
-        ? new Response(`["DTSGInitialData",[],{"token":"${state.dtsgToken}"}]`, {
-            headers: { 'Content-Type': 'text/html' },
-          })
-        : undefined,
+    url => {
+      if (!isHomePage(url.href)) return undefined;
+      state.homePageReads += 1;
+      return homePage(state.viewer, state.dtsgToken);
+    },
     ({ hostname, pathname }) => {
       const username = /^\/([^/]+)\/$/.exec(pathname)?.[1];
       if (hostname !== 'www.instagram.com' || !username) return undefined;

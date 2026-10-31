@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Answers the extension worker's Instagram requests whose URL contains <match>
 // with <status> and an empty body, the way Instagram throttles an endpoint.
-// `--pass N` lets the first N matching requests through untouched. Runs until
-// killed and prints one line per matching request.
+// `--pass N` lets the first N matching requests through untouched. `--exact`
+// matches only the URL equal to <match>. Runs until killed and prints one line
+// per matching request.
 //
-//   throttle.mjs <match> [status] [--pass N]   e.g. throttle.mjs highlights_tray 429
+//   throttle.mjs <match> [status] [--pass N] [--exact]   e.g. throttle.mjs highlights_tray 429
 //
 // Needs GRAMGRAB_CDP_PORT and GRAMGRAB_EXT_ID from session.env. It re-attaches
 // when the service worker restarts, so it survives an idle worker shutdown.
@@ -12,11 +13,13 @@
 const args = process.argv.slice(2);
 const passAt = args.indexOf('--pass');
 let passes = passAt === -1 ? 0 : Number(args.splice(passAt, 2)[1]);
+const exactAt = args.indexOf('--exact');
+if (exactAt !== -1) args.splice(exactAt, 1);
 const [match, status = '429'] = args;
 const port = process.env.GRAMGRAB_CDP_PORT;
 const extId = process.env.GRAMGRAB_EXT_ID;
 if (!match || !port || !extId) {
-  process.stderr.write('Usage: throttle.mjs <match> [status] [--pass N], with session.env sourced.\n');
+  process.stderr.write('Usage: throttle.mjs <match> [status] [--pass N] [--exact], with session.env sourced.\n');
   process.exit(2);
 }
 
@@ -43,7 +46,7 @@ async function attachWorker() {
       targetId: target.targetId,
       flatten: true,
     });
-    await send('Fetch.enable', { patterns: [{ urlPattern: `*${match}*` }] }, sessionId);
+    await send('Fetch.enable', { patterns: [{ urlPattern: exactAt === -1 ? `*${match}*` : match }] }, sessionId);
     process.stdout.write(`attached ${target.targetId}\n`);
   }
 }
