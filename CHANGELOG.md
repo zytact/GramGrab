@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.2](https://github.com/zytact/GramGrab/compare/v4.6.1...v4.6.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* **instagram:** get Stories and Highlights working again after Instagram retired their query ([#358](https://github.com/zytact/GramGrab/issues/358)) ([3d8a718](https://github.com/zytact/GramGrab/commit/3d8a7188705482165eef8e1a886206ef1a6023a4))
+
 ## [4.6.1](https://github.com/zytact/GramGrab/compare/v4.6.0...v4.6.1) (2026-10-31)
 
 
