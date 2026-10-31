@@ -1271,7 +1271,7 @@ describe('background dispatcher', () => {
       });
     });
 
-    it('requests a Highlight by its prefixed reel ID and names it without a colon', async () => {
+    it('requests a Highlight by its prefixed reel ID and names it by the bare ID', async () => {
       const highlightReels = structuredClone(storyReels);
       highlightReels.data.xdt_api__v1__feed__reels_media.reels_media[0]!.id = 'highlight:17900';
       const fetchSpy = lookupFetchMock({
@@ -1286,14 +1286,14 @@ describe('background dispatcher', () => {
         url: 'https://www.instagram.com/stories/highlights/17900/',
       });
 
-      expect(result).toMatchObject({ media: [{ filenameHint: 'highlight_17900_99' }] });
+      expect(result).toMatchObject({ media: [{ filenameHint: '17900_99' }] });
       const reels = vi
         .mocked(fetchSpy)
         .mock.calls.map(([, init]) => bodyOf(init))
         .find(body => body.includes('reel_ids_arr'));
-      expect(new URLSearchParams(reels).get('variables')).toContain(
-        '"reel_ids_arr":["highlight:17900"]'
-      );
+      expect(JSON.parse(new URLSearchParams(reels).get('variables')!)).toMatchObject({
+        reel_ids_arr: ['highlight:17900'],
+      });
     });
 
     it('preserves a username lookup rate limit', async () => {
@@ -1323,7 +1323,9 @@ describe('background dispatcher', () => {
         .mocked(fetchSpy)
         .mock.calls.map(([, init]) => bodyOf(init))
         .find(body => body.includes('reel_ids_arr'));
-      expect(new URLSearchParams(reels).get('variables')).toContain('"reel_ids_arr":["4242"]');
+      expect(JSON.parse(new URLSearchParams(reels).get('variables')!)).toMatchObject({
+        reel_ids_arr: ['4242'],
+      });
     });
 
     it('reads the account ID from the profile page when the account has no Posts', async () => {

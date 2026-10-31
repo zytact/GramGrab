@@ -426,7 +426,7 @@ function normalizeReelItem(reelId: string, item: ReelItem['items'][number]): Med
           width: item.original_width,
           height: item.original_height,
           takenAt: item.taken_at,
-          filenameHint: `${reelId.replace(':', '_')}_${item.pk}`,
+          filenameHint: `${highlightIdTail(reelId)}_${item.pk}`,
         },
       ]
     : [];
