@@ -68,9 +68,9 @@ const JSON_BRACE = /"(?:[^"\\]|\\.)*"|[{}]/g;
 function objectAt(text: string, start: number) {
   if (text[start] !== '{') return undefined;
   let depth = 0;
-  for (const { 0: token, index } of text.slice(start).matchAll(JSON_BRACE)) {
-    if (token === '{') depth++;
-    else if (token === '}' && --depth === 0) return text.slice(start, start + index + 1);
+  for (const match of text.slice(start).matchAll(JSON_BRACE)) {
+    if (match[0] === '{') depth++;
+    else if (match[0] === '}' && --depth === 0) return text.slice(start, start + match.index + 1);
   }
   return undefined;
 }
@@ -138,7 +138,6 @@ export const fetchViewer = Effect.gen(function* () {
   const key = VIEWER_KEYS[requests.login];
   const { response, page } = yield* readHomePage;
   return yield* Effect.gen(function* () {
-    if (response.status === 401) return yield* Effect.fail(new ViewerMissing());
     yield* requireOk(response);
     const { data: user } = yield* Schema.decodeUnknown(PolarisViewer)(viewerBlock(page)).pipe(
       Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' }))

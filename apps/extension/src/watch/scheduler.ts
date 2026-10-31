@@ -239,7 +239,7 @@ async function readyViewer(
 
 /**
  * Pacing defers `login`'s pending manual checks. Any other refusal suspends its Watches, except a
- * linked session Instagram ended, which the viewer query already recorded.
+ * linked session Instagram ended, which the viewer read already recorded.
  */
 async function viewerRefused(login: InstagramLogin, reason: string, linkedId: string | undefined) {
   if (reason === 'WatchRequestDeferred' || reason === 'RateLimited')

@@ -208,8 +208,7 @@ export function avatarProfile(account: {
 export function createWatchInstagram() {
   const state = {
     viewer: VIEWER as FakeViewer | null,
-    /** Home page reads, each of which names the viewer. */
-    viewerRequests: 0,
+    homePageReads: 0,
     profile: avatarProfile({ ...TARGET, pictureId: 'PIC_A' }) as Record<string, unknown>,
     /** The account ID of every ID-keyed profile request. */
     profileRequests: [] as string[],
@@ -273,7 +272,7 @@ export function createWatchInstagram() {
     },
     url => {
       if (!isHomePage(url.href)) return undefined;
-      state.viewerRequests += 1;
+      state.homePageReads += 1;
       return homePage(state.viewer, state.dtsgToken);
     },
     ({ hostname, pathname }) => {

@@ -23,7 +23,7 @@ const viewerAs = (login: InstagramLogin) =>
 
 /**
  * Links the login of the open Incognito window: copies its Instagram cookies, then confirms the
- * account with the viewer query as that login. It must differ from the main login. Linking the
+ * account with the viewer read as that login. It must differ from the main login. Linking the
  * account that was linked before resumes its Watches.
  */
 export async function linkLogin(): Promise<LinkLoginResponse> {

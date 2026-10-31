@@ -657,13 +657,13 @@ describe('Media the person fetched', () => {
     instagram.state.viewer = VIEWER;
     expect((await checkLater()).kinds[0]).toMatchObject({ newCount: 1 });
 
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
     instagram.state.accounts.other = { id: '4004' };
     instagram.state.stories['4004'] = storyResponse('4004', [
       { id: '82', takenAt: seconds(Date.now()) },
     ]);
     await fetchByHand({ type: 'FETCH_MEDIA', url: 'https://www.instagram.com/stories/other/' });
-    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+    expect(instagram.state.homePageReads).toBe(homePageReads);
   });
 });
 

@@ -166,10 +166,10 @@ describe('owner-bound access', () => {
     }
   });
 
-  it('keeps malformed, refused, and offline viewer queries behind the authentication gate', async () => {
+  it('keeps malformed, refused, and offline viewer reads behind the authentication gate', async () => {
     await addTarget();
     for (const handle of [
-      () => json({ data: {} }),
+      () => new Response('<html></html>', { headers: { 'Content-Type': 'text/html' } }),
       () => Promise.resolve(new Response(null, { status: 503 })),
       () => Promise.reject(new Error('offline')),
     ]) {
@@ -179,20 +179,6 @@ describe('owner-bound access', () => {
       expect(failureOf(response)?.detail).toEqual({ _tag: 'StoredWatchCount', count: 1 });
       expect(response.result).toBeUndefined();
     }
-  });
-
-  it('does not authorize a partial viewer response with GraphQL errors', async () => {
-    await addTarget();
-    harness.setFetch(() =>
-      json({
-        data: { user: { id: VIEWER.id, username: VIEWER.username } },
-        errors: [{ message: 'request rejected' }],
-      })
-    );
-    const response = await run(WatchList.make());
-    expect(failureOf(response)?.failure.code).toBe('IG_NOT_AUTHENTICATED');
-    expect(failureOf(response)?.detail).toEqual({ _tag: 'StoredWatchCount', count: 1 });
-    expect(response.result).toBeUndefined();
   });
 });
 

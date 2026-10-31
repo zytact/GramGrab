@@ -897,7 +897,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const login = () => container.querySelector('.opt-logins-menu summary img.opt-avatar');
     await waitFor(() => expect(login()?.getAttribute('src')).toBe(STUB_AVATAR));
     await harness.loadWorker();
-    const verified = instagram.state.viewerRequests;
+    const verified = instagram.state.homePageReads;
     harness.browser.runtime.sendMessage.mockClear();
     await act(async () => {
       await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
@@ -914,7 +914,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       );
     });
     expect(login()?.getAttribute('src')).toBe(STUB_AVATAR);
-    expect(instagram.state.viewerRequests).toBe(verified);
+    expect(instagram.state.homePageReads).toBe(verified);
   });
 
   it('shows the check the worker holds back across navigation, then the outcome it recorded', async () => {
@@ -1005,7 +1005,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     render(<Watches />);
     expect(await screen.findByText('First check pending')).toBeDefined();
     expect(screen.getByText(/^Checking, 1 left this round · /)).toBeDefined();
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
 
     const nextRoundAt = now + 12 * 60 * 60_000;
     await harness.local.set({
@@ -1024,7 +1024,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const next = await screen.findByText(/^Next check in 12h · \d+% storage$/);
     expect(next.getAttribute('title')).toBe(new Date(nextRoundAt).toLocaleString());
     expect(screen.queryByText('First check pending')).toBeNull();
-    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+    expect(instagram.state.homePageReads).toBe(homePageReads);
   });
 
   it('follows another login once a background check verified it', async () => {
@@ -1035,7 +1035,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
         selector: '.opt-logins-menu summary .opt-name',
       })
     ).toBeDefined();
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
 
     instagram.state.viewer = { id: '1002', username: 'instagram' };
     harness.session.write('watch-viewer', { accountId: '1002', username: 'instagram' });
@@ -1044,7 +1044,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(
       await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
-    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+    expect(instagram.state.homePageReads).toBe(homePageReads + 1);
   });
 
   it('follows a login switch on window return without a Watch write or due check', async () => {
@@ -1054,7 +1054,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     await user.click(await screen.findByRole('checkbox', { name: 'Select inbox item' }));
     expect(screen.getByRole('button', { name: 'Fetch media' })).toHaveProperty('disabled', false);
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
 
     instagram.state.viewer = { id: '1002', username: 'instagram' };
     fireEvent(window, new Event('blur'));
@@ -1066,7 +1066,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Fetch media' })).toBeNull();
-    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+    expect(instagram.state.homePageReads).toBe(homePageReads + 1);
   });
 
   it('finds sign-out on return and recovers on the next return after signing in', async () => {
@@ -1093,17 +1093,17 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await screen.findByRole('heading', { name: 'Needs you' });
     instagram.state.viewer = null;
     expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Rejected' });
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
 
     expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
     expect(screen.getByText('1 Watch stored in this browser.')).toBeDefined();
     expect(screen.queryByText(`@${VIEWER.username}`)).toBeNull();
-    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+    expect(instagram.state.homePageReads).toBe(homePageReads);
 
     instagram.state.viewer = VIEWER;
     expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Completed' });
     expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeDefined();
-    expect(instagram.state.viewerRequests).toBe(viewerRequests + 2);
+    expect(instagram.state.homePageReads).toBe(homePageReads + 2);
   });
 
   it('follows another login a CLI command verified, asking Instagram once', async () => {
@@ -1112,10 +1112,10 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await screen.findByRole('heading', { name: 'Needs you' });
     instagram.state.viewer = { id: '1002', username: 'instagram' };
     expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Completed' });
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
 
     expect(await screen.findByText('Paused · sign in as that login to resume')).toBeDefined();
-    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+    expect(instagram.state.homePageReads).toBe(homePageReads + 1);
   });
 
   it('keeps the sign-in gate when a reply started before the CLI lost the login arrives later', async () => {
@@ -1154,7 +1154,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     seedWatchWithProblemAndEntry();
     const { unmount } = render(<Watches />);
     await screen.findByRole('heading', { name: 'Needs you' });
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
     let release = () => {};
     const pending = new Promise<void>(resolve => {
       release = resolve;
@@ -1169,11 +1169,11 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     visibility.mockReturnValue('hidden');
     fireEvent(document, new Event('visibilitychange'));
     fireEvent(window, new Event('focus'));
-    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+    expect(instagram.state.homePageReads).toBe(homePageReads);
     visibility.mockReturnValue('visible');
     fireEvent(document, new Event('visibilitychange'));
     fireEvent(window, new Event('focus'));
-    await waitFor(() => expect(instagram.state.viewerRequests).toBe(viewerRequests + 1));
+    await waitFor(() => expect(instagram.state.homePageReads).toBe(homePageReads + 1));
     await harness.local.set({ 'watch-store': harness.local.read('watch-store') });
     release();
 
@@ -1181,11 +1181,11 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
     expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
-    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+    expect(instagram.state.homePageReads).toBe(homePageReads + 1);
     unmount();
     fireEvent(window, new Event('blur'));
     fireEvent(window, new Event('focus'));
-    expect(instagram.state.viewerRequests).toBe(viewerRequests + 1);
+    expect(instagram.state.homePageReads).toBe(homePageReads + 1);
   });
 
   it('rechecks a return during the initial query instead of accepting its earlier login', async () => {
@@ -1200,7 +1200,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       return response;
     });
     render(<Watches />);
-    await waitFor(() => expect(instagram.state.viewerRequests).toBe(1));
+    await waitFor(() => expect(instagram.state.homePageReads).toBe(1));
     instagram.state.viewer = { id: '1002', username: 'instagram' };
     fireEvent(window, new Event('blur'));
     fireEvent(window, new Event('focus'));
@@ -1210,7 +1210,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
     expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
-    expect(instagram.state.viewerRequests).toBe(2);
+    expect(instagram.state.homePageReads).toBe(2);
   });
 
   it('shows a rate-limit pause the worker starts while the page is open', async () => {
@@ -1218,7 +1218,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     render(<Watches />);
     await screen.findByRole('heading', { name: 'Needs you' });
     expect(screen.queryByText('Watches paused.')).toBeNull();
-    const viewerRequests = instagram.state.viewerRequests;
+    const homePageReads = instagram.state.homePageReads;
     const attention = screen.getByRole('button', { name: /Needs you/ });
     expect(attention.textContent).toContain('1');
 
@@ -1227,7 +1227,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
 
     expect(await screen.findByText('Watches paused.')).toBeDefined();
     await waitFor(() => expect(attention.textContent).toContain('2'));
-    expect(instagram.state.viewerRequests).toBe(viewerRequests);
+    expect(instagram.state.homePageReads).toBe(homePageReads);
   });
 
   it('shows the sign-in gate and clears the badge when an action finds the login gone', async () => {
@@ -1433,7 +1433,7 @@ describe('Watches of both logins', { timeout: 15_000 }, () => {
   const LINKED_WATCH_ID = '7a2c3b0f-8d4e-4c9b-8f2a-3b4c5d6e7f80';
   const OTHER_WATCH_ID = '8b3d4c1a-9e5f-4dab-9a3b-4c5d6e7f8091';
 
-  /** Links `LINKED` as the second login and answers its viewer query. */
+  /** Links `LINKED` as the second login and answers its viewer read. */
   beforeEach(() => {
     harness.local.write('linked-instagram-login', {
       version: 1,

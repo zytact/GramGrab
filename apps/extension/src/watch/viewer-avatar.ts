@@ -1,7 +1,7 @@
 import { loadJpeg } from './avatar-jpeg.ts';
 
 /**
- * The verified login's picture, held in worker memory only. The viewer query that verifies the
+ * The verified login's picture, held in worker memory only. The viewer read that verifies the
  * login carries its URL, so showing it costs no Instagram request.
  */
 let viewerPicture:

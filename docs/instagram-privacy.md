@@ -36,7 +36,7 @@ Watches are the one exception to request-in-the-moment access. See
   count as attempts. They run only while the creating Instagram login is verified, and the Watch
   cadence and rate policy bound them. Watch auto-downloads and Avatar images fetch from the CDN.
   Notifications use the cached Watch Avatar without another CDN request.
-  The login's own Avatar comes from the viewer query that verifies
+  The login's own Avatar comes from the viewer read that verifies
   the login, so showing it costs no request; it is held only in memory.
 - **Stored state.** The Watch store lives in `storage.local` and holds only what its allowlisted
   Effect schema permits:
@@ -92,7 +92,7 @@ One browser profile may hold one linked second Instagram login. See
 
 - **Linking.** The person signs in to the second account in an Incognito window and clicks "Link
   this login" on the Watches page. GramGrab reads that window's `instagram.com` cookies once,
-  confirms the account with the viewer query, and refuses the main login.
+  confirms the account with the viewer read, and refuses the main login.
 - **Stored state.** While a login is linked, `storage.local` holds its account ID, a copy of its
   Instagram cookies, unencrypted at rest, and whether Instagram ended its session. Its username is
   kept only in `storage.session`, never in `storage.local`. Unlink deletes the record and the request rule.
