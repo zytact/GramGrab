@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.3](https://github.com/zytact/GramGrab/compare/v4.6.2...v4.6.3) (2026-11-01)
+
+
+### Performance Improvements
+
+* **watch:** open the Watches page instantly and stop re-checking sign-in on every action ([#361](https://github.com/zytact/GramGrab/issues/361)) ([92b0661](https://github.com/zytact/GramGrab/commit/92b0661eada14a07d644907bd6df472dca405b69))
+
 ## [4.6.2](https://github.com/zytact/GramGrab/compare/v4.6.1...v4.6.2) (2026-10-31)
 
 
