@@ -377,7 +377,7 @@ described in Live page below.
    in `watch-scheduler` still holds one job for the Watch.
 3. Stay on the Inbox tab until storage reports `ManualCheckFinished`, using the
    live page or a bounded worker-storage wait. CLI Watch reads verify the viewer
-   and consume requests, so they are not a polling mechanism. A check took 2 to 11
+   and can consume requests, so they are not a polling mechanism. A check took 2 to 11
    minutes in live runs, longer while an unattended round shares the queue.
    Return to the Watch: the button reads `Check now` and the line reads
    `Last check ...:` with one outcome per kind. It survives a reload.
@@ -512,8 +512,9 @@ same login.
    without changing it. A browser session with no `watch-viewer` yet shows
    `Loading Watches…` until its first verification answers.
 7. With a page marker set, record the request count and run
-   `gramgrab watch list` once. The count grows by exactly the CLI's one request,
-   and the page keeps its marker and console. To drive the page's login-loss
+   `gramgrab watch list` once. The count grows by at most the CLI's one viewer
+   request, none within 5 minutes of the last read, and the page keeps its
+   marker and console. To drive the page's login-loss
    path without signing out, run
    `chrome.storage.session.remove('watch-viewer')` from the worker, which is
    what a viewer read that finds no login does. The page shows `Sign in to
