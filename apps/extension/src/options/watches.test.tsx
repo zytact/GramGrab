@@ -21,6 +21,7 @@ import {
 import { processingBrowser, silentBrowser } from '../test/processing-browser.ts';
 import type { MessageResponse, WatchAvatarsResponse } from '../messaging/contracts.ts';
 import { WATCH_AVATAR_NOTE } from './copy.ts';
+import { UNDO_MS } from './inbox-export.tsx';
 import { Watches } from './watches.tsx';
 
 /** The sidebar's Inbox view, named with its count. */
@@ -50,6 +51,42 @@ afterEach(() => {
 /** A sidebar button, which no All inbox account chip can match. */
 const findSidebarButton = async (name: RegExp) =>
   within(await screen.findByRole('navigation')).findByRole('button', { name });
+
+/** The pinned bar of selected inbox entries. */
+const BAR = 'Selected inbox entries';
+const bar = () => screen.getByRole('toolbar', { name: BAR });
+
+/** Fake timers that still advance, so a removal's Undo window can be skipped. */
+function withUndoClock() {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+}
+
+/** Every Watch command of kind `tag` the page sent. */
+const commandsOf = (tag: string) =>
+  vi
+    .mocked(harness.browser.runtime.sendMessage)
+    .mock.calls.flatMap(([message]) =>
+      (message as { command?: { _tag: string } }).command?._tag === tag ? [message] : []
+    );
+const removeCommands = () => commandsOf('WatchInboxRemove');
+
+/** Reports every observed row as in view, so inbox thumbnails load at once. */
+function stubRowsInView() {
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(private readonly report: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        this.report(
+          [{ isIntersecting: true, target } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver
+        );
+      }
+      disconnect() {}
+    }
+  );
+}
 
 async function addWatch(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: '+ Add' }));
@@ -119,7 +156,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
           collect: { at: Date.now() - 180_000 },
         },
       ]);
-      const user = userEvent.setup();
+      const user = withUndoClock();
       render(<Watches />);
       if (surface === 'Watch inbox') {
         await user.click(await screen.findByRole('button', { name: /@instagram/ }));
@@ -127,27 +164,38 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       } else await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
 
       const checkboxes = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
-      expect(screen.getByRole('button', { name: 'Remove selected (0)' })).toHaveProperty(
-        'disabled',
-        true
-      );
+      expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
       await user.click(screen.getByRole('button', { name: 'Select all' }));
       expect(
         checkboxes.every(checkbox => checkbox instanceof HTMLInputElement && checkbox.checked)
       ).toBe(true);
-      await user.click(screen.getByRole('button', { name: 'Clear selection' }));
+      expect(bar().textContent).toMatch(/^3 selected · 2 files/);
+      await user.click(within(bar()).getByRole('button', { name: 'Clear' }));
       expect(
         checkboxes.every(checkbox => checkbox instanceof HTMLInputElement && !checkbox.checked)
       ).toBe(true);
       await user.click(screen.getByRole('button', { name: 'Select all' }));
       await user.click(checkboxes[0]!);
       await user.click(checkboxes[2]!);
-      expect(screen.getByRole('button', { name: 'Fetch media' })).toHaveProperty('disabled', true);
+      expect(within(bar()).getByRole('button', { name: 'Edit before download' })).toHaveProperty(
+        'disabled',
+        true
+      );
       await user.click(checkboxes[2]!);
-      await user.click(screen.getByRole('button', { name: 'Remove selected (2)' }));
+      await user.click(within(bar()).getByRole('button', { name: 'Remove' }));
 
+      expect(screen.getAllByRole('checkbox', { name: 'Select inbox item' })).toHaveLength(1);
+      expect(screen.getByRole('status').textContent).toMatch(/Removed 2 entries/);
+      expect(removeCommands()).toEqual([]);
+      await act(() => vi.advanceTimersByTimeAsync(UNDO_MS));
       await waitFor(() =>
-        expect(screen.getAllByRole('checkbox', { name: 'Select inbox item' })).toHaveLength(1)
+        expect(removeCommands()).toEqual([
+          {
+            type: 'WATCH_COMMAND',
+            command: { _tag: 'WatchInboxRemove', entryIds: [unavailableId, photoId] },
+            login: 'main',
+          },
+        ])
       );
       const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
       expect(store.watches[0]?.enabled).toBe(true);
@@ -155,39 +203,68 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       expect(
         store.watches[0]?.discoveries.find(entry => entry.id === unavailableId)?.collect
       ).toHaveProperty('removedAt');
-      expect(harness.browser.runtime.sendMessage).toHaveBeenCalledWith({
-        type: 'WATCH_COMMAND',
-        command: { _tag: 'WatchInboxRemove', entryIds: [unavailableId, photoId] },
-        login: 'main',
-      });
-      expect(screen.getByRole('button', { name: 'Remove selected (0)' })).toHaveProperty(
-        'disabled',
-        true
-      );
-      await user.click(screen.getByRole('button', { name: 'Select all' }));
-      await user.click(screen.getByRole('button', { name: 'Remove selected (1)' }));
-      await screen.findByText('Nothing here yet.');
+      expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
       expect(harness.downloads).toEqual([]);
     }
   );
 
-  it('keeps the selection and shows a failure when bulk removal cannot save', async () => {
+  it('brings removed entries back with Undo and deletes nothing', async () => {
     seedWatchWithProblemAndEntry();
-    const user = userEvent.setup();
+    const user = withUndoClock();
+    render(<Watches />);
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+    await user.click(await screen.findByRole('button', { name: 'Remove' }));
+    expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByRole('checkbox', { name: 'Select inbox item' })).toBeDefined();
+    await act(() => vi.advanceTimersByTimeAsync(UNDO_MS));
+    expect(removeCommands()).toEqual([]);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('shows a failure and keeps the entry when removal cannot save', async () => {
+    seedWatchWithProblemAndEntry();
+    const user = withUndoClock();
     render(<Watches />);
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     await user.click(await screen.findByRole('button', { name: 'Select all' }));
     harness.local.set.mockRejectedValue(new Error('Storage write refused'));
-    await user.click(screen.getByRole('button', { name: 'Remove selected (1)' }));
+    await user.click(within(bar()).getByRole('button', { name: 'Remove' }));
+    await act(() => vi.advanceTimersByTimeAsync(UNDO_MS));
     await screen.findByText('The browser refused to save Watch data');
-    expect(screen.getByRole('checkbox', { name: 'Select inbox item' })).toHaveProperty(
-      'checked',
-      true
-    );
-    expect(screen.getByRole('button', { name: 'Remove selected (1)' })).toHaveProperty(
-      'disabled',
-      false
-    );
+    expect(screen.getByRole('checkbox', { name: 'Select inbox item' })).toBeDefined();
+  });
+
+  it('keeps the selection across Watches and downloads it as Original from the bar', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
+        discoveredAt: Date.now(),
+        collect: { at: Date.now() },
+      },
+    ]);
+    instagram.state.media.C200 = restMedia({ id: '200', video: false, takenAt: 2 });
+    addCreatorsWatch();
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await findSidebarButton(/@instagram/));
+    const photo = (await screen.findByRole('link', { name: 'Photo' })).closest('.opt-line');
+    if (!(photo instanceof HTMLElement)) throw new Error('Missing Photo entry');
+    await user.click(within(photo).getByRole('checkbox', { name: 'Select inbox item' }));
+    expect(screen.getByText('Watch for')).toBeDefined();
+    await user.click(await findSidebarButton(/@creators/));
+    await user.click((await screen.findAllByRole('checkbox', { name: 'Select inbox item' }))[0]!);
+    await user.click(await findSidebarButton(INBOX_TAB));
+    expect(bar().textContent).toMatch(/^2 selected · 2 files across 2 Watches/);
+
+    await user.click(within(bar()).getByRole('button', { name: 'Download 2' }));
+    await waitFor(() => expect(harness.downloads.length).toBeGreaterThan(0));
+    expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
+    expect(commandsOf('WatchInboxExport')).toMatchObject([
+      { command: { entryIds: expect.arrayContaining(['2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a']) } },
+    ]);
   });
 
   it('shows saved failed-export recovery on its row without selecting it', async () => {
@@ -310,7 +387,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(screen.getByRole('button', { name: 'Select all' }));
     await user.click(screen.getByRole('button', { name: 'Videos' }));
     expect(rows()).toEqual(['C@creators · Video']);
-    expect(screen.getByRole('button', { name: 'Remove selected (0)' })).toBeDefined();
+    expect(screen.getByRole('toolbar', { name: BAR }).textContent).toMatch(/^3 selected/);
     await user.click(screen.getByRole('button', { name: 'Stories' }));
     expect(rows()).toEqual(['I@instagram · Video']);
     await user.click(screen.getByRole('button', { name: '@creators' }));
@@ -448,7 +525,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(screen.getByRole('button', { name: /^Inbox \(/ }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
     await user.click(screen.getByRole('checkbox', { name: 'Select inbox item' }));
-    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await user.click(screen.getByRole('button', { name: 'Edit before download' }));
     await waitFor(() => expect(document.querySelectorAll('time.item-expiry')).toHaveLength(2));
     const deadline = new Date(expiresAt * 1000).toISOString();
     for (const label of document.querySelectorAll('time.item-expiry')) {
@@ -494,7 +571,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
           await write(items);
         });
       }
-      await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+      await user.click(screen.getByRole('button', { name: 'Edit before download' }));
 
       await screen.findAllByText(/Story expired/);
       if (failWrite) await screen.findAllByText('The browser refused to save Watch data');
@@ -525,7 +602,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     const [, video] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
     await user.click(video!);
-    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await user.click(screen.getByRole('button', { name: 'Edit before download' }));
     const frame = await screen.findByRole('checkbox', { name: 'Frame' });
     expect(document.querySelector('.media-item video')).not.toBeNull();
     expect(harness.downloads).toHaveLength(0);
@@ -563,7 +640,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     const [, avatar] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
     await user.click(avatar!);
-    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await user.click(screen.getByRole('button', { name: 'Edit before download' }));
     await screen.findByAltText('Preview');
     expect(screen.queryByRole('checkbox', { name: 'Frame' })).toBeNull();
     expect(screen.queryByRole('checkbox', { name: 'Remove audio' })).toBeNull();
@@ -600,7 +677,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     const [, video] = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
     await user.click(video!);
-    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await user.click(screen.getByRole('button', { name: 'Edit before download' }));
     await user.click(await screen.findByRole('button', { name: 'Crop item 01' }));
     await user.click(screen.getByRole('button', { name: '1:1' }));
     await user.click(screen.getByRole('button', { name: 'Done' }));
@@ -648,7 +725,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const row = (await screen.findByRole('link', { name: /Carousel/ })).closest('.opt-line');
     if (!(row instanceof HTMLElement)) throw new Error('Missing Sidecar entry');
     await user.click(within(row).getByRole('checkbox', { name: 'Select inbox item' }));
-    await user.click(screen.getByRole('button', { name: 'Fetch media' }));
+    await user.click(screen.getByRole('button', { name: 'Edit before download' }));
     await screen.findByAltText('Preview');
     expect(document.querySelectorAll('.media-item')).toHaveLength(2);
     expect(harness.downloads).toHaveLength(0);
@@ -685,19 +762,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       },
     ]);
     instagram.state.media.C600 = restMedia({ id: '600', takenAt: 2, children: ['601', '602'] });
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        constructor(private readonly report: IntersectionObserverCallback) {}
-        observe(target: Element) {
-          this.report(
-            [{ isIntersecting: true, target } as IntersectionObserverEntry],
-            this as unknown as IntersectionObserver
-          );
-        }
-        disconnect() {}
-      }
-    );
+    stubRowsInView();
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
@@ -715,6 +780,42 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       login: 'main',
     });
     expect(screen.getByText('Pick a Watch on the left to change it.')).toBeDefined();
+  });
+
+  it('reuses a thumbnail kept in session storage when the page opens again', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
+        discoveredAt: Date.now(),
+        collect: { at: Date.now() },
+      },
+    ]);
+    instagram.state.media.C200 = restMedia({ id: '200', video: false, takenAt: 2 });
+    stubRowsInView();
+    const previews = () =>
+      vi
+        .mocked(harness.browser.runtime.sendMessage)
+        .mock.calls.filter(
+          ([message]) => (message as { type: string }).type === 'WATCH_INBOX_PREVIEW'
+        ).length;
+    const thumbnail = async () => {
+      const user = userEvent.setup();
+      const page = render(<Watches />);
+      await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+      const row = (await screen.findByRole('link', { name: 'Photo' })).closest('.opt-line');
+      await waitFor(() => expect(row?.querySelector('.opt-thumb img')).not.toBeNull());
+      const src = row?.querySelector('.opt-thumb img')?.getAttribute('src');
+      page.unmount();
+      return src;
+    };
+
+    const first = await thumbnail();
+    const requests = previews();
+    expect(await thumbnail()).toBe(first);
+    expect(previews()).toBe(requests);
+    expect(JSON.stringify(harness.local.read('watch-store'))).not.toContain(first);
   });
 
   it('offers confirmation for uncertain files and dismissal for final download failures', async () => {
@@ -1105,7 +1206,10 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     render(<Watches />);
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     await user.click(await screen.findByRole('checkbox', { name: 'Select inbox item' }));
-    expect(screen.getByRole('button', { name: 'Fetch media' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'Edit before download' })).toHaveProperty(
+      'disabled',
+      false
+    );
     const homePageReads = instagram.state.homePageReads;
 
     instagram.state.viewer = { id: '1002', username: 'instagram' };
@@ -1117,7 +1221,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     ).toBeDefined();
     expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
     expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Fetch media' })).toBeNull();
+    expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
     expect(instagram.state.homePageReads).toBe(homePageReads + 1);
   });
 
@@ -1375,7 +1479,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       'disabled',
       false
     );
-    expect(container.querySelector('.opt-feed > p.opt-banner-error')).toBeNull();
+    expect(container.querySelector('.opt-feed-body > p.opt-banner-error')).toBeNull();
 
     harness.local.failWrites = false;
     await user.click(within(alert).getByRole('button', { name: 'Try again' }));

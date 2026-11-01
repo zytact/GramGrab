@@ -61,7 +61,8 @@ Watches are the one exception to request-in-the-moment access. See
   login picker can name them and the Watches page can list that login's Watches while it asks
   Instagram again. The linked login's cookies are a
   separate record, not Watch state; see Linked login. A Posts traversal
-  cursor lives only in `storage.session`. Each Watch entry links to its Instagram page, built
+  cursor lives only in `storage.session`, and so does each inbox entry's thumbnail URL, so the
+  Watches page asks Instagram for it once per browser session. Each Watch entry links to its Instagram page, built
   when shown from the username and the stored shortcode or Story ID; the link is never stored.
 
 - **Fetched media.** When the person fetches a Post, Sidecar, Story, or Instant in the popup,
