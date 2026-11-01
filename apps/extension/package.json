@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@fontsource/dm-mono": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
     "@gramgrab/protocol": "workspace:*",
     "effect": "^3.22.0",
     "mediabunny": "^1.51.0",
