@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { DiscoverySummary, FailureCode, InstagramLogin } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { sendMessage } from '../messaging/send.ts';
+import type { MessageResponse } from '../messaging/contracts.ts';
 
 const PARALLEL_LOADS = 2;
 
 /** Runs at most `max` tasks at once, starting queued ones in order. */
-function concurrencyLimit(max: number) {
+export function concurrencyLimit(max: number) {
   let running = 0;
   const queue: (() => void)[] = [];
   return <T,>(task: () => Promise<T>) =>
@@ -28,6 +29,18 @@ function concurrencyLimit(max: number) {
 /** Failures after which further thumbnail requests would only add Instagram traffic. */
 const HALTING = new Set<FailureCode>(['IG_RATE_LIMITED', 'IG_NOT_AUTHENTICATED']);
 
+type Preview = MessageResponse<'WATCH_INBOX_PREVIEW'>;
+
+const halts = ({ failure }: Preview) =>
+  failure?._tag === 'CommandFailure' && HALTING.has(failure.failure.code);
+
+/** A video's poster, or an image itself. */
+function thumbnailOf({ media }: Preview) {
+  const first = media?.[0];
+  if (!first) return undefined;
+  return first.type === 'video' ? first.previewUrl : (first.previewUrl ?? first.url);
+}
+
 const sessionKey = (entry: DiscoverySummary) => `inbox-thumbnail:${entry.entryId}`;
 
 /**
@@ -44,17 +57,15 @@ export function useInboxThumbnails(loginOf: (watchId: string) => InstagramLogin)
     const fresh = async (entry: DiscoverySummary) => {
       const owner = login.current(entry.watchId);
       if (halted.has(owner)) return undefined;
-      const { media, failure } = await sendMessage({
+      const preview = await sendMessage({
         type: 'WATCH_INBOX_PREVIEW',
         entryId: entry.entryId,
         login: owner,
       });
-      if (failure?._tag === 'CommandFailure' && HALTING.has(failure.failure.code))
-        halted.add(owner);
-      const first = media?.[0];
-      const url = first?.type === 'video' ? first.previewUrl : (first?.previewUrl ?? first?.url);
+      if (halts(preview)) halted.add(owner);
+      const url = thumbnailOf(preview);
       // An empty string records that the entry has nothing to show, which is as final as a URL.
-      if (!failure)
+      if (!preview.failure)
         await browser.sessionStorage.set({ [sessionKey(entry)]: url ?? '' }).catch(() => {});
       return url;
     };

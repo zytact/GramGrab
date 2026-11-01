@@ -53,7 +53,12 @@ import {
   relativeUntil,
   WATCH_AVATAR_NOTE,
 } from './copy.ts';
-import { InboxExportContext, InboxExportControls, useInboxExport } from './inbox-export.tsx';
+import {
+  InboxActionBar,
+  InboxExportContext,
+  InboxExportControls,
+  useInboxExport,
+} from './inbox-export.tsx';
 import { RecoveryActions } from './recovery-actions.tsx';
 import { AllInbox, WatchDetail, healthText, runCommand, runRead } from './watch-detail.tsx';
 import { Avatar } from './avatar.tsx';
@@ -1484,6 +1489,7 @@ function Feed({
           onChanged={onChanged}
         />
       )}
+      <InboxActionBar />
     </section>
   );
 }
@@ -1547,7 +1553,7 @@ function Inspector({
   onRun: Run;
   onDeleted: () => void;
 }) {
-  if (exporter.active) return <InboxExportControls value={exporter} />;
+  if (exporter.editing) return <InboxExportControls value={exporter} />;
   if (!selected) return <p className="opt-meta">Pick a Watch on the left to change it.</p>;
   if (selected.held)
     return <p className="opt-meta">Sign in as the login that owns this Watch to change it.</p>;
@@ -1587,7 +1593,7 @@ function Console({
   const selected = typeof current === 'object' ? ownerOf(current.watchId) : undefined;
 
   const go = (next: View) => {
-    exporter.clear();
+    if (exporter.editing) exporter.closeEditor();
     setActionFailure(undefined);
     setView(next);
   };

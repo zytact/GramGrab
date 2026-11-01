@@ -21,6 +21,9 @@ import { loadVideoMetadata } from '../popup/video-metadata.ts';
 import { useFrameSeekEffect } from '../popup/use-frame-seek.ts';
 import { withClampedFrameSecond, type FrameExportSetting } from '../frame-export/timestamp.ts';
 import { useMediaEdits } from '../popup/use-media-edits.ts';
+import { concurrencyLimit } from './inbox-thumbnails.tsx';
+
+const PARALLEL_PREVIEWS = 3;
 
 type InboxItem = MediaItem & { entryId: string; child: number };
 
@@ -70,7 +73,8 @@ export function useInboxMedia(
   const [silent, setSilent] = useState<ReadonlySet<number>>(new Set());
   const [cropIndex, setCropIndex] = useState<number>();
   const edits = useMediaEdits(setItems);
-  const [loading, setLoading] = useState(false);
+  /** Previews loaded so far while a fetch runs. */
+  const [progress, setProgress] = useState<{ done: number; total: number }>();
   const [notices, setNotices] = useState<ReadonlyMap<string, readonly string[]>>(new Map());
   const generation = useRef(0);
   const videos = useRef<Record<number, HTMLVideoElement | null>>({});
@@ -92,47 +96,55 @@ export function useInboxMedia(
     setCropIndex(undefined);
     videos.current = {};
     pendingFrameDefaults.current.clear();
-    setLoading(false);
+    setProgress(undefined);
   };
   const clear = () => {
     clearPreview();
     setNotices(new Map());
   };
+  /** Loads every entry's preview, a few at a time, then shows them in entry order. */
   const fetch = async (entries: readonly DiscoverySummary[]) => {
     clearPreview();
     const current = generation.current;
-    setLoading(true);
+    setProgress({ done: 0, total: entries.length });
+    const limit = concurrencyLimit(PARALLEL_PREVIEWS);
+    const responses = await Promise.all(
+      entries.map(entry =>
+        limit(() =>
+          sendMessage({
+            type: 'WATCH_INBOX_PREVIEW',
+            entryId: entry.entryId,
+            login: loginOf(entry.watchId),
+          })
+        )
+          .catch(() => undefined)
+          .finally(() => {
+            if (current === generation.current)
+              setProgress(previous => previous && { ...previous, done: previous.done + 1 });
+          })
+      )
+    );
+    if (current !== generation.current) return;
+    if (responses.some(response => refusesOwner(response?.failure))) {
+      clear();
+      onOwnerRefused();
+      return;
+    }
     const found: InboxItem[] = [];
     const reasons = new Map<string, readonly string[]>();
-    let activeEntry: DiscoverySummary | undefined;
-    try {
-      for (const entry of entries) {
-        activeEntry = entry;
-        const response = await sendMessage({
-          type: 'WATCH_INBOX_PREVIEW',
-          entryId: entry.entryId,
-          login: loginOf(entry.watchId),
-        });
-        if (current !== generation.current) return;
-        if (refusesOwner(response.failure)) {
-          clear();
-          onOwnerRefused();
-          return;
-        }
-        const result = previewResult(entry, response, found.length);
-        found.push(...result.items);
-        reasons.set(entry.entryId, result.notices);
+    entries.forEach((entry, index) => {
+      const response = responses[index];
+      if (!response) {
+        reasons.set(entry.entryId, [FAILURE_PRESENTATION.SOURCE_UNEXPECTED_FAILURE.title]);
+        return;
       }
-    } catch {
-      if (activeEntry)
-        reasons.set(activeEntry.entryId, [FAILURE_PRESENTATION.SOURCE_UNEXPECTED_FAILURE.title]);
-    } finally {
-      if (current === generation.current) {
-        setItems(found);
-        setNotices(previous => new Map([...previous, ...reasons]));
-        setLoading(false);
-      }
-    }
+      const result = previewResult(entry, response, found.length);
+      found.push(...result.items);
+      reasons.set(entry.entryId, result.notices);
+    });
+    setItems(found);
+    setNotices(previous => new Map([...previous, ...reasons]));
+    setProgress(undefined);
   };
   const patchRuntime = (index: number, update: Parameters<typeof updateItemRuntime>[2]) =>
     setRuntimes(previous => updateItemRuntime(previous, index, update));
@@ -247,7 +259,8 @@ export function useInboxMedia(
     runtimes,
     frames,
     silent,
-    loading,
+    loading: progress !== undefined,
+    progress,
     notices: [...notices.values()].flat(),
     selections,
     /** A selected video export is cropped, which re-encodes it, so it needs consent first. */
@@ -327,9 +340,9 @@ export function InboxMediaPreview({
           removeAudioIndexes: value.silent,
           attempt: undefined,
           cropIndex: value.cropIndex,
-          emptyMessage: value.loading
-            ? 'Fetching recorded media…'
-            : 'Fetch media to preview it before downloading.',
+          emptyMessage: value.progress
+            ? `Loading ${value.progress.done} of ${value.progress.total}`
+            : 'Nothing to preview.',
         }}
         actions={value.actions}
       />

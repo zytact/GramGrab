@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
 import {
   InstagramLogin,
   WatchInboxExport,
@@ -74,7 +74,23 @@ type RowState =
   | { readonly _tag: 'saving' }
   | { readonly _tag: 'failed'; readonly code: FailureCode };
 
-/** Inbox selection and its commands, each run as the login `loginOf` names for an entry's Watch. */
+/** How long a removal waits for Undo before it deletes anything. */
+export const UNDO_MS = 5_000;
+
+const withoutIds = <V,>(map: ReadonlyMap<string, V>, ids: ReadonlySet<string>) =>
+  new Map([...map].filter(([id]) => !ids.has(id)));
+
+const available = (selection: ReadonlyMap<string, DiscoverySummary>) =>
+  [...selection.values()].filter(entry => entry.unavailable === undefined);
+
+/** Files an entry would download: its children still available, or one. */
+const fileCount = (entry: DiscoverySummary) =>
+  entry.unavailable ? 0 : (entry.childCount ?? 1) - (entry.missingChildren ?? 0);
+
+/**
+ * Inbox selection and its commands, each run as the login `loginOf` names for an entry's Watch.
+ * The selection spans Watches and views until it is cleared, downloaded or removed.
+ */
 export function useInboxExport(
   onChanged: () => void,
   loginOf: (watchId: string | undefined) => InstagramLogin
@@ -82,13 +98,13 @@ export function useInboxExport(
   const [selected, setSelected] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, InboxExportOutcome>>(new Map());
   const [rows, setRows] = useState<ReadonlyMap<string, RowState>>(new Map());
+  const [removing, setRemoving] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
+  const removal = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(removal.current), []);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const thumbnails = useInboxThumbnails(loginOf);
-  const watchOf = useRef(new Map<string, string>());
-  const remember = (entries: readonly DiscoverySummary[]) => {
-    for (const entry of entries) watchOf.current.set(entry.entryId, entry.watchId);
-  };
-  const entryLogin = (entryId: string) => loginOf(watchOf.current.get(entryId));
+  const entryLogin = (entryId: string) => loginOf(selected.get(entryId)?.watchId);
   const media = useInboxMedia(loginOf, () => {
     setSelected(new Map());
     setOutcomes(new Map());
@@ -96,7 +112,7 @@ export function useInboxExport(
   });
   const [failure, setFailure] = useState<string>();
   const [cropConsent, setCropConsent] = useState(false);
-  const entries = [...selected.values()].filter(entry => entry.unavailable === undefined);
+  const entries = available(selected);
   /** Records fresh outcomes, which clear an earlier row failure but keep a running row download. */
   const mergeOutcomes = (exported: readonly InboxExportOutcome[]) => {
     const ids = new Set(exported.map(outcome => outcome.entryId));
@@ -108,11 +124,10 @@ export function useInboxExport(
       current => new Map([...current].filter(([id, row]) => row._tag === 'saving' || !ids.has(id)))
     );
   };
-  const setRow = (entryId: string, state: RowState | undefined) =>
+  const setRowsOf = (ids: ReadonlySet<string>, state: RowState | undefined) =>
     setRows(current => {
-      const next = new Map(current);
-      if (state) next.set(entryId, state);
-      else next.delete(entryId);
+      const next = withoutIds(current, ids);
+      if (state) for (const id of ids) next.set(id, state);
       return next;
     });
 
@@ -128,12 +143,12 @@ export function useInboxExport(
       if (exported) {
         mergeOutcomes(exported);
         setSelected(new Map());
+        setEditing(false);
         media.clearPreview();
       }
       if (removed) {
-        setSelected(current => new Map([...current].filter(([id]) => !removed.has(id))));
-        setOutcomes(current => new Map([...current].filter(([id]) => !removed.has(id))));
-        media.clearPreview();
+        setSelected(current => withoutIds(current, removed));
+        setOutcomes(current => withoutIds(current, removed));
       }
     } catch {
       setFailure(FAILURE_PRESENTATION.DOWNLOAD_UNEXPECTED_FAILURE.title);
@@ -142,7 +157,7 @@ export function useInboxExport(
       onChanged();
     }
   };
-  /** Downloads the selection, first asking before a cropped video re-encodes. */
+  /** Downloads the edited selection, first asking before a cropped video re-encodes. */
   const download = (approved = false) => {
     const items = media.selections;
     if (!media.canDownload) return;
@@ -160,31 +175,56 @@ export function useInboxExport(
       )
     );
   };
-  const restoreOutcomes = (entries: readonly DiscoverySummary[]) =>
-    setOutcomes(current => {
-      const next = new Map(current);
-      for (const entry of entries) {
-        if (entry.manualExport) next.set(entry.entryId, entry.manualExport);
-      }
-      return next;
-    });
-  /** Runs one entry's command on its row, leaving the selection and the inspector alone. */
-  const runOnRow = async (entry: DiscoverySummary, command: WatchCommand) => {
-    setRow(entry.entryId, { _tag: 'saving' });
+  /** Runs one login's command on its entries' rows, leaving the inspector alone. */
+  const runOnRows = async (
+    group: readonly DiscoverySummary[],
+    login: InstagramLogin,
+    command: WatchCommand
+  ) => {
+    const ids = new Set(group.map(entry => entry.entryId));
+    setRowsOf(ids, { _tag: 'saving' });
     try {
-      const response = await sendMessage({
-        type: 'WATCH_COMMAND',
-        command,
-        login: loginOf(entry.watchId),
-      });
+      const response = await sendMessage({ type: 'WATCH_COMMAND', command, login });
       const { failed, exported } = combined([response]);
-      setRow(entry.entryId, failed ? { _tag: 'failed', code: failed } : undefined);
+      setRowsOf(ids, failed ? { _tag: 'failed', code: failed } : undefined);
       if (exported) mergeOutcomes(exported);
     } catch {
-      setRow(entry.entryId, { _tag: 'failed', code: 'DOWNLOAD_UNEXPECTED_FAILURE' });
+      setRowsOf(ids, { _tag: 'failed', code: 'DOWNLOAD_UNEXPECTED_FAILURE' });
     } finally {
       onChanged();
     }
+  };
+  /** Downloads entries as Original with default modifiers, showing progress on their rows. */
+  const downloadOriginal = (targets: readonly DiscoverySummary[]) => {
+    for (const login of InstagramLogin.literals) {
+      const group = targets.filter(entry => loginOf(entry.watchId) === login);
+      if (group.length > 0)
+        void runOnRows(
+          group,
+          login,
+          WatchInboxExport.make({ entryIds: group.map(entry => entry.entryId) })
+        );
+    }
+  };
+  /** Sets the selection; an open editor previews the new one. */
+  const select = (next: ReadonlyMap<string, DiscoverySummary>) => {
+    setSelected(next);
+    const shown = available(next);
+    if (editing && shown.length > 0) void media.fetch(shown);
+    else {
+      media.clear();
+      setEditing(false);
+    }
+  };
+  const commitRemoval = (pending: ReadonlyMap<string, DiscoverySummary>) => {
+    setRemoving(new Map());
+    void execute(
+      perLogin(
+        [...pending.values()],
+        entry => loginOf(entry.watchId),
+        group => WatchInboxRemove.make({ entryIds: group.map(entry => entry.entryId) })
+      )
+    );
   };
   return {
     selected,
@@ -196,51 +236,64 @@ export function useInboxExport(
     setCropConsent,
     entries,
     rows,
+    removing,
+    editing,
     thumbnails,
     download,
-    /** Downloads one entry as Original with default modifiers. */
-    downloadEntry: (entry: DiscoverySummary) =>
-      void runOnRow(entry, WatchInboxExport.make({ entryIds: [entry.entryId] })),
+    downloadEntry: (entry: DiscoverySummary) => downloadOriginal([entry]),
+    /** Downloads every selected entry as Original and clears the selection. */
+    downloadSelected: () => {
+      downloadOriginal(entries);
+      setSelected(new Map());
+    },
     /** Retries one entry's failed plan, optionally through a recovery. */
     retryEntry: (entry: DiscoverySummary, planId: string, recovery?: 'original' | 'reencode') =>
-      void runOnRow(
-        entry,
+      void runOnRows(
+        [entry],
+        loginOf(entry.watchId),
         WatchInboxRetry.make({
           plans: [{ entryId: entry.entryId, planId }],
           ...(recovery ? { recovery } : {}),
         })
       ),
-    remove: (entries: readonly DiscoverySummary[]) =>
-      void execute(
-        perLogin(
-          entries,
-          entry => loginOf(entry.watchId),
-          group => WatchInboxRemove.make({ entryIds: group.map(entry => entry.entryId) })
-        )
-      ),
-    selectAll: (entries: readonly DiscoverySummary[]) => {
-      remember(entries);
-      media.clearPreview();
-      restoreOutcomes(entries);
-      setSelected(new Map(entries.map(entry => [entry.entryId, entry])));
+    /** Hides entries at once and removes them once Undo has had `UNDO_MS` to stop it. */
+    remove: (targets: readonly DiscoverySummary[]) => {
+      const pending = new Map([
+        ...removing,
+        ...targets.map(entry => [entry.entryId, entry] as const),
+      ]);
+      setRemoving(pending);
+      select(withoutIds(selected, new Set(pending.keys())));
+      clearTimeout(removal.current);
+      removal.current = setTimeout(() => commitRemoval(pending), UNDO_MS);
     },
-    active: selected.size > 0 || busy || media.notices.length > 0 || !!failure,
+    undoRemove: () => {
+      clearTimeout(removal.current);
+      setRemoving(new Map());
+    },
+    selectAll: (targets: readonly DiscoverySummary[]) =>
+      select(new Map([...selected, ...targets.map(entry => [entry.entryId, entry] as const)])),
+    /** Opens the editor, which loads the selection's previews. */
+    edit: () => {
+      setEditing(true);
+      void media.fetch(entries);
+    },
+    closeEditor: () => {
+      media.clear();
+      setCropConsent(false);
+      setEditing(false);
+    },
     clear: () => {
       media.clear();
       setCropConsent(false);
+      setEditing(false);
       setSelected(new Map());
       setFailure(undefined);
-      if (!busy) setOutcomes(new Map());
     },
     toggle: (entry: DiscoverySummary) => {
-      remember([entry]);
-      media.clearPreview();
-      restoreOutcomes([entry]);
-      setSelected(current => {
-        const next = new Map(current);
-        if (!next.delete(entry.entryId)) next.set(entry.entryId, entry);
-        return next;
-      });
+      const next = new Map(selected);
+      if (!next.delete(entry.entryId)) next.set(entry.entryId, entry);
+      select(next);
     },
   };
 }
@@ -336,15 +389,13 @@ export function RowRecovery({
 export function InboxExportControls({ value }: { value: ExportState }) {
   return (
     <div className="opt-col">
-      <h2 className="opt-h2">Download selected</h2>
+      <div className="opt-row">
+        <h2 className="opt-h2 opt-grow">Edit before download</h2>
+        <button className="opt-btn opt-ghost" disabled={value.busy} onClick={value.closeEditor}>
+          Close
+        </button>
+      </div>
       <p className="opt-note">Downloads the exact recorded media. Entries stay in the inbox.</p>
-      <button
-        className="opt-btn"
-        disabled={value.busy || value.entries.length === 0}
-        onClick={() => void value.media.fetch(value.entries)}
-      >
-        {value.media.loading ? 'Fetching media…' : 'Fetch media'}
-      </button>
       <InboxMediaPreview value={value.media} disabled={value.busy} />
       {value.entries.some(entry => entry.mediaType === 'avatar') && (
         <p className="opt-note">Avatar changes offer Original only, with rotate and crop.</p>
@@ -369,5 +420,64 @@ export function InboxExportControls({ value }: { value: ExportState }) {
       )}
       {value.failure && <p className="opt-meta opt-error">{value.failure}</p>}
     </div>
+  );
+}
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+/** The selection's actions pinned under the feed, with Undo for a pending removal. */
+export function InboxActionBar() {
+  const value = useInboxSelection();
+  const chosen = [...value.selected.values()];
+  const files = chosen.reduce((total, entry) => total + fileCount(entry), 0);
+  const watches = new Set(chosen.map(entry => entry.watchId)).size;
+  return (
+    <>
+      {value.failure && !value.editing && (
+        <p className="opt-meta opt-error" role="alert">
+          {value.failure}
+        </p>
+      )}
+      {chosen.length > 0 && (
+        <div className="opt-bar" role="toolbar" aria-label="Selected inbox entries">
+          <span className="opt-grow">
+            {chosen.length} selected · {plural(files, 'file', 'files')}
+            {watches > 1 && ` across ${watches} Watches`}
+          </span>
+          <button className="opt-btn opt-ghost" disabled={value.busy} onClick={value.clear}>
+            Clear
+          </button>
+          <button
+            className="opt-btn opt-danger"
+            disabled={value.busy}
+            onClick={() => value.remove(chosen)}
+          >
+            Remove
+          </button>
+          <button
+            className="opt-btn opt-ghost"
+            disabled={value.busy || value.editing || value.entries.length === 0}
+            onClick={value.edit}
+          >
+            Edit before download
+          </button>
+          <button
+            className="opt-btn"
+            disabled={value.busy || files === 0}
+            onClick={value.downloadSelected}
+          >
+            Download {files}
+          </button>
+        </div>
+      )}
+      {value.removing.size > 0 && (
+        <div className="opt-toast" role="status">
+          Removed {plural(value.removing.size, 'entry', 'entries')}.
+          <button className="opt-btn" onClick={value.undoRemove}>
+            Undo
+          </button>
+        </div>
+      )}
+    </>
   );
 }
