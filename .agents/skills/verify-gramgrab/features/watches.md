@@ -506,7 +506,12 @@ same login.
    switch or sign-out if one occurs, otherwise report that live gap. Focused
    browser-adapter tests own switched-login isolation and sign-out recovery;
    an unchanged real login proves foreground verification, not account switching.
-6. With a page marker set, record the request count and run
+6. Open a second `options.html` while `watch-viewer` names the login. The
+   console (`.opt-console`) appears without waiting for Instagram, in well under
+   a second by `performance.now()`, then the background verification settles
+   without changing it. A browser session with no `watch-viewer` yet shows
+   `Loading Watches…` until its first verification answers.
+7. With a page marker set, record the request count and run
    `gramgrab watch list` once. The count grows by exactly the CLI's one request,
    and the page keeps its marker and console. To drive the page's login-loss
    path without signing out, run
@@ -516,14 +521,8 @@ same login.
    Return to the tab: the console comes back. It costs no request while the
    worker's last viewer read is under 5 minutes old, since that reuse does not
    read `watch-viewer`. That reuse does not write `watch-viewer` back either, so
-   it stays absent until the next fresh viewer read; run step 7 before this
-   step. This injects session state only. A real sign-out stays a reported live
-   gap.
-7. Open a second `options.html` while `watch-viewer` names the login. The
-   console (`.opt-console`) appears without waiting for Instagram, in well under
-   a second by `performance.now()`, then the background verification settles
-   without changing it. A browser session with no `watch-viewer` yet shows
-   `Loading Watches…` until one viewer request answers.
+   it stays absent until the next fresh viewer read. This injects session state
+   only. A real sign-out stays a reported live gap.
 
 ## Avatars
 
@@ -790,8 +789,8 @@ and must not be run against a shared personal account:
    `throttle.mjs https://www.instagram.com/ 429 --exact` and run `watch check
    instagram --json`, then stop the throttle at once, since the Watch work's read
    drops the reuse and the next `watch list` or `watch needs` reads the home page
-   again. The log shows one 429 and no `passed` line. The Watch request's 429 sets `schedule.pausedUntil` about 30 minutes out, `watch
-   needs` has a `PauseAttention` with `IG_RATE_LIMITED`, and the options page
+   again. The log shows one 429 and no `passed` line. The Watch request's 429
+   sets `schedule.pausedUntil` about 30 minutes out, `watch needs` has a `PauseAttention` with `IG_RATE_LIMITED`, and the options page
    shows `Instagram rate limited a Watch request`. When the person's read is
    older than 5 minutes, or the worker restarted between the two commands, the
    person's viewer check takes the 429 instead, so the check fails with
