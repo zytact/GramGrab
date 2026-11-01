@@ -416,7 +416,7 @@ export function InboxExportControls({ value }: { value: ExportState }) {
         disabled={value.busy || !value.media.canDownload}
         onClick={() => value.download()}
       >
-        {value.busy
+        {value.busy && !value.media.loading
           ? 'Starting downloads…'
           : `Download selected (${value.media.selections.length})`}
       </button>
@@ -450,7 +450,7 @@ export function InboxActionBar() {
         </p>
       )}
       {chosen.length > 0 && (
-        <div className="opt-bar" role="toolbar" aria-label="Selected inbox entries">
+        <div className="opt-selection-bar" role="toolbar" aria-label="Selected inbox entries">
           <span className="opt-grow">
             {chosen.length} selected · {plural(files, 'file', 'files')}
             {watches > 1 && ` across ${watches} Watches`}

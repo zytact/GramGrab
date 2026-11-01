@@ -135,7 +135,7 @@ sit deeper in the row. The page itself does not scroll; `.opt-feed` does.
 `Download` exports that one entry as Original with default modifiers, sending
 `WatchInboxExport` with only `entryIds`. The row reads `Saving…` while the
 command runs, with its checkbox, `Download` and `Remove` disabled, then
-`N downloads started.` or the failure title with `Retry`, `Download Original
+`N downloads started.` (`1 download started.` for one) or the failure title with `Retry`, `Download Original
 instead` or `Review re-encoding` as the failure allows. The selection and the
 inspector stay as they were. Outcome chips appear only for `failed` or
 `unconfirmed` actions; a row whose actions all succeeded has none.
@@ -167,7 +167,8 @@ retention notice remains a separate deadline.
    Capture a screenshot with the verified login hidden. A fresh preview must
    leave browser downloads, History and Workspace draft/transfer state unchanged.
 2. Use the shared card's `Select item NN`, `Frame`, `Remove audio`,
-   `Rotate item NN` and `Crop item NN` controls. Deselecting every card disables download. Frame and
+   `Rotate item NN` and `Crop item NN` controls, matching rotate and crop with
+   `aria-label^=` since their names go on. Deselecting every card disables download. Frame and
    Silent are mutually exclusive. Frame download waits for measured metadata;
    its slider and video `currentTime` must agree at a nonzero timestamp. Rotate
    and check the preview's orientation and aspect ratio before download.
@@ -215,7 +216,7 @@ raw store or CLI dumps for these checks.
 ## Selection bar
 
 Ticking an entry pins `[role=toolbar][aria-label="Selected inbox entries"]`
-(`.opt-bar`) to the bottom of the middle column: `N selected · M files`, plus
+(`.opt-selection-bar`) to the bottom of the middle column: `N selected · M files`, plus
 ` across K Watches` when the selection spans Watches, then `Clear`, `Remove`,
 `Edit before download` and `Download M`. M counts each entry's available
 children, and an unavailable entry adds none. The right column keeps the
@@ -255,7 +256,9 @@ nothing.
    a reload, the unticked one still listed, and the Watch's `enabled` flag
    unchanged in `watch-store`.
 3. Remove one entry, click `Undo` within 5 seconds, wait past them, and reload.
-   Require the entry still listed.
+   Require the entry still listed. Separate `drive.mjs` calls with a screenshot
+   between them can outlast 5 seconds, so click Undo from a page-side
+   `setTimeout` of about 3 seconds started by the same `eval` that removes.
 4. With only unavailable entries ticked, `Edit before download` is disabled
    while `Remove` stays enabled.
 5. An entry with a saved failed export shows `Retry` on its own row without

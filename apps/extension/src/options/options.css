@@ -739,7 +739,7 @@ summary.opt-logins-summary {
   background: var(--panel);
   border: 1px solid var(--rule-strong);
 }
-.opt-bar {
+.opt-selection-bar {
   position: sticky;
   bottom: -16px;
   z-index: 1;
