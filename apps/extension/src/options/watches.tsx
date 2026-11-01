@@ -1470,25 +1470,27 @@ function Feed({
   const open = (watchId: string) => onGo({ watchId });
   return (
     <section key={typeof current === 'object' ? current.watchId : current} className="opt-feed">
-      <Notices page={page} actionFailure={actionFailure} />
-      {current === 'attention' && <AttentionView lists={lists} onRun={onRun} onOpen={open} />}
-      {current === 'inbox' && <AllInbox lists={lists} avatars={avatars} version={version} />}
-      {current === 'new' && (
-        <>
-          <h1 className="opt-h1">Add Watch</h1>
-          <AddWatchFlow logins={logins} onRun={onRun} onOpen={open} />
-        </>
-      )}
-      {current === 'transfer' && <WatchTransfer lists={lists} logins={logins} onSend={onSend} />}
-      {selected && (
-        <SelectedWatch
-          item={selected}
-          lists={lists}
-          avatar={avatars[selected.watch.watchId]}
-          version={version}
-          onChanged={onChanged}
-        />
-      )}
+      <div className="opt-feed-body">
+        <Notices page={page} actionFailure={actionFailure} />
+        {current === 'attention' && <AttentionView lists={lists} onRun={onRun} onOpen={open} />}
+        {current === 'inbox' && <AllInbox lists={lists} avatars={avatars} version={version} />}
+        {current === 'new' && (
+          <>
+            <h1 className="opt-h1">Add Watch</h1>
+            <AddWatchFlow logins={logins} onRun={onRun} onOpen={open} />
+          </>
+        )}
+        {current === 'transfer' && <WatchTransfer lists={lists} logins={logins} onSend={onSend} />}
+        {selected && (
+          <SelectedWatch
+            item={selected}
+            lists={lists}
+            avatar={avatars[selected.watch.watchId]}
+            version={version}
+            onChanged={onChanged}
+          />
+        )}
+      </div>
       <InboxActionBar />
     </section>
   );

@@ -116,6 +116,12 @@ it('keeps loaded previews and their edits when the selection grows or shrinks', 
   await act(() => result.current.sync([entryAt(2)]));
   expect(result.current.items.map(item => item.entryId)).toEqual([entryAt(2).entryId]);
   expect(preview).toHaveBeenCalledTimes(2);
+
+  await act(() => result.current.sync([entryAt(2), entryAt(1)]));
+  expect(result.current.items.map(item => item.entryId)).toEqual([
+    entryAt(2).entryId,
+    entryAt(1).entryId,
+  ]);
 });
 
 it('sends no further previews once one is rate limited', async () => {

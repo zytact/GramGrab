@@ -1479,7 +1479,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       'disabled',
       false
     );
-    expect(container.querySelector('.opt-feed > p.opt-banner-error')).toBeNull();
+    expect(container.querySelector('.opt-feed-body > p.opt-banner-error')).toBeNull();
 
     harness.local.failWrites = false;
     await user.click(within(alert).getByRole('button', { name: 'Try again' }));

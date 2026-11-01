@@ -64,28 +64,42 @@ function previewResult(
 }
 
 /**
- * Sends each entry's preview request through `limit`. Once one is refused for a rate limit or
- * sign-out, the ones not yet sent take that refusal instead. `undefined` marks a request that threw.
+ * One preview generation's requests: the shared limit, the refusal that stops further sends, and
+ * a token per requested entry, so a reply for an entry deselected since is dropped.
+ */
+type PreviewLoader = {
+  readonly limit: ReturnType<typeof concurrencyLimit>;
+  refusal?: Preview;
+  readonly requested: Map<string, object>;
+  nextIndex: number;
+};
+
+/**
+ * Sends each entry's preview request through the loader's limit. Once one is refused for a rate
+ * limit or sign-out, unsent ones take that refusal instead, and a stale generation sends nothing.
+ * `undefined` marks a request that threw or was skipped.
  */
 function requestPreviews(
   entries: readonly DiscoverySummary[],
   loginOf: (watchId: string) => InstagramLogin,
-  limit: ReturnType<typeof concurrencyLimit>,
+  loader: PreviewLoader,
+  isCurrent: () => boolean,
   onSettled: () => void
 ) {
-  let refusal: Preview | undefined;
   return Promise.all(
     entries.map(entry =>
-      limit(async () => {
-        if (refusal) return refusal;
-        const response = await sendMessage({
-          type: 'WATCH_INBOX_PREVIEW',
-          entryId: entry.entryId,
-          login: loginOf(entry.watchId),
-        });
-        if (halts(response)) refusal = response;
-        return response;
-      })
+      loader
+        .limit(async () => {
+          if (loader.refusal) return loader.refusal;
+          if (!isCurrent()) return undefined;
+          const response = await sendMessage({
+            type: 'WATCH_INBOX_PREVIEW',
+            entryId: entry.entryId,
+            login: loginOf(entry.watchId),
+          });
+          if (halts(response)) loader.refusal = response;
+          return response;
+        })
         .catch(() => undefined)
         .finally(onSettled)
     )
@@ -136,11 +150,9 @@ export function useInboxMedia(
   const [progress, setProgress] = useState<Progress>();
   const [notices, setNotices] = useState<ReadonlyMap<string, readonly string[]>>(new Map());
   const generation = useRef(0);
-  /** Entries requested this generation, the ones the preview should show, and the next index. */
-  const [loader] = useState(() => ({
+  const [loader] = useState<PreviewLoader>(() => ({
     limit: concurrencyLimit(PARALLEL_PREVIEWS),
-    requested: new Set<string>(),
-    wanted: new Set<string>(),
+    requested: new Map(),
     nextIndex: 0,
   }));
   const videos = useRef<Record<number, HTMLVideoElement | null>>({});
@@ -163,7 +175,7 @@ export function useInboxMedia(
     videos.current = {};
     pendingFrameDefaults.current.clear();
     loader.requested.clear();
-    loader.wanted = new Set();
+    loader.refusal = undefined;
     loader.nextIndex = 0;
     setProgress(undefined);
   };
@@ -178,15 +190,20 @@ export function useInboxMedia(
   const sync = async (entries: readonly DiscoverySummary[]) => {
     const current = generation.current;
     const ids = new Set(entries.map(entry => entry.entryId));
-    loader.wanted = ids;
+    for (const id of loader.requested.keys()) if (!ids.has(id)) loader.requested.delete(id);
     setItems(previous => previous.filter(item => ids.has(item.entryId)));
     setNotices(previous => new Map([...previous].filter(([id]) => ids.has(id))));
     const missing = entries.filter(entry => !loader.requested.has(entry.entryId));
     if (missing.length === 0) return;
-    for (const entry of missing) loader.requested.add(entry.entryId);
+    const tokens = missing.map(entry => {
+      const token = {};
+      loader.requested.set(entry.entryId, token);
+      return token;
+    });
     setProgress(previous => expectMore(previous, missing.length));
-    const responses = await requestPreviews(missing, loginOf, loader.limit, () => {
-      if (current === generation.current) setProgress(advance);
+    const isCurrent = () => current === generation.current;
+    const responses = await requestPreviews(missing, loginOf, loader, isCurrent, () => {
+      if (isCurrent()) setProgress(advance);
     });
     if (current !== generation.current) return;
     if (responses.some(response => refusesOwner(response?.failure))) {
@@ -194,11 +211,11 @@ export function useInboxMedia(
       onOwnerRefused();
       return;
     }
-    const kept = missing.flatMap((entry, index) => {
-      if (loader.wanted.has(entry.entryId)) return [{ entry, response: responses[index] }];
-      loader.requested.delete(entry.entryId);
-      return [];
-    });
+    const kept = missing.flatMap((entry, index) =>
+      loader.requested.get(entry.entryId) === tokens[index]
+        ? [{ entry, response: responses[index] }]
+        : []
+    );
     const { found, reasons } = collectPreviews(kept, loader.nextIndex);
     loader.nextIndex += found.length;
     setItems(previous => [...previous, ...found]);

@@ -491,7 +491,7 @@ until the save settles. The checkbox shows its new value meanwhile. Success
 reads `✓ Saved` for about 2 seconds. A failure puts the checkbox or button
 back, and shows the error under that row (`.opt-save-failed`, `role="alert"`)
 with `Try again`. Setting failures never use the middle column's action banner
-(`.opt-feed > p.opt-banner-error`). A failed store write still raises the
+(`.opt-feed-body > p.opt-banner-error`). A failed store write still raises the
 separate `Watches stopped.` storage notice there. Each save verifies the
 login once, which costs a viewer request only when the last read is more than
 5 minutes old.
@@ -522,7 +522,7 @@ node $D eval "js/background.js" "globalThis.__fault = { delay: 1500, fail: false
    and no status 2 seconds later. Capture the inspector at both points.
 2. Set `fail: true` and toggle the same row back. Require the old `checked`
    value, the error and `Try again` under that row, and no
-   `.opt-feed > p.opt-banner-error`. Set `fail: false`, click `Try again`, and
+   `.opt-feed-body > p.opt-banner-error`. Set `fail: false`, click `Try again`, and
    require `✓ Saved` with `watch-store` changed. This also restores the
    setting.
 3. Repeat on `Pause checks`: `Saving` sits beside the button and success

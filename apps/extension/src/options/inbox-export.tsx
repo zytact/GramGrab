@@ -99,7 +99,7 @@ export function useInboxExport(
   loginOf: (watchId: string | undefined) => InstagramLogin,
   isWatched: (watchId: string) => boolean
 ) {
-  const [picked, setSelected] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
+  const [picked, setPicked] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
   /** A deleted Watch's entries leave the selection with it. */
   const selected = new Map([...picked].filter(([, entry]) => isWatched(entry.watchId)));
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, InboxExportOutcome>>(new Map());
@@ -113,7 +113,7 @@ export function useInboxExport(
   const [busy, setBusy] = useState(false);
   const thumbnails = useInboxThumbnails(loginOf);
   const media = useInboxMedia(loginOf, () => {
-    setSelected(new Map());
+    setPicked(new Map());
     setOutcomes(new Map());
     setEditing(false);
     void onChanged();
@@ -150,18 +150,18 @@ export function useInboxExport(
       if (failed) setFailure(FAILURE_PRESENTATION[failed].title);
       if (exported) {
         mergeOutcomes(exported);
-        setSelected(new Map());
+        setPicked(new Map());
         setEditing(false);
         media.clearPreview();
       }
       if (removed) {
-        setSelected(current => withoutIds(current, removed));
+        setPicked(current => withoutIds(current, removed));
         setOutcomes(current => withoutIds(current, removed));
       }
     } catch {
       setFailure(FAILURE_PRESENTATION.DOWNLOAD_UNEXPECTED_FAILURE.title);
     } finally {
-      await onChanged();
+      await onChanged().catch(() => {});
       setBusy(false);
     }
   };
@@ -214,7 +214,7 @@ export function useInboxExport(
   };
   /** Sets the selection; an open editor previews the new one. */
   const select = (next: ReadonlyMap<string, DiscoverySummary>) => {
-    setSelected(next);
+    setPicked(next);
     const previewable = available(next);
     if (editing && previewable.length > 0) void media.sync(previewable);
     else {
@@ -298,7 +298,7 @@ export function useInboxExport(
       media.clear();
       setCropConsent(false);
       setEditing(false);
-      setSelected(new Map());
+      setPicked(new Map());
       setFailure(undefined);
     },
     toggle: (entry: DiscoverySummary) => {
