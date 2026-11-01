@@ -515,8 +515,10 @@ same login.
    Instagram` with the stored count, keeps its marker, and adds no request.
    Return to the tab: the console comes back. It costs no request while the
    worker's last viewer read is under 5 minutes old, since that reuse does not
-   read `watch-viewer`. This injects session state only. A real sign-out stays
-   a reported live gap.
+   read `watch-viewer`. That reuse does not write `watch-viewer` back either, so
+   it stays absent until the next fresh viewer read; run step 7 before this
+   step. This injects session state only. A real sign-out stays a reported live
+   gap.
 7. Open a second `options.html` while `watch-viewer` names the login. The
    console (`.opt-console`) appears without waiting for Instagram, in well under
    a second by `performance.now()`, then the background verification settles
@@ -786,12 +788,13 @@ and must not be run against a shared personal account:
    check reuses a read from the last 5 minutes (`recentViewer`), so run `watch
    list --json` first to make one. Within 5 minutes, start
    `throttle.mjs https://www.instagram.com/ 429 --exact` and run `watch check
-   instagram --json`, then stop the throttle at once, since `watch list` and
-   `watch needs` read the viewer too once the reuse expires. The log shows one
-   429 and no `passed` line. The Watch request's 429 sets `schedule.pausedUntil` about 30 minutes out, `watch
+   instagram --json`, then stop the throttle at once, since the Watch work's read
+   drops the reuse and the next `watch list` or `watch needs` reads the home page
+   again. The log shows one 429 and no `passed` line. The Watch request's 429 sets `schedule.pausedUntil` about 30 minutes out, `watch
    needs` has a `PauseAttention` with `IG_RATE_LIMITED`, and the options page
    shows `Instagram rate limited a Watch request`. When the person's read is
-   older than 5 minutes, the person's viewer check takes the 429 instead, so the check fails with
+   older than 5 minutes, or the worker restarted between the two commands, the
+   person's viewer check takes the 429 instead, so the check fails with
    `IG_NOT_AUTHENTICATED` and nothing pauses. Matching a Posts `doc_id` does not
    work either, because Posts requests send it in a POST body. A ledger already
    holding 60 attempts from the last hour defers the check on capacity before
