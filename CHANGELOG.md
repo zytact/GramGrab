@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.0](https://github.com/zytact/GramGrab/compare/v4.6.3...v4.7.0) (2026-11-01)
+
+
+### Features
+
+* **watch:** download inbox entries in one click, with thumbnails on every row ([#363](https://github.com/zytact/GramGrab/issues/363)) ([05f1342](https://github.com/zytact/GramGrab/commit/05f13421750c2e6da1e83598322cabb58c04704a))
+
 ## [4.6.3](https://github.com/zytact/GramGrab/compare/v4.6.2...v4.6.3) (2026-11-01)
 
 
