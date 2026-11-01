@@ -5,7 +5,7 @@ import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import type { ChildDownload, Discovery, Watch } from './contracts.ts';
 import { KIND_OF_REF } from './discoveries.ts';
 import { mutateStore, readStore } from './store.ts';
-import { fetchViewer } from './identity.ts';
+import { fetchViewer, recentViewer } from './identity.ts';
 import { OwnerRequests, PersonRequests, loginOf } from '../instagram/requests.ts';
 import { dataUrl } from './avatar-jpeg.ts';
 
@@ -200,7 +200,10 @@ export async function retryNotify(
     const watch = await findWatch(watchId);
     if (!watch?.enabled) continue;
     const viewer = await Effect.runPromise(
-      fetchViewer.pipe(Effect.either, Effect.provide(PersonRequests(await loginOf(watch.viewerId))))
+      recentViewer.pipe(
+        Effect.either,
+        Effect.provide(PersonRequests(await loginOf(watch.viewerId)))
+      )
     );
     if (viewer._tag === 'Left' || viewer.right.accountId !== watch.viewerId) continue;
     const ids = entries.filter(entry => entry.watchId === watchId).map(entry => entry.entryId);

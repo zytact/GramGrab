@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vite-plus/test';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { Effect, Either } from 'effect';
 import { InstagramRequests } from '../instagram/requests.ts';
-import { fetchViewer } from './identity.ts';
+import { browser } from '../lib/browser.ts';
+import { homePage } from '../test/watch-instagram.ts';
+import { fetchViewer, recentViewer } from './identity.ts';
 
 const viewerOn = (page: string) =>
   fetchViewer.pipe(
@@ -46,5 +48,67 @@ describe('fetchViewer', () => {
     expect(await viewerOn(page)).toMatchObject({
       left: { _tag: 'ResponseShapeUnknown', context: 'watch_viewer' },
     });
+  });
+});
+
+describe('recentViewer', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('answers from the last read only while the session cookie is unchanged and recent', async () => {
+    vi.useFakeTimers();
+    let session = 'session-a';
+    vi.spyOn(browser.cookies, 'get').mockImplementation(async () => ({ value: session }));
+    let reads = 0;
+    const as = <A, E>(effect: Effect.Effect<A, E, InstagramRequests>) =>
+      effect.pipe(
+        Effect.provideService(InstagramRequests, {
+          login: 'main',
+          fetch: () =>
+            Effect.sync(() => (reads++, homePage({ id: '1001', username: 'instagram' }))),
+        }),
+        Effect.runPromise
+      );
+
+    await as(fetchViewer);
+    expect(await as(recentViewer)).toMatchObject({ accountId: '1001' });
+    expect(reads).toBe(1);
+
+    session = 'session-b';
+    await as(recentViewer);
+    expect(reads).toBe(2);
+
+    vi.advanceTimersByTime(5 * 60_000);
+    await as(recentViewer);
+    expect(reads).toBe(3);
+
+    await as(fetchViewer);
+    expect(reads).toBe(4);
+  });
+
+  it('stops downloading the home page once it names the token and the viewer', async () => {
+    const head = await homePage({ id: '1001', username: 'instagram' }).text();
+    const encoder = new TextEncoder();
+    let sentHead = false;
+    const cancel = vi.fn();
+    const endless = new ReadableStream<Uint8Array>({
+      pull: controller => {
+        controller.enqueue(encoder.encode(sentHead ? '<div></div>'.repeat(1000) : head));
+        sentHead = true;
+      },
+      cancel,
+    });
+    const viewer = await fetchViewer.pipe(
+      Effect.provideService(InstagramRequests, {
+        login: 'main',
+        fetch: () => Effect.succeed(new Response(endless)),
+      }),
+      Effect.runPromise
+    );
+
+    expect(viewer).toMatchObject({ accountId: '1001' });
+    expect(cancel).toHaveBeenCalled();
   });
 });

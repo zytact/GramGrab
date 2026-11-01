@@ -21,7 +21,7 @@ import {
   type FailureCode,
   type HeldWatch,
   type WatchSummary,
-  type WatchViewer,
+  WatchViewer,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
 import type {
@@ -1057,11 +1057,29 @@ function useNewestLoad<A extends unknown[]>(start: (...args: A) => Promise<void>
   );
 }
 
+type Viewers = Partial<Record<InstagramLogin, WatchViewer>>;
+
+/** The viewers this browser session already verified, which `WATCH_READ` accepts as they are. */
+async function sessionViewers(): Promise<Viewers> {
+  const stored = await browser.sessionStorage
+    .get(Object.values(VIEWER_KEYS))
+    .catch((): Record<string, unknown> => ({}));
+  return Object.fromEntries(
+    InstagramLogin.literals.flatMap(login =>
+      Option.match(decodeCachedViewer(stored[VIEWER_KEYS[login]]), {
+        onNone: () => [],
+        onSome: viewer => [[login, WatchViewer.make(viewer)]],
+      })
+    )
+  );
+}
+
 /**
  * Both logins' verified Watch lists. `verify` asks Instagram who each login is, `refresh` rereads
  * the known logins' Watches, and a viewer change another surface records in the browser session is
- * followed. The linked list is read first, so a session it finds ended shows among the main list's
- * held Watches.
+ * followed. Until the first load starts, `refresh` can read as the viewers this browser session
+ * already verified. The linked list is read first, so a session it finds ended shows among the
+ * main list's held Watches.
  */
 function useWatchList() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
@@ -1071,7 +1089,7 @@ function useWatchList() {
     Partial<Record<InstagramLogin, { readonly accountId: string | undefined }>>
   >({});
   const latest = useRef(0);
-  const viewers = useRef<Partial<Record<InstagramLogin, WatchViewer>>>({});
+  const viewers = useRef<Viewers>({});
   const linkedFailure = useRef<WatchFailure>(undefined);
   const verification = useRef<Promise<void>>(undefined);
   const reverify = useRef(false);
@@ -1126,15 +1144,18 @@ function useWatchList() {
     });
     return verification.current;
   }, [load]);
-  const refresh = useCallback(async () => {
-    await verification.current;
-    const known = viewers.current;
-    if (!known.main) return;
-    await load(login => {
-      const viewer = known[login];
-      return viewer && runRead(WatchList.make(), viewer, login);
-    });
-  }, [load]);
+  const refresh = useCallback(
+    async (session?: Viewers) => {
+      await verification.current;
+      const known = session && latest.current === 0 ? session : viewers.current;
+      if (!known.main) return;
+      await load(login => {
+        const viewer = known[login];
+        return viewer && runRead(WatchList.make(), viewer, login);
+      });
+    },
+    [load]
+  );
 
   useEffect(() => {
     const listener = (changes: StorageChanges) => {
@@ -1185,7 +1206,7 @@ export function Watches() {
   const { loaded, version, verify, refresh } = useWatchList();
 
   useEffect(() => {
-    void verify();
+    void sessionViewers().then(refresh).then(verify);
     let away = document.visibilityState !== 'visible' || !document.hasFocus();
     const leave = () => {
       away = true;
@@ -1207,7 +1228,7 @@ export function Watches() {
       window.removeEventListener('focus', enter);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [verify]);
+  }, [refresh, verify]);
 
   const ready = loaded.kind === 'ready';
   useEffect(() => {

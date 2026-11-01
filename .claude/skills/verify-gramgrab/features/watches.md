@@ -296,7 +296,7 @@ username, its kinds and actions, and whether it is paused. It holds no login,
 baseline, discovery or Avatar image. `docs/adr/0006` records why. There is no
 CLI verb.
 
-Import spends one viewer request and one profile request per account it adds.
+Import spends at most one viewer request and one profile request per account it adds.
 An account already watched costs none, so steps 1 to 3 are safe on a shared
 account. Step 4 adds a Watch and needs the same authorization as Check now.
 
@@ -377,7 +377,7 @@ described in Live page below.
    in `watch-scheduler` still holds one job for the Watch.
 3. Stay on the Inbox tab until storage reports `ManualCheckFinished`, using the
    live page or a bounded worker-storage wait. CLI Watch reads verify the viewer
-   and consume requests, so they are not a polling mechanism. A check took 2 to 11
+   and can consume requests, so they are not a polling mechanism. A check took 2 to 11
    minutes in live runs, longer while an unattended round shares the queue.
    Return to the Watch: the button reads `Check now` and the line reads
    `Last check ...:` with one outcome per kind. It survives a reload.
@@ -415,7 +415,8 @@ back, and shows the error under that row (`.opt-save-failed`, `role="alert"`)
 with `Try again`. Setting failures never use the middle column's action banner
 (`.opt-feed > p.opt-banner-error`). A failed store write still raises the
 separate `Watches stopped.` storage notice there. Each save verifies the
-login once, so it costs one viewer request.
+login once, which costs a viewer request only when the last read is more than
+5 minutes old.
 
 A real save settles too fast to capture, and a real failure needs a broken
 store. Slow or fail only the `watch-store` write from the worker. This is
@@ -460,8 +461,13 @@ worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, or
 changes the rate-limit pause in `instagram-requests`. Those reloads go through the
 `WATCH_READ` message, once per signed-in login. The worker answers without an
 Instagram request while that login is still the last one any viewer read found,
-and verifies again otherwise. Opening the page, returning to its tab or window,
-and every action verify the login once. Tab visibility and window focus events
+and verifies again otherwise. Opening the page first lists the Watches of the
+logins `watch-viewer` and `watch-viewer.linked` name, then verifies. Returning to
+its tab or window and every action verify the login once. A verification the
+person starts reuses the worker's last viewer read from the past 5 minutes while
+the login's `sessionid` cookie is unchanged, so it costs a request only after
+that. The reuse lives in worker memory, so a worker restart drops it and the
+next check reads again. Unattended Watch work always reads again. Tab visibility and window focus events
 for one return share a verification. Storage reloads wait for that verification,
 and changing the login clears the previous login's selected view and inbox
 selections. A signed-out page rechecks on return too. There is no login polling.
@@ -486,11 +492,13 @@ same login.
    empty, it starts `Next check in` the time until the new `nextRoundAt`, and its
    `title` is that time. Screenshot both.
 4. Compare `attempts` with the Watch requests the round made. The page adds
-   none. Pause and then resume the Watch from the page: each action adds exactly
-   one viewer request, and the reload after it adds none.
+   none. Pause and then resume the Watch from the page: each action adds at most
+   one viewer request, none within 5 minutes of the last viewer read, and the
+   reload after it adds none.
 5. After the initial load settles, set an in-memory page marker and record the
    request count. Activate a neutral tab, then return to `options.html` without
-   reloading. One real viewer request confirms the login; the marker survives.
+   reloading. The return confirms the login, with one viewer request only when
+   the last viewer read is more than 5 minutes old; the marker survives.
    Keep the page foregrounded briefly and confirm it adds no further requests.
    Repeat once by moving focus to another browser window and returning, to
    cover the window-focus path. Stop on a 429 or request-cap deferral.
@@ -498,15 +506,24 @@ same login.
    switch or sign-out if one occurs, otherwise report that live gap. Focused
    browser-adapter tests own switched-login isolation and sign-out recovery;
    an unchanged real login proves foreground verification, not account switching.
-6. With a page marker set, record the request count and run
-   `gramgrab watch list` once. The count grows by exactly the CLI's one request,
-   and the page keeps its marker and console. To drive the page's login-loss
+6. Open a second `options.html` while `watch-viewer` names the login. The
+   console (`.opt-console`) appears without waiting for Instagram, in well under
+   a second by `performance.now()`, then the background verification settles
+   without changing it. A browser session with no `watch-viewer` yet shows
+   `Loading Watches…` until its first verification answers.
+7. With a page marker set, record the request count and run
+   `gramgrab watch list` once. The count grows by at most the CLI's one viewer
+   request, none within 5 minutes of the last read, and the page keeps its
+   marker and console. To drive the page's login-loss
    path without signing out, run
    `chrome.storage.session.remove('watch-viewer')` from the worker, which is
    what a viewer read that finds no login does. The page shows `Sign in to
    Instagram` with the stored count, keeps its marker, and adds no request.
-   Return to the tab: one viewer request restores the console. This injects
-   session state only. A real sign-out stays a reported live gap.
+   Return to the tab: the console comes back. It costs no request while the
+   worker's last viewer read is under 5 minutes old, since that reuse does not
+   read `watch-viewer`. That reuse does not write `watch-viewer` back either, so
+   it stays absent until the next fresh viewer read. This injects session state
+   only. A real sign-out stays a reported live gap.
 
 ## Avatars
 
@@ -573,8 +590,9 @@ Opening the page does not start an Avatar lookup.
    fields stay current. Keep lookup timestamps and the request ledger unchanged.
    The focused UI test covers this transition too.
 3. Reload `options.html` and compare `attempts` in `instagram-requests` before
-   and after. The reload adds one attempt, the viewer read, and nothing for
-   Avatars.
+   and after. The reload adds nothing for Avatars, and at most one attempt for
+   the viewer read, none within 5 minutes of the last one unless the worker
+   restarted since.
 4. A copied profile's Watch may already hold `avatarImage`, or a queued check.
    Record that first and reuse the existing check. Do not repeat Check now,
    clear the request ledger, or poll with commands that verify the login. On a
@@ -654,7 +672,8 @@ Watches of its author or co-authors, whether or not it is downloaded. The record
 skips them. Only media newer than the kind's baseline and inside 30 days is recorded, so the
 official `instagram` Watch, whose recent media is usually already found, rarely shows a change.
 This recipe uses a paused fixture Watch of the same account with older baselines instead. It
-spends the ordinary fetch requests plus one viewer request per fetch, and no Watch check.
+spends the ordinary fetch requests plus at most one viewer request every 5 minutes, and no Watch
+check.
 
 1. Launch, then within the two-minute startup hold run `watch-problem.mjs hold 60` and require
    `"held":true`. The seed copies the official `instagram` Watch's IDs, so a profile without one
@@ -764,15 +783,18 @@ and must not be run against a shared personal account:
    `watch list --json` has no `schedule.pausedUntil`. `watch needs` has no
    `PauseAttention`, and the options page shows no `Watches paused` banner.
 4. Stop the throttle. A manual check verifies the viewer once as the person and
-   then again as Watch work, each by reading the instagram.com home page
-   (`fetchViewer` in `apps/extension/src/watch/identity.ts`). Start
-   `throttle.mjs https://www.instagram.com/ 429 --pass 1 --exact` and run `watch
-   check instagram --json`, then stop the throttle at once, since `watch list` and
-   `watch needs` verify the viewer too. The log shows one `passed` line, then
-   one 429. The Watch request's 429 sets `schedule.pausedUntil` about 30 minutes out, `watch
-   needs` has a `PauseAttention` with `IG_RATE_LIMITED`, and the options page
-   shows `Instagram rate limited a Watch request`. Without `--pass 1` the
-   person's viewer check takes the 429, so the check fails with
+   then again as Watch work. The Watch work always reads the instagram.com home
+   page (`fetchViewer` in `apps/extension/src/watch/identity.ts`). The person's
+   check reuses a read from the last 5 minutes (`recentViewer`), so run `watch
+   list --json` first to make one. Within 5 minutes, start
+   `throttle.mjs https://www.instagram.com/ 429 --exact` and run `watch check
+   instagram --json`, then stop the throttle at once, since the Watch work's read
+   drops the reuse and the next `watch list` or `watch needs` reads the home page
+   again. The log shows one 429 and no `passed` line. The Watch request's 429
+   sets `schedule.pausedUntil` about 30 minutes out, `watch needs` has a `PauseAttention` with `IG_RATE_LIMITED`, and the options page
+   shows `Instagram rate limited a Watch request`. When the person's read is
+   older than 5 minutes, or the worker restarted between the two commands, the
+   person's viewer check takes the 429 instead, so the check fails with
    `IG_NOT_AUTHENTICATED` and nothing pauses. Matching a Posts `doc_id` does not
    work either, because Posts requests send it in a POST body. A ledger already
    holding 60 attempts from the last hour defers the check on capacity before
@@ -801,7 +823,7 @@ it is not an Instagram response.
 2. Read `attempts` back: 60. Open `options.html`. The sidebar reads `Waiting: 1
    left this round`, not `Checking`, and a `Watches waiting.` banner says Watch
    checks resume around a time about 20 minutes out. Opening the page verifies
-   the viewer as the person, which adds one attempt and can move that time.
+   the viewer as the person, which adds at most one attempt and can move that time.
    The page follows `instagram-requests` and `watch-scheduler` in storage, so
    an open page picks up a cap that fills later without a reload.
 3. If the Watch already holds a manual check, the button stays disabled and

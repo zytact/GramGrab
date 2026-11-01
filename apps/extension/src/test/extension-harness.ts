@@ -214,7 +214,11 @@ export function createExtensionHarness() {
     },
     storage: local,
     sessionStorage: session,
-    cookies: { get: vi.fn(async () => ({ value: 'csrf-token' })) },
+    cookies: {
+      get: vi.fn(async ({ name }: { name: string }) =>
+        name === 'csrftoken' ? { value: 'csrf-token' } : null
+      ),
+    },
     alarms: {
       create: vi.fn(
         async (name: string, info: { periodInMinutes?: number; delayInMinutes?: number }) => {

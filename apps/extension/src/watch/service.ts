@@ -83,7 +83,7 @@ import {
   deferManual,
   pacingReason,
 } from './scheduler.ts';
-import { confirmProfile, fetchViewer, verifiedViewerId, type Account } from './identity.ts';
+import { confirmProfile, recentViewer, verifiedViewerId, type Account } from './identity.ts';
 import {
   mutateStore,
   readStore,
@@ -120,7 +120,7 @@ const save = <T>(change: (store: WatchStore) => { store: WatchStore; value: T })
  * Watch state anyone sees is how many Watches are stored.
  */
 const verifyViewer = (store: WatchStore | undefined) =>
-  fetchViewer.pipe(
+  recentViewer.pipe(
     Effect.tap(() =>
       Effect.flatMap(requestLogin, login => Effect.promise(() => resumeAfterPerson(login)))
     ),

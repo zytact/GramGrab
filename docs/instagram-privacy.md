@@ -58,7 +58,8 @@ Watches are the one exception to request-in-the-moment access. See
   preview, data, or blob URLs, captions, full or display names, locations, cookies, or tokens. The
   viewer's own Avatar is fetched when needed and is not stored. Each login's verified account ID
   and username live only in `storage.session`, which the browser clears when it closes, so the
-  login picker can name them. The linked login's cookies are a
+  login picker can name them and the Watches page can list that login's Watches while it asks
+  Instagram again. The linked login's cookies are a
   separate record, not Watch state; see Linked login. A Posts traversal
   cursor lives only in `storage.session`. Each Watch entry links to its Instagram page, built
   when shown from the username and the stored shortcode or Story ID; the link is never stored.
@@ -114,7 +115,10 @@ login describes.
 
 Instagram's Posts queries also need the `fb_dtsg` form token. GramGrab reads it from the
 instagram.com home page, keeps it in the background worker's memory only, and sends it back to
-Instagram with those queries, one token per login. The `declarativeNetRequestWithHostAccess`
+Instagram with those queries, one token per login. The same read names the signed-in viewer. The
+worker keeps each login's last viewer read, with the `sessionid` value it was read under, in memory
+only until its next viewer read or until the worker stops. Work the person starts reuses that read
+for up to 5 minutes while the login still sends the same `sessionid`. The `declarativeNetRequestWithHostAccess`
 permission sets two headers on GramGrab's own requests to instagram.com, never on a tab's:
 `Origin: https://www.instagram.com` on its POST requests, and the linked login's `Cookie` on
 requests made for that login.

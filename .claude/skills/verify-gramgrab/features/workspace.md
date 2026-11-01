@@ -67,3 +67,7 @@ vp test run apps/extension/src/workspace/coordinator.test.ts apps/extension/src/
 - Open and Fetch use the canonical context target, including a supported link
   on an unrelated page.
 - Unsupported targets expose no actionable GramGrab context menu.
+- The popup, workspace, and options page load their fonts from the extension.
+  `performance.getEntriesByType('resource')` lists no URL outside
+  `chrome-extension://`, and `document.fonts.check('16px "DM Mono"')` and
+  `document.fonts.check('16px "Instrument Serif"')` are both `true`.

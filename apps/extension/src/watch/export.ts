@@ -15,7 +15,7 @@ import { instagramPage, type Discovery, type MediaRef, type Watch } from './cont
 import { fetchAvatar } from './avatar.ts';
 import { readInstants } from './instants.ts';
 import { readStories } from './stories.ts';
-import { fetchViewer } from './identity.ts';
+import { recentViewer } from './identity.ts';
 import { readStore } from './store.ts';
 
 export type Unavailable = NonNullable<Discovery['unavailable']>;
@@ -138,7 +138,7 @@ export interface Learned {
 }
 
 export const exportAuthorization = Effect.fn(function* (watch: Watch, discovery: Discovery) {
-  const viewer = yield* Effect.either(fetchViewer);
+  const viewer = yield* Effect.either(recentViewer);
   if (Either.isLeft(viewer) || viewer.right.accountId !== watch.viewerId)
     return 'IG_NOT_AUTHENTICATED' as const;
   const current = yield* Effect.promise(readStore);
