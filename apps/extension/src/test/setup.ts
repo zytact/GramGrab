@@ -37,6 +37,19 @@ if (
   };
 }
 
+// jsdom has no IntersectionObserver. This one never reports a row in view, so lazy
+// thumbnails stay unloaded unless a test stubs its own.
+if (typeof window !== 'undefined' && !('IntersectionObserver' in window)) {
+  globalThis.IntersectionObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
+    }
+  } as unknown as typeof IntersectionObserver;
+}
+
 const mockTabs = [
   { id: 1, url: 'https://www.instagram.com/p/abc123/', active: true, currentWindow: true },
 ];

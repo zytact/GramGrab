@@ -720,3 +720,20 @@ summary.opt-logins-summary {
   flex-wrap: wrap;
   gap: 8px;
 }
+.opt-thumb {
+  height: 56px;
+  background: var(--panel);
+}
+.opt-thumb-round {
+  border-radius: 50%;
+}
+.opt-thumb-count {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  padding: 1px 4px;
+  font: 500 9px/1.3 var(--font-mono);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+}

@@ -190,7 +190,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     );
   });
 
-  it('restores saved failed-export recovery when selecting all', async () => {
+  it('shows saved failed-export recovery on its row without selecting it', async () => {
     seedWatchWithProblemAndEntry([
       {
         id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
@@ -214,8 +214,8 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
-    await user.click(await screen.findByRole('button', { name: 'Select all' }));
-    expect(screen.getByRole('button', { name: 'Retry failed exports' })).toBeDefined();
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeDefined();
+    expect(screen.getByText('Pick a Watch on the left to change it.')).toBeDefined();
   });
 
   it('opens on Needs you while a check problem needs attention, and lists collected entries', async () => {
@@ -535,10 +535,9 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     fireEvent.change(timestamp, { target: { value: '8' } });
     harness.failDownloads(new Error('network failure'));
     await user.click(screen.getByRole('button', { name: 'Download selected (1)' }));
-    await screen.findByRole('button', { name: 'Retry failed exports' });
-    await user.click(screen.getAllByRole('checkbox', { name: 'Select inbox item' })[1]!);
+    await screen.findByRole('button', { name: 'Retry' });
     harness.failDownloads(undefined);
-    await user.click(screen.getByRole('button', { name: 'Retry failed exports' }));
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(harness.downloads).toHaveLength(1));
     const history = await harness.send<MessageResponse<'GET_DOWNLOAD_HISTORY'>>({
       type: 'GET_DOWNLOAD_HISTORY',
@@ -663,6 +662,59 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     });
     expect(history.entries).toMatchObject([{ mediaId: '601', itemIndex: 0 }]);
     expect(harness.browser.tabs.create).not.toHaveBeenCalled();
+  });
+
+  it('shows a Carousel row thumbnail and downloads the whole entry from its row', async () => {
+    const entryId = '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a';
+    seedWatchWithProblemAndEntry([
+      {
+        id: entryId,
+        checkId: CHECK_ID,
+        ref: {
+          _tag: 'Sidecar',
+          mediaId: '600',
+          shortcode: 'C600',
+          takenAt: 2,
+          children: [
+            { mediaId: '601', mediaType: 'image' },
+            { mediaId: '602', mediaType: 'video' },
+          ],
+        },
+        discoveredAt: Date.now(),
+        collect: { at: Date.now() },
+      },
+    ]);
+    instagram.state.media.C600 = restMedia({ id: '600', takenAt: 2, children: ['601', '602'] });
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(private readonly report: IntersectionObserverCallback) {}
+        observe(target: Element) {
+          this.report(
+            [{ isIntersecting: true, target } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver
+          );
+        }
+        disconnect() {}
+      }
+    );
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+    const row = (await screen.findByRole('link', { name: /Carousel/ })).closest('.opt-line');
+    if (!(row instanceof HTMLElement)) throw new Error('Missing Sidecar entry');
+    await waitFor(() => expect(row.querySelector('.opt-thumb img')).not.toBeNull());
+    expect(row.querySelector('.opt-thumb-count')?.textContent).toBe('2');
+
+    await user.click(within(row).getByRole('button', { name: 'Download' }));
+    await within(row).findByText(/Saved 2 files/);
+    expect(harness.downloads).toHaveLength(2);
+    expect(harness.browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'WATCH_COMMAND',
+      command: { _tag: 'WatchInboxExport', entryIds: [entryId] },
+      login: 'main',
+    });
+    expect(screen.getByText('Pick a Watch on the left to change it.')).toBeDefined();
   });
 
   it('offers confirmation for uncertain files and dismissal for final download failures', async () => {
