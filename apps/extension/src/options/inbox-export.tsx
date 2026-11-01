@@ -69,8 +69,10 @@ function combined(responses: readonly WatchCommandResponse[]) {
   };
 }
 
-/** Saving runs, or why the command itself failed, keyed by entry ID. */
-type RowState = 'saving' | { readonly failure: string };
+/** A row's own command: running, or refused before any download started. */
+type RowState =
+  | { readonly _tag: 'saving' }
+  | { readonly _tag: 'failed'; readonly code: FailureCode };
 
 /** Inbox selection and its commands, each run as the login `loginOf` names for an entry's Watch. */
 export function useInboxExport(
@@ -95,11 +97,15 @@ export function useInboxExport(
   const [failure, setFailure] = useState<string>();
   const [cropConsent, setCropConsent] = useState(false);
   const entries = [...selected.values()].filter(entry => entry.unavailable === undefined);
-  const mergeOutcomes = (exported: readonly InboxExportOutcome[]) =>
+  /** Records fresh outcomes, which replace any earlier row failure of their entries. */
+  const mergeOutcomes = (exported: readonly InboxExportOutcome[]) => {
+    const ids = new Set(exported.map(outcome => outcome.entryId));
     setOutcomes(
       current =>
         new Map([...current, ...exported.map(outcome => [outcome.entryId, outcome] as const)])
     );
+    setRows(current => new Map([...current].filter(([id]) => !ids.has(id))));
+  };
   const setRow = (entryId: string, state: RowState | undefined) =>
     setRows(current => {
       const next = new Map(current);
@@ -162,7 +168,7 @@ export function useInboxExport(
     });
   /** Runs one entry's command on its row, leaving the selection and the inspector alone. */
   const runOnRow = async (entry: DiscoverySummary, command: WatchCommand) => {
-    setRow(entry.entryId, 'saving');
+    setRow(entry.entryId, { _tag: 'saving' });
     try {
       const response = await sendMessage({
         type: 'WATCH_COMMAND',
@@ -170,10 +176,10 @@ export function useInboxExport(
         login: loginOf(entry.watchId),
       });
       const { failed, exported } = combined([response]);
+      setRow(entry.entryId, failed ? { _tag: 'failed', code: failed } : undefined);
       if (exported) mergeOutcomes(exported);
-      setRow(entry.entryId, failed ? { failure: FAILURE_PRESENTATION[failed].title } : undefined);
     } catch {
-      setRow(entry.entryId, { failure: FAILURE_PRESENTATION.DOWNLOAD_UNEXPECTED_FAILURE.title });
+      setRow(entry.entryId, { _tag: 'failed', code: 'DOWNLOAD_UNEXPECTED_FAILURE' });
     } finally {
       onChanged();
     }
@@ -290,7 +296,7 @@ export function RowRecovery({
     !(outcome.failures.some(failure => canRecover(failure.code)) || outcome.skipped?.length)
   )
     return null;
-  const disabled = value.busy || value.rows.get(entry.entryId) === 'saving';
+  const disabled = value.busy || value.rows.get(entry.entryId)?._tag === 'saving';
   const retry = (recovery?: 'original' | 'reencode') => {
     setConsent(false);
     value.retryEntry(entry, planId, recovery);

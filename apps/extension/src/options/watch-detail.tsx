@@ -118,8 +118,8 @@ const STATE_LABEL: Record<ActionOutcome['state'], string> = {
   unconfirmed: 'unconfirmed',
 };
 
-/** Only outcomes that need a look: a done action says nothing more. */
-const needsLook = (outcome: ActionOutcome | undefined) =>
+/** Only failed or unconfirmed outcomes earn a chip; a done action says nothing more. */
+const needsAttention = (outcome: ActionOutcome | undefined) =>
   outcome?.state === 'failed' || outcome?.state === 'unconfirmed';
 
 function OutcomeChips({ entry }: { entry: DiscoverySummary }) {
@@ -128,7 +128,7 @@ function OutcomeChips({ entry }: { entry: DiscoverySummary }) {
     <span className="opt-chips">
       {(['notify', 'download', 'collect'] as const).flatMap(action => {
         const outcome = entry[action];
-        return outcome && needsLook(outcome)
+        return outcome && needsAttention(outcome)
           ? [
               <span key={action} className={`opt-chip opt-${outcome.state}`}>
                 {OUTCOME_LABEL[action]}: {STATE_LABEL[outcome.state]}
@@ -138,7 +138,7 @@ function OutcomeChips({ entry }: { entry: DiscoverySummary }) {
       })}
       {children.length > 1 &&
         children.flatMap((outcome, child) =>
-          needsLook(outcome)
+          needsAttention(outcome)
             ? [
                 <span key={`download-${child}`} className={`opt-chip opt-${outcome.state}`}>
                   Download item {child + 1}: {STATE_LABEL[outcome.state]}
@@ -178,10 +178,10 @@ function ExportResult({
   entry: DiscoverySummary;
   outcome: InboxExportOutcome;
 }) {
-  const accepted = outcome.accepted === 1 ? '1 file' : `${outcome.accepted} files`;
+  const accepted = outcome.accepted === 1 ? '1 download' : `${outcome.accepted} downloads`;
   return (
     <span className="opt-meta">
-      {outcome.accepted > 0 && `Saved ${accepted}. `}
+      {outcome.accepted > 0 && `${accepted} started. `}
       {outcome.failures.map(({ child, code }) => (
         <span key={`${child}-${code}`} className="opt-error">
           {child !== undefined && `Item ${child + 1}: `}
@@ -212,11 +212,11 @@ function InboxRowStatus({ entry }: { entry: DiscoverySummary }) {
   const exporter = useInboxSelection();
   const row = exporter.rows.get(entry.entryId);
   const outcome = exporter.outcomes.get(entry.entryId) ?? entry.manualExport;
-  if (row === 'saving') return <span className="opt-meta">Saving…</span>;
+  if (row?._tag === 'saving') return <span className="opt-meta">Saving…</span>;
   return (
     <>
       {outcome && <ExportResult entry={entry} outcome={outcome} />}
-      {row && <span className="opt-meta opt-error">{row.failure}</span>}
+      {row && <span className="opt-meta opt-error">{FAILURE_PRESENTATION[row.code].title}</span>}
       {outcome && <RowRecovery entry={entry} outcome={outcome} />}
     </>
   );
@@ -276,14 +276,14 @@ function FoundList({ entries }: { entries: readonly DiscoverySummary[] }) {
 /** One collected entry with its thumbnail, selection, download and removal. */
 function InboxRow({ entry, avatars }: { entry: DiscoverySummary; avatars?: Avatars }) {
   const exporter = useInboxSelection();
-  const saving = exporter.rows.get(entry.entryId) === 'saving';
+  const saving = exporter.rows.get(entry.entryId)?._tag === 'saving';
   return (
     <div className="opt-line opt-row opt-top">
       <input
         type="checkbox"
         aria-label="Select inbox item"
         checked={exporter.selected.has(entry.entryId)}
-        disabled={exporter.busy}
+        disabled={exporter.busy || saving}
         onChange={() => exporter.toggle(entry)}
       />
       <InboxThumbnail entry={entry} thumbnails={exporter.thumbnails} />
@@ -301,7 +301,7 @@ function InboxRow({ entry, avatars }: { entry: DiscoverySummary; avatars?: Avata
       {entry.inboxUntil !== undefined && (
         <button
           className="opt-btn opt-ghost"
-          disabled={exporter.busy}
+          disabled={exporter.busy || saving}
           onClick={() => exporter.remove([entry])}
         >
           Remove

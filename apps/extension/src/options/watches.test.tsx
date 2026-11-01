@@ -707,7 +707,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(row.querySelector('.opt-thumb-count')?.textContent).toBe('2');
 
     await user.click(within(row).getByRole('button', { name: 'Download' }));
-    await within(row).findByText(/Saved 2 files/);
+    await within(row).findByText(/2 downloads started/);
     expect(harness.downloads).toHaveLength(2);
     expect(harness.browser.runtime.sendMessage).toHaveBeenCalledWith({
       type: 'WATCH_COMMAND',

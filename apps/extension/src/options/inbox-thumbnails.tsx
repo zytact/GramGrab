@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DiscoverySummary, InstagramLogin } from '@gramgrab/protocol';
+import type { DiscoverySummary, FailureCode, InstagramLogin } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
 
 const PARALLEL_LOADS = 2;
@@ -24,16 +24,8 @@ function concurrencyLimit(max: number) {
     });
 }
 
-async function recordedThumbnail(entry: DiscoverySummary, login: InstagramLogin) {
-  const { media } = await sendMessage({
-    type: 'WATCH_INBOX_PREVIEW',
-    entryId: entry.entryId,
-    login,
-  });
-  const first = media?.[0];
-  if (!first) return undefined;
-  return first.type === 'video' ? first.previewUrl : (first.previewUrl ?? first.url);
-}
+/** Failures after which further thumbnail requests would only add Instagram traffic. */
+const HALTING = new Set<FailureCode>(['IG_RATE_LIMITED', 'IG_NOT_AUTHENTICATED']);
 
 /**
  * Loads each inbox entry's thumbnail once per page, a few at a time. Thumbnails live in page
@@ -45,6 +37,19 @@ export function useInboxThumbnails(loginOf: (watchId: string) => InstagramLogin)
   const [thumbnails] = useState(() => {
     const cache = new Map<string, Promise<string | undefined>>();
     const limit = concurrencyLimit(PARALLEL_LOADS);
+    let halted = false;
+    const recorded = async (entry: DiscoverySummary) => {
+      if (halted) return undefined;
+      const { media, failure } = await sendMessage({
+        type: 'WATCH_INBOX_PREVIEW',
+        entryId: entry.entryId,
+        login: login.current(entry.watchId),
+      });
+      if (failure?._tag === 'CommandFailure' && HALTING.has(failure.failure.code)) halted = true;
+      const first = media?.[0];
+      if (!first) return undefined;
+      return first.type === 'video' ? first.previewUrl : (first.previewUrl ?? first.url);
+    };
     const remember = (entryId: string, load: () => Promise<string | undefined>) => {
       const promise = limit(load).catch(() => undefined);
       cache.set(entryId, promise);
@@ -52,10 +57,9 @@ export function useInboxThumbnails(loginOf: (watchId: string) => InstagramLogin)
     };
     return {
       load: (entry: DiscoverySummary) =>
-        cache.get(entry.entryId) ??
-        remember(entry.entryId, () => recordedThumbnail(entry, login.current(entry.watchId))),
+        cache.get(entry.entryId) ?? remember(entry.entryId, () => recorded(entry)),
       /** Refetches a thumbnail the page could not show as inline data through the worker. */
-      inline: (entry: DiscoverySummary, url: string) =>
+      refetchAsData: (entry: DiscoverySummary, url: string) =>
         remember(entry.entryId, async () => {
           const { previewUrl } = await sendMessage({ type: 'GET_PREVIEW_URL', url });
           return previewUrl;
@@ -108,7 +112,7 @@ export function InboxThumbnail({
           alt=""
           onError={() => {
             if (src.startsWith('data:')) setSrc(null);
-            else void thumbnails.inline(entry, src).then(url => setSrc(url ?? null));
+            else void thumbnails.refetchAsData(entry, src).then(url => setSrc(url ?? null));
           }}
         />
       )}
