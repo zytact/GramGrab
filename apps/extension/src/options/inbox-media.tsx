@@ -75,34 +75,36 @@ type PreviewLoader = {
 };
 
 /**
- * Sends each entry's preview request through the loader's limit. Once one is refused for a rate
- * limit or sign-out, unsent ones take that refusal instead, and a stale generation sends nothing.
- * `undefined` marks a request that threw or was skipped.
+ * Sends each entry's preview request through the loader's limit while its token is current, so a
+ * deselected entry or a closed editor sends nothing more. Once one is refused for a rate limit or
+ * sign-out, unsent ones take that refusal instead. `undefined` marks a request that threw or was
+ * skipped.
  */
 function requestPreviews(
   entries: readonly DiscoverySummary[],
+  tokens: readonly object[],
   loginOf: (watchId: string) => InstagramLogin,
   loader: PreviewLoader,
-  isCurrent: () => boolean,
   onSettled: () => void
 ) {
   return Promise.all(
-    entries.map(entry =>
-      loader
+    entries.map((entry, index) => {
+      const current = () => loader.requested.get(entry.entryId) === tokens[index];
+      return loader
         .limit(async () => {
           if (loader.refusal) return loader.refusal;
-          if (!isCurrent()) return undefined;
+          if (!current()) return undefined;
           const response = await sendMessage({
             type: 'WATCH_INBOX_PREVIEW',
             entryId: entry.entryId,
             login: loginOf(entry.watchId),
           });
-          if (halts(response)) loader.refusal = response;
+          if (halts(response) && current()) loader.refusal = response;
           return response;
         })
         .catch(() => undefined)
-        .finally(onSettled)
-    )
+        .finally(onSettled);
+    })
   );
 }
 
@@ -201,9 +203,8 @@ export function useInboxMedia(
       return token;
     });
     setProgress(previous => expectMore(previous, missing.length));
-    const isCurrent = () => current === generation.current;
-    const responses = await requestPreviews(missing, loginOf, loader, isCurrent, () => {
-      if (isCurrent()) setProgress(advance);
+    const responses = await requestPreviews(missing, tokens, loginOf, loader, () => {
+      if (current === generation.current) setProgress(advance);
     });
     if (current !== generation.current) return;
     if (responses.some(response => refusesOwner(response?.failure))) {

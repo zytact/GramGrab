@@ -116,7 +116,7 @@ export function useInboxExport(
     setPicked(new Map());
     setOutcomes(new Map());
     setEditing(false);
-    void onChanged();
+    void onChanged().catch(() => {});
   });
   const [failure, setFailure] = useState<string>();
   const [cropConsent, setCropConsent] = useState(false);
@@ -199,7 +199,7 @@ export function useInboxExport(
     } catch {
       setRowsOf(ids, { _tag: 'failed', code: 'DOWNLOAD_UNEXPECTED_FAILURE' });
     } finally {
-      void onChanged();
+      void onChanged().catch(() => {});
     }
   };
   /** Downloads entries as Original with default modifiers, showing progress on their rows. */
