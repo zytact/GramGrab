@@ -159,7 +159,7 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   captured the loaded thumbnail where a bare `shot` captured a blank one. A
   blank thumbnail without `.thumb-placeholder` is this, not a failed preview.
 - A fetch of an account that has a Watch also marks the media seen for that Watch,
-  after one viewer request. See Fetched media is seen in [Watches](./watches.md).
+  after at most one viewer request. See Fetched media is seen in [Watches](./watches.md).
 - `ResponseShapeUnknown` means Instagram changed a payload. That is a fixture
   and schema task (`vp run generate:ig-fixtures`), not something to work around
   in the harness.
