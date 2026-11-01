@@ -117,8 +117,10 @@ separately authorized run, so record an empty Watch as a live prerequisite.
 Each Inbox row, in a Watch's Inbox tab and in All inbox, shows a 56px
 `.opt-thumb` before its text and a `Download` button before `Remove`. Found rows
 have neither. A row loads its thumbnail with one `WATCH_INBOX_PREVIEW` once it
-scrolls within 200px of the viewport, two rows at a time, and keeps it in page
-memory only, so `watch-store` never gains a URL. A Carousel shows its child
+scrolls within 200px of the viewport, two rows at a time, and keeps its URL in
+`storage.session` under `inbox-thumbnail:<entryId>`, so reopening the page asks
+Instagram again only for entries it has not seen this browser session.
+`watch-store` never gains a URL. A Carousel shows its child
 count in `.opt-thumb-count`; an Avatar change crops round (`.opt-thumb-round`).
 Thumbnail loading stops for a login after `IG_RATE_LIMITED` or
 `IG_NOT_AUTHENTICATED`, leaving empty boxes. An expired Story has no media to

@@ -4,7 +4,7 @@ Until now, every Instagram request GramGrab made served an operation the person 
 
 The person accepts the disclosure each time they add a Watch. On the options page that is a confirmation step. In the CLI it is the `--accept-unattended` flag on `gramgrab watch add`. The disclosure says that Instagram may treat the automated traffic as unusual and could limit or flag the account. A fixed 12-hour Watch round, request spacing, an hourly cap, and a 429 pause bound the traffic. Only a 429 on a Watch request starts that pause, because person-initiated work hits endpoints that throttle on their own and recovers through fallbacks. Person-initiated work always goes first.
 
-Watch state stays on the device in `storage.local` under an allowlisted schema: identifiers, publication and discovery times, check status, and action outcomes. It never holds media bytes, signed or preview URLs, captions, names, or session material. A Posts traversal cursor lives only in `storage.session`. Shareable diagnostics gain only a closed media-kind field.
+Watch state stays on the device in `storage.local` under an allowlisted schema: identifiers, publication and discovery times, check status, and action outcomes. It never holds media bytes, signed or preview URLs, captions, names, or session material. A Posts traversal cursor and inbox thumbnail URLs live only in `storage.session`, which the browser clears when it closes. Shareable diagnostics gain only a closed media-kind field.
 
 ## Considered options
 

@@ -51,6 +51,23 @@ afterEach(() => {
 const findSidebarButton = async (name: RegExp) =>
   within(await screen.findByRole('navigation')).findByRole('button', { name });
 
+/** Reports every observed row as in view, so inbox thumbnails load at once. */
+function stubRowsInView() {
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(private readonly report: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        this.report(
+          [{ isIntersecting: true, target } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver
+        );
+      }
+      disconnect() {}
+    }
+  );
+}
+
 async function addWatch(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: '+ Add' }));
   await user.type(screen.getByPlaceholderText(/username or instagram.com/), TARGET.username);
@@ -685,19 +702,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       },
     ]);
     instagram.state.media.C600 = restMedia({ id: '600', takenAt: 2, children: ['601', '602'] });
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        constructor(private readonly report: IntersectionObserverCallback) {}
-        observe(target: Element) {
-          this.report(
-            [{ isIntersecting: true, target } as IntersectionObserverEntry],
-            this as unknown as IntersectionObserver
-          );
-        }
-        disconnect() {}
-      }
-    );
+    stubRowsInView();
     const user = userEvent.setup();
     render(<Watches />);
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
@@ -715,6 +720,42 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       login: 'main',
     });
     expect(screen.getByText('Pick a Watch on the left to change it.')).toBeDefined();
+  });
+
+  it('reuses a thumbnail kept in session storage when the page opens again', async () => {
+    seedWatchWithProblemAndEntry([
+      {
+        id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
+        checkId: CHECK_ID,
+        ref: { _tag: 'Post', mediaId: '200', shortcode: 'C200', mediaType: 'image', takenAt: 2 },
+        discoveredAt: Date.now(),
+        collect: { at: Date.now() },
+      },
+    ]);
+    instagram.state.media.C200 = restMedia({ id: '200', video: false, takenAt: 2 });
+    stubRowsInView();
+    const previews = () =>
+      vi
+        .mocked(harness.browser.runtime.sendMessage)
+        .mock.calls.filter(
+          ([message]) => (message as { type: string }).type === 'WATCH_INBOX_PREVIEW'
+        ).length;
+    const thumbnail = async () => {
+      const user = userEvent.setup();
+      const page = render(<Watches />);
+      await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+      const row = (await screen.findByRole('link', { name: 'Photo' })).closest('.opt-line');
+      await waitFor(() => expect(row?.querySelector('.opt-thumb img')).not.toBeNull());
+      const src = row?.querySelector('.opt-thumb img')?.getAttribute('src');
+      page.unmount();
+      return src;
+    };
+
+    const first = await thumbnail();
+    const requests = previews();
+    expect(await thumbnail()).toBe(first);
+    expect(previews()).toBe(requests);
+    expect(JSON.stringify(harness.local.read('watch-store'))).not.toContain(first);
   });
 
   it('offers confirmation for uncertain files and dismissal for final download failures', async () => {
