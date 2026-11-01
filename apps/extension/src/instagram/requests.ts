@@ -217,6 +217,18 @@ const mainRoute = async (url: string) => ({
       .then(cookie => cookie?.value),
 });
 
+/** The session cookie `login`'s requests carry. It changes when that login signs out or switches. */
+export async function sessionCookie(login: InstagramLogin): Promise<string | undefined> {
+  if (login === 'linked') {
+    const linked = await readLinkedLogin();
+    return linked?.ended ? undefined : linked?.cookies.sessionid;
+  }
+  const cookie = await browser.cookies
+    .get({ url: 'https://www.instagram.com/', name: 'sessionid' })
+    .catch(() => null);
+  return cookie?.value;
+}
+
 const ROUTES = { main: mainRoute, linked: linkedRoute } satisfies Record<
   InstagramLogin,
   (url: string) => Promise<unknown>

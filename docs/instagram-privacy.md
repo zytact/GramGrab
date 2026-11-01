@@ -114,7 +114,10 @@ login describes.
 
 Instagram's Posts queries also need the `fb_dtsg` form token. GramGrab reads it from the
 instagram.com home page, keeps it in the background worker's memory only, and sends it back to
-Instagram with those queries, one token per login. The `declarativeNetRequestWithHostAccess`
+Instagram with those queries, one token per login. The same read names the signed-in viewer. The
+worker keeps each login's last viewer read, with the `sessionid` value it was read under, in memory
+only for up to 5 minutes, so work the person starts can skip a repeat read while that cookie is
+unchanged. The `declarativeNetRequestWithHostAccess`
 permission sets two headers on GramGrab's own requests to instagram.com, never on a tab's:
 `Origin: https://www.instagram.com` on its POST requests, and the linked login's `Cookie` on
 requests made for that login.

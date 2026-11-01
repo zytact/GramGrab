@@ -4,7 +4,7 @@ import { AccountId, InstagramUsername, type InstagramLogin } from '@gramgrab/pro
 import { protocolConfig } from '../instagram-protocol/config.ts';
 import { readHomePage } from '../instagram/dtsg.ts';
 import { IG_API_GRAPHQL_HEADERS } from '../instagram/headers.ts';
-import { InstagramRequests, readJson } from '../instagram/requests.ts';
+import { InstagramRequests, readJson, sessionCookie } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
 import { markLinkedEnded } from '../instagram/linked-login.ts';
 import { CachedViewer, VIEWER_KEYS, decodeCachedViewer } from './contracts.ts';
@@ -101,15 +101,25 @@ export async function cachedViewer(login: InstagramLogin): Promise<Account | und
 export const verifiedViewerId = async (login: InstagramLogin) =>
   (await cachedViewer(login))?.accountId;
 
+/** How long one viewer read answers person-initiated work while the session cookie is unchanged. */
+const VIEWER_REUSE_MS = 5 * 60_000;
+
+/** Each login's last viewer read and the session it was read with, kept in worker memory only. */
+const recentViewers: Partial<
+  Record<InstagramLogin, { readonly viewer: Viewer; readonly session: string; readonly at: number }>
+> = {};
+
 /**
  * Identifies the viewer of the requests' login from Instagram's home page, never from a cookie, and
- * records it for `cachedViewer`. When no viewer is signed in it drops that record, and a linked
- * login is marked ended.
+ * records it for `cachedViewer` and `recentViewer`. When no viewer is signed in it drops that record,
+ * and a linked login is marked ended.
  */
 export const fetchViewer = Effect.gen(function* () {
   const requests = yield* InstagramRequests;
   const key = VIEWER_KEYS[requests.login];
-  const { page } = yield* readHomePage;
+  const session = yield* Effect.promise(() => sessionCookie(requests.login));
+  delete recentViewers[requests.login];
+  const { page } = yield* readHomePage(text => viewerBlock(text) !== undefined);
   return yield* Effect.gen(function* () {
     const { data: user } = yield* Schema.decodeUnknown(PolarisViewer)(viewerBlock(page)).pipe(
       Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_viewer' }))
@@ -123,6 +133,7 @@ export const fetchViewer = Effect.gen(function* () {
   }).pipe(
     Effect.tap(viewer =>
       Effect.promise(() => {
+        if (session) recentViewers[requests.login] = { viewer, session, at: Date.now() };
         noteViewerPicture(viewer);
         const cached = CachedViewer.make({
           accountId: viewer.accountId,
@@ -140,6 +151,24 @@ export const fetchViewer = Effect.gen(function* () {
         : Effect.void
     )
   );
+});
+
+/**
+ * The viewer for work the person started: the last read from the past few minutes while the login
+ * still sends the same session cookie, since signing out or switching accounts replaces it, else a
+ * fresh read. Unattended Watch work uses `fetchViewer`, so a session Instagram ends is noticed on
+ * its next check.
+ */
+export const recentViewer = Effect.gen(function* () {
+  const { login } = yield* InstagramRequests;
+  const recent = recentViewers[login];
+  if (
+    recent &&
+    Date.now() - recent.at < VIEWER_REUSE_MS &&
+    (yield* Effect.promise(() => sessionCookie(login))) === recent.session
+  )
+    return recent.viewer;
+  return yield* fetchViewer;
 });
 
 type ProfileUser = NonNullable<Schema.Schema.Type<typeof ProfileResponse>['data']['user']>;

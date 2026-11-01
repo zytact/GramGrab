@@ -48,7 +48,10 @@ live. Check this list before debugging an Instagram failure.
   ([#354](https://github.com/zytact/GramGrab/issues/354)). Watches read the signed-in viewer from
   the home page's `"PolarisViewer",[],{"data":…}` block instead (`fetchViewer` in
   `apps/extension/src/watch/identity.ts`). A signed-out page names `"data":null`. The same read
-  refreshes the login's `fb_dtsg` token (`readHomePage` in `apps/extension/src/instagram/dtsg.ts`).
+  refreshes the login's `fb_dtsg` token (`readHomePage` in `apps/extension/src/instagram/dtsg.ts`),
+  and stops downloading once the page has named both, about the first 260 KB of 1.27 MB. Work the
+  person starts reuses a viewer read from the last 5 minutes while the login still sends the same
+  `sessionid` cookie (`recentViewer`). Unattended Watch work always reads the page again.
 - **The Stories query moved to Instagram Web's Story page query.** Since late October 2026, the
   `reelsMedia` `query_hash` request, GET or POST, answers the instagram.com home page as HTML
   ([#357](https://github.com/zytact/GramGrab/issues/357)). GramGrab sends

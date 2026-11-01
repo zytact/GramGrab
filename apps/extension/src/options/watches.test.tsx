@@ -1213,6 +1213,28 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(instagram.state.homePageReads).toBe(2);
   });
 
+  it('shows the login this browser session verified while it asks Instagram again', async () => {
+    seedWatchWithProblemAndEntry();
+    harness.session.write('watch-viewer', { accountId: VIEWER.id, username: VIEWER.username });
+    let release = () => {};
+    const pending = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    harness.setFetch(async (url, init) => {
+      const response = instagram.handle(url, init);
+      if (isHomePage(url)) await pending;
+      return response;
+    });
+    instagram.state.viewer = null;
+    render(<Watches />);
+
+    expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeDefined();
+    await waitFor(() => expect(instagram.state.homePageReads).toBe(1));
+    release();
+
+    expect(await screen.findByText('Sign in to Instagram')).toBeDefined();
+  });
+
   it('shows a rate-limit pause the worker starts while the page is open', async () => {
     seedWatchWithProblemAndEntry();
     render(<Watches />);

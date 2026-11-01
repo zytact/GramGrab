@@ -9,28 +9,46 @@ const DTSG_TOKEN = /"DTSGInitialData",\[\],\{"token":"([^"]+)"/;
 /** Each login's token, kept in this worker's memory only and never stored. */
 const cachedTokens: Partial<Record<InstagramLogin, string>> = {};
 
+/** The text of `response` up to the first chunk after which `enough` holds, or all of it. */
+async function readUntil(response: Response, enough: (text: string) => boolean) {
+  if (!response.body) return response.text();
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text;
+    text += value;
+    if (enough(text)) {
+      await reader.cancel();
+      return text;
+    }
+  }
+}
+
 /**
  * Reads Instagram Web's home page for the requests' login, and keeps the `fb_dtsg` token it names
- * for `withDtsgToken`. A refused page forgets the token, so the next request reads it first.
+ * for `withDtsgToken`. A refused page forgets the token, so the next request reads it first. The
+ * download stops once the page names the token and `enough` holds, since both sit near its start.
  */
-export const readHomePage = Effect.gen(function* () {
-  const requests = yield* InstagramRequests;
-  const response = yield* requests.fetch('https://www.instagram.com/', {
-    headers: { Accept: 'text/html' },
+export const readHomePage = (enough: (page: string) => boolean = () => true) =>
+  Effect.gen(function* () {
+    const requests = yield* InstagramRequests;
+    const response = yield* requests.fetch('https://www.instagram.com/', {
+      headers: { Accept: 'text/html' },
+    });
+    delete cachedTokens[requests.login];
+    yield* requireOk(response);
+    const page = yield* Effect.tryPromise({
+      try: () => readUntil(response, text => DTSG_TOKEN.test(text) && enough(text)),
+      catch: cause => new NetworkError({ cause }),
+    });
+    const token = DTSG_TOKEN.exec(page)?.[1];
+    cachedTokens[requests.login] = token;
+    return { page, token };
   });
-  delete cachedTokens[requests.login];
-  yield* requireOk(response);
-  const page = yield* Effect.tryPromise({
-    try: () => response.text(),
-    catch: cause => new NetworkError({ cause }),
-  });
-  const token = DTSG_TOKEN.exec(page)?.[1];
-  cachedTokens[requests.login] = token;
-  return { page, token };
-});
 
 /** The home page's token, or an empty one when Instagram refuses the page. */
-const readToken = readHomePage.pipe(
+const readToken = readHomePage().pipe(
   Effect.map(({ token }) => token ?? ''),
   Effect.catchTags({
     RateLimited: () => Effect.succeed(''),
