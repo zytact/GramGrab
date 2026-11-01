@@ -62,14 +62,14 @@ function withUndoClock() {
   return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 }
 
-const removeCommands = () =>
+/** Every Watch command of kind `tag` the page sent. */
+const commandsOf = (tag: string) =>
   vi
     .mocked(harness.browser.runtime.sendMessage)
     .mock.calls.flatMap(([message]) =>
-      (message as { command?: { _tag: string } }).command?._tag === 'WatchInboxRemove'
-        ? [message]
-        : []
+      (message as { command?: { _tag: string } }).command?._tag === tag ? [message] : []
     );
+const removeCommands = () => commandsOf('WatchInboxRemove');
 
 /** Reports every observed row as in view, so inbox thumbnails load at once. */
 function stubRowsInView() {
@@ -262,15 +262,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(within(bar()).getByRole('button', { name: 'Download 2' }));
     await waitFor(() => expect(harness.downloads.length).toBeGreaterThan(0));
     expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
-    expect(
-      vi
-        .mocked(harness.browser.runtime.sendMessage)
-        .mock.calls.flatMap(([message]) =>
-          (message as { command?: { _tag: string } }).command?._tag === 'WatchInboxExport'
-            ? [message]
-            : []
-        )
-    ).toMatchObject([
+    expect(commandsOf('WatchInboxExport')).toMatchObject([
       { command: { entryIds: expect.arrayContaining(['2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a']) } },
     ]);
   });

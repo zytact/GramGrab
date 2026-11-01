@@ -1581,7 +1581,7 @@ function Console({
 }) {
   const page = usePageModel(lists);
   const { main, ownerOf, manyOwners, attention } = page;
-  const exporter = useInboxExport(() => void refresh(), page.loginOf);
+  const exporter = useInboxExport(refresh, page.loginOf, watchId => !!ownerOf(watchId));
   const { images: avatars, loaded: avatarsLoaded } = useWatchAvatars(
     main.viewer.accountId,
     version

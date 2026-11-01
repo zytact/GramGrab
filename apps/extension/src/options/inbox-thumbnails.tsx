@@ -1,38 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DiscoverySummary, FailureCode, InstagramLogin } from '@gramgrab/protocol';
+import type { DiscoverySummary, InstagramLogin } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { sendMessage } from '../messaging/send.ts';
-import type { MessageResponse } from '../messaging/contracts.ts';
+import { concurrencyLimit, halts, type Preview } from './preview-requests.ts';
 
 const PARALLEL_LOADS = 2;
-
-/** Runs at most `max` tasks at once, starting queued ones in order. */
-export function concurrencyLimit(max: number) {
-  let running = 0;
-  const queue: (() => void)[] = [];
-  return <T,>(task: () => Promise<T>) =>
-    new Promise<T>((resolve, reject) => {
-      const start = () => {
-        running++;
-        task()
-          .then(resolve, reject)
-          .finally(() => {
-            running--;
-            queue.shift()?.();
-          });
-      };
-      if (running < max) start();
-      else queue.push(start);
-    });
-}
-
-/** Failures after which further thumbnail requests would only add Instagram traffic. */
-const HALTING = new Set<FailureCode>(['IG_RATE_LIMITED', 'IG_NOT_AUTHENTICATED']);
-
-type Preview = MessageResponse<'WATCH_INBOX_PREVIEW'>;
-
-const halts = ({ failure }: Preview) =>
-  failure?._tag === 'CommandFailure' && HALTING.has(failure.failure.code);
 
 /** A video's poster, or an image itself. */
 function thumbnailOf({ media }: Preview) {
@@ -112,7 +84,8 @@ export function InboxThumbnail({
   const [visible, setVisible] = useState(false);
   /** `null` once no thumbnail can be shown. */
   const [src, setSrc] = useState<string | null>();
-  const repaired = useRef(false);
+  /** A kept URL may have expired and its fresh one may still need inline data. */
+  const repairs = useRef(0);
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([row]) => {
@@ -143,8 +116,8 @@ export function InboxThumbnail({
           src={src}
           alt=""
           onError={() => {
-            if (repaired.current || src.startsWith('data:')) return setSrc(null);
-            repaired.current = true;
+            if (repairs.current >= 2 || src.startsWith('data:')) return setSrc(null);
+            repairs.current++;
             void thumbnails.repair(entry, src).then(url => setSrc(url ?? null));
           }}
         />
