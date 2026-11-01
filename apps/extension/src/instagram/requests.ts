@@ -207,14 +207,15 @@ export const ledgerOf = (login: InstagramLogin): RequestLedger => ledgers[login]
 const sleep = (ms: number) =>
   Effect.promise(() => new Promise<void>(resolve => setTimeout(resolve, Math.max(0, ms))));
 
+/** The browser's own Instagram cookie `name`, which the main login sends. */
+const mainCookie = (name: string) =>
+  browser.cookies.get({ url: 'https://www.instagram.com/', name }).then(cookie => cookie?.value);
+
 /** The main login sends the browser's own cookies and reads its token from them. */
 const mainRoute = async (url: string) => ({
   url,
   credentials: 'include' as const,
-  csrfToken: () =>
-    browser.cookies
-      .get({ url: 'https://www.instagram.com/', name: 'csrftoken' })
-      .then(cookie => cookie?.value),
+  csrfToken: () => mainCookie('csrftoken'),
 });
 
 /** The session cookie `login`'s requests carry. It changes when that login signs out or switches. */
@@ -223,10 +224,7 @@ export async function sessionCookie(login: InstagramLogin): Promise<string | und
     const linked = await readLinkedLogin();
     return linked?.ended ? undefined : linked?.cookies.sessionid;
   }
-  const cookie = await browser.cookies
-    .get({ url: 'https://www.instagram.com/', name: 'sessionid' })
-    .catch(() => null);
-  return cookie?.value;
+  return mainCookie('sessionid').catch(() => undefined);
 }
 
 const ROUTES = { main: mainRoute, linked: linkedRoute } satisfies Record<

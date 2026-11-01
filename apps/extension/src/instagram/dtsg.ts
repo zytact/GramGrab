@@ -19,7 +19,7 @@ async function readUntil(response: Response, enough: (text: string) => boolean) 
     if (done) return text;
     text += value;
     if (enough(text)) {
-      await reader.cancel();
+      await reader.cancel().catch(() => undefined);
       return text;
     }
   }

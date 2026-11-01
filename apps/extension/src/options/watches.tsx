@@ -1077,8 +1077,8 @@ async function sessionViewers(): Promise<Viewers> {
 /**
  * Both logins' verified Watch lists. `verify` asks Instagram who each login is, `refresh` rereads
  * the known logins' Watches, and a viewer change another surface records in the browser session is
- * followed. `refresh` can read as the viewers this browser session already verified instead. The
- * linked list is read first, so a session it finds ended shows among the main list's held Watches.
+ * followed. Until the first load starts, `refresh` can read as the viewers this browser session
+ * already verified. The linked list is read first, so a session it finds ended shows among the main list's held Watches.
  */
 function useWatchList() {
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
@@ -1146,7 +1146,7 @@ function useWatchList() {
   const refresh = useCallback(
     async (session?: Viewers) => {
       await verification.current;
-      const known = session ?? viewers.current;
+      const known = session && latest.current === 0 ? session : viewers.current;
       if (!known.main) return;
       await load(login => {
         const viewer = known[login];

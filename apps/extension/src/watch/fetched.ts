@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import type { FetchedMedia } from './contracts.ts';
 import { markFetched } from './discoveries.ts';
-import { fetchViewer } from './identity.ts';
+import { recentViewer } from './identity.ts';
 import { mutateStore, readStore, withinStoreBudget } from './store.ts';
 
 /**
@@ -14,7 +14,7 @@ export const recordFetched = (fetched: readonly FetchedMedia[]) =>
     const owners = new Set(fetched.flatMap(media => media.owners));
     const read = yield* Effect.promise(readStore);
     if (read.kind !== 'ok' || !read.store.watches.some(watch => owners.has(watch.targetId))) return;
-    const viewer = yield* fetchViewer;
+    const viewer = yield* recentViewer;
     yield* Effect.promise(() =>
       mutateStore(store => {
         const now = Date.now();
