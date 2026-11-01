@@ -104,7 +104,9 @@ export function useInboxExport(
       current =>
         new Map([...current, ...exported.map(outcome => [outcome.entryId, outcome] as const)])
     );
-    setRows(current => new Map([...current].filter(([id]) => !ids.has(id))));
+    setRows(
+      current => new Map([...current].filter(([id, row]) => row._tag === 'saving' || !ids.has(id)))
+    );
   };
   const setRow = (entryId: string, state: RowState | undefined) =>
     setRows(current => {

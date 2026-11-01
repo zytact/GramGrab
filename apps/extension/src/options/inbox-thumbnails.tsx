@@ -37,15 +37,17 @@ export function useInboxThumbnails(loginOf: (watchId: string) => InstagramLogin)
   const [thumbnails] = useState(() => {
     const cache = new Map<string, Promise<string | undefined>>();
     const limit = concurrencyLimit(PARALLEL_LOADS);
-    let halted = false;
+    const halted = new Set<InstagramLogin>();
     const recorded = async (entry: DiscoverySummary) => {
-      if (halted) return undefined;
+      const owner = login.current(entry.watchId);
+      if (halted.has(owner)) return undefined;
       const { media, failure } = await sendMessage({
         type: 'WATCH_INBOX_PREVIEW',
         entryId: entry.entryId,
-        login: login.current(entry.watchId),
+        login: owner,
       });
-      if (failure?._tag === 'CommandFailure' && HALTING.has(failure.failure.code)) halted = true;
+      if (failure?._tag === 'CommandFailure' && HALTING.has(failure.failure.code))
+        halted.add(owner);
       const first = media?.[0];
       if (!first) return undefined;
       return first.type === 'video' ? first.previewUrl : (first.previewUrl ?? first.url);
