@@ -270,6 +270,8 @@ Prefer these handles, which the source owns and tests already depend on:
 | Failure code readout | `.download-attempt-summary code`                   |
 | Watch profile link   | `a.opt-profile-link`                              |
 | Watch entry link     | `a.opt-entry-link`                                |
+| Inbox row thumbnail  | `.opt-thumb img`, count `.opt-thumb-count`        |
+| Inbox row download   | `.opt-line:has(> input[aria-label="Select inbox item"]) button` |
 | Diagnostics dialog   | `#diagnostics-dialog-title`                        |
 | Watch check problem  | `.opt-health-row.opt-health-problem`               |
 | Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
