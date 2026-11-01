@@ -272,6 +272,8 @@ Prefer these handles, which the source owns and tests already depend on:
 | Watch entry link     | `a.opt-entry-link`                                |
 | Inbox row thumbnail  | `.opt-thumb img`, count `.opt-thumb-count`        |
 | Inbox row download   | `.opt-line:has(> input[aria-label="Select inbox item"]) > button` |
+| Selection bar        | `[role=toolbar][aria-label="Selected inbox entries"]` |
+| Undo toast           | `.opt-toast` (`role=status`), button `Undo`       |
 | Diagnostics dialog   | `#diagnostics-dialog-title`                        |
 | Watch check problem  | `.opt-health-row.opt-health-problem`               |
 | Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
