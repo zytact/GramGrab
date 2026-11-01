@@ -26,7 +26,8 @@ import type {
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { StoryExpiry } from '../popup/story-expiry.tsx';
 import { KIND_LABEL, relativeTime, WATCH_AVATAR_NOTE } from './copy.ts';
-import { useInboxSelection } from './inbox-export.tsx';
+import { RowRecovery, useInboxSelection } from './inbox-export.tsx';
+import { InboxThumbnail } from './inbox-thumbnails.tsx';
 import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
 import { OWNER_LABEL, OwnerTag, type LoginList } from './owners.tsx';
@@ -117,12 +118,17 @@ const STATE_LABEL: Record<ActionOutcome['state'], string> = {
   unconfirmed: 'unconfirmed',
 };
 
+/** Only failed or unconfirmed outcomes earn a chip; a done action says nothing more. */
+const needsAttention = (outcome: ActionOutcome | undefined) =>
+  outcome?.state === 'failed' || outcome?.state === 'unconfirmed';
+
 function OutcomeChips({ entry }: { entry: DiscoverySummary }) {
+  const children = entry.downloadChildren ?? [];
   return (
     <span className="opt-chips">
       {(['notify', 'download', 'collect'] as const).flatMap(action => {
         const outcome = entry[action];
-        return outcome
+        return outcome && needsAttention(outcome)
           ? [
               <span key={action} className={`opt-chip opt-${outcome.state}`}>
                 {OUTCOME_LABEL[action]}: {STATE_LABEL[outcome.state]}
@@ -130,13 +136,17 @@ function OutcomeChips({ entry }: { entry: DiscoverySummary }) {
             ]
           : [];
       })}
-      {(entry.downloadChildren?.length ?? 0) > 1 &&
-        entry.downloadChildren?.map((outcome, child) => (
-          <span key={`download-${child}`} className={`opt-chip opt-${outcome.state}`}>
-            Download item {child + 1}: {STATE_LABEL[outcome.state]}
-            {outcome.code && ` (${FAILURE_PRESENTATION[outcome.code].title})`}
-          </span>
-        ))}
+      {children.length > 1 &&
+        children.flatMap((outcome, child) =>
+          needsAttention(outcome)
+            ? [
+                <span key={`download-${child}`} className={`opt-chip opt-${outcome.state}`}>
+                  Download item {child + 1}: {STATE_LABEL[outcome.state]}
+                  {outcome.code && ` (${FAILURE_PRESENTATION[outcome.code].title})`}
+                </span>,
+              ]
+            : []
+        )}
     </span>
   );
 }
@@ -160,7 +170,7 @@ function EntryMeta({ entry }: { entry: DiscoverySummary }) {
   );
 }
 
-/** What the last Download Original did for one entry. */
+/** What the last download of one entry did. */
 function ExportResult({
   entry,
   outcome,
@@ -168,10 +178,10 @@ function ExportResult({
   entry: DiscoverySummary;
   outcome: InboxExportOutcome;
 }) {
-  const accepted = outcome.accepted === 1 ? '1 file' : `${outcome.accepted} files`;
+  const accepted = outcome.accepted === 1 ? '1 download' : `${outcome.accepted} downloads`;
   return (
     <span className="opt-meta">
-      {outcome.accepted > 0 && `Browser accepted ${accepted} for this plan. `}
+      {outcome.accepted > 0 && `${accepted} started. `}
       {outcome.failures.map(({ child, code }) => (
         <span key={`${child}-${code}`} className="opt-error">
           {child !== undefined && `Item ${child + 1}: `}
@@ -197,29 +207,18 @@ function ExportResult({
   );
 }
 
-interface Selection {
-  readonly selected: ReadonlySet<string>;
-  readonly onToggle: (entryId: string) => void;
-  readonly outcomes: ReadonlyMap<string, InboxExportOutcome>;
-  readonly busy: boolean;
-}
-
-function DiscoveryCheckbox({
-  entry,
-  selection,
-}: {
-  entry: DiscoverySummary;
-  selection: Selection;
-}) {
-  const selected = selection.selected.has(entry.entryId);
+/** An inbox row's running download, then its result and recovery. */
+function InboxRowStatus({ entry }: { entry: DiscoverySummary }) {
+  const exporter = useInboxSelection();
+  const row = exporter.rows.get(entry.entryId);
+  const outcome = exporter.outcomes.get(entry.entryId) ?? entry.manualExport;
+  if (row?._tag === 'saving') return <span className="opt-meta">Saving…</span>;
   return (
-    <input
-      type="checkbox"
-      aria-label="Select inbox item"
-      checked={selected}
-      disabled={selection.busy}
-      onChange={() => selection.onToggle(entry.entryId)}
-    />
+    <>
+      {outcome && <ExportResult entry={entry} outcome={outcome} />}
+      {row && <span className="opt-meta opt-error">{FAILURE_PRESENTATION[row.code].title}</span>}
+      {outcome && <RowRecovery entry={entry} outcome={outcome} />}
+    </>
   );
 }
 
@@ -249,46 +248,66 @@ function EntryHeading({ entry, avatars }: { entry: DiscoverySummary; avatars?: A
   );
 }
 
-/** Discovery rows. Given `avatars`, each row names its account with its Avatar. */
-function DiscoveryList({
-  entries,
-  avatars,
-  onRemove,
-  selection,
-}: {
-  entries: readonly DiscoverySummary[];
-  avatars?: Avatars;
-  onRemove?: (entry: DiscoverySummary) => void;
-  selection?: Selection;
-}) {
-  if (entries.length === 0) return <p className="opt-meta">Nothing here yet.</p>;
+/** What every discovery row shows about its entry. */
+function EntrySummary({ entry, avatars }: { entry: DiscoverySummary; avatars?: Avatars }) {
   return (
     <>
-      {entries.map(entry => {
-        const outcome = selection?.outcomes.get(entry.entryId) ?? entry.manualExport;
-        return (
-          <div key={entry.entryId} className="opt-line opt-row opt-top">
-            {selection && <DiscoveryCheckbox entry={entry} selection={selection} />}
-            <div className="opt-grow">
-              <EntryHeading entry={entry} avatars={avatars} />
-              <EntryMeta entry={entry} />
-              <StoryExpiry expiresAt={entry.expiresAt} />
-              <OutcomeChips entry={entry} />
-              {outcome && <ExportResult entry={entry} outcome={outcome} />}
-            </div>
-            {onRemove && entry.inboxUntil !== undefined && (
-              <button
-                className="opt-btn opt-ghost"
-                disabled={selection?.busy}
-                onClick={() => onRemove(entry)}
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        );
-      })}
+      <EntryHeading entry={entry} avatars={avatars} />
+      <EntryMeta entry={entry} />
+      <StoryExpiry expiresAt={entry.expiresAt} />
+      <OutcomeChips entry={entry} />
     </>
+  );
+}
+
+/** A Watch's Found rows, read only. */
+function FoundList({ entries }: { entries: readonly DiscoverySummary[] }) {
+  if (entries.length === 0) return <p className="opt-meta">Nothing here yet.</p>;
+  return entries.map(entry => (
+    <div key={entry.entryId} className="opt-line opt-row opt-top">
+      <div className="opt-grow">
+        <EntrySummary entry={entry} />
+        {entry.manualExport && <ExportResult entry={entry} outcome={entry.manualExport} />}
+      </div>
+    </div>
+  ));
+}
+
+/** One collected entry with its thumbnail, selection, download and removal. */
+function InboxRow({ entry, avatars }: { entry: DiscoverySummary; avatars?: Avatars }) {
+  const exporter = useInboxSelection();
+  const saving = exporter.rows.get(entry.entryId)?._tag === 'saving';
+  return (
+    <div className="opt-line opt-row opt-top">
+      <input
+        type="checkbox"
+        aria-label="Select inbox item"
+        checked={exporter.selected.has(entry.entryId)}
+        disabled={exporter.busy || saving}
+        onChange={() => exporter.toggle(entry)}
+      />
+      <InboxThumbnail entry={entry} thumbnails={exporter.thumbnails} />
+      <div className="opt-grow">
+        <EntrySummary entry={entry} avatars={avatars} />
+        <InboxRowStatus entry={entry} />
+      </div>
+      <button
+        className="opt-btn"
+        disabled={exporter.busy || saving || entry.unavailable !== undefined}
+        onClick={() => exporter.downloadEntry(entry)}
+      >
+        Download
+      </button>
+      {entry.inboxUntil !== undefined && (
+        <button
+          className="opt-btn opt-ghost"
+          disabled={exporter.busy || saving}
+          onClick={() => exporter.remove([entry])}
+        >
+          Remove
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -331,20 +350,11 @@ function InboxList({
           </button>
         </div>
       )}
-      <DiscoveryList
-        entries={entries}
-        avatars={avatars}
-        onRemove={entry => exporter.remove([entry])}
-        selection={{
-          selected: new Set(exporter.selected.keys()),
-          outcomes: exporter.outcomes,
-          busy: exporter.busy,
-          onToggle: entryId => {
-            const entry = entries.find(candidate => candidate.entryId === entryId);
-            if (entry) exporter.toggle(entry);
-          },
-        }}
-      />
+      {entries.length === 0 ? (
+        <p className="opt-meta">Nothing here yet.</p>
+      ) : (
+        entries.map(entry => <InboxRow key={entry.entryId} entry={entry} avatars={avatars} />)
+      )}
     </>
   );
 }
@@ -733,7 +743,7 @@ export function WatchDetail({
         tab === 'inbox' ? (
           <InboxList entries={inbox} />
         ) : (
-          <DiscoveryList entries={found} />
+          <FoundList entries={found} />
         )
       ) : (
         <p className="opt-meta">Loading…</p>

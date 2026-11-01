@@ -112,6 +112,44 @@ separately authorized run, so record an empty Watch as a live prerequisite.
    worker with `chrome.tabs.remove`. Opening the page is a browser navigation,
    not a GramGrab request, so it does not touch `instagram-requests`.
 
+## Inbox rows
+
+Each Inbox row, in a Watch's Inbox tab and in All inbox, shows a 56px
+`.opt-thumb` before its text and a `Download` button before `Remove`. Found rows
+have neither. A row loads its thumbnail with one `WATCH_INBOX_PREVIEW` once it
+scrolls within 200px of the viewport, two rows at a time, and keeps it in page
+memory only, so `watch-store` never gains a URL. A Carousel shows its child
+count in `.opt-thumb-count`; an Avatar change crops round (`.opt-thumb-round`).
+Thumbnail loading stops for a login after `IG_RATE_LIMITED` or
+`IG_NOT_AUTHENTICATED`, leaving empty boxes. An expired Story has no media to
+preview, so its box stays empty too. Each thumbnail is one Instagram request
+counted in `instagram-requests`.
+
+The bulk selection toolbar also carries `.opt-line`, so select entry rows with
+`.opt-line:has(> input[aria-label="Select inbox item"])`. The first entry row's
+`Download` is that selector plus ` > button`; recovery buttons such as `Retry`
+sit deeper in the row. The page itself does not scroll; `.opt-feed` does.
+
+`Download` exports that one entry as Original with default modifiers, sending
+`WatchInboxExport` with only `entryIds`. The row reads `Saving…` while the
+command runs, with its checkbox, `Download` and `Remove` disabled, then
+`N downloads started.` or the failure title with `Retry`, `Download Original
+instead` or `Review re-encoding` as the failure allows. The selection and the
+inspector stay as they were. Outcome chips appear only for `failed` or
+`unconfirmed` actions; a row whose actions all succeeded has none.
+
+1. Open a Watch with natural entries on its Inbox tab. Wait for
+   `.opt-thumb img` in the first rows and require each to have a nonzero
+   `naturalWidth`; expired Story rows have no `img`. Rows below the fold have
+   no `img` until `.opt-feed` scrolls to them. Capture the list cropped to the
+   entry rows.
+2. Click one row's `Download`. Require `Saving…`, then `N downloads started.`
+   on that row, N completed files in `$GRAMGRAB_VERIFY_DOWNLOADS`, and the
+   right column still showing `WATCH FOR`. `gramgrab history list` gains the
+   receipts and the entry stays in the inbox.
+3. Read `watch-store` from the worker and require no `cdninstagram` or
+   `fbcdn` substring, which proves thumbnails added no stored URL.
+
 ## Inbox preview
 
 Story entries show [expiry](./story-expiry.md) in Found and both inbox views
@@ -183,8 +221,8 @@ authorization, and label any screenshot as synthetic.
    `enabled` flag unchanged in `watch-store`.
 3. With only unavailable entries ticked, `Fetch media` is disabled while
    `Remove selected (N)` stays enabled.
-4. A Select all over an entry with a saved failed export shows
-   `Retry failed exports`, the same as ticking it alone.
+4. An entry with a saved failed export shows `Retry` on its own row without
+   being ticked, and the inspector keeps showing the Watch's settings.
 
 Storage-write failures keeping the selection belong to `watches.test.tsx`.
 

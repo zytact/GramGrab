@@ -13,6 +13,7 @@ import { sendMessage } from '../messaging/send.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
 import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { InboxMediaPreview, useInboxMedia } from './inbox-media.tsx';
+import { useInboxThumbnails } from './inbox-thumbnails.tsx';
 
 /** One command per login that owns some of `items`, so each runs as its owner. */
 const perLogin = <T,>(
@@ -68,6 +69,11 @@ function combined(responses: readonly WatchCommandResponse[]) {
   };
 }
 
+/** A row's own command: running, or refused before any download started. */
+type RowState =
+  | { readonly _tag: 'saving' }
+  | { readonly _tag: 'failed'; readonly code: FailureCode };
+
 /** Inbox selection and its commands, each run as the login `loginOf` names for an entry's Watch. */
 export function useInboxExport(
   onChanged: () => void,
@@ -75,7 +81,9 @@ export function useInboxExport(
 ) {
   const [selected, setSelected] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, InboxExportOutcome>>(new Map());
+  const [rows, setRows] = useState<ReadonlyMap<string, RowState>>(new Map());
   const [busy, setBusy] = useState(false);
+  const thumbnails = useInboxThumbnails(loginOf);
   const watchOf = useRef(new Map<string, string>());
   const remember = (entries: readonly DiscoverySummary[]) => {
     for (const entry of entries) watchOf.current.set(entry.entryId, entry.watchId);
@@ -87,14 +95,26 @@ export function useInboxExport(
     onChanged();
   });
   const [failure, setFailure] = useState<string>();
-  const [consent, setConsent] = useState(false);
   const [cropConsent, setCropConsent] = useState(false);
   const entries = [...selected.values()].filter(entry => entry.unavailable === undefined);
-  const failed = [...outcomes.values()].filter(
-    outcome =>
-      outcome.planId &&
-      (outcome.failures.some(failure => canRecover(failure.code)) || outcome.skipped?.length)
-  );
+  /** Records fresh outcomes, which clear an earlier row failure but keep a running row download. */
+  const mergeOutcomes = (exported: readonly InboxExportOutcome[]) => {
+    const ids = new Set(exported.map(outcome => outcome.entryId));
+    setOutcomes(
+      current =>
+        new Map([...current, ...exported.map(outcome => [outcome.entryId, outcome] as const)])
+    );
+    setRows(
+      current => new Map([...current].filter(([id, row]) => row._tag === 'saving' || !ids.has(id)))
+    );
+  };
+  const setRow = (entryId: string, state: RowState | undefined) =>
+    setRows(current => {
+      const next = new Map(current);
+      if (state) next.set(entryId, state);
+      else next.delete(entryId);
+      return next;
+    });
 
   const execute = async (commands: readonly (readonly [InstagramLogin, WatchCommand])[]) => {
     setBusy(true);
@@ -106,7 +126,7 @@ export function useInboxExport(
       const { failed, exported, removed } = combined(responses);
       if (failed) setFailure(FAILURE_PRESENTATION[failed].title);
       if (exported) {
-        setOutcomes(new Map(exported.map(outcome => [outcome.entryId, outcome])));
+        mergeOutcomes(exported);
         setSelected(new Map());
         media.clearPreview();
       }
@@ -148,20 +168,23 @@ export function useInboxExport(
       }
       return next;
     });
-  const retry = (recovery?: 'original' | 'reencode') => {
-    setConsent(false);
-    const plans = failed
-      .filter(outcome => applicable(outcome, recovery))
-      .flatMap(outcome =>
-        outcome.planId ? [{ entryId: outcome.entryId, planId: outcome.planId }] : []
-      );
-    void execute(
-      perLogin(
-        plans,
-        plan => entryLogin(plan.entryId),
-        group => WatchInboxRetry.make({ plans: group, ...(recovery ? { recovery } : {}) })
-      )
-    );
+  /** Runs one entry's command on its row, leaving the selection and the inspector alone. */
+  const runOnRow = async (entry: DiscoverySummary, command: WatchCommand) => {
+    setRow(entry.entryId, { _tag: 'saving' });
+    try {
+      const response = await sendMessage({
+        type: 'WATCH_COMMAND',
+        command,
+        login: loginOf(entry.watchId),
+      });
+      const { failed, exported } = combined([response]);
+      setRow(entry.entryId, failed ? { _tag: 'failed', code: failed } : undefined);
+      if (exported) mergeOutcomes(exported);
+    } catch {
+      setRow(entry.entryId, { _tag: 'failed', code: 'DOWNLOAD_UNEXPECTED_FAILURE' });
+    } finally {
+      onChanged();
+    }
   };
   return {
     selected,
@@ -169,14 +192,24 @@ export function useInboxExport(
     busy: busy || media.loading,
     media,
     failure,
-    consent,
-    setConsent,
     cropConsent,
     setCropConsent,
     entries,
-    failed,
+    rows,
+    thumbnails,
     download,
-    retry,
+    /** Downloads one entry as Original with default modifiers. */
+    downloadEntry: (entry: DiscoverySummary) =>
+      void runOnRow(entry, WatchInboxExport.make({ entryIds: [entry.entryId] })),
+    /** Retries one entry's failed plan, optionally through a recovery. */
+    retryEntry: (entry: DiscoverySummary, planId: string, recovery?: 'original' | 'reencode') =>
+      void runOnRow(
+        entry,
+        WatchInboxRetry.make({
+          plans: [{ entryId: entry.entryId, planId }],
+          ...(recovery ? { recovery } : {}),
+        })
+      ),
     remove: (entries: readonly DiscoverySummary[]) =>
       void execute(
         perLogin(
@@ -191,7 +224,7 @@ export function useInboxExport(
       restoreOutcomes(entries);
       setSelected(new Map(entries.map(entry => [entry.entryId, entry])));
     },
-    active: selected.size > 0 || busy || failed.length > 0 || media.notices.length > 0 || !!failure,
+    active: selected.size > 0 || busy || media.notices.length > 0 || !!failure,
     clear: () => {
       media.clear();
       setCropConsent(false);
@@ -249,38 +282,54 @@ function ReencodeConsent({
   );
 }
 
-function ExportRecovery({ value }: { value: ExportState }) {
+/** Retry, Download Original instead and re-encoding for one entry's failed plan. */
+export function RowRecovery({
+  entry,
+  outcome,
+}: {
+  entry: DiscoverySummary;
+  outcome: InboxExportOutcome;
+}) {
+  const value = useInboxSelection();
+  const [consent, setConsent] = useState(false);
+  const { planId } = outcome;
+  if (
+    !planId ||
+    !(outcome.failures.some(failure => canRecover(failure.code)) || outcome.skipped?.length)
+  )
+    return null;
+  const disabled = value.busy || value.rows.get(entry.entryId)?._tag === 'saving';
+  const retry = (recovery?: 'original' | 'reencode') => {
+    setConsent(false);
+    value.retryEntry(entry, planId, recovery);
+  };
   return (
-    <>
-      {value.failed.some(outcome => applicable(outcome)) && (
-        <button className="opt-btn" disabled={value.busy} onClick={() => value.retry()}>
-          Retry failed exports
+    <span className="opt-row">
+      {applicable(outcome) && (
+        <button className="opt-btn" disabled={disabled} onClick={() => retry()}>
+          Retry
         </button>
       )}
-      {value.failed.some(outcome => applicable(outcome, 'original')) && (
-        <button
-          className="opt-btn opt-ghost"
-          disabled={value.busy}
-          onClick={() => value.retry('original')}
-        >
+      {applicable(outcome, 'original') && (
+        <button className="opt-btn opt-ghost" disabled={disabled} onClick={() => retry('original')}>
           Download Original instead
         </button>
       )}
-      {value.failed.some(outcome => applicable(outcome, 'reencode')) && (
-        <button className="opt-btn" disabled={value.busy} onClick={() => value.setConsent(true)}>
+      {applicable(outcome, 'reencode') && (
+        <button className="opt-btn" disabled={disabled} onClick={() => setConsent(true)}>
           Review re-encoding
         </button>
       )}
-      {value.consent && (
+      {consent && (
         <ReencodeConsent
           reason="Lossless packet copying is unavailable."
           decline="Skip affected videos"
           approve="Re-encode affected videos"
-          onDecline={() => value.setConsent(false)}
-          onApprove={() => value.retry('reencode')}
+          onDecline={() => setConsent(false)}
+          onApprove={() => retry('reencode')}
         />
       )}
-    </>
+    </span>
   );
 }
 
@@ -318,7 +367,6 @@ export function InboxExportControls({ value }: { value: ExportState }) {
           onApprove={() => value.download(true)}
         />
       )}
-      <ExportRecovery value={value} />
       {value.failure && <p className="opt-meta opt-error">{value.failure}</p>}
     </div>
   );
