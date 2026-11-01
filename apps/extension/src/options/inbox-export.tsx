@@ -97,7 +97,7 @@ export function useInboxExport(
   const [failure, setFailure] = useState<string>();
   const [cropConsent, setCropConsent] = useState(false);
   const entries = [...selected.values()].filter(entry => entry.unavailable === undefined);
-  /** Records fresh outcomes, which replace any earlier row failure of their entries. */
+  /** Records fresh outcomes, which clear an earlier row failure but keep a running row download. */
   const mergeOutcomes = (exported: readonly InboxExportOutcome[]) => {
     const ids = new Set(exported.map(outcome => outcome.entryId));
     setOutcomes(

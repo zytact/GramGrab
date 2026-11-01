@@ -127,8 +127,8 @@ counted in `instagram-requests`.
 
 The bulk selection toolbar also carries `.opt-line`, so select entry rows with
 `.opt-line:has(> input[aria-label="Select inbox item"])`. The first entry row's
-`Download` is that selector plus ` button`, since `Download` comes before
-`Remove`. The page itself does not scroll; `.opt-feed` does.
+`Download` is that selector plus ` > button`; recovery buttons such as `Retry`
+sit deeper in the row. The page itself does not scroll; `.opt-feed` does.
 
 `Download` exports that one entry as Original with default modifiers, sending
 `WatchInboxExport` with only `entryIds`. The row reads `Saving…` while the
