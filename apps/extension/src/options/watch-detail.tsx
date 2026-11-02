@@ -260,19 +260,6 @@ function EntrySummary({ entry, avatars }: { entry: DiscoverySummary; avatars?: A
   );
 }
 
-/** A Watch's Found rows, read only. */
-function FoundList({ entries }: { entries: readonly DiscoverySummary[] }) {
-  if (entries.length === 0) return <p className="opt-meta">Nothing here yet.</p>;
-  return entries.map(entry => (
-    <div key={entry.entryId} className="opt-line opt-row opt-top">
-      <div className="opt-grow">
-        <EntrySummary entry={entry} />
-        {entry.manualExport && <ExportResult entry={entry} outcome={entry.manualExport} />}
-      </div>
-    </div>
-  ));
-}
-
 /** One collected entry with its thumbnail, selection, download and removal. */
 function InboxRow({ entry, avatars }: { entry: DiscoverySummary; avatars?: Avatars }) {
   const exporter = useInboxSelection();
@@ -420,6 +407,7 @@ function useFilter(options: FilterOptions) {
   return { options, picked, setKey };
 }
 
+/** Picking another chip clears the selection, so a download never includes hidden entries. */
 function FilterChips({
   label,
   filter: { options, picked, setKey },
@@ -427,13 +415,18 @@ function FilterChips({
   label: string;
   filter: ReturnType<typeof useFilter>;
 }) {
+  const exporter = useInboxSelection();
   return (
     <div className="opt-chip-filter" role="group" aria-label={label}>
       {options.map(option => (
         <button
           key={option.key}
           aria-pressed={option === picked}
-          onClick={() => setKey(option.key)}
+          onClick={() => {
+            if (option === picked) return;
+            setKey(option.key);
+            exporter.clear();
+          }}
         >
           {option.label}
         </button>
@@ -442,7 +435,7 @@ function FilterChips({
   );
 }
 
-/** Inbox entries narrowed by account and media type. A filter never changes the selection. */
+/** Inbox entries narrowed by account and media type. */
 function FilteredInbox({
   entries,
   lists,
@@ -630,7 +623,7 @@ function CheckNow({
   );
 }
 
-/** One Watch's health and what it found, read as its owner and reloaded when `version` changes. */
+/** One Watch's health and inbox, read as its owner and reloaded when `version` changes. */
 export function WatchDetail({
   owner: { login, list },
   watch,
@@ -644,8 +637,7 @@ export function WatchDetail({
   version: number;
   onChanged: () => void;
 }) {
-  const [tab, setTab] = useState<'found' | 'inbox'>('inbox');
-  const [found, setFound] = useState<readonly DiscoverySummary[]>();
+  const [inbox, setInbox] = useState<readonly DiscoverySummary[]>();
   const { accountId } = watch;
   const { viewer } = list;
   useEffect(() => {
@@ -656,13 +648,12 @@ export function WatchDetail({
       login
     ).then(response => {
       if (current && response.result?._tag === 'WatchShowResult')
-        setFound(response.result.discoveries);
+        setInbox(response.result.discoveries.filter(entry => entry.inboxUntil !== undefined));
     });
     return () => {
       current = false;
     };
   }, [viewer, login, accountId, version]);
-  const inbox = found?.filter(entry => entry.inboxUntil !== undefined);
   return (
     <>
       <div className="opt-row opt-between">
@@ -691,23 +682,8 @@ export function WatchDetail({
         </p>
       )}
       <KindHealthList watch={watch} />
-      <div className="opt-tabs">
-        <button className={tab === 'inbox' ? 'active' : ''} onClick={() => setTab('inbox')}>
-          Inbox ({inbox?.length ?? 0})
-        </button>
-        <button className={tab === 'found' ? 'active' : ''} onClick={() => setTab('found')}>
-          Found ({found?.length ?? 0})
-        </button>
-      </div>
-      {found && inbox ? (
-        tab === 'inbox' ? (
-          <InboxList entries={inbox} />
-        ) : (
-          <FoundList entries={found} />
-        )
-      ) : (
-        <p className="opt-meta">Loading…</p>
-      )}
+      <h2 className="opt-h2">Inbox ({inbox?.length ?? 0})</h2>
+      {inbox ? <InboxList entries={inbox} /> : <p className="opt-meta">Loading…</p>}
     </>
   );
 }

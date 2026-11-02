@@ -158,10 +158,11 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       ]);
       const user = withUndoClock();
       render(<Watches />);
-      if (surface === 'Watch inbox') {
-        await user.click(await screen.findByRole('button', { name: /@instagram/ }));
-        await user.click(await screen.findByRole('button', { name: /^Inbox \(/ }));
-      } else await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+      await user.click(
+        await screen.findByRole('button', {
+          name: surface === 'Watch inbox' ? /@instagram/ : INBOX_TAB,
+        })
+      );
 
       const checkboxes = await screen.findAllByRole('checkbox', { name: 'Select inbox item' });
       expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
@@ -348,7 +349,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     });
   }
 
-  it('filters All inbox by account and media type, and shows each account with its Avatar', async () => {
+  it('filters All inbox by account and media type, clearing the selection, and shows each account with its Avatar', async () => {
     seedWatchWithProblemAndEntry([
       {
         id: '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
@@ -387,8 +388,12 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(screen.getByRole('button', { name: 'Select all' }));
     await user.click(screen.getByRole('button', { name: 'Videos' }));
     expect(rows()).toEqual(['C@creators · Video']);
-    expect(screen.getByRole('toolbar', { name: BAR }).textContent).toMatch(/^3 selected/);
+    expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
+    await user.click(screen.getByRole('checkbox', { name: 'Select inbox item' }));
+    await user.click(screen.getByRole('button', { name: 'Videos' }));
+    expect(screen.getByRole('toolbar', { name: BAR }).textContent).toMatch(/^1 selected/);
     await user.click(screen.getByRole('button', { name: 'Stories' }));
+    expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
     expect(rows()).toEqual(['I@instagram · Video']);
     await user.click(screen.getByRole('button', { name: '@creators' }));
     expect(screen.getByText('Nothing matches these filters.')).toBeDefined();
@@ -418,7 +423,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(watchRows()).toEqual([]);
   });
 
-  it('links Found and Inbox entries to their Instagram page in a new tab', async () => {
+  it('links inbox entries to their Instagram page in a new tab', async () => {
     seedWatchWithProblemAndEntry([
       {
         id: '1d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
@@ -431,12 +436,14 @@ describe('Watches options page', { timeout: 15_000 }, () => {
           expiresAt: 4_000_000_000,
         },
         discoveredAt: Date.now() - 90_000,
+        collect: { at: Date.now() - 90_000 },
       },
       {
         id: '2d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
         checkId: CHECK_ID,
         ref: { _tag: 'Instant', mediaId: '41_2002', mediaType: 'image', takenAt: 2 },
         discoveredAt: Date.now() - 120_000,
+        collect: { at: Date.now() - 120_000 },
       },
       {
         id: '3d0a5f7e-4c6b-4d8e-9f3a-9b0c1d2e3f4a',
@@ -462,11 +469,6 @@ describe('Watches options page', { timeout: 15_000 }, () => {
         .map(link => [link.textContent, link.getAttribute('href'), link.getAttribute('target')]);
 
     await screen.findByRole('link', { name: 'Video' });
-    expect(links()).toEqual([
-      ['Video', 'https://www.instagram.com/instagram/', '_blank'],
-      ['Carousel of 1', 'https://www.instagram.com/p/C300/', '_blank'],
-    ]);
-    await user.click(screen.getByRole('button', { name: /^Found \(/ }));
     expect(links()).toEqual([
       ['Video', 'https://www.instagram.com/instagram/', '_blank'],
       ['Photo', 'https://www.instagram.com/stories/instagram/32/', '_blank'],
@@ -506,7 +508,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(screen.queryByText(/Instagram's format has changed/)).toBeNull();
   });
 
-  it('shows Story expiry in Found, Inbox and fetched preview cards', async () => {
+  it('shows Story expiry in both inbox views and fetched preview cards', async () => {
     const expiresAt = Math.floor(Date.now() / 1000) + 3 * 3600 + 30;
     seedWatchWithProblemAndEntry([], expiresAt);
     instagram.state.stories[TARGET.id] = storyResponse(TARGET.id, [
@@ -517,12 +519,6 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
     await user.click(await findSidebarButton(/@instagram/));
-    expect(await screen.findByText('Expires in 3h')).toBeDefined();
-    expect(screen.getByRole('button', { name: /^Inbox \(/ }).className).toBe('active');
-    await user.click(screen.getByRole('button', { name: /^Found \(/ }));
-    expect(await screen.findByText('Expires in 3h')).toBeDefined();
-    expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: /^Inbox \(/ }));
     expect(await screen.findByText('Expires in 3h')).toBeDefined();
     await user.click(screen.getByRole('checkbox', { name: 'Select inbox item' }));
     await user.click(screen.getByRole('button', { name: 'Edit before download' }));
