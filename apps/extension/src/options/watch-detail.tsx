@@ -400,33 +400,38 @@ function accountFilters(
   ];
 }
 
-/** A row of chips that picks one option. A picked key no longer offered falls back to the first. */
-function useFilter(options: FilterOptions) {
+/**
+ * A row of chips that picks one option, calling `onChange` when the pick changes. A picked key no
+ * longer offered falls back to the first.
+ */
+function useFilter(options: FilterOptions, onChange: () => void) {
   const [key, setKey] = useState(options[0].key);
   const picked = options.find(option => option.key === key) ?? options[0];
-  return { options, picked, setKey };
+  const pick = (option: FilterOption) => {
+    if (option === picked) return;
+    setKey(option.key);
+    onChange();
+  };
+  return { options, picked, pick };
 }
 
-/** Picking another chip clears the selection, so a download never includes hidden entries. */
 function FilterChips({
   label,
-  filter: { options, picked, setKey },
+  disabled,
+  filter: { options, picked, pick },
 }: {
   label: string;
+  disabled: boolean;
   filter: ReturnType<typeof useFilter>;
 }) {
-  const exporter = useInboxSelection();
   return (
     <div className="opt-chip-filter" role="group" aria-label={label}>
       {options.map(option => (
         <button
           key={option.key}
           aria-pressed={option === picked}
-          onClick={() => {
-            if (option === picked) return;
-            setKey(option.key);
-            exporter.clear();
-          }}
+          disabled={disabled}
+          onClick={() => pick(option)}
         >
           {option.label}
         </button>
@@ -435,7 +440,10 @@ function FilterChips({
   );
 }
 
-/** Inbox entries narrowed by account and media type. */
+/**
+ * Inbox entries narrowed by account and media type. Picking another chip clears the selection, so
+ * a download never includes hidden entries.
+ */
 function FilteredInbox({
   entries,
   lists,
@@ -445,15 +453,16 @@ function FilteredInbox({
   lists: readonly LoginList[];
   avatars: Avatars;
 }) {
-  const account = useFilter(accountFilters(entries, lists));
-  const media = useFilter(MEDIA_FILTERS);
+  const exporter = useInboxSelection();
+  const account = useFilter(accountFilters(entries, lists), exporter.clear);
+  const media = useFilter(MEDIA_FILTERS, exporter.clear);
   const shown = entries.filter(
     entry => account.picked.matches(entry) && media.picked.matches(entry)
   );
   return (
     <>
-      <FilterChips label="Account" filter={account} />
-      <FilterChips label="Media type" filter={media} />
+      <FilterChips label="Account" disabled={exporter.busy} filter={account} />
+      <FilterChips label="Media type" disabled={exporter.busy} filter={media} />
       {shown.length > 0 ? (
         <InboxList entries={shown} avatars={avatars} />
       ) : (

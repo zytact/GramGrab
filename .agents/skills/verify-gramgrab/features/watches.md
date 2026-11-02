@@ -112,8 +112,9 @@ separately authorized run, so record an empty Watch as a live prerequisite.
 ## Inbox rows
 
 Each inbox row, on a Watch's page and in All inbox, shows a 56px
-`.opt-thumb` before its text and a `Download` button before `Remove`. A row loads its thumbnail with one `WATCH_INBOX_PREVIEW` once it
-scrolls within 200px of the viewport, two rows at a time, and keeps its URL in
+`.opt-thumb` before its text and a `Download` button before `Remove`. A row
+loads its thumbnail with one `WATCH_INBOX_PREVIEW` once it scrolls within 200px
+of the viewport, two rows at a time, and keeps its URL in
 `storage.session` under `inbox-thumbnail:<entryId>`, so reopening the page asks
 Instagram again only for entries it has not seen this browser session.
 `watch-store` never gains a URL. A Carousel shows its child
@@ -271,7 +272,8 @@ then one `@username` chip per Watch with entries. Media type holds
 `Everything`, `Photos`, `Videos`, `Carousels` and `Stories`, which do not
 overlap: Stories are their own type, a new picture counts as a photo. The rows
 combine, an empty result reads `Nothing matches these filters.`, and picking a
-different chip clears the selection and closes the editor. Each row's `.opt-entry-head` starts with
+different chip clears the selection and closes the editor. The chips are
+disabled while a download or removal runs. Each row's `.opt-entry-head` starts with
 the account's Avatar. The sidebar's `Search Watches` box narrows the rows and
 the `WATCHES (N)` count by username as you type, ignoring case and a leading
 `@`, and reads `No Watch matches` when empty. Neither is stored, so a reload
@@ -285,8 +287,8 @@ screenshots synthetic. Do not click its entry links; their shortcodes are fake.
 
 1. Open `options.html` and the sidebar's Inbox tab. Read each group's chip
    texts and every `.opt-feed .opt-entry-head` text and Avatar element.
-2. Click `Select all`, then a Media type chip. Require the bar gone. Walk `Videos`, `Stories`, then `@creators` with `Stories` for the empty
-   message, then `Carousels` and `Photos`. Require each result to match the
+2. Click `Select all`, then a Media type chip. Require the bar gone. Walk
+   `Videos`, `Stories`, then `@creators` with `Stories` for the empty message, then `Carousels` and `Photos`. Require each result to match the
    seeded and natural entries' kinds.
 3. Type `@CREATORS` into `.opt-search`: one `@creators` row and `WATCHES (1)`.
    Replace it with `nobody`: `No Watch matches` and `WATCHES (0)`.
