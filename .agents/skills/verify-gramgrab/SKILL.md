@@ -251,7 +251,9 @@ URL ends with the match wins, so `popup.html` selects the plain popup and
 
 `click` supplies a CDP user gesture so a button can request optional notification
 permission. Accept the browser's permission prompt if it appears. A plain `eval`
-does not supply that gesture.
+does not supply that gesture. Each target keeps one global scope across `eval`
+calls, so a second top-level `const c` fails with `Identifier 'c' has already
+been declared`. Wrap multi-statement expressions in `(() => { ... })()`.
 
 CSS uppercases much of the chrome. `drive.mjs text` and `wait` read `innerText`,
 so they see `HISTORY` and `FETCH MEDIA`, while `textContent` in an `eval`
@@ -283,6 +285,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Logins control       | `.opt-logins-summary`; click it to open            |
 | Link and Unlink      | `.opt-logins button`, inside the open control      |
 | Needs you and Inbox  | `.opt-views button`                                |
+| Watch row (sidebar)  | `button.opt-item`, match `textContent.startsWith('@name')` |
 | Add Watch            | `.opt-list-head button` (`+ Add`)                  |
 | Next check, storage  | `.opt-list-foot summary`; click it to open         |
 | Watch owner tag      | `.opt-owner`, filter `.opt-filter button`          |

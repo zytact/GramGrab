@@ -70,28 +70,25 @@ The `WATCHES (N)` heading above the sidebar's Watch rows is a
    bounding box plus a small margin, so no username or Avatar is in frame.
    That crop may leave `.local/`.
 
-## Watch tabs
+## Watch inbox
 
-An open Watch has two tabs in `.opt-tabs`: `Inbox (N)` first and selected,
-then `Found (N)`. Inbox lists collected entries with `Select inbox item`
-checkboxes. Found lists every discovery and its action history, without
-checkboxes. A notification click opens `options.html#watch=<id>`, which lands
-on the same Inbox tab.
+An open Watch shows its health, then an `Inbox (N)` heading and its collected
+entries with `Select inbox item` checkboxes. Entries it found but never
+collected, or that were removed, do not appear. A notification click opens
+`options.html#watch=<id>`, which lands on the same view.
 
-1. Open `options.html` and select the `instagram` Watch. Read the `.opt-tabs`
-   button texts in order and which has class `active`. Require Inbox first and
-   active.
-2. Click `Found`. It becomes active and shows no `Select inbox item`
-   checkbox. Switch to the sidebar's Inbox tab and back to the Watch: Inbox is active again.
-3. In the worker, read the `instagram` Watch's `id` from `watch-store` and open
+1. Open `options.html` and select the `instagram` Watch. Require an
+   `h2.opt-h2` reading `Inbox (N)` with N matching its checkbox count, and no
+   `.opt-tabs`.
+2. In the worker, read the `instagram` Watch's `id` from `watch-store` and open
    `options.html#watch=<id>` in a new tab with `chrome.tabs.create`, so the ID
-   stays in memory. Require Inbox active there. `drive.mjs targets` prints that
+   stays in memory. Require the same heading there. `drive.mjs targets` prints that
    tab's URL with the ID, so match it as `options.html#watch` instead. Close it
    from the worker with `chrome.tabs.remove`, since `drive.mjs` has no close.
 
 ## Entry links
 
-Each Found and Inbox entry's media label (`Photo`, `Video`, `Carousel of N`,
+Each inbox entry's media label (`Photo`, `Video`, `Carousel of N`,
 `New picture`) is an `a.opt-entry-link` that opens Instagram in a new tab. The
 page derives the target from the stored username and IDs; nothing stores a URL.
 A Post or Carousel opens `/p/<shortcode>/` and a live Story
@@ -114,10 +111,10 @@ separately authorized run, so record an empty Watch as a live prerequisite.
 
 ## Inbox rows
 
-Each Inbox row, in a Watch's Inbox tab and in All inbox, shows a 56px
-`.opt-thumb` before its text and a `Download` button before `Remove`. Found rows
-have neither. A row loads its thumbnail with one `WATCH_INBOX_PREVIEW` once it
-scrolls within 200px of the viewport, two rows at a time, and keeps its URL in
+Each inbox row, on a Watch's page and in All inbox, shows a 56px
+`.opt-thumb` before its text and a `Download` button before `Remove`. A row
+loads its thumbnail with one `WATCH_INBOX_PREVIEW` once it scrolls within 200px
+of the viewport, two rows at a time, and keeps its URL in
 `storage.session` under `inbox-thumbnail:<entryId>`, so reopening the page asks
 Instagram again only for entries it has not seen this browser session.
 `watch-store` never gains a URL. A Carousel shows its child
@@ -154,7 +151,7 @@ inspector stay as they were. Outcome chips appear only for `failed` or
 
 ## Inbox preview
 
-Story entries show [expiry](./story-expiry.md) in Found and both inbox views
+Story entries show [expiry](./story-expiry.md) in both inbox views
 before media is fetched. Preview cards show the same deadline after fetching.
 The label refreshes each minute and becomes `Expired`; the 30-day inbox
 retention notice remains a separate deadline.
@@ -216,14 +213,14 @@ raw store or CLI dumps for these checks.
 ## Selection bar
 
 Ticking an entry pins `[role=toolbar][aria-label="Selected inbox entries"]`
-(`.opt-selection-bar`) to the bottom of the middle column: `N selected · M files`, plus
-` across K Watches` when the selection spans Watches, then `Clear`, `Remove`,
+(`.opt-selection-bar`) to the bottom of the middle column:
+`N selected · M files` (`1 file` in the singular), plus ` across K Watches` when the selection spans Watches, then `Clear`, `Remove`,
 `Edit before download` and `Download M`. M counts each entry's available
 children, and an unavailable entry adds none. The right column keeps the
 Watch's settings until `Edit before download` opens the editor. The selection
-survives switching Watches, moving between a Watch and All inbox, and changing
-All inbox filters; `Select all` adds the shown rows to it. A reload or a login
-change clears it.
+survives switching Watches and moving between a Watch and All inbox; `Select
+all` adds the shown rows to it. Picking a different All inbox filter chip, a
+reload or a login change clears it, so a download never includes hidden rows.
 
 `Download M` exports every selected available entry as Original, one
 `WatchInboxExport` per login, clears the selection and shows progress on each
@@ -275,8 +272,9 @@ then one `@username` chip per Watch with entries. Media type holds
 `Everything`, `Photos`, `Videos`, `Carousels` and `Stories`, which do not
 overlap: Stories are their own type, a new picture counts as a photo. The rows
 combine, an empty result reads `Nothing matches these filters.`, and picking a
-different chip keeps the selection. Each row's `.opt-entry-head` starts with
-the account's Avatar. The sidebar's `Search Watches` box narrows the rows and
+different chip clears the selection and closes the editor. The chips are
+disabled while a download or removal runs or the editor loads previews. Each
+row's `.opt-entry-head` starts with the account's Avatar. The sidebar's `Search Watches` box narrows the rows and
 the `WATCHES (N)` count by username as you type, ignoring case and a leading
 `@`, and reads `No Watch matches` when empty. Neither is stored, so a reload
 resets both.
@@ -289,10 +287,10 @@ screenshots synthetic. Do not click its entry links; their shortcodes are fake.
 
 1. Open `options.html` and the sidebar's Inbox tab. Read each group's chip
    texts and every `.opt-feed .opt-entry-head` text and Avatar element.
-2. Click `Select all`, then a Media type chip. Require the bar's count unchanged.
-   Walk `Videos`, `Stories`, then `@creators` with `Stories` for the empty
-   message, then `Carousels` and `Photos`. Require each result to match the
-   seeded and natural entries' kinds.
+2. Click `Select all`, then a Media type chip. Require the bar gone. Walk
+   `Videos`, `Stories`, then `@creators` with `Stories` for the empty message,
+   then `Carousels` and `Photos`. Require each result to match the seeded and
+   natural entries' kinds.
 3. Type `@CREATORS` into `.opt-search`: one `@creators` row and `WATCHES (1)`.
    Replace it with `nobody`: `No Watch matches` and `WATCHES (0)`.
 4. Reload. Require `All accounts`, `Everything` and an empty search box, and no

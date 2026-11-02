@@ -6,7 +6,7 @@ minute while the results stay open. `gramgrab inspect --json` includes
 `expiresAt` as an ISO 8601 UTC string when Instagram supplies
 `expiring_at_timestamp`. An unknown timestamp produces no field or label.
 Highlights, Posts, Avatars, Instants and WhatsApp Statuses have no Story expiry.
-Watches shows the recorded Story deadline in Found, each Watch's Inbox and All
+Watches shows the recorded Story deadline in each Watch's inbox and All
 inbox before fetching. Fetched preview cards show the deadline from the fresh
 Story response through the same label component.
 
@@ -69,8 +69,7 @@ Stories but no Story discoveries cannot establish this path. Preserve the
 request ledger and follow [Watches](./watches.md) for account constraints.
 
 Open `options.html`, then the Inbox tab. Story rows must show their expiry before
-any preview loads. Open the owning Watch and check the same entry in Found and
-Inbox. Select it, click the bar's `Edit before download`, and require its preview card's
+any preview loads. Open the owning Watch and check the same entry in its inbox. Select it, click the bar's `Edit before download`, and require its preview card's
 `time.item-expiry[datetime]` to agree with the recorded deadline. Compare in
 memory and retain equality booleans, without saving account or media IDs.
 
