@@ -213,7 +213,7 @@ raw store or CLI dumps for these checks.
 ## Selection bar
 
 Ticking an entry pins `[role=toolbar][aria-label="Selected inbox entries"]`
-(`.opt-selection-bar`) to the bottom of the middle column: `N selected · M files`, plus
+(`.opt-selection-bar`) to the bottom of the middle column: `N selected · M files` (`1 file` in the singular), plus
 ` across K Watches` when the selection spans Watches, then `Clear`, `Remove`,
 `Edit before download` and `Download M`. M counts each entry's available
 children, and an unavailable entry adds none. The right column keeps the
