@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.7.0](https://github.com/zytact/GramGrab/compare/v4.6.3...v4.7.0) (2026-11-02)
+
+
+### Features
+
+* **watch:** download inbox entries in one click, with thumbnails on every row ([#363](https://github.com/zytact/GramGrab/issues/363)) ([05f1342](https://github.com/zytact/GramGrab/commit/05f13421750c2e6da1e83598322cabb58c04704a))
+* **watch:** drop the Found tab and stop filters from hiding selected entries ([#366](https://github.com/zytact/GramGrab/issues/366)) ([a29cd45](https://github.com/zytact/GramGrab/commit/a29cd45557ae46d4b0204f01c171456cd782b53b))
+* **watch:** select across Watches, edit only when you want to, and undo removals in the inbox ([#365](https://github.com/zytact/GramGrab/issues/365)) ([e2f3b21](https://github.com/zytact/GramGrab/commit/e2f3b2111250b56ffc50266507047ae6a664d25c))
+
 ## [4.6.3](https://github.com/zytact/GramGrab/compare/v4.6.2...v4.6.3) (2026-11-01)
 
 
