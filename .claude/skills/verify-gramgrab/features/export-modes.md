@@ -35,7 +35,7 @@ Fetch media first, then per item toggle `Frame` or `Remove audio` and press
 frame --at 5`. Repeating `--item` starts another operation and may use a
 different mode.
 
-The Watches inbox uses these same media cards after `Fetch media`. Its selection
+The Watches inbox uses these same media cards in its `Edit before download` panel. Its selection
 addresses recorded children, and download reacquires those exact identities.
 Follow [Watches inbox preview](./watches.md#inbox-preview) for isolation,
 unavailable reasons, inbox crop and Avatar's Original-only mode.

@@ -322,39 +322,22 @@ function InboxList({
   avatars?: Avatars;
 }) {
   const exporter = useInboxSelection();
-  const selectedEntries = entries.filter(entry => exporter.selected.has(entry.entryId));
+  const shown = entries.filter(entry => !exporter.removing.has(entry.entryId));
+  if (shown.length === 0) return <p className="opt-meta">Nothing here yet.</p>;
   return (
     <>
-      {entries.length > 0 && (
-        <div className="opt-row opt-line" role="group" aria-label="Inbox selection">
-          <button
-            className="opt-btn"
-            disabled={exporter.busy || selectedEntries.length === entries.length}
-            onClick={() => exporter.selectAll(entries)}
-          >
-            Select all
-          </button>
-          <button
-            className="opt-btn opt-ghost"
-            disabled={exporter.busy || selectedEntries.length === 0}
-            onClick={exporter.clear}
-          >
-            Clear selection
-          </button>
-          <button
-            className="opt-btn opt-danger"
-            disabled={exporter.busy || selectedEntries.length === 0}
-            onClick={() => exporter.remove(selectedEntries)}
-          >
-            Remove selected ({selectedEntries.length})
-          </button>
-        </div>
-      )}
-      {entries.length === 0 ? (
-        <p className="opt-meta">Nothing here yet.</p>
-      ) : (
-        entries.map(entry => <InboxRow key={entry.entryId} entry={entry} avatars={avatars} />)
-      )}
+      <div className="opt-row opt-line" role="group" aria-label="Inbox selection">
+        <button
+          className="opt-btn"
+          disabled={exporter.busy || shown.every(entry => exporter.selected.has(entry.entryId))}
+          onClick={() => exporter.selectAll(shown)}
+        >
+          Select all
+        </button>
+      </div>
+      {shown.map(entry => (
+        <InboxRow key={entry.entryId} entry={entry} avatars={avatars} />
+      ))}
     </>
   );
 }
@@ -440,13 +423,9 @@ function useFilter(options: FilterOptions) {
 function FilterChips({
   label,
   filter: { options, picked, setKey },
-  disabled,
-  onChange,
 }: {
   label: string;
   filter: ReturnType<typeof useFilter>;
-  disabled: boolean;
-  onChange: () => void;
 }) {
   return (
     <div className="opt-chip-filter" role="group" aria-label={label}>
@@ -454,12 +433,7 @@ function FilterChips({
         <button
           key={option.key}
           aria-pressed={option === picked}
-          disabled={disabled}
-          onClick={() => {
-            if (option === picked) return;
-            setKey(option.key);
-            onChange();
-          }}
+          onClick={() => setKey(option.key)}
         >
           {option.label}
         </button>
@@ -468,10 +442,7 @@ function FilterChips({
   );
 }
 
-/**
- * Inbox entries narrowed by account and media type. Changing a filter clears the selection and
- * export state, as changing views does, so nothing hidden stays selected.
- */
+/** Inbox entries narrowed by account and media type. A filter never changes the selection. */
 function FilteredInbox({
   entries,
   lists,
@@ -481,7 +452,6 @@ function FilteredInbox({
   lists: readonly LoginList[];
   avatars: Avatars;
 }) {
-  const exporter = useInboxSelection();
   const account = useFilter(accountFilters(entries, lists));
   const media = useFilter(MEDIA_FILTERS);
   const shown = entries.filter(
@@ -489,18 +459,8 @@ function FilteredInbox({
   );
   return (
     <>
-      <FilterChips
-        label="Account"
-        filter={account}
-        disabled={exporter.busy}
-        onChange={exporter.clear}
-      />
-      <FilterChips
-        label="Media type"
-        filter={media}
-        disabled={exporter.busy}
-        onChange={exporter.clear}
-      />
+      <FilterChips label="Account" filter={account} />
+      <FilterChips label="Media type" filter={media} />
       {shown.length > 0 ? (
         <InboxList entries={shown} avatars={avatars} />
       ) : (

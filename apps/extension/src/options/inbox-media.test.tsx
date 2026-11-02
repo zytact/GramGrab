@@ -44,7 +44,7 @@ it('waits for measured Frame duration and freezes the clamped timestamp', async 
     })
   );
   const { result } = renderHook(() => useInboxMedia(() => 'main'));
-  await act(() => result.current.fetch([entry]));
+  await act(() => result.current.sync([entry]));
   act(() => result.current.actions.onToggleExportFrame(0));
   expect(result.current.runtimes[0]?.frame.status).toBe('loading');
   expect(result.current.canDownload).toBe(false);
@@ -65,7 +65,7 @@ it('falls back for a failed remote Story-image preview without refetching a data
   const fallback = vi.fn(() => ({ previewUrl: 'data:image/jpeg;base64,AA==' }));
   setMockMessageHandler('GET_PREVIEW_URL', fallback);
   const { result } = renderHook(() => useInboxMedia(() => 'main'));
-  await act(() => result.current.fetch([entry]));
+  await act(() => result.current.sync([entry]));
   act(() => result.current.actions.onPreviewError(result.current.items[0]!));
   await waitFor(() =>
     expect(result.current.items[0]?.previewUrl).toBe('data:image/jpeg;base64,AA==')
@@ -90,7 +90,7 @@ it.each(['WATCH_NOT_FOUND', 'IG_NOT_AUTHENTICATED'] as const)(
       ...entryDetails,
       entryId: '2b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e',
     });
-    await act(() => result.current.fetch([entry, second]));
+    await act(() => result.current.sync([entry, second]));
     expect(preview).toHaveBeenCalledTimes(2);
     expect(reconcileOwner).toHaveBeenCalledOnce();
     expect(result.current.items).toEqual([]);
@@ -98,3 +98,41 @@ it.each(['WATCH_NOT_FOUND', 'IG_NOT_AUTHENTICATED'] as const)(
     expect(result.current.canDownload).toBe(false);
   }
 );
+
+const entryAt = (n: number) =>
+  DiscoverySummary.make({ ...entryDetails, entryId: `${n}b8e3d5c-2a4f-4e6b-9c1d-7f8a9b0c1d2e` });
+
+it('keeps loaded previews and their edits when the selection grows or shrinks', async () => {
+  const preview = vi.fn(() => ({ media: [item] }));
+  setMockMessageHandler('WATCH_INBOX_PREVIEW', preview);
+  const { result } = renderHook(() => useInboxMedia(() => 'main'));
+  await act(() => result.current.sync([entryAt(1)]));
+  act(() => result.current.actions.onRotate(result.current.items[0]!.index));
+
+  await act(() => result.current.sync([entryAt(1), entryAt(2)]));
+  expect(preview).toHaveBeenCalledTimes(2);
+  expect(result.current.items.map(item => item.rotation ?? 0)).toEqual([90, 0]);
+
+  await act(() => result.current.sync([entryAt(2)]));
+  expect(result.current.items.map(item => item.entryId)).toEqual([entryAt(2).entryId]);
+  expect(preview).toHaveBeenCalledTimes(2);
+
+  await act(() => result.current.sync([entryAt(2), entryAt(1)]));
+  expect(result.current.items.map(item => item.entryId)).toEqual([
+    entryAt(2).entryId,
+    entryAt(1).entryId,
+  ]);
+});
+
+it('sends no further previews once one is rate limited', async () => {
+  const preview = vi.fn(() => ({
+    failure: CommandFailure.make({
+      failure: OperationFailure.make({ code: 'IG_RATE_LIMITED', scope: 'batch' }),
+    }),
+  }));
+  setMockMessageHandler('WATCH_INBOX_PREVIEW', preview);
+  const { result } = renderHook(() => useInboxMedia(() => 'main'));
+  await act(() => result.current.sync([1, 2, 3, 4, 5].map(entryAt)));
+  expect(preview).toHaveBeenCalledTimes(3);
+  expect(result.current.progress).toBeUndefined();
+});

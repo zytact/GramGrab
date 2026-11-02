@@ -117,8 +117,10 @@ separately authorized run, so record an empty Watch as a live prerequisite.
 Each Inbox row, in a Watch's Inbox tab and in All inbox, shows a 56px
 `.opt-thumb` before its text and a `Download` button before `Remove`. Found rows
 have neither. A row loads its thumbnail with one `WATCH_INBOX_PREVIEW` once it
-scrolls within 200px of the viewport, two rows at a time, and keeps it in page
-memory only, so `watch-store` never gains a URL. A Carousel shows its child
+scrolls within 200px of the viewport, two rows at a time, and keeps its URL in
+`storage.session` under `inbox-thumbnail:<entryId>`, so reopening the page asks
+Instagram again only for entries it has not seen this browser session.
+`watch-store` never gains a URL. A Carousel shows its child
 count in `.opt-thumb-count`; an Avatar change crops round (`.opt-thumb-round`).
 Thumbnail loading stops for a login after `IG_RATE_LIMITED` or
 `IG_NOT_AUTHENTICATED`, leaving empty boxes. An expired Story has no media to
@@ -133,7 +135,7 @@ sit deeper in the row. The page itself does not scroll; `.opt-feed` does.
 `Download` exports that one entry as Original with default modifiers, sending
 `WatchInboxExport` with only `entryIds`. The row reads `Saving…` while the
 command runs, with its checkbox, `Download` and `Remove` disabled, then
-`N downloads started.` or the failure title with `Retry`, `Download Original
+`N downloads started.` (`1 download started.` for one) or the failure title with `Retry`, `Download Original
 instead` or `Review re-encoding` as the failure allows. The selection and the
 inspector stay as they were. Outcome chips appear only for `failed` or
 `unconfirmed` actions; a row whose actions all succeeded has none.
@@ -158,12 +160,15 @@ The label refreshes each minute and becomes `Expired`; the 30-day inbox
 retention notice remains a separate deadline.
 
 1. Open All inbox or a Watch's Inbox tab and tick a naturally collected entry's
-   `Select inbox item` checkbox. Click `Fetch media`. Require a rendered image or
+   `Select inbox item` checkbox. Click the bar's `Edit before download`. The
+   right column becomes the editor and reads `Loading N of M` while previews
+   load, three at a time, then shows them in entry order. Require a rendered image or
    playable video with real dimensions, not merely a mounted media element.
    Capture a screenshot with the verified login hidden. A fresh preview must
    leave browser downloads, History and Workspace draft/transfer state unchanged.
 2. Use the shared card's `Select item NN`, `Frame`, `Remove audio`,
-   `Rotate item NN` and `Crop item NN` controls. Deselecting every card disables download. Frame and
+   `Rotate item NN` and `Crop item NN` controls, matching rotate and crop with
+   `aria-label^=` since their names go on. Deselecting every card disables download. Frame and
    Silent are mutually exclusive. Frame download waits for measured metadata;
    its slider and video `currentTime` must agree at a nonzero timestamp. Rotate
    and check the preview's orientation and aspect ratio before download.
@@ -196,8 +201,10 @@ retention notice remains a separate deadline.
    `instagram` Watch last saw, so it exports; `remove` drops it. Label its
    screenshots synthetic. Rotated once with a `4:5` crop it saves a 864x1080
    JPEG, and `gramgrab history redownload` of that receipt saves the same size.
-5. Navigate away and back, then reload once. Preview media and settings must
-   clear without becoming a Workspace draft. Actual downloads create ordinary
+5. Navigate to another view and back, then reload once. The editor closes and
+   its preview media and settings clear without becoming a Workspace draft;
+   navigation keeps the selection, the reload drops it. `Close` also closes
+   the editor and keeps the selection. Actual downloads create ordinary
    History receipts and keep discoveries in the inbox. A verified-login change
    clears the previous owner's preview, including late asynchronous replies.
    Exercise this only when a natural account switch occurs.
@@ -206,6 +213,28 @@ Preserve completed files outside `.local/verify/` before cleanup if a reviewer
 must inspect their bytes. Keep evidence names free of identifiers; never save
 raw store or CLI dumps for these checks.
 
+## Selection bar
+
+Ticking an entry pins `[role=toolbar][aria-label="Selected inbox entries"]`
+(`.opt-selection-bar`) to the bottom of the middle column: `N selected · M files`, plus
+` across K Watches` when the selection spans Watches, then `Clear`, `Remove`,
+`Edit before download` and `Download M`. M counts each entry's available
+children, and an unavailable entry adds none. The right column keeps the
+Watch's settings until `Edit before download` opens the editor. The selection
+survives switching Watches, moving between a Watch and All inbox, and changing
+All inbox filters; `Select all` adds the shown rows to it. A reload or a login
+change clears it.
+
+`Download M` exports every selected available entry as Original, one
+`WatchInboxExport` per login, clears the selection and shows progress on each
+row as [Inbox rows](#inbox-rows) describes.
+
+1. Tick an entry in one Watch's Inbox tab, open another Watch or All inbox, and
+   tick another. Require the first still ticked and the bar reading
+   `2 selected`, with ` across 2 Watches` when they belong to different Watches.
+2. Click `Download M`. Require each row's `Saving…` then `N downloads started.`
+   and M completed files.
+
 ## Bulk removal
 
 Removal deletes inbox metadata only. The discovery stays, so its media is never
@@ -213,18 +242,29 @@ found again, and the Watch stays enabled. Natural entries are precious on a
 shared account, so drive this on synthetic entries only with the user's
 authorization, and label any screenshot as synthetic.
 
-1. In All inbox and in a Watch's Inbox tab, `Remove selected (0)` starts
-   disabled. `Select all` ticks every `Select inbox item` checkbox, including
-   unavailable entries. `Clear selection` unticks them all.
-2. Select all, untick one entry, click `Remove selected (N)`. Require exactly
-   the ticked entries gone, the unticked one still listed, and the Watch's
-   `enabled` flag unchanged in `watch-store`.
-3. With only unavailable entries ticked, `Fetch media` is disabled while
-   `Remove selected (N)` stays enabled.
-4. An entry with a saved failed export shows `Retry` on its own row without
+`Remove`, on a row or in the bar, hides the entries at once, drops them from
+the selection and shows a `[role=status]` toast `Removed N entries.` with
+`Undo`. Nothing is deleted until the toast has stood 5 seconds; a second
+removal joins the first and restarts the wait. Closing the page first deletes
+nothing.
+
+1. In All inbox and in a Watch's Inbox tab, `Select all` ticks every
+   `Select inbox item` checkbox, including unavailable entries. The bar's
+   `Clear` unticks them all.
+2. Select all, untick one entry, click the bar's `Remove`. Require exactly the
+   ticked entries hidden and the toast. After 5 seconds require them gone after
+   a reload, the unticked one still listed, and the Watch's `enabled` flag
+   unchanged in `watch-store`.
+3. Remove one entry, click `Undo` within 5 seconds, wait past them, and reload.
+   Require the entry still listed. Separate `drive.mjs` calls with a screenshot
+   between them can outlast 5 seconds, so click Undo from a page-side
+   `setTimeout` of about 3 seconds started by the same `eval` that removes.
+4. With only unavailable entries ticked, `Edit before download` is disabled
+   while `Remove` stays enabled.
+5. An entry with a saved failed export shows `Retry` on its own row without
    being ticked, and the inspector keeps showing the Watch's settings.
 
-Storage-write failures keeping the selection belong to `watches.test.tsx`.
+Storage-write failures during removal belong to `watches.test.tsx`.
 
 ## Inbox filters and Watch search
 
@@ -235,7 +275,7 @@ then one `@username` chip per Watch with entries. Media type holds
 `Everything`, `Photos`, `Videos`, `Carousels` and `Stories`, which do not
 overlap: Stories are their own type, a new picture counts as a photo. The rows
 combine, an empty result reads `Nothing matches these filters.`, and picking a
-different chip clears the selection. Each row's `.opt-entry-head` starts with
+different chip keeps the selection. Each row's `.opt-entry-head` starts with
 the account's Avatar. The sidebar's `Search Watches` box narrows the rows and
 the `WATCHES (N)` count by username as you type, ignoring case and a leading
 `@`, and reads `No Watch matches` when empty. Neither is stored, so a reload
@@ -249,7 +289,7 @@ screenshots synthetic. Do not click its entry links; their shortcodes are fake.
 
 1. Open `options.html` and the sidebar's Inbox tab. Read each group's chip
    texts and every `.opt-feed .opt-entry-head` text and Avatar element.
-2. Click `Select all`, then a Media type chip. Require zero ticked checkboxes.
+2. Click `Select all`, then a Media type chip. Require the bar's count unchanged.
    Walk `Videos`, `Stories`, then `@creators` with `Stories` for the empty
    message, then `Carousels` and `Photos`. Require each result to match the
    seeded and natural entries' kinds.
@@ -451,7 +491,7 @@ until the save settles. The checkbox shows its new value meanwhile. Success
 reads `✓ Saved` for about 2 seconds. A failure puts the checkbox or button
 back, and shows the error under that row (`.opt-save-failed`, `role="alert"`)
 with `Try again`. Setting failures never use the middle column's action banner
-(`.opt-feed > p.opt-banner-error`). A failed store write still raises the
+(`.opt-feed-body > p.opt-banner-error`). A failed store write still raises the
 separate `Watches stopped.` storage notice there. Each save verifies the
 login once, which costs a viewer request only when the last read is more than
 5 minutes old.
@@ -482,7 +522,7 @@ node $D eval "js/background.js" "globalThis.__fault = { delay: 1500, fail: false
    and no status 2 seconds later. Capture the inspector at both points.
 2. Set `fail: true` and toggle the same row back. Require the old `checked`
    value, the error and `Try again` under that row, and no
-   `.opt-feed > p.opt-banner-error`. Set `fail: false`, click `Try again`, and
+   `.opt-feed-body > p.opt-banner-error`. Set `fail: false`, click `Try again`, and
    require `✓ Saved` with `watch-store` changed. This also restores the
    setting.
 3. Repeat on `Pause checks`: `Saving` sits beside the button and success

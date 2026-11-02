@@ -1,35 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DiscoverySummary, FailureCode, InstagramLogin } from '@gramgrab/protocol';
+import type { DiscoverySummary, InstagramLogin } from '@gramgrab/protocol';
+import { browser } from '../lib/browser.ts';
 import { sendMessage } from '../messaging/send.ts';
+import { concurrencyLimit, halts, type Preview } from './preview-requests.ts';
 
 const PARALLEL_LOADS = 2;
 
-/** Runs at most `max` tasks at once, starting queued ones in order. */
-function concurrencyLimit(max: number) {
-  let running = 0;
-  const queue: (() => void)[] = [];
-  return <T,>(task: () => Promise<T>) =>
-    new Promise<T>((resolve, reject) => {
-      const start = () => {
-        running++;
-        task()
-          .then(resolve, reject)
-          .finally(() => {
-            running--;
-            queue.shift()?.();
-          });
-      };
-      if (running < max) start();
-      else queue.push(start);
-    });
+/** A video's poster, or an image itself. */
+function thumbnailOf({ media }: Preview) {
+  const first = media?.[0];
+  if (!first) return undefined;
+  return first.type === 'video' ? first.previewUrl : (first.previewUrl ?? first.url);
 }
 
-/** Failures after which further thumbnail requests would only add Instagram traffic. */
-const HALTING = new Set<FailureCode>(['IG_RATE_LIMITED', 'IG_NOT_AUTHENTICATED']);
+const sessionKey = (entry: DiscoverySummary) => `inbox-thumbnail:${entry.entryId}`;
 
 /**
- * Loads each inbox entry's thumbnail once per page, a few at a time. Thumbnails live in page
- * memory only, so Watch state never holds a media URL.
+ * Loads each inbox entry's thumbnail, a few at a time, and keeps its URL in `storage.session` so
+ * the browser session asks Instagram once per entry. Watch state in `storage.local` never holds it.
  */
 export function useInboxThumbnails(loginOf: (watchId: string) => InstagramLogin) {
   const login = useRef(loginOf);
@@ -38,19 +26,27 @@ export function useInboxThumbnails(loginOf: (watchId: string) => InstagramLogin)
     const cache = new Map<string, Promise<string | undefined>>();
     const limit = concurrencyLimit(PARALLEL_LOADS);
     const halted = new Set<InstagramLogin>();
-    const recorded = async (entry: DiscoverySummary) => {
+    const fresh = async (entry: DiscoverySummary) => {
       const owner = login.current(entry.watchId);
       if (halted.has(owner)) return undefined;
-      const { media, failure } = await sendMessage({
+      const preview = await sendMessage({
         type: 'WATCH_INBOX_PREVIEW',
         entryId: entry.entryId,
         login: owner,
       });
-      if (failure?._tag === 'CommandFailure' && HALTING.has(failure.failure.code))
-        halted.add(owner);
-      const first = media?.[0];
-      if (!first) return undefined;
-      return first.type === 'video' ? first.previewUrl : (first.previewUrl ?? first.url);
+      if (halts(preview)) halted.add(owner);
+      const url = thumbnailOf(preview);
+      // An empty string records that the entry has nothing to show, which is as final as a URL.
+      if (!preview.failure)
+        await browser.sessionStorage.set({ [sessionKey(entry)]: url ?? '' }).catch(() => {});
+      return url;
+    };
+    const stored = async (entry: DiscoverySummary) => {
+      const key = sessionKey(entry);
+      const value = (
+        await browser.sessionStorage.get(key).catch((): Record<string, unknown> => ({}))
+      )[key];
+      return typeof value === 'string' ? value || undefined : fresh(entry);
     };
     const remember = (entryId: string, load: () => Promise<string | undefined>) => {
       const promise = limit(load).catch(() => undefined);
@@ -59,12 +55,17 @@ export function useInboxThumbnails(loginOf: (watchId: string) => InstagramLogin)
     };
     return {
       load: (entry: DiscoverySummary) =>
-        cache.get(entry.entryId) ?? remember(entry.entryId, () => recorded(entry)),
-      /** Refetches a thumbnail the page could not show as inline data through the worker. */
-      refetchAsData: (entry: DiscoverySummary, url: string) =>
+        cache.get(entry.entryId) ?? remember(entry.entryId, () => stored(entry)),
+      /**
+       * Replaces a thumbnail the page could not show: inline data through the worker, or else a
+       * fresh preview, since a URL kept from earlier in the session may have expired.
+       */
+      repair: (entry: DiscoverySummary, url: string) =>
         remember(entry.entryId, async () => {
           const { previewUrl } = await sendMessage({ type: 'GET_PREVIEW_URL', url });
-          return previewUrl;
+          if (previewUrl) return previewUrl;
+          await browser.sessionStorage.remove(sessionKey(entry)).catch(() => {});
+          return fresh(entry);
         }),
     };
   });
@@ -83,6 +84,8 @@ export function InboxThumbnail({
   const [visible, setVisible] = useState(false);
   /** `null` once no thumbnail can be shown. */
   const [src, setSrc] = useState<string | null>();
+  /** A kept URL may have expired and its fresh one may still need inline data. */
+  const repairs = useRef(0);
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([row]) => {
@@ -113,8 +116,9 @@ export function InboxThumbnail({
           src={src}
           alt=""
           onError={() => {
-            if (src.startsWith('data:')) setSrc(null);
-            else void thumbnails.refetchAsData(entry, src).then(url => setSrc(url ?? null));
+            if (repairs.current >= 2 || src.startsWith('data:')) return setSrc(null);
+            repairs.current++;
+            void thumbnails.repair(entry, src).then(url => setSrc(url ?? null));
           }}
         />
       )}

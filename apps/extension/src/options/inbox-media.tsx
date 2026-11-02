@@ -21,8 +21,11 @@ import { loadVideoMetadata } from '../popup/video-metadata.ts';
 import { useFrameSeekEffect } from '../popup/use-frame-seek.ts';
 import { withClampedFrameSecond, type FrameExportSetting } from '../frame-export/timestamp.ts';
 import { useMediaEdits } from '../popup/use-media-edits.ts';
+import { concurrencyLimit, halts, type Preview } from './preview-requests.ts';
 
-type InboxItem = MediaItem & { entryId: string; child: number };
+const PARALLEL_PREVIEWS = 3;
+
+type InboxItem = MediaItem & { entryId: string; watchId: string; child: number };
 
 function refusesOwner(failure: MessageResponse<'WATCH_INBOX_PREVIEW'>['failure']) {
   return (
@@ -54,9 +57,85 @@ function previewResult(
     index: offset + index,
     selected: true,
     entryId: entry.entryId,
+    watchId: entry.watchId,
     child: item.itemIndex,
   }));
   return { items, notices };
+}
+
+/**
+ * One preview generation's requests: the shared limit, the refusal that stops further sends, and
+ * a token per requested entry, so a reply for an entry deselected since is dropped.
+ */
+type PreviewLoader = {
+  readonly limit: ReturnType<typeof concurrencyLimit>;
+  refusal?: Preview;
+  readonly requested: Map<string, object>;
+  nextIndex: number;
+};
+
+/**
+ * Sends each entry's preview request through the loader's limit while its token is current, so a
+ * deselected entry or a closed editor sends nothing more. Once one is refused for a rate limit or
+ * sign-out, unsent ones take that refusal instead. `undefined` marks a request that threw or was
+ * skipped.
+ */
+function requestPreviews(
+  entries: readonly DiscoverySummary[],
+  tokens: readonly object[],
+  loginOf: (watchId: string) => InstagramLogin,
+  loader: PreviewLoader,
+  onSettled: () => void
+) {
+  return Promise.all(
+    entries.map((entry, index) => {
+      const current = () => loader.requested.get(entry.entryId) === tokens[index];
+      return loader
+        .limit(async () => {
+          if (loader.refusal) return loader.refusal;
+          if (!current()) return undefined;
+          const response = await sendMessage({
+            type: 'WATCH_INBOX_PREVIEW',
+            entryId: entry.entryId,
+            login: loginOf(entry.watchId),
+          });
+          if (halts(response) && current()) loader.refusal = response;
+          return response;
+        })
+        .catch(() => undefined)
+        .finally(onSettled);
+    })
+  );
+}
+
+/** Previews loaded so far while loads run, across overlapping batches. */
+type Progress = { readonly done: number; readonly total: number };
+const expectMore = (progress: Progress | undefined, more: number): Progress => ({
+  done: progress?.done ?? 0,
+  total: (progress?.total ?? 0) + more,
+});
+const advance = (progress: Progress | undefined) =>
+  progress && { ...progress, done: progress.done + 1 };
+const settle = (progress: Progress | undefined) =>
+  progress && progress.done < progress.total ? progress : undefined;
+
+/** Preview items from `offset` on, plus each entry's notices, in entry order. */
+function collectPreviews(
+  loaded: readonly { entry: DiscoverySummary; response: Preview | undefined }[],
+  offset: number
+) {
+  const found: InboxItem[] = [];
+  const reasons = new Map<string, readonly string[]>();
+  for (const { entry, response } of loaded) {
+    if (!response) {
+      reasons.set(entry.entryId, [FAILURE_PRESENTATION.SOURCE_UNEXPECTED_FAILURE.title]);
+      continue;
+    }
+    const result = previewResult(entry, response, offset + found.length);
+    found.push(...result.items);
+    reasons.set(entry.entryId, result.notices);
+  }
+  return { found, reasons };
 }
 
 /** Previews selected inbox entries, each fetched as the login `loginOf` names for its Watch. */
@@ -70,9 +149,14 @@ export function useInboxMedia(
   const [silent, setSilent] = useState<ReadonlySet<number>>(new Set());
   const [cropIndex, setCropIndex] = useState<number>();
   const edits = useMediaEdits(setItems);
-  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<Progress>();
   const [notices, setNotices] = useState<ReadonlyMap<string, readonly string[]>>(new Map());
   const generation = useRef(0);
+  const [loader] = useState<PreviewLoader>(() => ({
+    limit: concurrencyLimit(PARALLEL_PREVIEWS),
+    requested: new Map(),
+    nextIndex: 0,
+  }));
   const videos = useRef<Record<number, HTMLVideoElement | null>>({});
   const pendingFrameDefaults = useRef(new Set<number>());
   useEffect(
@@ -92,47 +176,52 @@ export function useInboxMedia(
     setCropIndex(undefined);
     videos.current = {};
     pendingFrameDefaults.current.clear();
-    setLoading(false);
+    loader.requested.clear();
+    loader.refusal = undefined;
+    loader.nextIndex = 0;
+    setProgress(undefined);
   };
   const clear = () => {
     clearPreview();
     setNotices(new Map());
   };
-  const fetch = async (entries: readonly DiscoverySummary[]) => {
-    clearPreview();
+  /**
+   * Shows previews for exactly `entries`. Loaded ones keep their edits; the rest load a few at a
+   * time, and once one is refused for a rate limit or sign-out the others are not sent.
+   */
+  const sync = async (entries: readonly DiscoverySummary[]) => {
     const current = generation.current;
-    setLoading(true);
-    const found: InboxItem[] = [];
-    const reasons = new Map<string, readonly string[]>();
-    let activeEntry: DiscoverySummary | undefined;
-    try {
-      for (const entry of entries) {
-        activeEntry = entry;
-        const response = await sendMessage({
-          type: 'WATCH_INBOX_PREVIEW',
-          entryId: entry.entryId,
-          login: loginOf(entry.watchId),
-        });
-        if (current !== generation.current) return;
-        if (refusesOwner(response.failure)) {
-          clear();
-          onOwnerRefused();
-          return;
-        }
-        const result = previewResult(entry, response, found.length);
-        found.push(...result.items);
-        reasons.set(entry.entryId, result.notices);
-      }
-    } catch {
-      if (activeEntry)
-        reasons.set(activeEntry.entryId, [FAILURE_PRESENTATION.SOURCE_UNEXPECTED_FAILURE.title]);
-    } finally {
-      if (current === generation.current) {
-        setItems(found);
-        setNotices(previous => new Map([...previous, ...reasons]));
-        setLoading(false);
-      }
+    const ids = new Set(entries.map(entry => entry.entryId));
+    for (const id of loader.requested.keys()) if (!ids.has(id)) loader.requested.delete(id);
+    setItems(previous => previous.filter(item => ids.has(item.entryId)));
+    setNotices(previous => new Map([...previous].filter(([id]) => ids.has(id))));
+    const missing = entries.filter(entry => !loader.requested.has(entry.entryId));
+    if (missing.length === 0) return;
+    const tokens = missing.map(entry => {
+      const token = {};
+      loader.requested.set(entry.entryId, token);
+      return token;
+    });
+    setProgress(previous => expectMore(previous, missing.length));
+    const responses = await requestPreviews(missing, tokens, loginOf, loader, () => {
+      if (current === generation.current) setProgress(advance);
+    });
+    if (current !== generation.current) return;
+    if (responses.some(response => refusesOwner(response?.failure))) {
+      clear();
+      onOwnerRefused();
+      return;
     }
+    const kept = missing.flatMap((entry, index) =>
+      loader.requested.get(entry.entryId) === tokens[index]
+        ? [{ entry, response: responses[index] }]
+        : []
+    );
+    const { found, reasons } = collectPreviews(kept, loader.nextIndex);
+    loader.nextIndex += found.length;
+    setItems(previous => [...previous, ...found]);
+    setNotices(previous => new Map([...previous, ...reasons]));
+    setProgress(settle);
   };
   const patchRuntime = (index: number, update: Parameters<typeof updateItemRuntime>[2]) =>
     setRuntimes(previous => updateItemRuntime(previous, index, update));
@@ -239,6 +328,7 @@ export function useInboxMedia(
   const chosen = items.filter(item => item.selected);
   const selections = chosen.map(item => ({
     entryId: item.entryId,
+    watchId: item.watchId,
     child: item.child,
     settings: settings(item),
   }));
@@ -247,7 +337,8 @@ export function useInboxMedia(
     runtimes,
     frames,
     silent,
-    loading,
+    loading: progress !== undefined,
+    progress,
     notices: [...notices.values()].flat(),
     selections,
     /** A selected video export is cropped, which re-encodes it, so it needs consent first. */
@@ -265,7 +356,7 @@ export function useInboxMedia(
       ),
     clear,
     clearPreview,
-    fetch,
+    sync,
     actions: {
       onToggle: (index: number) =>
         setItems(previous =>
@@ -327,9 +418,9 @@ export function InboxMediaPreview({
           removeAudioIndexes: value.silent,
           attempt: undefined,
           cropIndex: value.cropIndex,
-          emptyMessage: value.loading
-            ? 'Fetching recorded media…'
-            : 'Fetch media to preview it before downloading.',
+          emptyMessage: value.progress
+            ? `Loading ${value.progress.done} of ${value.progress.total}`
+            : 'Nothing to preview.',
         }}
         actions={value.actions}
       />
