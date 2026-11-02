@@ -402,13 +402,14 @@ function accountFilters(
 
 /**
  * A row of chips that picks one option, calling `onChange` when the pick changes. A picked key no
- * longer offered falls back to the first.
+ * longer offered falls back to the first for good, so the view never narrows again unasked.
  */
 function useFilter(options: FilterOptions, onChange: () => void) {
   const [key, setKey] = useState(options[0].key);
   const picked = options.find(option => option.key === key) ?? options[0];
+  if (picked.key !== key) setKey(picked.key);
   const pick = (option: FilterOption) => {
-    if (option === picked) return;
+    if (option.key === picked.key) return;
     setKey(option.key);
     onChange();
   };
@@ -429,7 +430,7 @@ function FilterChips({
       {options.map(option => (
         <button
           key={option.key}
-          aria-pressed={option === picked}
+          aria-pressed={option.key === picked.key}
           disabled={disabled}
           onClick={() => pick(option)}
         >

@@ -285,7 +285,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Logins control       | `.opt-logins-summary`; click it to open            |
 | Link and Unlink      | `.opt-logins button`, inside the open control      |
 | Needs you and Inbox  | `.opt-views button`                                |
-| Watch row (sidebar)  | `button.opt-item`; its text starts with `@username` and runs on into the health line, so match with `startsWith` |
+| Watch row (sidebar)  | `button.opt-item`, match `textContent.startsWith('@name')` |
 | Add Watch            | `.opt-list-head button` (`+ Add`)                  |
 | Next check, storage  | `.opt-list-foot summary`; click it to open         |
 | Watch owner tag      | `.opt-owner`, filter `.opt-filter button`          |

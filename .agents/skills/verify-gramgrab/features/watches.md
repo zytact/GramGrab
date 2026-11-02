@@ -213,8 +213,8 @@ raw store or CLI dumps for these checks.
 ## Selection bar
 
 Ticking an entry pins `[role=toolbar][aria-label="Selected inbox entries"]`
-(`.opt-selection-bar`) to the bottom of the middle column: `N selected · M files` (`1 file` in the singular), plus
-` across K Watches` when the selection spans Watches, then `Clear`, `Remove`,
+(`.opt-selection-bar`) to the bottom of the middle column:
+`N selected · M files` (`1 file` in the singular), plus ` across K Watches` when the selection spans Watches, then `Clear`, `Remove`,
 `Edit before download` and `Download M`. M counts each entry's available
 children, and an unavailable entry adds none. The right column keeps the
 Watch's settings until `Edit before download` opens the editor. The selection
@@ -273,8 +273,8 @@ then one `@username` chip per Watch with entries. Media type holds
 overlap: Stories are their own type, a new picture counts as a photo. The rows
 combine, an empty result reads `Nothing matches these filters.`, and picking a
 different chip clears the selection and closes the editor. The chips are
-disabled while a download or removal runs. Each row's `.opt-entry-head` starts with
-the account's Avatar. The sidebar's `Search Watches` box narrows the rows and
+disabled while a download or removal runs or the editor loads previews. Each
+row's `.opt-entry-head` starts with the account's Avatar. The sidebar's `Search Watches` box narrows the rows and
 the `WATCHES (N)` count by username as you type, ignoring case and a leading
 `@`, and reads `No Watch matches` when empty. Neither is stored, so a reload
 resets both.
@@ -288,8 +288,9 @@ screenshots synthetic. Do not click its entry links; their shortcodes are fake.
 1. Open `options.html` and the sidebar's Inbox tab. Read each group's chip
    texts and every `.opt-feed .opt-entry-head` text and Avatar element.
 2. Click `Select all`, then a Media type chip. Require the bar gone. Walk
-   `Videos`, `Stories`, then `@creators` with `Stories` for the empty message, then `Carousels` and `Photos`. Require each result to match the
-   seeded and natural entries' kinds.
+   `Videos`, `Stories`, then `@creators` with `Stories` for the empty message,
+   then `Carousels` and `Photos`. Require each result to match the seeded and
+   natural entries' kinds.
 3. Type `@CREATORS` into `.opt-search`: one `@creators` row and `WATCHES (1)`.
    Replace it with `nobody`: `No Watch matches` and `WATCHES (0)`.
 4. Reload. Require `All accounts`, `Everything` and an empty search box, and no
