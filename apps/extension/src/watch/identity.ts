@@ -2,9 +2,8 @@ import { noteViewerPicture } from './viewer-avatar.ts';
 import { Data, Effect, Option, Schema } from 'effect';
 import { AccountId, InstagramUsername, type InstagramLogin } from '@gramgrab/protocol';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { readHomePage } from '../instagram/dtsg.ts';
-import { IG_API_GRAPHQL_HEADERS } from '../instagram/headers.ts';
-import { InstagramRequests, readJson, sessionCookie } from '../instagram/requests.ts';
+import { postWebQuery, readHomePage } from '../instagram/dtsg.ts';
+import { InstagramRequests, sessionCookie } from '../instagram/requests.ts';
 import { browser } from '../lib/browser.ts';
 import { markLinkedEnded } from '../instagram/linked-login.ts';
 import { CachedViewer, VIEWER_KEYS, decodeCachedViewer } from './contracts.ts';
@@ -201,30 +200,17 @@ function confirmedProfile(
  */
 export const confirmProfile = (targetId: string) =>
   Effect.gen(function* () {
-    const candidate = protocolConfig.operations.profileById.candidates[0]!;
-    const request = candidate.requests[0]!;
-    const body = new URLSearchParams({
-      [candidate.kind]: candidate.id,
-      server_timestamps: 'true',
-      variables: JSON.stringify({
-        enable_integrity_filters: true,
-        id: targetId,
-        render_surface: 'PROFILE',
-        __relay_internal__pv__PolarisCannesGuardianExperienceEnabledrelayprovider: true,
-        __relay_internal__pv__PolarisCASB976ProfileEnabledrelayprovider: false,
-        __relay_internal__pv__PolarisWebSchoolsEnabledrelayprovider: false,
-        __relay_internal__pv__PolarisRepostsConsumptionEnabledrelayprovider: false,
-        __relay_internal__pv__PolarisShortDramaEnabledrelayprovider: false,
-      }),
+    const response = yield* postWebQuery(protocolConfig.operations.profileById, {
+      enable_integrity_filters: true,
+      id: targetId,
+      render_surface: 'PROFILE',
+      __relay_internal__pv__PolarisCannesGuardianExperienceEnabledrelayprovider: true,
+      __relay_internal__pv__PolarisCASB976ProfileEnabledrelayprovider: false,
+      __relay_internal__pv__PolarisWebSchoolsEnabledrelayprovider: false,
+      __relay_internal__pv__PolarisRepostsConsumptionEnabledrelayprovider: false,
+      __relay_internal__pv__PolarisShortDramaEnabledrelayprovider: false,
     });
-    const requests = yield* InstagramRequests;
-    const response = yield* requests.fetch(request.endpoint, {
-      method: 'POST',
-      csrf: true,
-      headers: { ...IG_API_GRAPHQL_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    const decoded = yield* Schema.decodeUnknown(ProfileResponse)(yield* readJson(response)).pipe(
+    const decoded = yield* Schema.decodeUnknown(ProfileResponse)(response).pipe(
       Effect.mapError(() => new ResponseShapeUnknown({ context: 'watch_profile' }))
     );
     const profile = confirmedProfile(decoded, targetId);

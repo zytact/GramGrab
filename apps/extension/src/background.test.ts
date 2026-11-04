@@ -26,6 +26,7 @@ import {
   Request,
 } from '@gramgrab/protocol';
 import { protocolConfig } from './instagram-protocol/config.ts';
+import { homePage, isHomePage } from './test/watch-instagram.ts';
 import { ReelsMediaResponseSchema } from './effect/schemas.ts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -179,14 +180,19 @@ const bodyOf = (init: RequestInit | undefined) =>
   init?.body instanceof URLSearchParams ? init.body.toString() : '';
 
 interface LookupRoutes {
+  readonly home?: () => Response;
   readonly posts: () => Response;
   readonly page?: () => Response;
   readonly profile?: () => Response;
   readonly other?: (url: string) => Response;
 }
 
-/** Answers the username lookup: the Posts page, the profile page, and the ID-keyed profile. */
+/**
+ * Answers the username lookup: the home page's `fb_dtsg`, the Posts page, the profile page, and the
+ * ID-keyed profile.
+ */
 function lookupFetchMock({
+  home = () => homePage(null),
   posts,
   page = () => new Response('', { status: 404 }),
   profile = () => jsonResponse({}, 500),
@@ -195,6 +201,7 @@ function lookupFetchMock({
   return fetchMock(async (input, init) => {
     const url = urlOf(input);
     const body = bodyOf(init);
+    if (isHomePage(url)) return home();
     if (body.includes(PROFILE_POSTS_ID)) return posts();
     if (body.includes(PROFILE_BY_ID)) return profile();
     return /^https:\/\/www\.instagram\.com\/[^/]+\/$/.test(url) ? page() : other(url);
@@ -1339,6 +1346,20 @@ describe('background dispatcher', () => {
       const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });
 
       expect(result).toMatchObject({ media: [{ type: 'image' }] });
+    });
+
+    it('sends no lookup without a token when Instagram refuses its home page', async () => {
+      const fetchSpy = lookupFetchMock({
+        home: () => new Response('', { status: 429 }),
+        posts: () => jsonResponse(postsOf({ pk: '4242', username: 'instagram' })),
+      });
+      globalThis.fetch = fetchSpy;
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, { type: 'FETCH_MEDIA', url: storyUrl });
+
+      expect(result).toMatchObject({ failure: { code: 'IG_RATE_LIMITED' } });
+      expect(vi.mocked(fetchSpy).mock.calls.some(([, init]) => bodyOf(init) !== '')).toBe(false);
     });
 
     it('reports an unresolved username when no lookup knows the account', async () => {

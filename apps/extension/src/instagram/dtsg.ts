@@ -47,14 +47,8 @@ export const readHomePage = (enough: (page: string) => boolean = () => true) =>
     return { page, token };
   });
 
-/** The home page's token, or an empty one when Instagram refuses the page. */
-const readToken = readHomePage().pipe(
-  Effect.map(({ token }) => token ?? ''),
-  Effect.catchTags({
-    RateLimited: () => Effect.succeed(''),
-    GraphQLRequestFailed: () => Effect.succeed(''),
-  })
-);
+/** The home page's token. A refused page fails the request instead of sending no token. */
+const readToken = readHomePage().pipe(Effect.map(({ token }) => token ?? ''));
 
 const isPage = (response: Response) =>
   response.headers.get('content-type')?.includes('text/html') ?? false;

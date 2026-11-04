@@ -84,7 +84,7 @@
           "id": "28036671149327607",
           "requests": [
             {
-              "endpoint": "https://www.instagram.com/graphql/query/",
+              "endpoint": "https://www.instagram.com/api/graphql",
               "transport": "form"
             }
           ]
