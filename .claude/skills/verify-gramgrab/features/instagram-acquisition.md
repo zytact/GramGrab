@@ -73,9 +73,11 @@ requests: the account's first Posts page, its profile page when it has no Posts,
 then the ID-keyed profile for the Avatar and the Highlights tray together. A
 Story URL spends the same lookup, then the Story request. A Highlight URL
 spends only its Highlight request, which is the Story request with
-`highlight:<id>` as its reel ID. The first Posts, Story or Highlight request a
-worker sends adds one read of the instagram.com home page for the `fb_dtsg`
-token, which the worker then keeps in memory.
+`highlight:<id>` as its reel ID. The first Posts, Story, Highlight or ID-keyed
+profile request a worker sends adds one read of the instagram.com home page for
+the `fb_dtsg` token, which the worker then keeps in memory. A refused home page
+fails the operation with that refusal, such as `IG_RATE_LIMITED`, and sends no
+query.
 
 ```bash
 node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --json
@@ -126,7 +128,8 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
 - Read _Known server behavior_ in `docs/instagram-protocol.md` before calling
   an Instagram failure a bug. It covers the retired REST username lookups
   (#301), the Posts queries' Origin and `fb_dtsg` (#313), the Stories query that
-  moved to `/api/graphql` (#357), the Highlights tray 403, and the Instants
+  moved to `/api/graphql` (#357), the ID-keyed profile query that followed it
+  (#367), the Highlights tray 403, and the Instants
   query on the web host. A
   person's 429 never pauses Watches; see [Watches](./watches.md#rate-limit-pause).
 - `SOURCE_SERVER_FAILED` on every profile and Story URL is the #313 failure:

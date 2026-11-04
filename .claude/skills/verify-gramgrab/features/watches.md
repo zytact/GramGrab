@@ -811,6 +811,14 @@ produce each code and reason belong to `watch/check.test.ts`.
    of clicking. After `quiet` and `release` it resumes on the next pump alarm, within a minute or
    two, and checks only its remaining kinds.
 
+A real Posts `not-json` while Stories succeed in the same check points at the ID-keyed profile
+lookup, which a Watch sends before its Posts and Avatar checks, not at the Posts query (#367). Wrap
+`fetch` in the `js/background.js` worker to log each instagram.com request's URL, `doc_id`, whether
+it sent `fb_dtsg`, and the answer's `content-type`, then click Check now. `doc_id` and `fb_dtsg`
+live only in the POST body, so read `init.body` (a `URLSearchParams`), or the body of a `Request`
+input. Each Posts, Stories and profile request goes to `/api/graphql` with a token and answers JSON.
+A `text/html` answer names the request that moved.
+
 Crop screenshots to the row: `drive.mjs shot options.html FILE ".opt-health-row.opt-health-problem"`
 keeps the sidebar and its usernames out of the file.
 

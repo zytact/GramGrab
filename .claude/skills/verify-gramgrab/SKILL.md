@@ -278,6 +278,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Undo toast           | `.opt-toast` (`role=status`), button `Undo`       |
 | Diagnostics dialog   | `#diagnostics-dialog-title`                        |
 | Watch check problem  | `.opt-health-row.opt-health-problem`               |
+| Watch header, Check now | `.opt-feed-body > .opt-row.opt-between` (bare `.opt-row.opt-between` matches the sidebar footer first) |
 | Watch diagnostics    | button text `Preview diagnostics`, `pre.diagnostics-preview` |
 | Watches file import  | `input[aria-label="Watches file"]`, link `.opt-foot-link` |
 | Login picker         | `#instagram-login`                                 |
