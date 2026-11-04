@@ -47,7 +47,7 @@ export const readHomePage = (enough: (page: string) => boolean = () => true) =>
     return { page, token };
   });
 
-/** The home page's token. A refused page fails the request instead of sending no token. */
+/** The home page's token, or an empty one when the page names none. A refused page fails. */
 const readToken = readHomePage().pipe(Effect.map(({ token }) => token ?? ''));
 
 const isPage = (response: Response) =>
