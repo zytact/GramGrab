@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.1](https://github.com/zytact/GramGrab/compare/v4.7.0...v4.7.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* **watch:** get Posts checks working again by moving the profile lookup to /api/graphql ([#368](https://github.com/zytact/GramGrab/issues/368)) ([2a2937e](https://github.com/zytact/GramGrab/commit/2a2937e0c0f43686f3a63e253c25fc8c32413535))
+
 ## [4.7.0](https://github.com/zytact/GramGrab/compare/v4.6.3...v4.7.0) (2026-11-02)
 
 
