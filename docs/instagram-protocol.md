@@ -62,6 +62,13 @@ live. Check this list before debugging an Instagram failure.
 - **A Posts page can carry a `field_exception` on a field GramGrab never reads.** In October 2026
   one Post's `location.profile_pic_url` errored while all 12 edges and the cursor came back. A
   Watch ignores an error whose path ends under a Post field `PostNode` does not decode.
+- **The profile lookup moved to `/api/graphql` too.** Since early November 2026, `profileById`
+  sent to `/graphql/query/` answers the instagram.com home page as HTML, with or without
+  `fb_dtsg` ([#367](https://github.com/zytact/GramGrab/issues/367)). Sent to `/api/graphql` with
+  `fb_dtsg` and the Origin rule, it still answers JSON. `confirmProfile` in
+  `apps/extension/src/watch/identity.ts` sends it through `postWebQuery`. A Watch confirms the
+  account's username before checking its Posts or Avatar, so this broke those checks as `not-json`.
+  When Instagram refuses the home page, the token read fails the request with that refusal.
 - **`profileById` carries the Avatar but no picture ID.** It answers `profile_pic_url` and
   `hd_profile_pic_url_info`, and no `profile_pic_id`. A Watch identifies its Avatar by the asset
   name in the picture URL, which stays the same across sizes and signed URLs.

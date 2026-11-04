@@ -294,10 +294,12 @@ export function createWatchInstagram() {
         ? new Response(`{"profile_id":"${account.id}"}`)
         : new Response('', { status: 404 });
     },
-    (_url, init) => {
+    ({ pathname }, init) => {
       if (formDocument(init) !== '28036671149327607') return undefined;
       const body = init?.body as URLSearchParams;
       state.profileRequests.push(String(JSON.parse(body.get('variables') ?? '{}').id));
+      if (pathname !== '/api/graphql' || body.get('fb_dtsg') !== state.dtsgToken)
+        return new Response('<html>', { headers: { 'Content-Type': 'text/html' } });
       return json(state.profile);
     },
     (_url, init) =>

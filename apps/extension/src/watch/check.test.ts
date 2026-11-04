@@ -34,10 +34,12 @@ import {
   VIEWER,
 } from '../test/watch-instagram.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
+import { protocolConfig } from '../instagram-protocol/config.ts';
 
 const START = Date.UTC(2026, 9, 1, 12);
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
+const POSTS_DOC_ID = protocolConfig.operations.profilePosts.candidates[0]!.id;
 
 let harness: ExtensionHarness;
 let instagram: ReturnType<typeof createWatchInstagram>;
@@ -452,7 +454,7 @@ describe('Posts checks', () => {
     await baselined();
     instagram.state.postTokens = [];
     harness.setFetch((url, init) => {
-      if (init?.body instanceof URLSearchParams && init.body.has('fb_dtsg'))
+      if (init?.body instanceof URLSearchParams && init.body.get('doc_id') === POSTS_DOC_ID)
         instagram.state.dtsgToken = 'DTSG_B';
       return instagram.handle(url, init);
     });
