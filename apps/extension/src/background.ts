@@ -99,6 +99,7 @@ import { linkLogin, loginNames, unlinkLinkedLogin } from './instagram/link.ts';
 import { installInstagramOrigin } from './instagram/origin.ts';
 import {
   previewInboxEntry,
+  restoreInboxEntries,
   previewWatchTarget,
   runWatchCommand,
   runWatchRead,
@@ -1307,6 +1308,7 @@ const messageHandlers: MessageHandlers = {
   WATCH_PREVIEW: message => previewWatchTarget(message.target, message.login),
   WATCH_AVATARS: message => watchAvatars(message.viewerId),
   WATCH_INBOX_PREVIEW: message => previewInboxEntry(message.entryId, message.login),
+  WATCH_INBOX_RESTORE: message => restoreInboxEntries(message.entryIds, message.login),
   LINK_LOGIN: linkLogin,
   UNLINK_LOGIN: unlinkLinkedLogin,
   LOGIN_NAMES: loginNames,

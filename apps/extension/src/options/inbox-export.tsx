@@ -77,7 +77,7 @@ type RowState =
   | { readonly _tag: 'saving' }
   | { readonly _tag: 'failed'; readonly code: FailureCode };
 
-/** How long a removal waits for Undo before it deletes anything. */
+/** How long Undo stays offered after a removal. */
 export const UNDO_MS = 5_000;
 
 const withoutIds = <V,>(map: ReadonlyMap<string, V>, ids: ReadonlySet<string>) =>
@@ -104,11 +104,14 @@ export function useInboxExport(
   const selected = new Map([...picked].filter(([, entry]) => isWatched(entry.watchId)));
   const [outcomes, setOutcomes] = useState<ReadonlyMap<string, InboxExportOutcome>>(new Map());
   const [rows, setRows] = useState<ReadonlyMap<string, RowState>>(new Map());
-  /** Removals waiting out Undo, then ones sent but not yet gone from the reloaded lists. */
-  const [queued, setQueued] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
-  const [committing, setCommitting] = useState<ReadonlySet<string>>(new Set());
-  const removal = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(removal.current), []);
+  /** Entries removed or being removed, hidden until Undo brings them back. */
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
+  /** Removed entries Undo would bring back. */
+  const [undoable, setUndoable] = useState<ReadonlyMap<string, DiscoverySummary>>(new Map());
+  const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(undoTimer.current), []);
+  /** Settles once every removal sent so far has, so Undo never overtakes one. */
+  const removals = useRef<Promise<unknown>>(Promise.resolve());
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const thumbnails = useInboxThumbnails(loginOf);
@@ -139,6 +142,7 @@ export function useInboxExport(
       return next;
     });
 
+  /** Runs `commands` in order and reports the entries they removed. */
   const execute = async (commands: readonly (readonly [InstagramLogin, WatchCommand])[]) => {
     setBusy(true);
     setFailure(undefined);
@@ -158,6 +162,7 @@ export function useInboxExport(
         setPicked(current => withoutIds(current, removed));
         setOutcomes(current => withoutIds(current, removed));
       }
+      return removed;
     } catch {
       setFailure(FAILURE_PRESENTATION.DOWNLOAD_UNEXPECTED_FAILURE.title);
     } finally {
@@ -222,17 +227,29 @@ export function useInboxExport(
       setEditing(false);
     }
   };
-  const commitRemoval = (pending: ReadonlyMap<string, DiscoverySummary>) => {
-    const ids = new Set(pending.keys());
-    setQueued(new Map());
-    setCommitting(current => new Set([...current, ...ids]));
-    void execute(
-      perLogin(
-        [...pending.values()],
-        entry => loginOf(entry.watchId),
-        group => WatchInboxRemove.make({ entryIds: group.map(entry => entry.entryId) })
-      )
-    ).finally(() => setCommitting(current => new Set([...current].filter(id => !ids.has(id)))));
+  /** Puts the entries of the pending Undo back, once every removal sent so far has settled. */
+  const undoRemove = async () => {
+    const entries = [...undoable.values()];
+    clearTimeout(undoTimer.current);
+    setUndoable(new Map());
+    await removals.current;
+    try {
+      for (const [login, group] of byLogin(entries, entry => loginOf(entry.watchId))) {
+        const { failure } = await sendMessage({
+          type: 'WATCH_INBOX_RESTORE',
+          entryIds: group.map(entry => entry.entryId),
+          login,
+        });
+        if (failure?._tag === 'CommandFailure')
+          setFailure(FAILURE_PRESENTATION[failure.failure.code].title);
+      }
+    } catch {
+      setFailure(FAILURE_PRESENTATION.DOWNLOAD_UNEXPECTED_FAILURE.title);
+    } finally {
+      await onChanged().catch(() => {});
+      const ids = new Set(entries.map(entry => entry.entryId));
+      setRemoving(current => new Set([...current].filter(id => !ids.has(id))));
+    }
   };
   return {
     selected,
@@ -244,10 +261,9 @@ export function useInboxExport(
     setCropConsent,
     entries,
     rows,
-    /** Entries hidden while their removal waits or runs. */
-    removing: new Set([...queued.keys(), ...committing]),
+    removing,
     /** How many removals Undo would bring back. */
-    undoable: queued.size,
+    undoable: undoable.size,
     editing,
     thumbnails,
     download,
@@ -267,21 +283,30 @@ export function useInboxExport(
           ...(recovery ? { recovery } : {}),
         })
       ),
-    /** Hides entries at once and removes them once Undo has had `UNDO_MS` to stop it. */
+    /** Removes entries at once and offers Undo for `UNDO_MS`, which joins earlier removals. */
     remove: (targets: readonly DiscoverySummary[]) => {
-      const pending = new Map([
-        ...queued,
-        ...targets.map(entry => [entry.entryId, entry] as const),
-      ]);
-      setQueued(pending);
-      select(withoutIds(selected, new Set(pending.keys())));
-      clearTimeout(removal.current);
-      removal.current = setTimeout(() => commitRemoval(pending), UNDO_MS);
+      const ids = new Set(targets.map(entry => entry.entryId));
+      select(withoutIds(selected, ids));
+      setRemoving(current => new Set([...current, ...ids]));
+      setUndoable(
+        current => new Map([...current, ...targets.map(entry => [entry.entryId, entry] as const)])
+      );
+      clearTimeout(undoTimer.current);
+      undoTimer.current = setTimeout(() => setUndoable(new Map()), UNDO_MS);
+      const removal = execute(
+        perLogin(
+          targets,
+          entry => loginOf(entry.watchId),
+          group => WatchInboxRemove.make({ entryIds: group.map(entry => entry.entryId) })
+        )
+      ).then(removed => {
+        const failed = new Set([...ids].filter(id => !removed?.has(id)));
+        setUndoable(current => withoutIds(current, failed));
+        setRemoving(current => new Set([...current].filter(id => !failed.has(id))));
+      });
+      removals.current = Promise.all([removals.current, removal]);
     },
-    undoRemove: () => {
-      clearTimeout(removal.current);
-      setQueued(new Map());
-    },
+    undoRemove: () => void undoRemove(),
     selectAll: (targets: readonly DiscoverySummary[]) =>
       select(new Map([...selected, ...targets.map(entry => [entry.entryId, entry] as const)])),
     /** Opens the editor, which loads the selection's previews. */

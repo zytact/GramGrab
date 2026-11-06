@@ -181,6 +181,13 @@ const WatchInboxPreview = Schema.Struct({
   login,
 });
 
+/** Undo for an inbox removal: puts the removed entries back in the inbox. */
+const WatchInboxRestore = Schema.Struct({
+  type: Schema.Literal('WATCH_INBOX_RESTORE'),
+  entryIds: Schema.Array(Schema.UUID).pipe(Schema.minItems(1)),
+  login,
+});
+
 const LinkLogin = Schema.Struct({ type: Schema.Literal('LINK_LOGIN') });
 const UnlinkLogin = Schema.Struct({ type: Schema.Literal('UNLINK_LOGIN') });
 const LoginNames = Schema.Struct({ type: Schema.Literal('LOGIN_NAMES') });
@@ -232,6 +239,7 @@ const MessageSchema = Schema.Union(
   WatchPreview,
   WatchAvatars,
   WatchInboxPreview,
+  WatchInboxRestore,
   LinkLogin,
   UnlinkLogin,
   LoginNames,
@@ -386,6 +394,7 @@ interface MessageResponses extends Record<MessageType, unknown> {
   WATCH_PREVIEW: WatchPreviewResponse;
   WATCH_AVATARS: WatchAvatarsResponse;
   WATCH_INBOX_PREVIEW: WatchInboxPreviewResponse;
+  WATCH_INBOX_RESTORE: { readonly failure?: WatchFailure };
   LINK_LOGIN: LinkLoginResponse;
   UNLINK_LOGIN: LinkedLoginState;
   LOGIN_NAMES: LoginNamesResponse;
