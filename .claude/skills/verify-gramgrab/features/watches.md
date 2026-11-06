@@ -84,7 +84,7 @@ collected, or that were removed, do not appear. A notification click opens
    `options.html#watch=<id>` in a new tab with `chrome.tabs.create`, so the ID
    stays in memory. Require the same heading there. `drive.mjs targets` prints that
    tab's URL with the ID, so match it as `options.html#watch` instead. Close it
-   from the worker with `chrome.tabs.remove`, since `drive.mjs` has no close.
+   with `drive.mjs close-tab options.html#watch`.
 
 ## Entry links
 
@@ -105,8 +105,8 @@ separately authorized run, so record an empty Watch as a live prerequisite.
    whose shape matches the row's kind in its meta line. Capture the list
    cropped to the entry rows, which keeps the Watch's username out of frame.
 2. Click one link. Require a new tab on that `href` and an unchanged options
-   page with the same Watch and tab selected. Close only the new tab from the
-   worker with `chrome.tabs.remove`. Opening the page is a browser navigation,
+   page with the same Watch and tab selected. Close only the new tab with
+   `drive.mjs close-tab instagram.com`. Opening the page is a browser navigation,
    not a GramGrab request, so it does not touch `instagram-requests`.
 
 ## Inbox rows
@@ -237,28 +237,36 @@ row as [Inbox rows](#inbox-rows) describes.
 Removal deletes inbox metadata only. The discovery stays, so its media is never
 found again, and the Watch stays enabled. Natural entries are precious on a
 shared account, so drive this on synthetic entries only with the user's
-authorization, and label any screenshot as synthetic.
+authorization, and label any screenshot as synthetic. The `watch-filters.mjs`
+fixture from [Inbox filters](#inbox-filters-and-watch-search) gives two.
 
-`Remove`, on a row or in the bar, hides the entries at once, drops them from
-the selection and shows a `[role=status]` toast `Removed N entries.` with
-`Undo`. Nothing is deleted until the toast has stood 5 seconds; a second
-removal joins the first and restarts the wait. Closing the page first deletes
-nothing.
+`Remove`, on a row or in the bar, hides the entries, drops them from the
+selection and removes them in the worker at once: each discovery's
+`collect.removedAt` is set before the toast fades. A `[role=status]` toast
+`Removed N entries.` with `Undo` stands 5 seconds; a second removal joins the
+first and restarts it. `Undo` puts back only the entries this page removed,
+clearing their `removedAt`. Closing the page while the toast stands keeps the
+removal.
 
 1. In All inbox and in a Watch's Inbox tab, `Select all` ticks every
    `Select inbox item` checkbox, including unavailable entries. The bar's
    `Clear` unticks them all.
 2. Select all, untick one entry, click the bar's `Remove`. Require exactly the
-   ticked entries hidden and the toast. After 5 seconds require them gone after
-   a reload, the unticked one still listed, and the Watch's `enabled` flag
-   unchanged in `watch-store`.
-3. Remove one entry, click `Undo` within 5 seconds, wait past them, and reload.
-   Require the entry still listed. Separate `drive.mjs` calls with a screenshot
-   between them can outlast 5 seconds, so click Undo from a page-side
-   `setTimeout` of about 3 seconds started by the same `eval` that removes.
-4. With only unavailable entries ticked, `Edit before download` is disabled
+   ticked entries hidden, the toast, and `removedAt` on their discoveries in
+   `watch-store` while the toast still stands. After a reload require them
+   gone, the unticked one still listed, and the Watch's `enabled` flag
+   unchanged.
+3. Remove one entry and run `drive.mjs close-tab options.html` straight after,
+   inside the 5 seconds. Reopen `options.html`. Require the entry gone and its
+   `removedAt` set.
+4. Remove one entry, click `Undo` within 5 seconds, wait past them, and reload.
+   Require the entry still listed and no `removedAt` on it. Separate
+   `drive.mjs` calls with a screenshot between them can outlast 5 seconds, so
+   click Undo from a page-side `setTimeout` of about 3 seconds started by the
+   same `eval` that removes.
+5. With only unavailable entries ticked, `Edit before download` is disabled
    while `Remove` stays enabled.
-5. An entry with a saved failed export shows `Retry` on its own row without
+6. An entry with a saved failed export shows `Retry` on its own row without
    being ticked, and the inspector keeps showing the Watch's settings.
 
 Storage-write failures during removal belong to `watches.test.tsx`.

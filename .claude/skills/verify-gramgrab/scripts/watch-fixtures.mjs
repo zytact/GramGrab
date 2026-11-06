@@ -18,12 +18,13 @@ if (!['seed', 'remove'].includes(mode) || !Number.isInteger(count) || count < 1 
 
 const seed = `(async () => {
   const store = (await chrome.storage.local.get('watch-store'))['watch-store'];
-  const first = store?.watches?.[0];
-  if (!first) throw new Error('An existing verified Watch is required');
-  if (store.watches.some(w => w.targetId.startsWith('${PREFIX}'))) throw new Error('Fixtures already present; remove them first');
+  const viewerId = store?.watches?.[0]?.viewerId
+    ?? (await chrome.storage.session.get('watch-viewer'))['watch-viewer']?.accountId;
+  if (!viewerId) throw new Error('Open the Watches page signed in first, so the viewer is verified');
+  if (store?.watches?.some(w => w.targetId.startsWith('${PREFIX}'))) throw new Error('Fixtures already present; remove them first');
   const now = Date.now();
   const watches = Array.from({ length: ${count} }, (_, i) => ({
-    id: crypto.randomUUID(), viewerId: first.viewerId, targetId: '${PREFIX}' + String(i).padStart(2, '0'),
+    id: crypto.randomUUID(), viewerId, targetId: '${PREFIX}' + String(i).padStart(2, '0'),
     username: 'instagram', createdAt: now, enabled: false,
     kinds: ['posts', 'stories', 'instants', 'avatar'], actions: ['collect'], tracking: {},
     discoveries: Array.from({ length: 40 }, () => ({
@@ -31,7 +32,7 @@ const seed = `(async () => {
       ref: { _tag: 'Post', mediaId: '1', shortcode: 'LAYOUT_FIXTURE', mediaType: 'image', takenAt: Math.floor(now / 1000) },
     })),
   }));
-  await chrome.storage.local.set({ 'watch-store': { ...store, watches: [...store.watches, ...watches] } });
+  await chrome.storage.local.set({ 'watch-store': { version: 2, ...store, watches: [...(store?.watches ?? []), ...watches] } });
   return 'Seeded ${count} paused fixture Watches';
 })()`;
 

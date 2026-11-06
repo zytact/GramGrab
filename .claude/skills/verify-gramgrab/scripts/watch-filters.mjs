@@ -27,8 +27,9 @@ const store = body => `(async () => {
 const expressions = {
   seed: store(`
   if (fixture) throw new Error('The fixture is already present; remove it first');
-  const first = store?.watches?.[0];
-  if (!first) throw new Error('An existing verified Watch is required');
+  const viewerId = store?.watches?.[0]?.viewerId
+    ?? (await chrome.storage.session.get('watch-viewer'))['watch-viewer']?.accountId;
+  if (!viewerId) throw new Error('Open the Watches page signed in first, so the viewer is verified');
   const now = Date.now();
   const takenAt = Math.floor(now / 1000);
   const entry = (ref, ago) => ({
@@ -36,7 +37,7 @@ const expressions = {
     collect: { at: now - ago }, ref,
   });
   const watch = {
-    id: '${FIXTURE_ID}', viewerId: first.viewerId, targetId: '9000000000334',
+    id: '${FIXTURE_ID}', viewerId, targetId: '9000000000334',
     username: 'creators', createdAt: now, enabled: false, kinds: ['posts'],
     actions: ['collect'], tracking: {},
     discoveries: [
@@ -45,7 +46,7 @@ const expressions = {
         children: [{ mediaId: '3', mediaType: 'image' }, { mediaId: '4', mediaType: 'video' }] }, 120_000),
     ],
   };
-  await chrome.storage.local.set({ 'watch-store': { ...store, watches: [...store.watches, watch] } });
+  await chrome.storage.local.set({ 'watch-store': { version: 2, ...store, watches: [...(store?.watches ?? []), watch] } });
   return JSON.stringify({ seeded: true });`),
   remove: store(`
   if (!fixture) return JSON.stringify({ removed: false });
