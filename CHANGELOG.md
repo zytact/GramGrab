@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.2](https://github.com/zytact/GramGrab/compare/v4.7.1...v4.7.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* **watch:** keep inbox removals when the tab closes before Undo expires ([#371](https://github.com/zytact/GramGrab/issues/371)) ([0c252b8](https://github.com/zytact/GramGrab/commit/0c252b80bf4c3f6cfb3eaad850f309670535ae53))
+
 ## [4.7.1](https://github.com/zytact/GramGrab/compare/v4.7.0...v4.7.1) (2026-11-04)
 
 
