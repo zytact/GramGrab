@@ -228,6 +228,7 @@ D=.agents/skills/verify-gramgrab/scripts/drive.mjs
 node $D targets                                   # every debuggable target
 node $D open "chrome-extension://$GRAMGRAB_EXT_ID/popup.html?surface=workspace"
 node $D activate "popup.html?surface"             # bring a page to the front
+node $D close-tab "options.html"                  # close a page as a person would; `close` shuts the browser
 node $D type  "popup.html" "#source-url" "https://www.instagram.com/p/SHORTCODE/"
 node $D blur  "popup.html" "#source-url"
 node $D click "popup.html" ".fetch-row button"
@@ -286,7 +287,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Logins control       | `.opt-logins-summary`; click it to open            |
 | Link and Unlink      | `.opt-logins button`, inside the open control      |
 | Needs you and Inbox  | `.opt-views button`                                |
-| Watch row (sidebar)  | `button.opt-item`, match `textContent.startsWith('@name')` |
+| Watch row (sidebar)  | `button.opt-item`, match `.opt-clamp` text `@name` (the row's text starts with the Avatar initial) |
 | Add Watch            | `.opt-list-head button` (`+ Add`)                  |
 | Next check, storage  | `.opt-list-foot summary`; click it to open         |
 | Watch owner tag      | `.opt-owner`, filter `.opt-filter button`          |
@@ -414,7 +415,7 @@ All are executable and take no arguments beyond what is shown above.
 | `scripts/launch.sh`  | Build and start the browser; `--restart` preserves an unchanged build                     |
 | `scripts/signin.sh`  | Launch with Instagram and WhatsApp Web open for a one-time sign-in     |
 | `scripts/doctor.mjs` | Six read-only health checks, non-zero exit on any failure              |
-| `scripts/drive.mjs`  | CDP client for opening, activating, typing, clicking, pressing keys, dragging, choosing files, reading, and capturing pages |
+| `scripts/drive.mjs`  | CDP client for opening, activating, closing, typing, clicking, pressing keys, dragging, choosing files, reading, and capturing pages |
 | `scripts/throttle.mjs` | Answer the worker's matching Instagram requests with a status such as 429 |
 | `scripts/cleanup.sh` | Close the browser, remove run state, keep the profile and evidence     |
 
@@ -428,6 +429,9 @@ Check problem recipe.
 `scripts/watch-avatar.mjs seed | remove` adds or removes a paused fixture Avatar Watch with
 one exportable inbox entry for the Inbox preview recipe.
 `scripts/watch-filters.mjs seed | remove` adds or removes a paused fixture `creators` Watch
-with a Photo and a Carousel for the Inbox filters and Watch search recipe.
+with a Photo and a Carousel for the Inbox filters and Bulk removal recipes.
+`watch-fixtures.mjs` and `watch-filters.mjs` take the viewer from an existing Watch or,
+on a profile with none, from the session's verified viewer, so open the Watches page
+signed in once before seeding.
 `scripts/watch-seen.mjs seed [DAYS] | read | remove` adds, reads, or removes a paused
 fixture Watch of the `instagram` account for the Fetched media is seen recipe.

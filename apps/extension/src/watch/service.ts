@@ -1,4 +1,4 @@
-import { Data, Effect, Either, Match, Schema } from 'effect';
+import { Data, Effect, Either, Match, Schema, Struct } from 'effect';
 import {
   AccountId,
   CommandFailure,
@@ -54,6 +54,7 @@ import type {
   WatchPreviewResponse,
   WatchRead,
   WatchInboxPreviewResponse,
+  MessageResponse,
 } from '../messaging/contracts.ts';
 import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
 import { definitionOf, newWatch } from './definition.ts';
@@ -1021,6 +1022,41 @@ export const previewInboxEntry = (
             }
           : {}),
       };
+    }),
+    login
+  );
+
+/** Puts removed entries back in the inbox. It is the Undo the options page offers after a removal. */
+export const restoreInboxEntries = (
+  entryIds: readonly string[],
+  login: InstagramLogin = 'main'
+): Promise<MessageResponse<'WATCH_INBOX_RESTORE'>> =>
+  runForPerson(
+    Effect.gen(function* () {
+      const viewer = yield* verifyViewer(yield* loadOrReject);
+      return yield* save(store => {
+        const restorable = new Set(
+          owned(store, viewer).flatMap(watch =>
+            watch.discoveries.flatMap(discovery =>
+              entryIds.includes(discovery.id) &&
+              discovery.collect &&
+              !('status' in discovery.collect) &&
+              discovery.collect.removedAt !== undefined
+                ? [discovery.id]
+                : []
+            )
+          )
+        );
+        const watches = store.watches.map(watch => ({
+          ...watch,
+          discoveries: watch.discoveries.map(discovery =>
+            restorable.has(discovery.id) && discovery.collect && !('status' in discovery.collect)
+              ? { ...discovery, collect: Struct.omit(discovery.collect, 'removedAt') }
+              : discovery
+          ),
+        }));
+        return { store: restorable.size > 0 ? { ...store, watches } : store, value: {} };
+      });
     }),
     login
   );

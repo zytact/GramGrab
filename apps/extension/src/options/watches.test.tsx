@@ -187,8 +187,6 @@ describe('Watches options page', { timeout: 15_000 }, () => {
 
       expect(screen.getAllByRole('checkbox', { name: 'Select inbox item' })).toHaveLength(1);
       expect(screen.getByRole('status').textContent).toMatch(/Removed 2 entries/);
-      expect(removeCommands()).toEqual([]);
-      await act(() => vi.advanceTimersByTimeAsync(UNDO_MS));
       await waitFor(() =>
         expect(removeCommands()).toEqual([
           {
@@ -206,10 +204,12 @@ describe('Watches options page', { timeout: 15_000 }, () => {
       ).toHaveProperty('removedAt');
       expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
       expect(harness.downloads).toEqual([]);
+      await act(() => vi.advanceTimersByTimeAsync(UNDO_MS));
+      expect(screen.queryByRole('status')).toBeNull();
     }
   );
 
-  it('brings removed entries back with Undo and deletes nothing', async () => {
+  it('brings removed entries back with Undo', async () => {
     seedWatchWithProblemAndEntry();
     const user = withUndoClock();
     render(<Watches />);
@@ -217,10 +217,32 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole('button', { name: 'Remove' }));
     expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(screen.getByRole('checkbox', { name: 'Select inbox item' })).toBeDefined();
+    await screen.findByRole('checkbox', { name: 'Select inbox item' });
+    expect(removeCommands()).toHaveLength(1);
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    expect(store.watches[0]?.discoveries[0]?.collect).not.toHaveProperty('removedAt');
     await act(() => vi.advanceTimersByTimeAsync(UNDO_MS));
-    expect(removeCommands()).toEqual([]);
+    expect(screen.getByRole('checkbox', { name: 'Select inbox item' })).toBeDefined();
     expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('offers no Undo for an entry already removed elsewhere', async () => {
+    seedWatchWithProblemAndEntry();
+    const user = withUndoClock();
+    render(<Watches />);
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+    await screen.findByRole('checkbox', { name: 'Select inbox item' });
+    const seeded = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    const [watch] = seeded.watches;
+    const [discovery] = watch!.discoveries;
+    harness.local.write('watch-store', {
+      ...seeded,
+      watches: [{ ...watch, discoveries: [{ ...discovery, collect: { at: 1, removedAt: 2 } }] }],
+    });
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull());
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    expect(store.watches[0]?.discoveries[0]?.collect).toEqual({ at: 1, removedAt: 2 });
   });
 
   it('shows a failure and keeps the entry when removal cannot save', async () => {
@@ -231,9 +253,9 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole('button', { name: 'Select all' }));
     harness.local.set.mockRejectedValue(new Error('Storage write refused'));
     await user.click(within(bar()).getByRole('button', { name: 'Remove' }));
-    await act(() => vi.advanceTimersByTimeAsync(UNDO_MS));
     await screen.findByText('The browser refused to save Watch data');
     expect(screen.getByRole('checkbox', { name: 'Select inbox item' })).toBeDefined();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('keeps the selection across Watches and downloads it as Original from the bar', async () => {

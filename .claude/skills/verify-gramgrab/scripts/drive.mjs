@@ -5,6 +5,7 @@
 //   drive.mjs targets                      list every debuggable target
 //   drive.mjs open <url>                   open a tab and print its target id
 //   drive.mjs activate <match>             bring a matching page to the front
+//   drive.mjs close-tab <match>            close a matching page, as a person closing the tab
 //   drive.mjs click <match> <selector>     click an element
 //   drive.mjs type <match> <selector> <v>  replace an input value and dispatch input
 //   drive.mjs blur <match> <selector>      blur an element
@@ -238,6 +239,14 @@ if (command === 'targets') {
     });
   });
   process.stdout.write(`${file}\n`);
+} else if (command === 'close-tab') {
+  const [match] = rest;
+  if (!match) fail('Usage: drive.mjs close-tab <match>');
+  const target = await findTarget(match);
+  if (target.type !== 'page') fail(`${JSON.stringify(match)} matches no page.`);
+  const response = await fetch(`${base}/json/close/${target.id}`);
+  if (!response.ok) fail(`Could not close ${target.url}: HTTP ${response.status}`);
+  process.stdout.write(`closed ${target.url}\n`);
 } else if (command === 'eval') {
   const [match, expression] = rest;
   if (!match || !expression) fail('Usage: drive.mjs eval <match> <expression>');
@@ -283,6 +292,6 @@ if (command === 'targets') {
   process.stdout.write(`${needle}\n`);
 } else {
   fail(
-    'Usage: drive.mjs targets|open|activate|click|key|drag|type|blur|upload|eval|text|shot|wait ...'
+    'Usage: drive.mjs targets|open|activate|close|close-tab|click|key|drag|type|blur|upload|eval|text|shot|wait ...'
   );
 }
