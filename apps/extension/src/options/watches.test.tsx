@@ -226,6 +226,25 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('offers no Undo for an entry already removed elsewhere', async () => {
+    seedWatchWithProblemAndEntry();
+    const user = withUndoClock();
+    render(<Watches />);
+    await user.click(await screen.findByRole('button', { name: INBOX_TAB }));
+    await screen.findByRole('checkbox', { name: 'Select inbox item' });
+    const seeded = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    const [watch] = seeded.watches;
+    const [discovery] = watch!.discoveries;
+    harness.local.write('watch-store', {
+      ...seeded,
+      watches: [{ ...watch, discoveries: [{ ...discovery, collect: { at: 1, removedAt: 2 } }] }],
+    });
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull());
+    const store = Schema.decodeUnknownSync(WatchStore)(harness.local.read('watch-store'));
+    expect(store.watches[0]?.discoveries[0]?.collect).toEqual({ at: 1, removedAt: 2 });
+  });
+
   it('shows a failure and keeps the entry when removal cannot save', async () => {
     seedWatchWithProblemAndEntry();
     const user = withUndoClock();

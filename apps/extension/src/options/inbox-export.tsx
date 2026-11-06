@@ -69,6 +69,8 @@ function combined(responses: readonly WatchCommandResponse[]) {
             removals.flatMap(result => [...result.removedEntryIds, ...result.unknownEntryIds])
           )
         : undefined,
+    /** Entries these commands removed themselves, which Undo may put back. */
+    tombstoned: new Set(removals.flatMap(result => result.removedEntryIds)),
   };
 }
 
@@ -150,7 +152,7 @@ export function useInboxExport(
       const responses = [];
       for (const [login, command] of commands)
         responses.push(await sendMessage({ type: 'WATCH_COMMAND', command, login }));
-      const { failed, exported, removed } = combined(responses);
+      const { failed, exported, removed, tombstoned } = combined(responses);
       if (failed) setFailure(FAILURE_PRESENTATION[failed].title);
       if (exported) {
         mergeOutcomes(exported);
@@ -162,7 +164,7 @@ export function useInboxExport(
         setPicked(current => withoutIds(current, removed));
         setOutcomes(current => withoutIds(current, removed));
       }
-      return removed;
+      return { removed, tombstoned };
     } catch {
       setFailure(FAILURE_PRESENTATION.DOWNLOAD_UNEXPECTED_FAILURE.title);
     } finally {
@@ -299,9 +301,10 @@ export function useInboxExport(
           entry => loginOf(entry.watchId),
           group => WatchInboxRemove.make({ entryIds: group.map(entry => entry.entryId) })
         )
-      ).then(removed => {
-        const failed = new Set([...ids].filter(id => !removed?.has(id)));
-        setUndoable(current => withoutIds(current, failed));
+      ).then(outcome => {
+        const failed = new Set([...ids].filter(id => !outcome?.removed?.has(id)));
+        const kept = new Set([...ids].filter(id => !outcome?.tombstoned.has(id)));
+        setUndoable(current => withoutIds(current, kept));
         setRemoving(current => new Set([...current].filter(id => !failed.has(id))));
       });
       removals.current = Promise.all([removals.current, removal]);

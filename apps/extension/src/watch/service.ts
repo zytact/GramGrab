@@ -1,4 +1,4 @@
-import { Data, Effect, Either, Match, Schema } from 'effect';
+import { Data, Effect, Either, Match, Schema, Struct } from 'effect';
 import {
   AccountId,
   CommandFailure,
@@ -1051,7 +1051,7 @@ export const restoreInboxEntries = (
           ...watch,
           discoveries: watch.discoveries.map(discovery =>
             restorable.has(discovery.id) && discovery.collect && !('status' in discovery.collect)
-              ? { ...discovery, collect: { at: discovery.collect.at } }
+              ? { ...discovery, collect: Struct.omit(discovery.collect, 'removedAt') }
               : discovery
           ),
         }));
