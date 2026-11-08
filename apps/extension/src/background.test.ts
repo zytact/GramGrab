@@ -1379,6 +1379,7 @@ describe('background dispatcher', () => {
 
   describe('FETCH_MEDIA — profile', () => {
     const profileUrl = 'https://www.instagram.com/someuser/';
+    const COVER_URL = 'https://cdn.instagram.com/crop2.jpg';
     const profile = (user: Record<string, unknown>) => () =>
       jsonResponse({ data: { user: { id: '999', pk: '999', username: 'someuser', ...user } } });
 
@@ -1449,6 +1450,22 @@ describe('background dispatcher', () => {
       expect(result.media[2]?.url).toBe('https://cdn.instagram.com/crop2.jpg');
       expect(result.media[2]?.previewUrl).toBeUndefined();
       expect(result.media[2]?.filenameHint).toBe('someuser_highlight_untitled_17900456');
+    });
+
+    it('returns Highlight covers for a profile without a picture', async () => {
+      mockProfileFetch({
+        profile: profile({ profile_pic_url: null }),
+        tray: () =>
+          jsonResponse({
+            tray: [{ id: 17900456, cover_media: { cropped_image_version: { url: COVER_URL } } }],
+          }),
+      });
+
+      const listener = await loadBackground();
+      const result = await invoke(listener, { type: 'FETCH_MEDIA', url: profileUrl });
+
+      expect(result).toMatchObject({ media: [{ url: COVER_URL }] });
+      expect(result).not.toHaveProperty('failure');
     });
 
     it('still returns avatar when highlights_tray fetch fails (swallowed)', async () => {

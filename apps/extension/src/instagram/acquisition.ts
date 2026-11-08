@@ -285,8 +285,13 @@ const fetchProfileMedia = (username: string) =>
       Effect.mapError(error =>
         error._tag === 'UsernameUnconfirmed' ? new UsernameUnresolved({ username }) : error
       ),
-      Effect.flatMap(readAvatar),
-      Effect.map(avatar => [normalizeProfilePicture(avatar, username)])
+      Effect.flatMap(profile =>
+        profile.pictureUrl
+          ? readAvatar(profile).pipe(
+              Effect.map(avatar => [normalizeProfilePicture(avatar, username)])
+            )
+          : Effect.succeed([])
+      )
     );
     const coversEffect = fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
       Effect.map(tray => normalizeHighlightCovers(tray, username)),
