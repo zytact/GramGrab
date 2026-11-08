@@ -95,7 +95,7 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   worker sent before blaming the schema. Quote the count and code in a PR, not a
   screenshot: Instant cards show other accounts' usernames.
 - A profile URL exits 0 with the Avatar as item 1, `mediaIdentity.mediaId`
-  `profile-avatar:<username>` and `filenameHint` `<username>_profile`, then one
+  `profile-avatar:<username>:<pictureId>` and `filenameHint` `<username>_profile`, then one
   item per Highlight cover. The workspace reads `1 ITEM FOUND` for an Avatar
   alone. Zero items is
   a failure of this path, not an account with nothing to show. An Avatar with no

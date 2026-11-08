@@ -198,6 +198,8 @@ retention notice remains a separate deadline.
    `instagram` Watch last saw, so it exports; `remove` drops it. Label its
    screenshots synthetic. Rotated once with a `4:5` crop it saves a 864x1080
    JPEG, and `gramgrab history redownload` of that receipt saves the same size.
+   The receipt's `mediaId` is `profile-avatar:instagram:<pictureId>` with the
+   picture the entry recorded; save that equality as a boolean, not the ID.
 5. Navigate to another view and back, then reload once. The editor closes and
    its preview media and settings clear without becoming a Workspace draft;
    navigation keeps the selection, the reload drops it. `Close` also closes

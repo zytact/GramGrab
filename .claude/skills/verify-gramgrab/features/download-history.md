@@ -11,6 +11,10 @@ fetch something again without hunting for the URL.
 - Remove one entry, or clear everything.
 - Repair: a corrupt store is rebuilt rather than thrown away, reported as
   `repaired: true` on a list.
+- Avatar receipts name the picture they saved. Re-downloading one after the
+  account changed its Avatar fails with `WATCH_AVATAR_CHANGED` instead of saving
+  the newer picture. Older receipts saved as `profile-avatar:<username>` name no
+  picture and always fail that way.
 - WhatsApp receipts, which are deliberately weaker: a receipt has no display
   name and no re-download affordance. Only removal applies.
 
@@ -75,6 +79,24 @@ store before continuing:
 STORE=$(< "$EV/history-store.json")
 node $D eval "js/background.js" "chrome.storage.local.set({'download-history':$STORE}).then(()=> 'restored')"
 ```
+
+Avatar receipts need an Avatar change to prove the refusal, and an account
+rarely changes its picture during a run. Save the store as above, then append
+one older receipt in each id format for the `instagram` profile:
+
+```bash
+node $D eval "js/background.js" "chrome.storage.local.get('download-history').then(v => { const s=v['download-history']; const base={origin:{kind:'source',sourceUrl:'https://www.instagram.com/instagram/',sourceKind:'profile'},itemIndex:0,mediaType:'image',filenameHint:'instagram_profile',outcome:'accepted'}; s.entries.push({...base,id:'legacy-avatar',mediaId:'profile-avatar:instagram',downloadedAt:1700000000000},{...base,id:'older-avatar',mediaId:'profile-avatar:instagram:synthetic_older_picture',downloadedAt:1700000001000}); return chrome.storage.local.set({'download-history':s}).then(()=>'seeded') })"
+node apps/cli/bin/gramgrab.mjs history redownload legacy-avatar older-avatar --json
+```
+
+Both outcomes must be `HistoryRedownloadFailed` with `WATCH_AVATAR_CHANGED`,
+and no new file may land in `$GRAMGRAB_VERIFY_DOWNLOADS`. Read the outcomes,
+not the exit code. In the popup, the seeded rows sort first, so
+`node $D click "popup.html?surface" ".history-redownload"` must show `Avatar
+changed. ... History was kept.` For the positive case, export item 1 of
+`https://www.instagram.com/instagram/`; its receipt's `mediaId` is
+`profile-avatar:instagram:<pictureId>`, and re-downloading it starts a download.
+Restore the store afterwards.
 
 Repeat once with `{version:999,entries:[]}`. Opening history in the UI must show
 `Download history uses a newer version.`, the presentation of
