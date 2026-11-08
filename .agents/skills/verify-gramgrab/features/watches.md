@@ -914,7 +914,7 @@ it is not an Instagram response.
    memory, so a write without a restart is overwritten on its next request.
 2. Read `attempts` back: 60. Open `options.html`. The sidebar reads `Waiting: 1
    left this round`, not `Checking`, and a `Watches waiting.` banner says Watch
-   checks resume around a time about 20 minutes out. Opening the page verifies
+   checks resume `in 20m` or so, as [Hold banners](#hold-banners) describes. Opening the page verifies
    the viewer as the person, which adds at most one attempt and can move that time.
    The page follows `instagram-requests` and `watch-scheduler` in storage, so
    an open page picks up a cap that fills later without a reload.
@@ -941,6 +941,31 @@ cache that runs after it never does. Rerunning inside five minutes
 may defer a check; keep that terminal result as evidence. All-digit WATCH values
 mean account IDs unless `--username` forces a username. CLI help is the grammar
 reference, including explicit Silent re-encode approval.
+
+## Hold banners
+
+While a rate-limit pause or the hourly cap holds Watch work, `.opt-feed-body > .opt-banner`
+names the hold and when checks resume as relative time: `Watches paused. ... so Watch checks
+resume in 30m.` or `Watches waiting. ... Watch checks resume in 20m, or later if more requests
+are made.` The time is a `span` whose `title` is the absolute date and time. With both holds,
+the paused banner shows the later of the two. The time re-renders every minute while the
+banner shows, and the banner leaves when the hold ends.
+
+Both are reachable from local state alone, on the verification profile only. Say so in
+evidence; neither seed is an Instagram response.
+
+1. Run `watch-problem.mjs hold 120` so no Watch round starts when the seed ages out.
+2. From the worker, write 60 `attempts` in `instagram-requests` spread over the last 40
+   minutes for the cap. For the pause, also set `pause: { until: Date.now() + 30 * 60_000,
+   level: 0 }`. Keep the other fields. Run cleanup, then `launch.sh --restart`, as in
+   [Request cap](#request-cap), since the running worker keeps its ledger in memory.
+3. Open `options.html` and wait for `Watches waiting.` or `Watches paused.`. Read the banner
+   text and `document.querySelector('.opt-banner span[title]').title`. Require `in Nm` with N
+   matching the seed, and a title naming that clock time.
+4. Leave the page open past the next minute boundary of the countdown, about 70 seconds,
+   without reloading or clicking. Read the text again: N went down by one.
+5. Crop `.opt-feed-body > .opt-banner` for each banner. Clear the seeded `attempts` and `pause`,
+   run `watch-problem.mjs release`, and relaunch before other work.
 
 ## Linked login
 

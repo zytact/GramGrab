@@ -290,6 +290,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Watch row (sidebar)  | `button.opt-item`, match `.opt-clamp` text `@name` (the row's text starts with the Avatar initial) |
 | Add Watch            | `.opt-list-head button` (`+ Add`)                  |
 | Next check, storage  | `.opt-list-foot summary`; click it to open         |
+| Hold banner          | `.opt-feed-body > .opt-banner`, its time `span[title]` |
 | Watch owner tag      | `.opt-owner`, filter `.opt-filter button`          |
 | Watch search         | `.opt-search` (`Search Watches`)                   |
 | All inbox filters    | `.opt-chip-filter[aria-label="Account"] button`, `.opt-chip-filter[aria-label="Media type"] button` |
