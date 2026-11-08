@@ -38,14 +38,14 @@ describe('normalizeInstantItems', () => {
       normalizeInstantItems([
         {
           __typename: 'XDTMediaDict',
-          id: '3976501635261214318_47173622955',
+          id: '1_25025320',
           taken_at: 1_788_256_237,
           source_type: 4,
           audience: 'besties',
           caption: null,
           user: {
-            id: '47173622955',
-            username: '._afrin_',
+            id: '25025320',
+            username: '._instagram_',
             full_name: 'A Friend',
             profile_pic_url: 'https://cdn.instagram.com/profile.jpg',
           },
@@ -65,6 +65,6 @@ describe('normalizeInstantItems', () => {
       ])
     );
 
-    expect(media[0]?.filenameHint).toBe('afrin_instant_1788256237_3976501635261214318_47173622955');
+    expect(media[0]?.filenameHint).toBe('instagram_instant_1788256237_1_25025320');
   });
 });
