@@ -788,10 +788,11 @@ function useEveryMinute() {
   }, []);
 }
 
-/** "in 12m", with the absolute time as its tooltip. */
-const Until = ({ at }: { at: number }) => (
-  <span title={new Date(at).toLocaleString()}>{relativeUntil(at)}</span>
-);
+/** "in 12m", kept current each minute, with the absolute time as its tooltip. */
+function Until({ at }: { at: number }) {
+  useEveryMinute();
+  return <span title={new Date(at).toLocaleString()}>{relativeUntil(at)}</span>;
+}
 
 /**
  * The soonest check and how full the store is on one line. Opening it shows each login's next
@@ -1335,7 +1336,6 @@ function useWatchSchedule(list: WatchListResult | undefined, login: InstagramLog
 
 /** Why one login's unattended checks are not running right now, if something holds them back. */
 function ScheduleNotice({ label, schedule }: LoginSchedule) {
-  useEveryMinute();
   const named = label ? `${label}: ` : '';
   if (schedule.suspended)
     return (
