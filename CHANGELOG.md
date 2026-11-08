@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.8.0](https://github.com/zytact/GramGrab/compare/v4.7.2...v4.8.0) (2026-11-08)
+
+
+### Features
+
+* **watch:** show how long Watch hold banners have left ([#375](https://github.com/zytact/GramGrab/issues/375)) ([89261d0](https://github.com/zytact/GramGrab/commit/89261d0e571df11a939ffce79833a86e4bfbc639))
+
+
+### Bug Fixes
+
+* **history:** stop Avatar re-download from saving a newer picture ([#376](https://github.com/zytact/GramGrab/issues/376)) ([2e217a1](https://github.com/zytact/GramGrab/commit/2e217a1fbee7e4fd7f1fb13b3c7f19cfe2ec09a4))
+
 ## [4.7.2](https://github.com/zytact/GramGrab/compare/v4.7.1...v4.7.2) (2026-11-06)
 
 
