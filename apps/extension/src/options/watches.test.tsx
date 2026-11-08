@@ -1559,12 +1559,13 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     });
 
     expect(await screen.findByText('Watches waiting.')).toBeDefined();
-    expect(
-      screen.getByText(`Watch checks resume around ${new Date(resumeAt).toLocaleTimeString()}`, {
-        exact: false,
-      })
-    ).toBeDefined();
+    expect(screen.getByText('in 10m').getAttribute('title')).toBe(
+      new Date(resumeAt).toLocaleString()
+    );
     expect(screen.getByText(/^Waiting, 1 left this round · /)).toBeDefined();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    await act(() => vi.advanceTimersByTimeAsync(4 * 60_000));
+    expect(screen.getByText('in 6m')).toBeDefined();
     await act(() => vi.advanceTimersByTimeAsync(resumeAt - Date.now()));
     expect(screen.queryByText('Watches waiting.')).toBeNull();
     expect(screen.getByText(/^Checking, 1 left this round · /)).toBeDefined();
@@ -1583,11 +1584,9 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     render(<Watches />);
 
     expect(await screen.findByText('Watches paused.')).toBeDefined();
-    expect(
-      screen.getByText(`wait until ${new Date(now + 45 * 60_000).toLocaleTimeString()}`, {
-        exact: false,
-      })
-    ).toBeDefined();
+    expect(screen.getByText('in 45m').getAttribute('title')).toBe(
+      new Date(now + 45 * 60_000).toLocaleString()
+    );
   });
 
   it('says until when the hourly cap holds Check now back', async () => {
