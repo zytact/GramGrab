@@ -779,6 +779,20 @@ const storageText = (storage: WatchListResult['storage']) =>
     ? `Storage ${storage.status}`
     : `${storagePercent(storage).toFixed(0)}% storage`;
 
+/** Renders the caller again each minute, so relative times stay current. */
+function useEveryMinute() {
+  const [, setMinute] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setMinute(minute => minute + 1), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+}
+
+/** "in 12m", with the absolute time as its tooltip. */
+const Until = ({ at }: { at: number }) => (
+  <span title={new Date(at).toLocaleString()}>{relativeUntil(at)}</span>
+);
+
 /**
  * The soonest check and how full the store is on one line. Opening it shows each login's next
  * check while both have one, and the storage meter.
@@ -792,12 +806,7 @@ function NavigationFoot({
   schedules: readonly LoginSchedule[];
   showAvatarNote: boolean;
 }) {
-  // Renders again each minute so the relative times stay current.
-  const [, setMinute] = useState(0);
-  useEffect(() => {
-    const timer = window.setInterval(() => setMinute(minute => minute + 1), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
+  useEveryMinute();
   const checks = nextChecks(schedules);
   // A login mid-round checks first, then the earliest next round.
   const [next] = checks.toSorted((a, b) => Number(b.running) - Number(a.running) || a.at - b.at);
@@ -1326,6 +1335,7 @@ function useWatchSchedule(list: WatchListResult | undefined, login: InstagramLog
 
 /** Why one login's unattended checks are not running right now, if something holds them back. */
 function ScheduleNotice({ label, schedule }: LoginSchedule) {
+  useEveryMinute();
   const named = label ? `${label}: ` : '';
   if (schedule.suspended)
     return (
@@ -1338,8 +1348,7 @@ function ScheduleNotice({ label, schedule }: LoginSchedule) {
     return (
       <p className="opt-banner opt-banner-error">
         <strong>{named}Watches paused.</strong> Instagram rate limited a Watch request, so Watch
-        checks wait until{' '}
-        {new Date(schedule.cappedUntil ?? schedule.pausedUntil).toLocaleTimeString()}. Your own
+        checks resume <Until at={schedule.cappedUntil ?? schedule.pausedUntil} />. Your own
         downloads still go first.
       </p>
     );
@@ -1347,8 +1356,8 @@ function ScheduleNotice({ label, schedule }: LoginSchedule) {
     return (
       <p className="opt-banner">
         <strong>{named}Watches waiting.</strong> Instagram requests in the last hour, your own
-        included, reached the hourly limit. Watch checks resume around{' '}
-        {new Date(schedule.cappedUntil).toLocaleTimeString()}, or later if more requests are made.
+        included, reached the hourly limit. Watch checks resume <Until at={schedule.cappedUntil} />,
+        or later if more requests are made.
       </p>
     );
   return null;
