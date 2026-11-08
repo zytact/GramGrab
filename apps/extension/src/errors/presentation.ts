@@ -352,7 +352,7 @@ export const FAILURE_PRESENTATION: Readonly<Record<FailureCode, FailurePresentat
     []
   ),
   WATCH_AVATAR_CHANGED: policy(
-    'Avatar changed again since',
+    'Avatar changed since',
     'The account has a newer Avatar now, so this recorded one is no longer available.',
     []
   ),

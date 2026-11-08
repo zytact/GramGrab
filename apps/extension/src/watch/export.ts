@@ -7,6 +7,7 @@ import type { DownloadHistoryEntry } from '../history/contracts.ts';
 import { fetchInstantItems } from '../instagram/acquisition.ts';
 import {
   normalizeInstantItems,
+  normalizeProfilePicture,
   normalizeReelsMediaItems,
   type MediaItem,
 } from '../instagram/normalize.ts';
@@ -76,16 +77,7 @@ const avatarSlot = (watch: Watch, pictureId: string) =>
   Effect.gen(function* () {
     const current = yield* fetchAvatar(watch.targetId);
     if (current.pictureId !== pictureId) return gone('WATCH_AVATAR_CHANGED');
-    return {
-      _tag: 'found',
-      item: {
-        itemIndex: 0,
-        mediaId: `profile-avatar:${watch.username}`,
-        type: 'image',
-        url: current.hdPictureUrl,
-        filenameHint: `${watch.username}_profile`,
-      },
-    } satisfies Slot;
+    return { _tag: 'found', item: normalizeProfilePicture(current, watch.username) } satisfies Slot;
   });
 
 /**

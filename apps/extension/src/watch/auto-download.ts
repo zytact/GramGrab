@@ -4,7 +4,7 @@ import { browser, type BrowserDownload } from '../lib/browser.ts';
 import { normalizeBrowserDownloadFailure, normalizeSourceFailure } from '../errors/normalize.ts';
 import { acceptedHistoryEntry } from '../history/receipt.ts';
 import { appendHistory, getHistory } from '../history/repository.ts';
-import type { MediaItem } from '../instagram/normalize.ts';
+import { avatarMediaId, type MediaItem } from '../instagram/normalize.ts';
 import { OwnerRequests } from '../instagram/requests.ts';
 import type { ChildDownload, Discovery, Watch } from './contracts.ts';
 import { historyOrigin, originalFilename, reacquire, type Slot } from './export.ts';
@@ -97,7 +97,7 @@ const fileRef = (watch: Watch, entry: Discovery, index: number) => {
   const { ref } = entry;
   if (ref._tag === 'Sidecar') return ref.children[index];
   return ref._tag === 'Avatar'
-    ? { mediaId: `profile-avatar:${watch.username}`, mediaType: 'image' as const }
+    ? { mediaId: avatarMediaId(watch.username, ref.pictureId), mediaType: 'image' as const }
     : ref;
 };
 

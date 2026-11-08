@@ -23,6 +23,7 @@ import {
   UsernameUnresolved,
 } from '../effect/errors.ts';
 import { fetchPostsPage } from '../watch/posts.ts';
+import { readAvatar } from '../watch/avatar.ts';
 import { confirmProfile, WireAccountId } from '../watch/identity.ts';
 import { fetchedMedia, type FetchedMedia } from '../watch/contracts.ts';
 import { decodeRestShortcodeMedia, fetchRestShortcodeRaw, fetchedPost } from './rest-shortcode.ts';
@@ -284,7 +285,8 @@ const fetchProfileMedia = (username: string) =>
       Effect.mapError(error =>
         error._tag === 'UsernameUnconfirmed' ? new UsernameUnresolved({ username }) : error
       ),
-      Effect.map(profile => normalizeProfilePicture(profile, username))
+      Effect.flatMap(readAvatar),
+      Effect.map(avatar => [normalizeProfilePicture(avatar, username)])
     );
     const coversEffect = fetchHighlightsTray(userId, IG_GRAPHQL_HEADERS).pipe(
       Effect.map(tray => normalizeHighlightCovers(tray, username)),

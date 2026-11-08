@@ -1487,6 +1487,60 @@ describe('background dispatcher', () => {
       const result = await invoke(listener, { type: 'FETCH_MEDIA', url: profileUrl });
       expect(result).toMatchObject({ failure: { code: 'SOURCE_USERNAME_UNRESOLVED' } });
     });
+
+    describe('Avatar history re-download', () => {
+      const avatarReceipt = (mediaId: string) => ({
+        'download-history': {
+          version: 4,
+          entries: [
+            {
+              id: 'avatar-history',
+              origin: { kind: 'source', sourceUrl: profileUrl, sourceKind: 'profile' },
+              itemIndex: 0,
+              mediaId,
+              mediaType: 'image',
+              filenameHint: 'someuser_profile',
+              exportMode: 'direct',
+              downloadedAt: 1,
+              outcome: 'accepted',
+            },
+          ],
+        },
+      });
+
+      it('downloads the recorded picture while the profile still shows it', async () => {
+        mockProfileFetch({});
+        fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(
+          avatarReceipt('profile-avatar:someuser:pic_s150')
+        );
+
+        const response = await invoke(await loadBackground(), {
+          type: 'REDOWNLOAD_HISTORY_ENTRY',
+          entryId: 'avatar-history',
+        });
+
+        expect(response).toMatchObject({ results: [{ status: 'started' }] });
+        expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledWith(
+          expect.objectContaining({ url: 'https://cdn.instagram.com/pic_hd.jpg' })
+        );
+      });
+
+      it.each([
+        ['an older picture', 'profile-avatar:someuser:pic_old'],
+        ['no picture, as older receipts do', 'profile-avatar:someuser'],
+      ])('reports a changed Avatar for a receipt naming %s', async (_, mediaId) => {
+        mockProfileFetch({});
+        fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(avatarReceipt(mediaId));
+
+        const response = await invoke(await loadBackground(), {
+          type: 'REDOWNLOAD_HISTORY_ENTRY',
+          entryId: 'avatar-history',
+        });
+
+        expect(response).toMatchObject({ failure: { code: 'WATCH_AVATAR_CHANGED' } });
+        expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
+      });
+    });
   });
 
   // ── DEBUG_SHAPE ───────────────────────────────────────────────────────────

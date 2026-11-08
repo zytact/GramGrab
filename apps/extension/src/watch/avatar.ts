@@ -18,7 +18,7 @@ export const readAvatar = ({ pictureUrl, hdPictureUrl }: Profile) =>
   Effect.gen(function* () {
     const pictureId = pictureUrl && assetName(pictureUrl);
     if (!pictureUrl || !Schema.is(PictureId)(pictureId))
-      return yield* Effect.fail(new ResponseShapeUnknown({ context: 'watch_avatar' }));
+      return yield* Effect.fail(new ResponseShapeUnknown({ context: 'avatar' }));
     return { pictureId, pictureUrl, hdPictureUrl: hdPictureUrl ?? pictureUrl };
   });
 

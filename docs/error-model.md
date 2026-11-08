@@ -102,6 +102,11 @@ download-history store itself cannot answer. The store is shared by every platfo
 WhatsApp receipt must never expose, so `HISTORY_*` failures carry no diagnostic cause at all and
 `phase` is `history`.
 
+An Avatar's `mediaId` is `profile-avatar:<username>:<pictureId>`, so it names one picture. A
+History re-download whose Avatar receipt no longer matches the profile's current picture fails with
+`WATCH_AVATAR_CHANGED`, the same rule a Watch inbox export follows. That includes older receipts
+saved as `profile-avatar:<username>`, which name no picture and so never match.
+
 `MEDIA_UNEXPECTED_FAILURE` is the media-transfer sibling of the other `*_UNEXPECTED_FAILURE` codes.
 It covers a direct read of an already-resolved media URL that failed for a reason HTTP status does
 not classify, including a message this build could not read.

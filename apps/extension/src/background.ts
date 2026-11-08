@@ -72,7 +72,7 @@ import {
 import { runOperationHandler } from './effect/runtime.ts';
 import { fetchBlobAsDataUrl } from './effect/instagram.ts';
 import { fetchRestShortcodeRaw } from './instagram/rest-shortcode.ts';
-import type { MediaItem } from './instagram/normalize.ts';
+import { isAvatarMediaId, type MediaItem } from './instagram/normalize.ts';
 import {
   DownloadAcceptedResult,
   DownloadFailedResult,
@@ -92,7 +92,7 @@ import {
 import { MESSAGE_REFUSALS } from './messaging/refusals.ts';
 import { sendTabMessage } from './messaging/send.ts';
 import { formatError } from './effect/errors.ts';
-import { OperationFailure, OperationWarning } from './errors/contracts.ts';
+import { OperationFailure, OperationWarning, watchFailure } from './errors/contracts.ts';
 import { PersonRequests } from './instagram/requests.ts';
 import { listenForLinkedCookies, restoreLinkedRule } from './instagram/linked-login.ts';
 import { linkLogin, loginNames, unlinkLinkedLogin } from './instagram/link.ts';
@@ -403,6 +403,15 @@ async function handleDeleteWhatsAppHistoryReceipt(
   }
 }
 
+/** Why a receipt's recorded media is no longer among what its source returns. */
+function missingFailure(entry: DownloadHistoryEntry): OperationFailure {
+  if (entry.origin.kind === 'instants')
+    return OperationFailure.make({ code: 'INSTANT_NOT_ACTIVE', phase: 'source', scope: 'item' });
+  if (entry.mediaId && isAvatarMediaId(entry.mediaId))
+    return watchFailure('WATCH_AVATAR_CHANGED', 'avatar');
+  return OperationFailure.make({ code: 'MEDIA_NOT_FOUND', phase: 'source', scope: 'item' });
+}
+
 // fallow-ignore-next-line complexity
 async function handleRedownloadHistoryEntry(
   msg: MessageOf<'REDOWNLOAD_HISTORY_ENTRY'>
@@ -441,17 +450,7 @@ async function handleRedownloadHistoryEntry(
       }),
     };
   const match = reconcileHistoryEntry(entry, resolved.items);
-  if (match.kind === 'missing')
-    return {
-      failure:
-        entry.origin.kind === 'instants'
-          ? OperationFailure.make({
-              code: 'INSTANT_NOT_ACTIVE',
-              phase: 'source',
-              scope: 'item',
-            })
-          : OperationFailure.make({ code: 'MEDIA_NOT_FOUND', phase: 'source', scope: 'item' }),
-    };
+  if (match.kind === 'missing') return { failure: missingFailure(entry) };
   if (match.kind === 'ambiguous') return { failure: historyFailure('HISTORY_ITEM_UNRESOLVED') };
   const item = resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!;
   const redownload = {

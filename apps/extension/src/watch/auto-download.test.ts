@@ -14,7 +14,13 @@ import {
 } from '@gramgrab/protocol';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
-import { TARGET, createWatchInstagram, postsPage, restMedia } from '../test/watch-instagram.ts';
+import {
+  TARGET,
+  avatarProfile,
+  createWatchInstagram,
+  postsPage,
+  restMedia,
+} from '../test/watch-instagram.ts';
 import { WatchStore } from './contracts.ts';
 
 const START = Date.UTC(2026, 9, 1, 12);
@@ -377,5 +383,23 @@ describe('Watch auto-download and recovery', () => {
     await recover('dismiss', 'download', 0);
     expect(harness.downloads).toHaveLength(1);
     expect(await run(WatchList.make())).toMatchObject({ attentionCount: 0 });
+  });
+
+  it('records the downloaded Avatar picture in its History receipt', async () => {
+    await run(
+      WatchAdd.make({
+        target: TARGET.username,
+        kinds: ['avatar'],
+        actions: ['download'],
+        acceptUnattended: true,
+      })
+    );
+    await check();
+    instagram.state.profile = avatarProfile({ ...TARGET, pictureId: 'PIC_B' });
+    await check();
+    await until(() => children()[0]?.status === 'accepted');
+    expect(harness.local.read('download-history')).toMatchObject({
+      entries: [{ mediaId: 'profile-avatar:instagram:PIC_B', mediaType: 'image' }],
+    });
   });
 });

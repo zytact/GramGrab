@@ -75,22 +75,24 @@ export function withItemIndexes(items: MediaItem[]): MediaItem[] {
   return items.map((item, itemIndex) => ({ ...item, itemIndex }));
 }
 
+/** Names the Avatar picture, so a receipt can only ever match the picture it recorded. */
+export const avatarMediaId = (username: string, pictureId: string) =>
+  `profile-avatar:${username}:${pictureId}`;
+
+export const isAvatarMediaId = (mediaId: string) => mediaId.startsWith('profile-avatar:');
+
 /** The Avatar as one image item, at the highest resolution the profile offers. */
 export function normalizeProfilePicture(
-  profile: { readonly pictureUrl?: string; readonly hdPictureUrl?: string },
+  avatar: { readonly pictureId: string; readonly hdPictureUrl: string },
   username: string
-): MediaItem[] {
-  const url = profile.hdPictureUrl ?? profile.pictureUrl;
-  if (!url) return [];
-  return [
-    {
-      itemIndex: 0,
-      mediaId: `profile-avatar:${username}`,
-      type: 'image',
-      url,
-      filenameHint: `${username}_profile`,
-    },
-  ];
+): MediaItem {
+  return {
+    itemIndex: 0,
+    mediaId: avatarMediaId(username, avatar.pictureId),
+    type: 'image',
+    url: avatar.hdPictureUrl,
+    filenameHint: `${username}_profile`,
+  };
 }
 
 function slugifyTitle(title: string | undefined): string {

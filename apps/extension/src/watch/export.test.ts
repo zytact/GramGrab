@@ -304,6 +304,7 @@ describe('Watch inbox Export', () => {
     expect(context.rotate).toHaveBeenCalledWith(Math.PI / 2);
     expect(await history()).toMatchObject([
       {
+        mediaId: 'profile-avatar:instagram:PIC_B',
         exportMode: 'direct',
         rotation: 90,
         crop,
