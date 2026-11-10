@@ -455,7 +455,7 @@ async function resolveHistoryItem(
   };
 }
 
-/** The export settings an entry recorded, which a re-download reproduces. */
+/** The export settings a re-download reproduces, derived from the entry's mode, rotation and crop. */
 function historySettings(entry: DownloadHistoryEntry): ExportSettings {
   return {
     mode:
@@ -469,7 +469,9 @@ function historySettings(entry: DownloadHistoryEntry): ExportSettings {
   };
 }
 
-const needsRunner = (entry: DownloadHistoryEntry) => !deliversOriginal(historySettings(entry));
+function needsRunner(entry: DownloadHistoryEntry): boolean {
+  return !deliversOriginal(historySettings(entry));
+}
 
 function downloadHistoryOriginal(entry: DownloadHistoryEntry, item: MediaItem) {
   const filename = `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
@@ -515,14 +517,15 @@ async function handleRedownloadHistoryEntry(
   const resolved = await resolveHistoryItem(entry, msg.login);
   if (resolved.failure) return { failure: resolved.failure };
   const { item } = resolved;
+  const { mode } = historySettings(entry);
   if (!needsRunner(entry)) return downloadHistoryOriginal(entry, item);
   const redownload = redownloadTarget(entry, item);
-  if (entry.exportMode === 'frame')
+  if (mode._tag === 'FrameExport')
     return {
-      frame: { ...redownload, timestampSeconds: entry.frameTimestampSeconds ?? 5 },
+      frame: { ...redownload, timestampSeconds: mode.timestampSeconds },
       failure: undefined,
     };
-  if (entry.exportMode === 'silent') return { silent: redownload, failure: undefined };
+  if (mode._tag === 'SilentExport') return { silent: redownload, failure: undefined };
   return { modified: { ...redownload, mediaType: item.type }, failure: undefined };
 }
 
