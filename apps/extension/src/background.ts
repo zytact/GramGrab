@@ -138,7 +138,7 @@ async function mapWithConcurrency<T, R>(
 }
 
 // ---------------------------------------------------------------------------
-// Handler functions. Each returns a structured response value
+// Handler functions. Each returns a structured response value.
 // ---------------------------------------------------------------------------
 
 function hasValidMediaDimensions(

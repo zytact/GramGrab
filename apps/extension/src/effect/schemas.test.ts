@@ -69,7 +69,7 @@ describe('ShortcodeMediaResponseSchema', () => {
         xdt_shortcode_media: {
           __typename: 'XDTGraphVideo',
           id: '99',
-          // video_resources absent, required on ShortcodeVideoSchema
+          // video_resources is absent but required on ShortcodeVideoSchema
         },
       },
     };

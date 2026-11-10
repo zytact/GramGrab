@@ -12,33 +12,33 @@ Operation failures use stable symbolic codes and action-led recovery. See [the e
 
 ### Instagram
 
-- **Posts & Carousels** - download single images or every image in a multi-photo post at once
-- **Reels** - save short-form video content as MP4
-- **Stories** - download active stories from any accessible profile
-- **Highlights** - save archived story highlights
-- **Instants** - **Load Instants** fetches the photos and videos in your active Instants feed, no URL needed
-- **Profile pictures** - fetch the highest-resolution profile picture available
-- **Watches (Beta)** - follow an account's Posts, Stories, Instants, or profile picture. GramGrab checks about twice a day while the browser is open and can notify you, download what it finds, or collect it in an Inbox on the Watches page
-- **Second login (Beta, Chromium)** - link one more Instagram login from an Incognito window, then pick which login fetches or owns a Watch
+- **Posts & Carousels.** Download single images or every image in a multi-photo post at once
+- **Reels.** Save short-form video content as MP4
+- **Stories.** Download active stories from any accessible profile
+- **Highlights.** Save archived story highlights
+- **Instants.** Click **Load Instants** to fetch the photos and videos in your active Instants feed, with no URL
+- **Profile pictures.** Fetch the highest-resolution profile picture available
+- **Watches (Beta).** Follow an account's Posts, Stories, Instants, or profile picture. GramGrab checks about twice a day while the browser is open and can notify you, download what it finds, or collect it in an Inbox on the Watches page
+- **Second login (Beta, Chromium).** Link one more Instagram login from an Incognito window, then pick which login fetches or owns a Watch
 
 ### WhatsApp
 
-- **Visible Status capture** - capture the photo or video Status currently open in WhatsApp Web, one click per capture
-- **Invocation-scoped access** - GramGrab reaches WhatsApp Web only through `activeTab`, so it can see the page only when you invoke it, never in the background
-- **Memory-only handling** - captured bytes are never written to extension storage, and are released on download, on failure, on popup close, or at a flat 10-minute editing ceiling, whichever comes first
-- **Name-free output** - filenames and history receipts carry no contact name or WhatsApp identifier, and WhatsApp receipts have no redownload button
+- **Visible Status capture.** Capture the photo or video Status currently open in WhatsApp Web, one click per capture
+- **Invocation-scoped access.** GramGrab reaches WhatsApp Web only through `activeTab`, so it can see the page only when you invoke it, never in the background
+- **Memory-only handling.** Captured bytes are never written to extension storage, and are released on download, on failure, on popup close, or at a flat 10-minute editing ceiling, whichever comes first
+- **Name-free output.** Filenames and history receipts carry no contact name or WhatsApp identifier, and WhatsApp receipts have no redownload button
 
 ### Shared
 
-- **Batch selection** - cherry-pick which items to download from any result set
-- **Preview thumbnails** - see images and videos before you download
-- **Active tab detection** - the popup fills in the Instagram URL from your active tab, and offers Status capture when that tab is WhatsApp Web
-- **Export video frame** - choose a timestamp and download a JPEG still instead of the MP4
-- **Silent video export** - create a video-only MP4 when the source contains an audio track
-- **Rotate and crop** - turn an item by 90, 180, or 270 degrees or crop it before download. A cropped image is re-encoded as JPEG, and a cropped video is re-encoded as H.264
-- **Download history** - review accepted downloads, remove entries, clear history, and redownload an Instagram item
-- **Workspace tab** - move large result sets and active batches from the popup into a dedicated tab
-- **Dark/light theme** - follows your OS preference
+- **Batch selection.** Cherry-pick which items to download from any result set
+- **Preview thumbnails.** See images and videos before you download
+- **Active tab detection.** The popup fills in the Instagram URL from your active tab, and offers Status capture when that tab is WhatsApp Web
+- **Export video frame.** Choose a timestamp and download a JPEG still instead of the MP4
+- **Silent video export.** Create a video-only MP4 when the source contains an audio track
+- **Rotate and crop.** Turn an item by 90, 180, or 270 degrees or crop it before download. A rotated or cropped image is re-encoded as JPEG. A rotated video keeps its streams and only gets new rotation metadata, while a cropped video is re-encoded as H.264
+- **Download history.** Review accepted downloads, remove entries, clear history, and redownload an Instagram item
+- **Workspace tab.** Move large result sets and active batches from the popup into a dedicated tab
+- **Dark/light theme.** Follows your OS preference
 
 ![GramGrab workspace showing selected images and videos with frame and silent-video export controls.](docs/assets/gramgrab-workspace.webp)
 
@@ -48,7 +48,7 @@ _Open larger collections in GramGrab's responsive workspace to preview, configur
 
 ## Requirements
 
-- **Chromium 111+** (Chrome, Edge, Brave, Helium) or **Firefox 115+**. The build targets Chrome 111, so older Chromium cannot run it. Firefox needs 130+ for frame export and silent video, which use WebCodecs
+- **Chromium 111+**, such as Chrome, Edge, Brave, or Helium, or **Firefox 115+**. The build targets Chrome 111, so older Chromium cannot run it. Firefox needs 115 for `storage.session`, which the workspace handoff and Watches use, and 130+ for frame export and silent video, which use WebCodecs
 - An active, logged-in Instagram session in the same browser profile
 - A logged-in WhatsApp Web session, for Status capture
 - Node.js 22.18+ or 24.2+ for the optional CLI
@@ -60,7 +60,7 @@ _Open larger collections in GramGrab's responsive workspace to preview, configur
 
 ## Installation
 
-### Option A - Install a release (recommended, updates itself)
+### Option A: Install a release (recommended, updates itself)
 
 Every [GitHub release](https://github.com/zytact/GramGrab/releases/latest) carries a signed
 `gramgrab.crx` and `gramgrab.xpi`. Installed from there, the browser checks the latest release for
@@ -82,7 +82,7 @@ Linux; on Windows and macOS use Option B.
 - Open the `gramgrab.xpi` link from the release and click **Add**. Mozilla has signed it, and
   Firefox updates it like any other add-on.
 
-### Option B - Load the extension from source
+### Option B: Load the extension from source
 
 1. Clone or download this repository.
 2. Run the build to generate browser-specific output directories:
@@ -112,7 +112,7 @@ has the same extension ID as a release install and cannot sit next to one in the
 
 > **Why separate folders?** Chromium MV3 requires a `service_worker` background entry; Firefox MV3 uses `scripts`. The two builds share the same TypeScript source but get different generated `manifest.json` files.
 
-### Option C - Development mode (live rebuild)
+### Option C: Development mode (live rebuild)
 
 ```bash
 vp install
@@ -137,7 +137,7 @@ one-time native-host registration.
 
 ## How to Use
 
-1. **Open Instagram** in a browser tab and navigate to the content you want - a post, reel, story, highlight, or profile page.
+1. **Open Instagram** in a browser tab and navigate to a post, reel, story, highlight, or profile page.
 2. **Click the GramGrab icon** in your toolbar to open the popup.
    - The URL field auto-fills with the Instagram URL from your active tab. If it doesn't, paste the URL manually.
 3. **Click "Fetch Media"** (or press Enter). GramGrab queries Instagram for the available media items.
@@ -157,14 +157,14 @@ For Instants, skip the URL and click **Load Instants** in step 3.
 
 ### Supported URL formats
 
-| Content type      | Example URL                                              |
-| ----------------- | -------------------------------------------------------- |
-| Post / carousel   | `https://www.instagram.com/p/ABC123/`                    |
-| Carousel item     | `https://www.instagram.com/p/ABC123/?img_index=2`        |
-| Reel              | `https://www.instagram.com/reel/ABC123/` (or `/reels/`)  |
-| Story             | `https://www.instagram.com/stories/instagram/`           |
-| Highlight         | `https://www.instagram.com/stories/highlights/12345678/` |
-| Profile (picture) | `https://www.instagram.com/instagram/`                   |
+| Content type      | Example URL                                                   |
+| ----------------- | ------------------------------------------------------------- |
+| Post / carousel   | `https://www.instagram.com/p/ABC123/`                         |
+| Carousel item     | `https://www.instagram.com/p/ABC123/?img_index=2`             |
+| Reel              | `https://www.instagram.com/reel/ABC123/`, or `/reels/ABC123/` |
+| Story             | `https://www.instagram.com/stories/instagram/`                |
+| Highlight         | `https://www.instagram.com/stories/highlights/12345678/`      |
+| Profile (picture) | `https://www.instagram.com/instagram/`                        |
 
 A post or reel URL may also start with the account name, as in
 `https://www.instagram.com/instagram/p/ABC123/`. A Story URL that ends in a Story ID loads the
@@ -204,7 +204,7 @@ vp check
 vp run package:tools
 ```
 
-The extension lives in `apps/extension`. Its Vite build root is `apps/extension/templates`, which holds three pages: `popup.html` (popup and workspace), `options.html` (the Watches page), and `runner.html` (the export runner). `apps/extension/src/background.ts` and the WhatsApp controller `src/whatsapp/controller-entry.ts` are bundled as plain JS entries with no HTML wrapper. A build plugin writes each browser's `manifest.json` and copies the icons, `LICENSE`, and `THIRD_PARTY_NOTICES` into the output directory. Task caching is off for every `vp run` task, because the browsers load build output directly and a stale cached build is too easy to miss.
+The extension lives in `apps/extension`. Its Vite build root is `apps/extension/templates`, which holds three HTML entries. `popup.html` serves the popup and the workspace, `options.html` is the Watches page, and `runner.html` is the export runner. `apps/extension/src/background.ts` and the WhatsApp controller `apps/extension/src/whatsapp/controller-entry.ts` are bundled as plain JS entries with no HTML wrapper. A build plugin writes each browser's `manifest.json` and copies the icons, `LICENSE`, and `THIRD_PARTY_NOTICES` into the output directory. Task caching is off for every `vp run` task, because the browsers load build output directly and a stale cached build is too easy to miss.
 
 ---
 
@@ -212,11 +212,11 @@ The extension lives in `apps/extension`. Its Vite build root is `apps/extension/
 
 GramGrab has two pages, a background worker, and two short-lived execution surfaces:
 
-- **Popup UI** - `apps/extension/templates/popup.html` loads the React app from `apps/extension/src/popup.tsx`. It handles URL input, WhatsApp Status capture, media listing, selection, previews, frame and silent-video choices, history, workspace actions, and status feedback. With `?surface=workspace` the same page runs as the full-tab workspace.
-- **Watches page** - `apps/extension/templates/options.html` is the extension's options page. It holds Watches, their Inbox and Needs you lists, Watch export and import, and second-login linking.
-- **Background service worker** (`apps/extension/src/background.ts`) - handles Instagram requests, strict response decoding, browser downloads, history persistence, context-menu commands, workspace coordination, Watch checks on an alarm, and the native-messaging bridge to the CLI. The popup reaches it through a single message listener backed by a handler registry, which keeps asynchronous work alive with `sendResponse` plus `return true` for Chromium and Firefox compatibility.
-- **Runner document** - frame extraction and silent-video re-encoding need media APIs a service worker does not have, so the worker opens a minimized runner window to execute those exports and report progress back.
-- **WhatsApp controller** - Status capture injects a one-shot isolated-world script into the WhatsApp tab you invoked GramGrab on, streams the visible media back over a bounded message port, and tears the script down when the capture ends. GramGrab declares no permanent content scripts and no WhatsApp host permission, so it has no standing access to the page.
+- **Popup UI.** `apps/extension/templates/popup.html` loads the React app from `apps/extension/src/popup.tsx`. It handles URL input, WhatsApp Status capture, media listing, selection, previews, frame and silent-video choices, history, workspace actions, and status feedback. With `?surface=workspace` the same page runs as the full-tab workspace.
+- **Watches page.** `apps/extension/templates/options.html` is the extension's options page. It holds Watches, their Inbox and Needs you lists, Watch export and import, and second-login linking.
+- **Background service worker.** `apps/extension/src/background.ts` handles Instagram requests, strict response decoding, browser downloads, history persistence, context-menu commands, workspace coordination, Watch checks on an alarm, and the native-messaging bridge to the CLI. The popup reaches it through a single message listener backed by a handler registry, which keeps asynchronous work alive with `sendResponse` plus `return true` for Chromium and Firefox compatibility.
+- **Runner document.** Frame extraction and silent-video re-encoding need media APIs a service worker does not have, so the worker opens a minimized runner window to execute those exports and report progress back.
+- **WhatsApp controller.** Status capture injects a one-shot isolated-world script into the WhatsApp tab you invoked GramGrab on, streams the visible media back over a bounded message port, and tears the script down when the capture ends. GramGrab declares no permanent content scripts and no WhatsApp host permission, so it has no standing access to the page.
 
 Shared domain code lives under `apps/extension/src/` (`effect/` for Instagram requests and schemas, plus focused modules for downloads, exports, history, errors, and the workspace). Cross-application wire contracts live in `packages/protocol`, which the optional local CLI (`apps/cli`) and native host (`apps/native-host`) share with the extension. Workspace handoff uses a versioned, short-lived, memory-only browser-session transfer, so a popup can open or replace a dedicated workspace tab without losing its current source, results, or export settings.
 
@@ -272,20 +272,20 @@ To fix it:
 
 ## Limitations
 
-- **Login required** - you must be logged in to Instagram in the same browser profile. Private content is only accessible if your account follows that profile.
-- **API fragility** - GramGrab uses Instagram's internal, undocumented GraphQL endpoints. Instagram may change these without notice, which can break fetching until the extension is updated.
-- **Time-limited CDN URLs** - Instagram media URLs expire after a few hours. Downloads initiated through GramGrab must complete before the URL expires.
-- **Local download history** - GramGrab records accepted downloads locally in extension storage. It
+- **Login required.** You must be logged in to Instagram in the same browser profile. Private content is only accessible if your account follows that profile.
+- **API fragility.** GramGrab uses Instagram's internal, undocumented GraphQL endpoints. Instagram may change these without notice, which can break fetching until the extension is updated.
+- **Time-limited CDN URLs.** Instagram media URLs expire after a few hours. Downloads initiated through GramGrab must complete before the URL expires.
+- **Local download history.** GramGrab records accepted downloads locally in extension storage. It
   stores the canonical source URL, media identity, filename hint, export mode, rotation, crop, and
   timestamp, but not the temporary media or preview URL. History is capped at 1,000 entries and can be deleted from the
   popup.
-- **Workspace lifetime** - workspace transfers are short-lived handoffs between the popup and a
+- **Workspace lifetime.** Workspace transfers are short-lived handoffs between the popup and a
   dedicated extension tab. They expire after 60 seconds and are sanitized before being written to
   browser-session storage, which the browser clears when it closes.
-- **File formats** - images and video frames are saved as `.jpg`, and videos, silent videos included, as `.mp4`.
-- **WhatsApp capture is one Status at a time** - GramGrab captures the Status currently open in the tab you invoked it on. There is no armed mode that follows you through a Status sequence, and the GramGrab workspace tab cannot be a capture surface.
-- **WhatsApp editing expires** - a capture is usable for 10 minutes from the moment it completes. Previewing or scrubbing does not extend that, and an export that would not finish in the remaining time is refused before it starts.
-- **WhatsApp view receipts** - receipts are controlled by WhatsApp. GramGrab neither suppresses nor adds one.
+- **File formats.** Images and video frames are saved as `.jpg`, and videos, silent videos included, as `.mp4`.
+- **WhatsApp capture is one Status at a time.** GramGrab captures the Status currently open in the tab you invoked it on. There is no armed mode that follows you through a Status sequence, and the GramGrab workspace tab cannot be a capture surface.
+- **WhatsApp editing expires.** A capture is usable for 10 minutes from the moment it completes. Previewing or scrubbing does not extend that, and an export that would not finish in the remaining time is refused before it starts.
+- **WhatsApp view receipts.** Receipts are controlled by WhatsApp. GramGrab neither suppresses nor adds one.
 
 ---
 

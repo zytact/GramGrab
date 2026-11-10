@@ -9,19 +9,19 @@ The capture script requests each fixture with the request values in
 `src/instagram-protocol/config.json`. Shortcode media tries each `mediaByShortcode` candidate in
 order and keeps the first one that answers with media.
 
-| File                        | Endpoint                                                             | What it covers                                                                                                   |
-| --------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `highlights.json`           | `api/graphql` with the `reelsMedia` document ID and `highlight:<id>` | `ReelsMediaResponseSchema` - a Highlight reel, trimmed to the fields GramGrab reads, with image and video items  |
-| `story.json`                | `api/graphql` with the `reelsMedia` document ID and an account ID    | `ReelsMediaResponseSchema` - a Story reel, trimmed to the fields GramGrab reads, with image and video items      |
-| `highlights-tray.json`      | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/`            | `HighlightsTrayResponseSchema` - `tray[]` listing with `cover_media`                                             |
-| `shortcode-image.json`      | `mediaByShortcode` with `{ shortcode }` (image post)                 | `ShortcodeMediaResponseSchema` - the image branch                                                                |
-| `shortcode-video.json`      | `mediaByShortcode` with `{ shortcode }` (video reel)                 | `ShortcodeMediaResponseSchema` - the video branch                                                                |
-| `shortcode-rest-video.json` | `api/v1/media/{id}/info/` (video reel)                               | `RestShortcodeResponseSchema` - captured REST video shape with only structural media fields and replacement URLs |
-| `shortcode-sidecar.json`    | `mediaByShortcode` with `{ shortcode }` (carousel)                   | `ShortcodeMediaResponseSchema` - the Sidecar branch with mixed image and video children                          |
-| `instants-photo.json`       | `i.instagram.com/graphql_www` with the Instants client document ID   | `InstantsFeedResponseSchema` - active photo shape and image candidates                                           |
-| `instants-video.json`       | `i.instagram.com/graphql_www` with the Instants client document ID   | `InstantsFeedResponseSchema` - video nullability, posters, duplicate progressive URLs, and DASH metadata         |
-| `instants-empty.json`       | `i.instagram.com/graphql_www` with the Instants client document ID   | `InstantsFeedResponseSchema` - successful empty active feed                                                      |
-| `profile-posts.json`        | `api/graphql` with the `profilePosts` document ID and `fb_dtsg`      | Watch `PostsResponse` - one Posts grid page, trimmed to the fields a Watch reads, with mixed Sidecars            |
+| File                        | Endpoint                                                             | What it covers                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `highlights.json`           | `api/graphql` with the `reelsMedia` document ID and `highlight:<id>` | `ReelsMediaResponseSchema`: a Highlight reel, trimmed to the fields GramGrab reads, with image and video items  |
+| `story.json`                | `api/graphql` with the `reelsMedia` document ID and an account ID    | `ReelsMediaResponseSchema`: a Story reel, trimmed to the fields GramGrab reads, with image and video items      |
+| `highlights-tray.json`      | `i.instagram.com/api/v1/highlights/{id}/highlights_tray/`            | `HighlightsTrayResponseSchema`: `tray[]` listing with `cover_media`                                             |
+| `shortcode-image.json`      | `mediaByShortcode` with `{ shortcode }` (image post)                 | `ShortcodeMediaResponseSchema`: the image branch                                                                |
+| `shortcode-video.json`      | `mediaByShortcode` with `{ shortcode }` (video reel)                 | `ShortcodeMediaResponseSchema`: the video branch                                                                |
+| `shortcode-rest-video.json` | `api/v1/media/{id}/info/` (video reel)                               | `RestShortcodeResponseSchema`: captured REST video shape with only structural media fields and replacement URLs |
+| `shortcode-sidecar.json`    | `mediaByShortcode` with `{ shortcode }` (carousel)                   | `ShortcodeMediaResponseSchema`: the Sidecar branch with mixed image and video children                          |
+| `instants-photo.json`       | `i.instagram.com/graphql_www` with the Instants client document ID   | `InstantsFeedResponseSchema`: active photo shape and image candidates                                           |
+| `instants-video.json`       | `i.instagram.com/graphql_www` with the Instants client document ID   | `InstantsFeedResponseSchema`: video nullability, posters, duplicate progressive URLs, and DASH metadata         |
+| `instants-empty.json`       | `i.instagram.com/graphql_www` with the Instants client document ID   | `InstantsFeedResponseSchema`: successful empty active feed                                                      |
+| `profile-posts.json`        | `api/graphql` with the `profilePosts` document ID and `fb_dtsg`      | Watch `PostsResponse`: one Posts grid page, trimmed to the fields a Watch reads, with mixed Sidecars            |
 
 ## Handwritten files
 

@@ -1,7 +1,6 @@
 # CLI capability contract
 
-This document inventories the public GramGrab operations covered by protocol version 7. `HELP` in
-`apps/cli/src/index.ts` is the CLI's own summary of the same grammar.
+This document inventories the public GramGrab operations covered by protocol version 7.
 
 ## Item identity
 
@@ -106,9 +105,10 @@ enabled Watch of the login with `--all`, and also reports unknown selectors in `
 
 `watch needs` lists what is waiting on the person: a failing kind, a failed or unconfirmed action,
 an `IG_RATE_LIMITED` pause, a Watch store problem, or a linked login Instagram signed out. Each item
-has an attention ID and names the operations it accepts. `watch retry`, `dismiss`, and `confirm`
-apply one of them to the given IDs, and an ID that does not accept it is refused with
-`WATCH_RECOVERY_NOT_APPLICABLE`.
+has an attention ID. Only a failed or unconfirmed action names the operations it accepts, and
+`watch retry`, `dismiss`, and `confirm` apply one of them to the given IDs. Any other item, or an
+operation the action does not list, is refused with `WATCH_RECOVERY_NOT_APPLICABLE`, and an ID not
+in the list is reported in `unknownAttentionIds`.
 
 The Inbox holds what a Watch with `collect` found. `inbox list` shows its entries, for one Watch
 or all of them. `inbox remove` deletes entries. `inbox export` downloads the exact recorded media
@@ -193,8 +193,9 @@ transport failure.
 | Change a Watch's kinds or actions                                        | `WatchSet`                                                                  | Replaces the supplied sets; initialized baselines are kept                                       |
 | Pause, resume, or delete Watches                                         | `WatchLifecycle`                                                            | Unknown selectors are reported per Watch; deletion keeps files and History                       |
 | Check Watches now                                                        | `WatchCheck`                                                                | Selected Watches or all enabled ones; unknown selectors are reported per Watch                   |
-| List and act on what needs the person                                    | `WatchNeeds`, `WatchAttentionRecover`                                       | Each attention item names its allowed operations; others are refused per ID                      |
+| List and act on what needs the person                                    | `WatchNeeds`, `WatchAttentionRecover`                                       | Only failed or unconfirmed actions accept operations; others are refused per ID                  |
 | List, remove, export, or retry Inbox entries                             | `WatchInboxList`, `WatchInboxRemove`, `WatchInboxExport`, `WatchInboxRetry` | Export uses the entry's frozen plan; unknown entry IDs are reported in `unknownEntryIds`         |
+| Retry or dismiss a failed notification                                   | `WatchRecover`                                                              | `watch recover notify`; entries without a failed notification are refused, unknown IDs reported  |
 | Export and import Watches                                                | `WatchesExport`, `WatchesImport`                                            | Options page only, no CLI verb yet; import needs the disclosure and confirms each added account  |
 | Popup layout, workspace layout, navigation, selection controls           | UI-only                                                                     | No protocol operation because these present operations rather than define new behavior           |
 
