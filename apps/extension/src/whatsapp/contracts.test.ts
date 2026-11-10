@@ -131,6 +131,10 @@ describe('WhatsApp capture contracts', () => {
     expect(decodeCanonicalBase64(encoded.replace(/=+$/u, ''))).toBeUndefined();
     expect(decodeCanonicalBase64('-w==')).toBeUndefined();
     expect(decodeCanonicalBase64(`${encoded} `)).toBeUndefined();
+    expect(decodeCanonicalBase64('AQ==')).toEqual(new Uint8Array([1]));
+    expect(decodeCanonicalBase64('AR==')).toBeUndefined();
+    expect(decodeCanonicalBase64('AAE=')).toEqual(new Uint8Array([0, 1]));
+    expect(decodeCanonicalBase64('AAF=')).toBeUndefined();
     expect(
       decodeCanonicalBase64(encodeCanonicalBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES + 1)))
     ).toBeUndefined();
