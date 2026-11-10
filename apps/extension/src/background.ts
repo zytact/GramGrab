@@ -1,4 +1,4 @@
-import { Either, Effect, Schema } from 'effect';
+import { Either, Effect, Option, Schema } from 'effect';
 import { browser } from './lib/browser.ts';
 import { startNativeBridge } from './native-bridge.ts';
 import {
@@ -13,7 +13,6 @@ import {
   DirectExport,
   FrameExport,
   HistoryClearResult,
-  HistoryEntry as ProtocolHistoryEntry,
   HistoryListResult,
   HistoryMarker as ProtocolHistoryMarker,
   HistoryRedownloadFailed,
@@ -46,6 +45,7 @@ import {
   type WorkspaceSnapshot,
 } from './workspace/contracts.ts';
 import { replaceWorkspace } from './workspace/coordinator.ts';
+import { protocolHistoryEntry } from './history/protocol.ts';
 import { historySource } from './history/source.ts';
 import { reconcileHistoryEntry } from './history/reconciliation.ts';
 import {
@@ -842,28 +842,6 @@ async function inspectInstantsCommand(
   });
 }
 
-function historyEntry(entry: DownloadHistoryEntry): ProtocolHistoryEntry {
-  return ProtocolHistoryEntry.make({
-    id: entry.id,
-    origin: entry.origin,
-    mediaIdentity: MediaIdentity.make({
-      itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(entry.itemIndex),
-      ...(entry.mediaId ? { mediaId: entry.mediaId } : {}),
-    }),
-    mediaType: entry.mediaType,
-    filenameHint: entry.filenameHint,
-    ...(entry.exportMode ? { exportMode: entry.exportMode } : {}),
-    ...(entry.rotation ? { rotation: entry.rotation } : {}),
-    ...(entry.crop ? { crop: entry.crop } : {}),
-    ...(entry.requestedExport ? { requestedExport: entry.requestedExport } : {}),
-    ...(entry.recovery ? { recovery: entry.recovery } : {}),
-    ...(entry.frameTimestampSeconds === undefined
-      ? {}
-      : { frameTimestampSeconds: entry.frameTimestampSeconds }),
-    downloadedAt: entry.downloadedAt,
-  });
-}
-
 async function runExport(
   command: ProtocolExportCommand,
   emit: (event: EventPayload) => void,
@@ -1040,7 +1018,7 @@ async function executeCommand(
           entries: history.entries
             .filter((entry): entry is DownloadHistoryEntry => 'id' in entry)
             .reverse()
-            .map(historyEntry),
+            .flatMap(entry => Option.toArray(protocolHistoryEntry(entry))),
           repaired: history.repaired,
         });
         break;

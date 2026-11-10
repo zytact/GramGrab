@@ -52,3 +52,39 @@ it.each([
     });
   }
 );
+
+it('lists the entries it can and drops the ones the protocol cannot carry', async () => {
+  const harness = createExtensionHarness();
+  const entry = {
+    origin: { kind: 'instants' },
+    itemIndex: 0,
+    mediaType: 'image',
+    filenameHint: 'instagram',
+    downloadedAt: 1,
+    outcome: 'accepted',
+  };
+  harness.local.write(DOWNLOAD_HISTORY_KEY, {
+    version: DOWNLOAD_HISTORY_VERSION,
+    entries: [
+      { ...entry, id: 'valid' },
+      { ...entry, id: 'empty-hint', filenameHint: '' },
+      { ...entry, id: 'negative-time', downloadedAt: -1 },
+      {
+        ...entry,
+        id: 'unknown-origin',
+        origin: {
+          kind: 'feed',
+          sourceUrl: 'https://www.instagram.com/p/example/',
+          sourceKind: 'post',
+        },
+      },
+    ],
+  });
+  await harness.loadWorker();
+
+  const terminal = await harness.command(HistoryList.make());
+  expect(terminal).toMatchObject({
+    _tag: 'Completed',
+    result: { _tag: 'HistoryListResult', repaired: true, entries: [{ id: 'valid' }] },
+  });
+});

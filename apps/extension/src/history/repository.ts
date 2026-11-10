@@ -1,5 +1,5 @@
 import { Either, Option, Schema } from 'effect';
-import { ExportSettings, HistoryEntry as ProtocolHistoryEntry } from '@gramgrab/protocol';
+import { ExportSettings } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
@@ -15,6 +15,7 @@ import {
   type HistoryReadResult,
   type WhatsAppHistoryReceipt,
 } from './contracts.ts';
+import { protocolHistoryEntry } from './protocol.ts';
 import { historySource } from './source.ts';
 
 let mutationQueue: Promise<void> = Promise.resolve();
@@ -24,9 +25,6 @@ const validTypes = new Set(['image', 'video']);
 const isRotation = Schema.is(RotationSchema);
 const isCrop = Schema.is(CropSchema);
 const supportedHistoryVersions = new Set([1, 2, 3, 4]);
-const isEntryId = Schema.is(ProtocolHistoryEntry.fields.id);
-const isFilenameHint = Schema.is(ProtocolHistoryEntry.fields.filenameHint);
-const isDownloadedAt = Schema.is(ProtocolHistoryEntry.fields.downloadedAt);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -46,13 +44,13 @@ function decodeInstagramEntry(value: unknown): DownloadHistoryEntry | undefined 
   const requestedExport = Schema.decodeUnknownOption(Schema.UndefinedOr(ExportSettings))(
     value.requestedExport
   );
-  return Option.isSome(requestedExport)
-    ? { ...value, requestedExport: requestedExport.value }
-    : undefined;
+  if (Option.isNone(requestedExport)) return undefined;
+  const entry = { ...value, requestedExport: requestedExport.value };
+  return Option.isSome(protocolHistoryEntry(entry)) ? entry : undefined;
 }
 
 function hasValidIdentity(item: Partial<HistoryMetadata>): boolean {
-  if (!isEntryId(item.id) || !item.origin) return false;
+  if (typeof item.id !== 'string' || !item.origin) return false;
   if (item.origin.kind === 'instants') return true;
   const source = historySource(item.origin.sourceUrl);
   return source?.url === item.origin.sourceUrl && source?.kind === item.origin.sourceKind;
@@ -66,7 +64,7 @@ function hasValidMedia(item: Partial<HistoryMetadata>): boolean {
     item.itemIndex! >= 0 &&
     (item.mediaId === undefined || typeof item.mediaId === 'string') &&
     validTypes.has(item.mediaType ?? '') &&
-    isFilenameHint(item.filenameHint) &&
+    typeof item.filenameHint === 'string' &&
     (item.exportMode === undefined ||
       item.exportMode === 'direct' ||
       item.exportMode === 'frame' ||
@@ -82,7 +80,6 @@ function hasValidMedia(item: Partial<HistoryMetadata>): boolean {
 function hasValidOutcome(item: Partial<HistoryMetadata>): boolean {
   return (
     Number.isFinite(item.downloadedAt) &&
-    isDownloadedAt(item.downloadedAt) &&
     item.outcome === 'accepted' &&
     (item.recovery === undefined || item.recovery === 'original' || item.recovery === 'reencode')
   );

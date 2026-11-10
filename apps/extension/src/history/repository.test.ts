@@ -207,34 +207,6 @@ describe('download history origin migration', () => {
       entries: [{ id: 'valid', crop }],
     });
   });
-
-  it('drops entries the CLI history list cannot represent and keeps the rest', async () => {
-    const entry = {
-      origin: { kind: 'instants' },
-      itemIndex: 0,
-      mediaType: 'image',
-      filenameHint: 'instagram',
-      downloadedAt: 1,
-      outcome: 'accepted',
-    };
-    vi.mocked(getMockBrowser().storage.get).mockResolvedValue({
-      'download-history': {
-        version: 4,
-        entries: [
-          { ...entry, id: 'valid', legacyNote: 'kept' },
-          { ...entry, id: 'empty-hint', filenameHint: '' },
-          { ...entry, id: 'negative-time', downloadedAt: -1 },
-          { ...entry, id: '' },
-        ],
-      },
-    });
-
-    await expect(getHistory()).resolves.toEqual({
-      kind: 'ok',
-      repaired: true,
-      entries: [{ ...entry, id: 'valid', legacyNote: 'kept' }],
-    });
-  });
 });
 
 describe('batched history writes', () => {
