@@ -56,16 +56,19 @@ Both actions must start a new browser download. Reopen the history list and
 confirm the matching entry's downloaded timestamp or count changed. Click its
 `Open source` link and require the canonical Instagram source in the new tab.
 
-An entry saved as a frame, silent, rotated, or cropped export re-downloads
-through the runner document. A direct entry never opens it. One CLI
+From the CLI, an entry saved as a frame, silent, rotated, or cropped export
+re-downloads through the runner document, and a direct entry never opens it.
+The popup runs those exports in its own document instead. One CLI
 `history redownload` resolves each entry's source once, hands that media to the
 runner, and keeps a single runner window for every entry in the command. To
-count resolves, run `throttle.mjs` as a pass-through counter in a second shell
-before the command. It prints one line per Instagram GraphQL request the worker
-sends:
+count resolves, run `throttle.mjs` as a pass-through counter in the background
+before the command. After its `attached` line it prints one line per worker
+request to `www.instagram.com`, which covers both the GraphQL and the REST
+`/api/v1/media/` routes. Each resolve sends the same burst of requests, so
+compare the number of bursts with the number of entries:
 
 ```bash
-node .agents/skills/verify-gramgrab/scripts/throttle.mjs graphql 200 --pass 1000 > "$EV/graphql.log" &
+node .agents/skills/verify-gramgrab/scripts/throttle.mjs www.instagram.com 200 --pass 1000 > "$EV/requests.log" &
 node apps/cli/bin/gramgrab.mjs history redownload FRAME_ENTRY_ID --json
 kill %1
 ```
