@@ -27,16 +27,16 @@ async function readUntil(response: Response, enough: (text: string) => boolean) 
 
 /**
  * Reads Instagram Web's home page for the requests' login, and keeps the `fb_dtsg` token it names
- * for `withDtsgToken`. Every read forgets the token first, so after a failed read the next request
- * reads it again. The download stops once the page names the token and `enough` holds, since both sit near its start.
+ * for `withDtsgToken`. A refused page forgets the token, so the next request reads it first. The
+ * download stops once the page names the token and `enough` holds, since both sit near its start.
  */
 export const readHomePage = (enough: (page: string) => boolean = () => true) =>
   Effect.gen(function* () {
     const requests = yield* InstagramRequests;
-    delete cachedTokens[requests.login];
     const response = yield* requests.fetch('https://www.instagram.com/', {
       headers: { Accept: 'text/html' },
     });
+    delete cachedTokens[requests.login];
     yield* requireOk(response);
     const page = yield* Effect.tryPromise({
       try: () => readUntil(response, text => DTSG_TOKEN.test(text) && enough(text)),

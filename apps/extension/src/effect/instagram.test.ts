@@ -9,6 +9,8 @@ import {
   ResponseShapeUnknown,
 } from './errors.ts';
 import { PersonRequests, type InstagramRequests } from '../instagram/requests.ts';
+import { postWebQuery } from '../instagram/dtsg.ts';
+import { protocolConfig } from '../instagram-protocol/config.ts';
 
 const run = <A, E>(effect: Effect.Effect<A, E, InstagramRequests>) =>
   Effect.runPromise(effect.pipe(Effect.provide(PersonRequests())));
@@ -245,7 +247,7 @@ describe('graphqlPost', () => {
     expect(body.get('variables')).toBe(JSON.stringify(vars));
   });
 
-  it('includes an available lsd token in the POST body and header', async () => {
+  it('includes an available LSD token in the POST body and header', async () => {
     const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
     const fetchMock = vi
       .fn()
@@ -298,7 +300,7 @@ describe('graphqlPost', () => {
     expect(body.get('lsd')).toBe('htmltoken123');
   });
 
-  it('reads an lsd token from the home page JSON', async () => {
+  it('reads an LSD token from the home page JSON', async () => {
     const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
     const fetchMock = vi
       .fn()
@@ -329,7 +331,7 @@ describe('graphqlPost', () => {
     expect(body.get('lsd')).toBe('htmltoken456');
   });
 
-  it('posts without lsd fields when the home page names none', async () => {
+  it('posts without LSD fields when the home page names none', async () => {
     const mockData = { data: { xdt_shortcode_media: { id: '1' } } };
     const fetchMock = vi
       .fn()
@@ -372,7 +374,7 @@ describe('graphqlPost', () => {
       expect(init?.headers).toEqual(expect.objectContaining({ 'X-FB-LSD': 'token123' }));
   });
 
-  it('posts without lsd fields when the home page read fails', async () => {
+  it('posts without LSD fields when the home page read fails', async () => {
     const mockData = { data: {} };
     const fetchMock = vi
       .fn()
@@ -382,6 +384,34 @@ describe('graphqlPost', () => {
 
     expect(await run(graphqlPost(TEST_URL, '12345', vars, {}))).toEqual(mockData);
     expect(fetchMock.mock.calls[1]?.[1]?.headers).not.toHaveProperty('X-FB-LSD');
+  });
+
+  it('forgets the fb_dtsg token when an LSD read is refused', async () => {
+    const ok = () => ({ ok: true, status: 200, json: async () => ({ data: {} }) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('["DTSGInitialData",[],{"token":"DTSG_A"}],"lsd":"token123"', {
+          headers: { 'Content-Type': 'text/html' },
+        })
+      )
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(
+        new Response('["DTSGInitialData",[],{"token":"DTSG_B"}]', {
+          headers: { 'Content-Type': 'text/html' },
+        })
+      )
+      .mockResolvedValueOnce(ok());
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await run(graphqlPost(TEST_URL, '12345', vars, {}));
+    await run(graphqlPost(TEST_URL, '12345', vars, {}));
+    await run(postWebQuery(protocolConfig.operations.profileById, {}));
+
+    expect(fetchMock.mock.calls[4]?.[0]).toBe('https://www.instagram.com/');
+    expect(fetchMock.mock.calls[5]?.[1]?.body.get('fb_dtsg')).toBe('DTSG_B');
   });
 
   it('fails with GraphQLRequestFailed on non-ok non-429 response', async () => {
