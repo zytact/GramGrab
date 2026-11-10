@@ -918,6 +918,33 @@ describe('background dispatcher', () => {
         expect(fakeBrowserObj.fakeBrowser.windows.remove).toHaveBeenCalledTimes(1);
       });
 
+      it('downloads a direct entry without opening the runner', async () => {
+        const fixture = instantFixture('instants-photo.json') as {
+          data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };
+        };
+        const mediaId = String(fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]!.id);
+        fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(historyStore(mediaId));
+        globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+        await loadBackground();
+
+        redownload(['instant-history']);
+
+        await vi.waitFor(() =>
+          expect(fakeBrowserObj.nativeMessages).toContainEqual(
+            expect.objectContaining({
+              event: expect.objectContaining({
+                _tag: 'Completed',
+                result: expect.objectContaining({
+                  outcomes: [expect.objectContaining({ _tag: 'HistoryRedownloadStarted' })],
+                }),
+              }),
+            })
+          )
+        );
+        expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledTimes(1);
+        expect(fakeBrowserObj.fakeBrowser.windows.create).not.toHaveBeenCalled();
+      });
+
       it('closes the runner when the command is cancelled', async () => {
         const fixture = instantFixture('instants-photo.json') as {
           data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };

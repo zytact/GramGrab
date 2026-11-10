@@ -39,6 +39,7 @@ import {
   type Request,
   type InstagramLogin,
   deliversOriginal,
+  type ExportSettings,
 } from '@gramgrab/protocol';
 import {
   canonicalizeInstagramUrl,
@@ -405,20 +406,23 @@ function missingFailure(entry: DownloadHistoryEntry): OperationFailure {
   return OperationFailure.make({ code: 'MEDIA_NOT_FOUND', phase: 'source', scope: 'item' });
 }
 
-/** Finds a history entry and the item its source returns for it now. */
-async function resolveHistoryEntry(
-  entryId: string,
-  login: InstagramLogin | undefined
-): Promise<
-  { entry: DownloadHistoryEntry; item: MediaItem; failure?: never } | { failure: OperationFailure }
-> {
+async function findHistoryEntry(
+  entryId: string
+): Promise<{ entry: DownloadHistoryEntry; failure?: never } | { failure: OperationFailure }> {
   const history = await getHistory();
   if (history.kind === 'unknown-version')
     return { failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
   const entry = history.entries.find(
     (candidate): candidate is DownloadHistoryEntry => 'id' in candidate && candidate.id === entryId
   );
-  if (!entry) return { failure: historyFailure('HISTORY_ENTRY_NOT_FOUND') };
+  return entry ? { entry } : { failure: historyFailure('HISTORY_ENTRY_NOT_FOUND') };
+}
+
+/** Finds the item an entry's source returns for it now. */
+async function resolveHistoryItem(
+  entry: DownloadHistoryEntry,
+  login: InstagramLogin | undefined
+): Promise<{ item: MediaItem; failure?: never } | { failure: OperationFailure }> {
   const empty = { items: undefined as MediaItem[] | undefined };
   const resolved =
     entry.origin.kind === 'instants'
@@ -446,18 +450,26 @@ async function resolveHistoryEntry(
   const match = reconcileHistoryEntry(entry, resolved.items);
   if (match.kind === 'missing') return { failure: missingFailure(entry) };
   if (match.kind === 'ambiguous') return { failure: historyFailure('HISTORY_ITEM_UNRESOLVED') };
-  const item = resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!;
-  return { entry, item };
+  return {
+    item: resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!,
+  };
 }
 
-/** Whether re-downloading an entry needs the runner document rather than a plain download. */
-function needsRunner(entry: DownloadHistoryEntry): boolean {
-  return (
-    entry.exportMode === 'frame' ||
-    entry.exportMode === 'silent' ||
-    Boolean(entry.rotation || entry.crop)
-  );
+/** The export settings an entry recorded, which a re-download reproduces. */
+function historySettings(entry: DownloadHistoryEntry): ExportSettings {
+  return {
+    mode:
+      entry.exportMode === 'frame'
+        ? FrameExport.make({ timestampSeconds: entry.frameTimestampSeconds ?? 5 })
+        : entry.exportMode === 'silent'
+          ? SilentExport.make({ reencode: 'allow' })
+          : DirectExport.make(),
+    ...(entry.rotation ? { rotation: entry.rotation } : {}),
+    ...(entry.crop ? { crop: entry.crop } : {}),
+  };
 }
+
+const needsRunner = (entry: DownloadHistoryEntry) => !deliversOriginal(historySettings(entry));
 
 function downloadHistoryOriginal(entry: DownloadHistoryEntry, item: MediaItem) {
   const filename = `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
@@ -497,9 +509,12 @@ function redownloadTarget(entry: DownloadHistoryEntry, item: MediaItem) {
 async function handleRedownloadHistoryEntry(
   msg: MessageOf<'REDOWNLOAD_HISTORY_ENTRY'>
 ): Promise<MessageResponse<'REDOWNLOAD_HISTORY_ENTRY'>> {
-  const resolved = await resolveHistoryEntry(msg.entryId, msg.login);
+  const found = await findHistoryEntry(msg.entryId);
+  if (found.failure) return { failure: found.failure };
+  const { entry } = found;
+  const resolved = await resolveHistoryItem(entry, msg.login);
   if (resolved.failure) return { failure: resolved.failure };
-  const { entry, item } = resolved;
+  const { item } = resolved;
   if (!needsRunner(entry)) return downloadHistoryOriginal(entry, item);
   const redownload = redownloadTarget(entry, item);
   if (entry.exportMode === 'frame')
@@ -959,7 +974,6 @@ async function runDirectExport(
   });
 }
 
-/** One item failure stands for the whole entry, as the CLI reports per entry. */
 /** The export that reproduces a history entry's recorded mode, rotation and crop. */
 function historyExport(entry: DownloadHistoryEntry, item: MediaItem): ProtocolExportCommand {
   const operations = [
@@ -970,14 +984,7 @@ function historyExport(entry: DownloadHistoryEntry, item: MediaItem): ProtocolEx
         itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(item.itemIndex),
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
       }),
-      mode:
-        entry.exportMode === 'frame'
-          ? FrameExport.make({ timestampSeconds: entry.frameTimestampSeconds ?? 5 })
-          : entry.exportMode === 'silent'
-            ? SilentExport.make({ reencode: 'allow' })
-            : DirectExport.make(),
-      ...(entry.rotation ? { rotation: entry.rotation } : {}),
-      ...(entry.crop ? { crop: entry.crop } : {}),
+      ...historySettings(entry),
     }),
   ];
   return entry.origin.kind === 'instants'
@@ -987,14 +994,14 @@ function historyExport(entry: DownloadHistoryEntry, item: MediaItem): ProtocolEx
 
 /** Re-downloads one entry from a single resolve, answering the failure code if it did not start. */
 async function redownloadEntry(
-  entryId: string,
+  entry: DownloadHistoryEntry,
   emit: (event: EventPayload) => void,
   signal: AbortSignal,
   login: InstagramLogin | undefined
 ): Promise<ProtocolOperationFailure['code'] | undefined> {
-  const resolved = await abortable(resolveHistoryEntry(entryId, login), signal);
+  const resolved = await abortable(resolveHistoryItem(entry, login), signal);
   if (resolved.failure) return resolved.failure.code;
-  const { entry, item } = resolved;
+  const { item } = resolved;
   if (!needsRunner(entry)) {
     const response = await abortable(downloadHistoryOriginal(entry, item), signal);
     if (response.failure) return response.failure.code;
@@ -1009,7 +1016,7 @@ async function redownloadEntry(
     : undefined;
 }
 
-/** Re-downloads CLI history entries in turn. Call it inside `withRunner`. */
+/** Re-downloads CLI history entries in turn, holding one runner across them when any needs it. */
 async function redownloadHistory(
   command: HistoryRedownload,
   emit: (event: EventPayload) => void,
@@ -1018,24 +1025,30 @@ async function redownloadHistory(
 ): Promise<HistoryRedownloadResult> {
   const before = await abortable(getHistory(), signal);
   if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
-  const known = new Set(before.entries.flatMap(entry => ('id' in entry ? [entry.id] : [])));
-  const outcomes = [];
-  for (const entryId of command.entryIds.filter(id => known.has(id))) {
-    signal.throwIfAborted();
-    const code = await redownloadEntry(entryId, emit, signal, login);
-    outcomes.push(
-      code
-        ? HistoryRedownloadFailed.make({
-            entryId,
-            failure: ProtocolOperationFailure.make({ code, scope: 'item' }),
-          })
-        : HistoryRedownloadStarted.make({ entryId })
-    );
-  }
-  return HistoryRedownloadResult.make({
-    outcomes,
-    unknownEntryIds: command.entryIds.filter(id => !known.has(id)),
-  });
+  const known = new Map(
+    before.entries.flatMap(entry => ('id' in entry ? [[entry.id, entry] as const] : []))
+  );
+  const entries = command.entryIds.flatMap(id => known.get(id) ?? []);
+  const redownloadAll = async () => {
+    const outcomes = [];
+    for (const entry of entries) {
+      signal.throwIfAborted();
+      const code = await redownloadEntry(entry, emit, signal, login);
+      outcomes.push(
+        code
+          ? HistoryRedownloadFailed.make({
+              entryId: entry.id,
+              failure: ProtocolOperationFailure.make({ code, scope: 'item' }),
+            })
+          : HistoryRedownloadStarted.make({ entryId: entry.id })
+      );
+    }
+    return HistoryRedownloadResult.make({
+      outcomes,
+      unknownEntryIds: command.entryIds.filter(id => !known.has(id)),
+    });
+  };
+  return entries.some(needsRunner) ? withRunner(signal, redownloadAll) : redownloadAll();
 }
 
 // fallow-ignore-next-line complexity
@@ -1101,7 +1114,7 @@ async function executeCommand(
         break;
       }
       case 'HistoryRedownload':
-        result = await withRunner(signal, () => redownloadHistory(command, emit, signal, login));
+        result = await redownloadHistory(command, emit, signal, login);
         break;
       case 'DebugGet': {
         signal.throwIfAborted();
