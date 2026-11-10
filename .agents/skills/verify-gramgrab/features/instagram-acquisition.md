@@ -155,6 +155,29 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
     "new Promise(r=>chrome.storage.local.get(['instagram-requests'],v=>r(JSON.stringify(v))))"
   ```
 
+- A Post or Reel URL resolves through REST `/api/v1/media/<id>/info/` and sends
+  nothing else, so it never reads the home page. A non-terminal REST failure
+  falls back to the shortcode GraphQL requests. Each `/api/graphql` form POST
+  among them reads the home page once for its LSD token, before its retries, and
+  that read also refreshes the `fb_dtsg` token. A refused LSD read sends the
+  POST without one. To prove it, force the fallback and count the worker's
+  requests:
+
+  ```bash
+  T=.agents/skills/verify-gramgrab/scripts/throttle.mjs
+  node $T /api/v1/media/ 503 & REST=$!
+  node $T api/graphql 500 & GQL=$!
+  node $D eval "js/background.js" "performance.clearResourceTimings()"
+  node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/reel/SHORTCODE/ --json
+  node $D eval "js/background.js" \
+    "JSON.stringify(performance.getEntriesByType('resource').map(e=>e.name.split('?')[0]))"
+  kill $REST $GQL
+  ```
+
+  Three home page reads among 16 requests, one per form request, is healthy.
+  One read per POST attempt, 12 in all, means the lookup is back inside the
+  retry. A home page read during an unrelated first run can be a Watch's viewer
+  check, so run the inspect twice and read the second.
 - Image thumbnails are `loading="lazy"` and can sit unloaded in a driven tab for
   the whole wait, with `img.complete` false and no failure placeholder, even
   while `document.visibilityState` reads `visible`. Run
