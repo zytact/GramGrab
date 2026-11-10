@@ -1,7 +1,7 @@
 import { browser } from '../lib/browser';
 import {
   sanitizeSnapshot,
-  upgradeWorkspaceSnapshot,
+  decodeWorkspaceSnapshot,
   WORKSPACE_TRANSFER_KEY,
   WORKSPACE_STATUS_KEY,
   workspaceUrl,
@@ -125,5 +125,5 @@ export async function claimWorkspaceTransfer(): Promise<WorkspaceSnapshot | unde
   const values = await browser.sessionStorage.get(key);
   const candidate = values[key];
   await browser.sessionStorage.remove(offerId ? [key, WORKSPACE_TRANSFER_KEY] : key);
-  return upgradeWorkspaceSnapshot(candidate);
+  return decodeWorkspaceSnapshot(candidate);
 }

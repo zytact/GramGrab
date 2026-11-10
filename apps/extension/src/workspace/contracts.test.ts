@@ -1,9 +1,10 @@
+import { Struct } from 'effect';
 import { describe, expect, it } from 'vite-plus/test';
 import {
   canonicalizeInstagramUrl,
   isInstagramSource,
   sanitizeSnapshot,
-  upgradeWorkspaceSnapshot,
+  decodeWorkspaceSnapshot,
   type WorkspaceSnapshot,
 } from './contracts';
 
@@ -109,24 +110,16 @@ describe('workspace contracts', () => {
   });
 
   it('rejects a version 4 snapshot without an explicit acquisition origin', () => {
-    const invalid: Partial<WorkspaceSnapshot> = { ...snapshot };
-    delete invalid.acquisition;
-    expect(upgradeWorkspaceSnapshot(invalid)).toBeUndefined();
+    expect(decodeWorkspaceSnapshot(Struct.omit(snapshot, 'acquisition'))).toBeUndefined();
   });
 
-  it('upgrades version 1 frame selections to default frame timestamps', () => {
-    const legacy = {
-      ...snapshot,
-      version: 1 as const,
-      exportFrameIndexes: [0],
-    };
-    const upgraded = upgradeWorkspaceSnapshot(legacy);
-    expect(upgraded).toMatchObject({
-      version: 4,
-      acquisition: { kind: 'source' },
-      removeAudioIndexes: [],
-      frameExportSettings: { 0: { enabled: true, timestampSeconds: 5 } },
-    });
+  it('decodes what the writer transfers', () => {
+    const transferred = sanitizeSnapshot(snapshot);
+    expect(decodeWorkspaceSnapshot(transferred)).toEqual(transferred);
+  });
+
+  it('rejects an expired snapshot', () => {
+    expect(decodeWorkspaceSnapshot({ ...snapshot, expiresAt: Date.now() - 1 })).toBeUndefined();
   });
 
   it.each([

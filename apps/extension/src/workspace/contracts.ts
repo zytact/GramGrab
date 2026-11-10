@@ -1,52 +1,49 @@
 import { browser } from '../lib/browser';
-import type { FrameExportSetting } from '../frame-export/timestamp.ts';
 import type { MediaItem } from '../popup/media-item.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
-import { Schema } from 'effect';
-import type { InstagramLogin } from '@gramgrab/protocol';
+import { Option, Schema } from 'effect';
+import { InstagramLogin } from '@gramgrab/protocol';
 
 export type WorkspaceMediaItem = MediaItem;
 
-export type WorkspaceAcquisition = { kind: 'source' } | { kind: 'instants' };
+/** Item shape belongs to `sanitizeSnapshot`, the only writer, so reading checks only for an array. */
+const WorkspaceMediaItems = Schema.declare((input: unknown): input is WorkspaceMediaItem[] =>
+  Array.isArray(input)
+);
 
-export interface WorkspaceSnapshot {
-  version: 4;
-  acquisition: WorkspaceAcquisition;
-  createdAt: number;
-  expiresAt: number;
-  url: string;
-  fetchedUrl: string;
-  status: 'idle' | 'done' | 'error';
-  message: string;
-  mediaItems: WorkspaceMediaItem[];
-  frameExportSettings: Record<number, FrameExportSetting>;
-  removeAudioIndexes: number[];
-  autoStartDownload?: boolean;
-  intent?: 'open' | 'fetch';
+const WorkspaceSnapshotSchema = Schema.Struct({
+  version: Schema.Literal(4),
+  acquisition: Schema.Struct({ kind: Schema.Literal('source', 'instants') }),
+  createdAt: Schema.Number,
+  expiresAt: Schema.Number,
+  url: Schema.String,
+  fetchedUrl: Schema.String,
+  status: Schema.Literal('idle', 'done', 'error'),
+  message: Schema.String,
+  mediaItems: WorkspaceMediaItems,
+  frameExportSettings: Schema.Record({
+    key: Schema.String,
+    value: Schema.Struct({ enabled: Schema.Boolean, timestampSeconds: Schema.Number }),
+  }),
+  removeAudioIndexes: Schema.mutable(Schema.Array(Schema.Number)),
+  autoStartDownload: Schema.optional(Schema.Boolean),
+  intent: Schema.optional(Schema.Literal('open', 'fetch')),
   /** The login the results were fetched as. Absent means the main login. */
-  login?: InstagramLogin;
+  login: Schema.optional(InstagramLogin),
   /** The item whose crop selector opens when the workspace claims this snapshot. */
-  cropIndex?: number;
-}
+  cropIndex: Schema.optional(Schema.Number),
+});
 
-interface LegacyWorkspaceSnapshot extends Omit<
-  WorkspaceSnapshot,
-  'version' | 'frameExportSettings' | 'acquisition'
-> {
-  version: 1;
-  exportFrameIndexes: number[];
-}
+export type WorkspaceSnapshot = typeof WorkspaceSnapshotSchema.Type;
 
-interface WorkspaceSnapshotV2 extends Omit<
-  WorkspaceSnapshot,
-  'version' | 'removeAudioIndexes' | 'acquisition'
-> {
-  version: 2;
-}
+const decodeSnapshot = Schema.decodeUnknownOption(WorkspaceSnapshotSchema);
 
-interface WorkspaceSnapshotV3 extends Omit<WorkspaceSnapshot, 'version' | 'acquisition'> {
-  version: 3;
+/** Reads a claimed transfer, or `undefined` when it is malformed or past its expiry. */
+export function decodeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | undefined {
+  return Option.getOrUndefined(
+    Option.filter(decodeSnapshot(value), snapshot => snapshot.expiresAt > Date.now())
+  );
 }
 
 const isRotation = Schema.is(RotationSchema);
@@ -237,70 +234,4 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
 
 function isPositiveFinitePair(width: number | undefined, height: number | undefined): boolean {
   return Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0;
-}
-
-// fallow-ignore-next-line complexity
-function isValidSnapshot(value: unknown): value is WorkspaceSnapshot {
-  const snapshot = value as
-    | (Omit<Partial<WorkspaceSnapshot>, 'version'> & {
-        version?: number;
-        exportFrameIndexes?: unknown;
-      })
-    | undefined;
-  const validBase =
-    typeof snapshot?.createdAt === 'number' &&
-    typeof snapshot.expiresAt === 'number' &&
-    snapshot.expiresAt > Date.now() &&
-    typeof snapshot.url === 'string' &&
-    typeof snapshot.fetchedUrl === 'string' &&
-    Array.isArray(snapshot.mediaItems);
-  if (!validBase) return false;
-  if (snapshot.version === 1) {
-    const indexes = Array.isArray(snapshot.exportFrameIndexes) ? snapshot.exportFrameIndexes : [];
-    return indexes.every(index => Number.isSafeInteger(index) && index >= 0);
-  }
-  if (
-    snapshot.version === 4 &&
-    snapshot.acquisition?.kind !== 'source' &&
-    snapshot.acquisition?.kind !== 'instants'
-  )
-    return false;
-  return (
-    (snapshot.version === 2 ||
-      ((snapshot.version === 3 || snapshot.version === 4) &&
-        Array.isArray(snapshot.removeAudioIndexes))) &&
-    typeof snapshot.frameExportSettings === 'object' &&
-    snapshot.frameExportSettings !== null
-  );
-}
-
-export function upgradeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | undefined {
-  if (!isValidSnapshot(value)) return undefined;
-  const snapshot = value as
-    | WorkspaceSnapshot
-    | WorkspaceSnapshotV3
-    | WorkspaceSnapshotV2
-    | LegacyWorkspaceSnapshot;
-  if (snapshot.version === 4) return snapshot;
-  if (snapshot.version === 3) return { ...snapshot, version: 4, acquisition: { kind: 'source' } };
-  if (snapshot.version === 2)
-    return {
-      ...snapshot,
-      version: 4,
-      acquisition: { kind: 'source' },
-      removeAudioIndexes: [],
-    };
-  const settings = Object.fromEntries(
-    (snapshot.exportFrameIndexes ?? []).map(index => [
-      index,
-      { enabled: true, timestampSeconds: 5 },
-    ])
-  );
-  return {
-    ...snapshot,
-    version: 4,
-    acquisition: { kind: 'source' },
-    frameExportSettings: settings,
-    removeAudioIndexes: [],
-  };
 }
