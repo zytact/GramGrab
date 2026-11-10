@@ -262,7 +262,7 @@ function historyMarker(
   return {
     downloaded: matches.length > 0,
     count: matches.length,
-    ...(latest ? { latestDownloadedAt: latest } : {}),
+    ...(latest === undefined ? {} : { latestDownloadedAt: latest }),
   };
 }
 

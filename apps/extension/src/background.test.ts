@@ -1542,6 +1542,22 @@ describe('background dispatcher', () => {
         );
       });
 
+      it('reports a download recorded at time 0 as the latest one', async () => {
+        mockProfileFetch({});
+        const store = avatarReceipt('profile-avatar:someuser:pic_s150');
+        store['download-history'].entries[0]!.downloadedAt = 0;
+        fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(store);
+
+        const result = await invoke(await loadBackground(), {
+          type: 'FETCH_MEDIA',
+          url: profileUrl,
+        });
+
+        expect(result).toMatchObject({
+          media: [{ history: { downloaded: true, count: 1, latestDownloadedAt: 0 } }],
+        });
+      });
+
       it.each([
         ['an older picture', 'profile-avatar:someuser:pic_old'],
         ['no picture, as older receipts do', 'profile-avatar:someuser'],

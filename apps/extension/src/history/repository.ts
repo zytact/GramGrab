@@ -1,5 +1,5 @@
 import { Either, Option, Schema } from 'effect';
-import { ExportSettings } from '@gramgrab/protocol';
+import { ExportSettings, HistoryEntry as ProtocolHistoryEntry } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
@@ -24,6 +24,9 @@ const validTypes = new Set(['image', 'video']);
 const isRotation = Schema.is(RotationSchema);
 const isCrop = Schema.is(CropSchema);
 const supportedHistoryVersions = new Set([1, 2, 3, 4]);
+const isEntryId = Schema.is(ProtocolHistoryEntry.fields.id);
+const isFilenameHint = Schema.is(ProtocolHistoryEntry.fields.filenameHint);
+const isDownloadedAt = Schema.is(ProtocolHistoryEntry.fields.downloadedAt);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -49,7 +52,7 @@ function decodeInstagramEntry(value: unknown): DownloadHistoryEntry | undefined 
 }
 
 function hasValidIdentity(item: Partial<HistoryMetadata>): boolean {
-  if (typeof item.id !== 'string' || !item.origin) return false;
+  if (!isEntryId(item.id) || !item.origin) return false;
   if (item.origin.kind === 'instants') return true;
   const source = historySource(item.origin.sourceUrl);
   return source?.url === item.origin.sourceUrl && source?.kind === item.origin.sourceKind;
@@ -63,7 +66,7 @@ function hasValidMedia(item: Partial<HistoryMetadata>): boolean {
     item.itemIndex! >= 0 &&
     (item.mediaId === undefined || typeof item.mediaId === 'string') &&
     validTypes.has(item.mediaType ?? '') &&
-    typeof item.filenameHint === 'string' &&
+    isFilenameHint(item.filenameHint) &&
     (item.exportMode === undefined ||
       item.exportMode === 'direct' ||
       item.exportMode === 'frame' ||
@@ -79,6 +82,7 @@ function hasValidMedia(item: Partial<HistoryMetadata>): boolean {
 function hasValidOutcome(item: Partial<HistoryMetadata>): boolean {
   return (
     Number.isFinite(item.downloadedAt) &&
+    isDownloadedAt(item.downloadedAt) &&
     item.outcome === 'accepted' &&
     (item.recovery === undefined || item.recovery === 'original' || item.recovery === 'reencode')
   );
