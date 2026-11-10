@@ -56,6 +56,24 @@ Both actions must start a new browser download. Reopen the history list and
 confirm the matching entry's downloaded timestamp or count changed. Click its
 `Open source` link and require the canonical Instagram source in the new tab.
 
+An entry saved as a frame, silent, rotated, or cropped export re-downloads
+through the runner document. A direct entry never opens it. One CLI
+`history redownload` resolves each entry's source once, hands that media to the
+runner, and keeps a single runner window for every entry in the command. To
+count resolves, run `throttle.mjs` as a pass-through counter in a second shell
+before the command. It prints one line per Instagram GraphQL request the worker
+sends:
+
+```bash
+node .agents/skills/verify-gramgrab/scripts/throttle.mjs graphql 200 --pass 1000 > "$EV/graphql.log" &
+node apps/cli/bin/gramgrab.mjs history redownload FRAME_ENTRY_ID --json
+kill %1
+```
+
+A frame entry that re-downloads from the CLI saves `<hint>_<N>_frame.jpg`. The
+popup's re-download of the same entry saves `<hint>_frame_MM-SS.jpg`. Watches
+exports also use the timestamp form.
+
 The button's `textContent` is `History`, but CSS uppercases it, so `drive.mjs
 text` and `wait` see `HISTORY` and `RESULTS`. Select on `textContent`, wait on
 the uppercase form.
