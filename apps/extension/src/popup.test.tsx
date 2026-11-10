@@ -7,6 +7,7 @@ import Popup from './popup';
 import * as whatsappCapture from './whatsapp/capture';
 import * as whatsappFrameExport from './whatsapp/export';
 import { DownloadAcceptedResult } from './download/contracts';
+import { WORKSPACE_TRANSFER_KEY } from './workspace/contracts';
 
 vi.mock('./styles.css', () => ({}));
 
@@ -759,7 +760,7 @@ describe('Popup', () => {
     const now = Date.now();
     window.history.replaceState({}, '', '/popup.html?surface=workspace');
     mockBrowser.sessionStorage.get.mockResolvedValueOnce({
-      'workspace-transfer-v1': {
+      [WORKSPACE_TRANSFER_KEY]: {
         version: 4,
         acquisition: { kind: 'source' },
         createdAt: now,
@@ -1499,8 +1500,9 @@ describe('Popup', () => {
     const now = Date.now();
     window.history.replaceState({}, '', '/popup.html?surface=workspace');
     mockBrowser.sessionStorage.get.mockResolvedValueOnce({
-      'workspace-transfer-v1': {
-        version: 3,
+      [WORKSPACE_TRANSFER_KEY]: {
+        version: 4,
+        acquisition: { kind: 'source' },
         createdAt: now,
         expiresAt: now + 60_000,
         url: 'https://www.instagram.com/p/abc123/',
