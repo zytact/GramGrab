@@ -48,7 +48,7 @@ _Open larger collections in GramGrab's responsive workspace to preview, configur
 
 ## Requirements
 
-- **Chromium 111+**, such as Chrome, Edge, Brave, or Helium, or **Firefox 115+**. The build targets Chrome 111, so older Chromium cannot run it. Firefox needs 115 for `storage.session`, which the workspace handoff and Watches use, and 130+ for frame export and silent video, which use WebCodecs
+- **Chromium 111+**, such as Chrome, Edge, Brave, or Helium, or **Firefox 115+**. The build targets Chrome 111, so older Chromium cannot run it. Firefox needs 130+ for frame export and silent video, which use WebCodecs
 - An active, logged-in Instagram session in the same browser profile
 - A logged-in WhatsApp Web session, for Status capture
 - Node.js 22.18+ or 24.2+ for the optional CLI
@@ -210,7 +210,7 @@ The extension lives in `apps/extension`. Its Vite build root is `apps/extension/
 
 ## How It Works
 
-GramGrab has two pages, a background worker, and two short-lived execution surfaces:
+GramGrab has two pages people use, a background worker, and two short-lived execution surfaces:
 
 - **Popup UI.** `apps/extension/templates/popup.html` loads the React app from `apps/extension/src/popup.tsx`. It handles URL input, WhatsApp Status capture, media listing, selection, previews, frame and silent-video choices, history, workspace actions, and status feedback. With `?surface=workspace` the same page runs as the full-tab workspace.
 - **Watches page.** `apps/extension/templates/options.html` is the extension's options page. It holds Watches, their Inbox and Needs you lists, Watch export and import, and second-login linking.

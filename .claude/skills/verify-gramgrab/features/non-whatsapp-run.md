@@ -123,7 +123,7 @@ node "$D" eval 'popup.html' "document.querySelector('p.detected-hint')?.textCont
 The field must be prefilled and `p.detected-hint` must read `Instagram URL
 detected. Ready to fetch.` A `tabs.query({active:true,lastFocusedWindow:true})`
 that still returns the Instagram tab proves the target is the action popup, not
-a tab. Proven headless on Helium 156, where `drive.mjs shot popup.html` also
+a tab. Proven headless on Helium 156, where `node "$D" shot popup.html FILE` also
 works without closing the popup. Headed runs are unproven, so use a human
 checkpoint there.
 
