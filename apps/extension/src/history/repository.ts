@@ -14,7 +14,7 @@ import {
   type HistoryReadResult,
   type WhatsAppHistoryReceipt,
 } from './contracts.ts';
-import { protocolHistoryEntry } from './protocol.ts';
+import { protocolHistoryEntry, type HistoryMetadata } from './protocol.ts';
 import { historySource } from './source.ts';
 
 let mutationQueue: Promise<void> = Promise.resolve();
@@ -28,10 +28,6 @@ const supportedHistoryVersions = new Set([1, 2, 3, 4]);
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-
-type HistoryMetadata = Omit<DownloadHistoryEntry, 'requestedExport'> & {
-  requestedExport?: unknown;
-};
 
 function validInstagramMetadata(value: unknown): value is HistoryMetadata {
   const item = value as Partial<HistoryMetadata> | null;
