@@ -1,7 +1,11 @@
-export interface FrameExportSetting {
-  enabled: boolean;
-  timestampSeconds: number;
-}
+import { Schema } from 'effect';
+
+export const FrameExportSettingSchema = Schema.Struct({
+  enabled: Schema.Boolean,
+  timestampSeconds: Schema.Number,
+});
+
+export type FrameExportSetting = typeof FrameExportSettingSchema.Type;
 
 export function maximumFrameSecond(durationSeconds: number): number | undefined {
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return undefined;

@@ -1,5 +1,6 @@
 import { browser } from '../lib/browser';
 import type { MediaItem } from '../popup/media-item.ts';
+import { FrameExportSettingSchema } from '../frame-export/timestamp.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
 import { Option, Schema } from 'effect';
@@ -24,7 +25,7 @@ const WorkspaceSnapshotSchema = Schema.Struct({
   mediaItems: WorkspaceMediaItems,
   frameExportSettings: Schema.Record({
     key: Schema.String,
-    value: Schema.Struct({ enabled: Schema.Boolean, timestampSeconds: Schema.Number }),
+    value: FrameExportSettingSchema,
   }),
   removeAudioIndexes: Schema.mutable(Schema.Array(Schema.Number)),
   autoStartDownload: Schema.optional(Schema.Boolean),
@@ -39,7 +40,6 @@ export type WorkspaceSnapshot = typeof WorkspaceSnapshotSchema.Type;
 
 const decodeSnapshot = Schema.decodeUnknownOption(WorkspaceSnapshotSchema);
 
-/** Reads a claimed transfer, or `undefined` when it is malformed or past its expiry. */
 export function decodeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | undefined {
   return Option.getOrUndefined(
     Option.filter(decodeSnapshot(value), snapshot => snapshot.expiresAt > Date.now())
