@@ -575,10 +575,9 @@ the worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, 
 changes the rate-limit pause in `instagram-requests`. Every such write inside that
 window shares the one reload. The footer's schedule line and the hold banners read
 `watch-scheduler` and `instagram-requests` themselves, without that wait. Those
-reloads go through the
-`WATCH_READ` message, once per signed-in login. The worker answers without an
-Instagram request while that login is still the last one any viewer read found,
-and verifies again otherwise. Opening the page first lists the Watches of the
+reloads go through the `WATCH_READ` message, once per signed-in login. The worker
+answers without an Instagram request while that login is still the last one any
+viewer read found, and verifies again otherwise. Opening the page first lists the Watches of the
 logins `watch-viewer` and `watch-viewer.linked` name, then verifies. Returning to
 its tab or window and every action verify the login once. A verification the
 person starts reuses the worker's last viewer read from the past 5 minutes while
