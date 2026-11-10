@@ -138,7 +138,7 @@ async function run({
       ...(item.mediaId ? { mediaId: item.mediaId } : {}),
       url: item.url,
       filename:
-        preparedMedia && requested.mode._tag === 'FrameExport'
+        requestedExport && requested.mode._tag === 'FrameExport'
           ? frameFilename(item.filenameHint, requested.mode.timestampSeconds)
           : `${item.filenameHint}_${item.itemIndex + 1}${suffix}`,
       mediaType: item.type,
