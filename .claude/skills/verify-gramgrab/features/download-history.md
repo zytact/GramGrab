@@ -10,7 +10,12 @@ fetch something again without hunting for the URL.
 - Re-download a single entry.
 - Remove one entry, or clear everything.
 - Repair: a corrupt store is rebuilt rather than thrown away, reported as
-  `repaired: true` on a list.
+  `repaired: true` on a list. An entry the protocol cannot carry, such as an
+  empty `filenameHint`, a negative `downloadedAt`, or an unknown `origin.kind`,
+  is dropped on its own, from both surfaces, and the rest still lists.
+- Downloaded marker: every fetched or inspected item carries `history` with
+  `downloaded`, `count`, and `latestDownloadedAt` from matching entries. A
+  download recorded at time `0` still reports `latestDownloadedAt: 0`.
 - Avatar receipts name the picture they saved. Re-downloading one after the
   account changed its Avatar fails with `WATCH_AVATAR_CHANGED` instead of saving
   the newer picture. Older receipts saved as `profile-avatar:<username>` name no
@@ -72,8 +77,22 @@ node $D eval "js/background.js" "chrome.storage.local.set({'download-history':{v
 node apps/cli/bin/gramgrab.mjs history list --json
 ```
 
-The result must report `repaired: true` and no invalid entry. Restore the saved
-store before continuing:
+The result must report `repaired: true` and no invalid entry. Repeat with one
+valid entry next to entries the CLI cannot carry; the list must exit 0 with only
+the valid entry:
+
+```bash
+node $D eval "js/background.js" "(() => { const e={origin:{kind:'source',sourceUrl:'https://www.instagram.com/instagram/',sourceKind:'profile'},itemIndex:0,mediaType:'image',filenameHint:'instagram_profile',downloadedAt:1700000000000,outcome:'accepted'}; return chrome.storage.local.set({'download-history':{version:4,entries:[{...e,id:'valid'},{...e,id:'empty-hint',filenameHint:''},{...e,id:'negative-time',downloadedAt:-5},{...e,id:'unknown-origin',origin:{...e.origin,kind:'feed'}}]}}).then(()=>'seeded') })()"
+node apps/cli/bin/gramgrab.mjs history list --json
+```
+
+For the marker, store only the `valid` entry `e` from the seed above, with
+`downloadedAt: 0` and `mediaId` set to the `instagram` Avatar's
+`mediaIdentity.mediaId` from `gramgrab inspect
+https://www.instagram.com/instagram/ --json`. Inspect again; item 1 must carry
+`history: {downloaded: true, count: 1, latestDownloadedAt: 0}`.
+
+Restore the saved store before continuing:
 
 ```bash
 STORE=$(< "$EV/history-store.json")

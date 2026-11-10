@@ -1,5 +1,4 @@
 import { Either, Option, Schema } from 'effect';
-import { ExportSettings } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
@@ -15,6 +14,7 @@ import {
   type HistoryReadResult,
   type WhatsAppHistoryReceipt,
 } from './contracts.ts';
+import { protocolHistoryEntry, type HistoryMetadata } from './protocol.ts';
 import { historySource } from './source.ts';
 
 let mutationQueue: Promise<void> = Promise.resolve();
@@ -29,10 +29,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-type HistoryMetadata = Omit<DownloadHistoryEntry, 'requestedExport'> & {
-  requestedExport?: unknown;
-};
-
 function validInstagramMetadata(value: unknown): value is HistoryMetadata {
   const item = value as Partial<HistoryMetadata> | null;
   return Boolean(item && hasValidIdentity(item) && hasValidMedia(item) && hasValidOutcome(item));
@@ -40,12 +36,10 @@ function validInstagramMetadata(value: unknown): value is HistoryMetadata {
 
 function decodeInstagramEntry(value: unknown): DownloadHistoryEntry | undefined {
   if (!isRecord(value) || !validInstagramMetadata(value)) return undefined;
-  const requestedExport = Schema.decodeUnknownOption(Schema.UndefinedOr(ExportSettings))(
-    value.requestedExport
-  );
-  return Option.isSome(requestedExport)
-    ? { ...value, requestedExport: requestedExport.value }
-    : undefined;
+  return Option.match(protocolHistoryEntry(value), {
+    onNone: () => undefined,
+    onSome: ({ requestedExport }) => ({ ...value, requestedExport }),
+  });
 }
 
 function hasValidIdentity(item: Partial<HistoryMetadata>): boolean {
