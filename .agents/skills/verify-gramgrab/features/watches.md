@@ -461,7 +461,8 @@ Watch the worker or CLI writes while the page is open.
    then add it again: `+ Add`, type `instagram`, `Find account`, tick
    `.opt-disclosure input`, click `Add Watch`. Accept a notification prompt if one
    appears. Require the new Watch selected, `First check pending`, and
-   `WATCHES (N)` again. This costs one lookup request and drops that Watch's
+   `WATCHES (N)` again. Find account and Add Watch each look the target up, a
+   few Instagram requests in all, and deleting drops that Watch's
    baselines and inbox on the copied profile. Stop on a 429 or request-cap
    deferral. Run `watch-problem.mjs release` afterward.
 
@@ -573,7 +574,8 @@ An open options page reloads its list, the open Watch and the inbox 250 ms after
 the worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, or
 changes the rate-limit pause in `instagram-requests`. Every such write inside that
 window shares the one reload. The footer's schedule line and the hold banners read
-`watch-scheduler` and `instagram-requests` themselves, at once. Those reloads go through the
+`watch-scheduler` and `instagram-requests` themselves, without that wait. Those
+reloads go through the
 `WATCH_READ` message, once per signed-in login. The worker answers without an
 Instagram request while that login is still the last one any viewer read found,
 and verifies again otherwise. Opening the page first lists the Watches of the
