@@ -109,10 +109,25 @@ For URL normalization, type the post URL with `http`, query parameters, and a
 fragment, then blur the field. Read `#source-url` back with `eval`; it must equal
 the canonical HTTPS URL.
 
-The actual toolbar popup and active-tab detection need a human checkpoint. Bring
-the post fixture to the front, click GramGrab in the browser toolbar, and verify
-that the field is prefilled and `Instagram URL detected. Ready to fetch.` is
-visible. Click `Open in tab`; the workspace must inherit the URL and results.
+The actual toolbar popup and active-tab detection can be driven without a click.
+Open and activate an Instagram tab, then open the real action popup from the
+worker:
+
+```bash
+node "$D" open "https://www.instagram.com/instagram/"
+node "$D" activate "instagram.com/instagram/"
+node "$D" eval "js/background.js" "chrome.action.openPopup().then(()=>'opened')"
+node "$D" eval 'popup.html' "document.querySelector('p.detected-hint')?.textContent"
+```
+
+The field must be prefilled and `p.detected-hint` must read `Instagram URL
+detected. Ready to fetch.` A `tabs.query({active:true,lastFocusedWindow:true})`
+that still returns the Instagram tab proves the target is the action popup, not
+a tab. Proven headless on Helium 156, where `drive.mjs shot popup.html` also
+works without closing the popup. Headed runs are unproven, so use a human
+checkpoint there.
+
+Click `Open in tab`; the workspace must inherit the URL and results.
 Open the toolbar popup again and verify the control now says `Go to tab` and
 focuses the existing workspace. Save screenshots before and after the handoff.
 
