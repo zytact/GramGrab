@@ -5,9 +5,10 @@ import { Either } from 'effect';
 import { getDownloadCalls, getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
 import { createOperationId, createRequestId } from '../download/contracts.ts';
 import { captureWhatsAppVisibleStatus } from './capture.ts';
-import { encodeCanonicalBase64 } from './base64.ts';
 import { decodeWhatsAppInbound } from './contracts.ts';
 import { WHATSAPP_EDIT_LEASE_MS } from './limits.ts';
+
+const encodeBase64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
 let revokeObjectUrl: ReturnType<typeof vi.fn>;
 
@@ -134,7 +135,7 @@ describe('WhatsApp popup-owned capture transfer', () => {
       tag: 'CaptureChunk',
       sequence: 0,
       decodedLength: payload.length,
-      payload: encodeCanonicalBase64(payload),
+      payload: encodeBase64(payload),
     });
     const ack = port.postMessage.mock.calls.at(-1)?.[0];
     expect(ack).toMatchObject({ tag: 'ChunkAck', sequence: 0 });

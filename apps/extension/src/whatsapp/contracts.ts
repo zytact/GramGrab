@@ -1,6 +1,6 @@
 import { Schema } from 'effect';
 import { OperationIdSchema, RequestIdSchema } from '../download/contracts.ts';
-import { decodeCanonicalBase64 } from './base64.ts';
+import { isCanonicalBase64Chunk } from './base64.ts';
 import {
   WHATSAPP_MAX_CHUNK_BYTES,
   WHATSAPP_MAX_CHUNKS,
@@ -30,7 +30,7 @@ const DurationMs = Schema.Number.pipe(
 );
 const CanonicalBase64Shape = Schema.String.pipe(
   Schema.pattern(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u),
-  Schema.filter(value => decodeCanonicalBase64(value) !== undefined, {
+  Schema.filter(isCanonicalBase64Chunk, {
     message: () => 'must be canonical, non-empty base64 within the chunk limit',
   })
 );

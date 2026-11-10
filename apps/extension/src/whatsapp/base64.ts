@@ -2,33 +2,33 @@ import { WHATSAPP_MAX_CHUNK_BYTES } from './limits.ts';
 
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const CANONICAL_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
-const BINARY_CHUNK_SIZE = 8_192;
 
-export function encodeCanonicalBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += BINARY_CHUNK_SIZE) {
-    const end = Math.min(offset + BINARY_CHUNK_SIZE, bytes.length);
-    binary += String.fromCharCode(...bytes.subarray(offset, end));
-  }
-  return btoa(binary);
+function paddingLength(value: string): 0 | 1 | 2 {
+  if (value.endsWith('==')) return 2;
+  return value.endsWith('=') ? 1 : 0;
 }
 
-function hasZeroTrailingBits(value: string): boolean {
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+function hasZeroTrailingBits(value: string, padding: 0 | 1 | 2): boolean {
   if (padding === 0) return true;
-  const last = BASE64_ALPHABET.indexOf(value.charAt(value.length - padding - 1));
-  return (last & (padding === 2 ? 0b1111 : 0b11)) === 0;
+  const lastSextet = BASE64_ALPHABET.indexOf(value.charAt(value.length - padding - 1));
+  return (lastSextet & (padding === 2 ? 0b1111 : 0b11)) === 0;
 }
 
-export function decodeCanonicalBase64(value: string): Uint8Array<ArrayBuffer> | undefined {
+export function isCanonicalBase64Chunk(value: string): boolean {
   if (
     value.length === 0 ||
     value.length % 4 !== 0 ||
-    !CANONICAL_BASE64.test(value) ||
-    !hasZeroTrailingBits(value) ||
-    value.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4
+    value.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4 ||
+    !CANONICAL_BASE64.test(value)
   )
-    return undefined;
+    return false;
+  const padding = paddingLength(value);
+  const decodedLength = (value.length / 4) * 3 - padding;
+  return decodedLength <= WHATSAPP_MAX_CHUNK_BYTES && hasZeroTrailingBits(value, padding);
+}
+
+export function decodeCanonicalBase64(value: string): Uint8Array<ArrayBuffer> | undefined {
+  if (!isCanonicalBase64Chunk(value)) return undefined;
 
   let binary: string;
   try {

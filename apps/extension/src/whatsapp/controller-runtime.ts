@@ -613,11 +613,16 @@ function isCanonicalBase64Shape(value: unknown): value is string {
   );
 }
 
+function base64PaddingLength(value: string): 0 | 1 | 2 {
+  if (value.endsWith('==')) return 2;
+  return value.endsWith('=') ? 1 : 0;
+}
+
 function hasZeroTrailingBits(value: string): boolean {
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  const padding = base64PaddingLength(value);
   if (padding === 0) return true;
-  const last = BASE64_ALPHABET.indexOf(value.charAt(value.length - padding - 1));
-  return (last & (padding === 2 ? 0b1111 : 0b11)) === 0;
+  const lastSextet = BASE64_ALPHABET.indexOf(value.charAt(value.length - padding - 1));
+  return (lastSextet & (padding === 2 ? 0b1111 : 0b11)) === 0;
 }
 
 function isShapeEvidence(value: unknown): value is WhatsAppShapeEvidence {
@@ -853,16 +858,10 @@ function decodeChunk(value: Record<string, unknown>, base: InboundBase): Outboun
     !isIntegerBetween(value.sequence, 0, WHATSAPP_MAX_CHUNKS - 1) ||
     !isIntegerBetween(value.decodedLength, 1, WHATSAPP_MAX_CHUNK_BYTES) ||
     !isCanonicalBase64Shape(value.payload) ||
-    value.payload.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4
+    value.payload.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4 ||
+    (value.payload.length / 4) * 3 - base64PaddingLength(value.payload) !== value.decodedLength
   )
     return undefined;
-  let binary: string;
-  try {
-    binary = atob(value.payload);
-  } catch {
-    return undefined;
-  }
-  if (binary.length !== value.decodedLength) return undefined;
   return {
     ...base,
     tag: 'CaptureChunk',

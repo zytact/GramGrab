@@ -6,9 +6,9 @@ export class WhatsAppCaptureSnapshot {
   #objectUrl: string | undefined;
   #released = false;
 
-  constructor(descriptor: WhatsAppCaptureDescriptor, bytes: Uint8Array<ArrayBuffer>[]) {
+  constructor(descriptor: WhatsAppCaptureDescriptor, bytes: readonly Uint8Array<ArrayBuffer>[]) {
     this.descriptor = descriptor;
-    this.#blob = new Blob(bytes, { type: descriptor.mimeType });
+    this.#blob = new Blob([...bytes], { type: descriptor.mimeType });
   }
 
   get blob(): Blob {
@@ -33,7 +33,7 @@ export class WhatsAppCaptureSnapshot {
 
 export function makeWhatsAppCaptureSnapshot(
   descriptor: WhatsAppCaptureDescriptor,
-  bytes: Uint8Array<ArrayBuffer>[]
+  bytes: readonly Uint8Array<ArrayBuffer>[]
 ): WhatsAppCaptureSnapshot {
   return new WhatsAppCaptureSnapshot(descriptor, bytes);
 }
