@@ -86,8 +86,9 @@ node $D eval "js/background.js" "(() => { const e={origin:{kind:'source',sourceU
 node apps/cli/bin/gramgrab.mjs history list --json
 ```
 
-For the marker, store one entry with `downloadedAt: 0` whose `mediaId` is the
-`instagram` Avatar's `mediaIdentity.mediaId` from `gramgrab inspect
+For the marker, store only the `valid` entry `e` from the seed above, with
+`downloadedAt: 0` and `mediaId` set to the `instagram` Avatar's
+`mediaIdentity.mediaId` from `gramgrab inspect
 https://www.instagram.com/instagram/ --json`. Inspect again; item 1 must carry
 `history: {downloaded: true, count: 1, latestDownloadedAt: 0}`.
 
