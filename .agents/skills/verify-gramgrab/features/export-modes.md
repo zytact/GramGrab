@@ -193,3 +193,10 @@ re-encoded video prints `video,720,720` and `audio`.
   before anything reaches the browser.
 - Re-encoding is CPU-bound and can outlast a short timeout. The terminal
   deadline is 30 minutes for a reason.
+- Frame export, video rotation and WhatsApp Remove audio load the video
+  library on first use as `js/mediabunny.js`; the popup does not load it at
+  open. To prove that live, trace CDP `Network.requestWillBeSent` on the popup
+  target: the chunk is requested at the first such export, from `js/batch.js`.
+  `performance.getEntriesByType('resource')` lists no `chrome-extension://`
+  request, so it cannot show the chunk either way. The chunk reads MP4 and
+  QuickTime only.

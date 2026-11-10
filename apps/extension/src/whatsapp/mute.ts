@@ -1,12 +1,10 @@
-import {
-  ALL_FORMATS,
-  BlobSource,
+import type {
   BufferTarget,
   Conversion,
   Input,
   Mp4OutputFormat,
   Output,
-  type VideoCodec,
+  VideoCodec,
 } from 'mediabunny';
 import { isOperationFailure } from '../errors/contracts.ts';
 import {
@@ -15,8 +13,6 @@ import {
 } from '../errors/normalize.ts';
 import { fitsWithinWhatsAppPeakMemory } from './lease.ts';
 import { WHATSAPP_MAX_MEDIA_BYTES } from './limits.ts';
-
-const mp4 = new Mp4OutputFormat({ fastStart: false });
 
 export type WhatsAppSilentProgress = (phase: string, progress: number) => void;
 
@@ -37,7 +33,7 @@ export function makeOutputMemoryGuard(maximumBytes: number, onExceeded: () => vo
   };
 }
 
-async function supportedVideoCodec(input: Input): Promise<VideoCodec> {
+async function supportedVideoCodec(input: Input, mp4: Mp4OutputFormat): Promise<VideoCodec> {
   const video = await input.getPrimaryVideoTrack();
   if (!video) throw normalizeWhatsAppSilentFailure('SILENT_SOURCE_NO_VIDEO', 'silent-inspection');
   const codec = await video.getCodec();
@@ -91,15 +87,18 @@ export async function createWhatsAppSilentVideo(
   const maximumOutputBytes = WHATSAPP_MAX_MEDIA_BYTES - blob.size;
   if (maximumOutputBytes < 0)
     throw normalizeWhatsAppSilentFailure('SILENT_MEMORY_CAPACITY_EXCEEDED', 'silent-reencode');
-  const input = new Input({
-    formats: ALL_FORMATS,
-    source: new BlobSource(blob, { maxCacheSize: 2 ** 21 }),
-  });
-  const target = new BufferTarget();
-  const output = new Output({ format: mp4, target });
+  onProgress('inspecting', 0);
+  let input: Input | undefined;
+  let target: BufferTarget | undefined;
+  let output: Output | undefined;
   try {
-    onProgress('inspecting', 0);
-    const codec = await supportedVideoCodec(input);
+    const { BufferTarget, Conversion, Mp4OutputFormat, Output, openVideoInput } =
+      await import('../video/mediabunny.ts');
+    const mp4 = new Mp4OutputFormat({ fastStart: false });
+    input = openVideoInput(blob, { maxCacheSize: 2 ** 21 });
+    target = new BufferTarget();
+    output = new Output({ format: mp4, target });
+    const codec = await supportedVideoCodec(input, mp4);
     const conversion = await Conversion.init({
       input,
       output,
@@ -125,8 +124,8 @@ export async function createWhatsAppSilentVideo(
     if (isOperationFailure(cause)) throw cause;
     throw normalizeWhatsAppSilentFailure('SILENT_REENCODE_FAILED', 'silent-reencode');
   } finally {
-    target.buffer = null;
-    if (output.state !== 'finalized') await output.cancel().catch(() => undefined);
-    input.dispose();
+    if (target) target.buffer = null;
+    if (output && output.state !== 'finalized') await output.cancel().catch(() => undefined);
+    input?.dispose();
   }
 }

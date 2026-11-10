@@ -1,5 +1,5 @@
 import { Effect, Either } from 'effect';
-import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
+import type { Input } from 'mediabunny';
 import { VideoFrameExtractionFailed } from '../effect/errors.ts';
 import { canvasToJpeg, drawModified, type Modifiers } from '../rotation/media.ts';
 
@@ -19,7 +19,10 @@ const decodeFrame = (input: Input, timestampSeconds: number) =>
     if (!Number.isFinite(duration) || duration <= 0) return yield* failure('no-duration');
     const firstTimestamp = yield* attempt(() => track.getFirstTimestamp());
     const at = Math.max(firstTimestamp, Math.min(Math.ceil(duration) - 1, timestampSeconds));
-    const frame = yield* attempt(() => new CanvasSink(track).getCanvas(at));
+    const frame = yield* attempt(async () => {
+      const { CanvasSink } = await import('../video/mediabunny.ts');
+      return new CanvasSink(track).getCanvas(at);
+    });
     return frame?.canvas ?? (yield* failure('no-frame'));
   });
 
@@ -33,7 +36,10 @@ export const captureFrameFromSource = (
   modifiers: Modifiers = {}
 ): Promise<Either.Either<Blob, VideoFrameExtractionFailed>> =>
   Effect.acquireUseRelease(
-    Effect.sync(() => new Input({ formats: ALL_FORMATS, source: new BlobSource(source) })),
+    attempt(async () => {
+      const { openVideoInput } = await import('../video/mediabunny.ts');
+      return openVideoInput(source);
+    }),
     input =>
       Effect.gen(function* () {
         const frame = yield* decodeFrame(input, timestampSeconds).pipe(
