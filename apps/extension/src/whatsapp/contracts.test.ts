@@ -11,11 +11,7 @@ import {
   createWhatsAppCaptureId,
   type WhatsAppCaptureDescriptor,
 } from './contracts.ts';
-import {
-  decodeCanonicalBase64,
-  encodeCanonicalBase64,
-  splitIntoCanonicalBase64Chunks,
-} from './base64.ts';
+import { decodeCanonicalBase64, encodeCanonicalBase64 } from './base64.ts';
 import {
   WHATSAPP_MAX_CHUNK_BYTES,
   WHATSAPP_MAX_CHUNKS,
@@ -138,8 +134,8 @@ describe('WhatsApp capture contracts', () => {
     expect(
       decodeCanonicalBase64(encodeCanonicalBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES + 1)))
     ).toBeUndefined();
-    const chunks = splitIntoCanonicalBase64Chunks(new Uint8Array([1, 2, 3, 4]), 2);
-    expect(chunks.map(chunk => decodeCanonicalBase64(chunk)?.length)).toEqual([2, 2]);
+    const fullChunk = encodeCanonicalBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES));
+    expect(decodeCanonicalBase64(fullChunk)?.length).toBe(WHATSAPP_MAX_CHUNK_BYTES);
   });
 
   it('rejects zero-length and malformed chunk envelopes before bytes are retained', () => {

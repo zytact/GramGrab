@@ -113,12 +113,6 @@ const DeleteWhatsAppHistoryReceipt = Schema.Struct({
   receipt: Schema.Unknown,
 });
 
-const RecordFrameExport = Schema.Struct({
-  type: Schema.Literal('RECORD_FRAME_EXPORT'),
-  ...RecordExportFields,
-  item: FrameHistoryItem,
-});
-
 const DownloadFrameExport = Schema.Struct({
   type: Schema.Literal('DOWNLOAD_FRAME_EXPORT'),
   ...RecordExportFields,
@@ -136,16 +130,6 @@ const RecordDirectExport = Schema.Struct({
   type: Schema.Literal('RECORD_DIRECT_EXPORT'),
   ...RecordExportFields,
   item: HistoryItem,
-});
-
-const DebugShape = Schema.Struct({
-  type: Schema.Literal('DEBUG_SHAPE'),
-  url: Schema.optional(Schema.String),
-});
-
-const DownloadDebugJson = Schema.Struct({
-  type: Schema.Literal('DOWNLOAD_DEBUG_JSON'),
-  json: Schema.optional(Schema.Unknown),
 });
 
 const WatchCommandMessage = Schema.Struct({
@@ -228,12 +212,9 @@ const MessageSchema = Schema.Union(
   RedownloadHistoryEntry,
   RecordWhatsAppHistory,
   DeleteWhatsAppHistoryReceipt,
-  RecordFrameExport,
   DownloadFrameExport,
   RecordSilentExport,
   RecordDirectExport,
-  DebugShape,
-  DownloadDebugJson,
   WatchCommandMessage,
   WatchReadMessage,
   WatchPreview,
@@ -380,15 +361,9 @@ interface MessageResponses extends Record<MessageType, unknown> {
   REDOWNLOAD_HISTORY_ENTRY: RedownloadHistoryEntryResponse;
   RECORD_WHATSAPP_HISTORY: { saved?: true; warning?: 'HISTORY_SAVE_FAILED' };
   DELETE_WHATSAPP_HISTORY_RECEIPT: HistoryEntriesResponse;
-  RECORD_FRAME_EXPORT: ExportRecordResponse;
   DOWNLOAD_FRAME_EXPORT: ExportRecordResponse;
   RECORD_SILENT_EXPORT: ExportRecordResponse;
   RECORD_DIRECT_EXPORT: ExportRecordResponse;
-  // A debug inspection surface, not an operation: `raw` is the unmodified upstream response and
-  // `error` is its free-form counterpart. Neither is rendered as UI copy or offered for copying,
-  // so neither belongs in the failure registry.
-  DEBUG_SHAPE: { raw?: unknown; error?: string };
-  DOWNLOAD_DEBUG_JSON: FailureOnlyResponse;
   WATCH_COMMAND: WatchCommandResponse;
   WATCH_READ: WatchCommandResponse;
   WATCH_PREVIEW: WatchPreviewResponse;

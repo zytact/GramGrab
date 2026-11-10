@@ -63,15 +63,9 @@ import {
   type HistoryMarker,
 } from './history/contracts.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
-import {
-  fetchInstantMedia,
-  parseInstagramUrl,
-  resolveMediaEffect,
-  type Resolution,
-} from './instagram/acquisition.ts';
+import { fetchInstantMedia, resolveMediaEffect, type Resolution } from './instagram/acquisition.ts';
 import { runOperationHandler } from './effect/runtime.ts';
 import { fetchBlobAsDataUrl } from './effect/instagram.ts';
-import { fetchRestShortcodeRaw } from './instagram/rest-shortcode.ts';
 import { isAvatarMediaId, type MediaItem } from './instagram/normalize.ts';
 import {
   DownloadAcceptedResult,
@@ -91,9 +85,7 @@ import {
 } from './messaging/contracts.ts';
 import { MESSAGE_REFUSALS } from './messaging/refusals.ts';
 import { sendTabMessage } from './messaging/send.ts';
-import { formatError } from './effect/errors.ts';
 import { OperationFailure, OperationWarning, watchFailure } from './errors/contracts.ts';
-import { PersonRequests } from './instagram/requests.ts';
 import { listenForLinkedCookies, restoreLinkedRule } from './instagram/linked-login.ts';
 import { linkLogin, loginNames, unlinkLinkedLogin } from './instagram/link.ts';
 import { installInstagramOrigin } from './instagram/origin.ts';
@@ -493,14 +485,9 @@ async function handleRedownloadHistoryEntry(
 
 /** Records an export a document downloaded itself, so history holds what the file became. */
 async function recordDocumentExport(
-  msg: MessageOf<
-    | 'RECORD_FRAME_EXPORT'
-    | 'DOWNLOAD_FRAME_EXPORT'
-    | 'RECORD_SILENT_EXPORT'
-    | 'RECORD_DIRECT_EXPORT'
-  >,
+  msg: MessageOf<'DOWNLOAD_FRAME_EXPORT' | 'RECORD_SILENT_EXPORT' | 'RECORD_DIRECT_EXPORT'>,
   exportMode: 'direct' | 'frame' | 'silent'
-): Promise<MessageResponse<'RECORD_FRAME_EXPORT'>> {
+): Promise<MessageResponse<'DOWNLOAD_FRAME_EXPORT'>> {
   const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
   if (msg.originKind !== 'instants' && !source) return { warning: 'HISTORY_SAVE_FAILED' };
   try {
@@ -574,49 +561,6 @@ async function handleFetchVideoBlob(
     { dataUrl: undefined },
     normalizeMediaTransferFailure
   );
-}
-
-async function handleDebugShape(
-  msg: MessageOf<'DEBUG_SHAPE'>
-): Promise<MessageResponse<'DEBUG_SHAPE'>> {
-  const parsed = parseInstagramUrl(msg.url ?? '');
-  if (!parsed || (parsed.type !== 'post' && parsed.type !== 'reel')) {
-    return { error: 'Use a post or reel URL for debug' };
-  }
-  return Effect.runPromise(
-    fetchRestShortcodeRaw(parsed.shortcode!).pipe(
-      Effect.map(raw => ({ raw })),
-      Effect.catchAll(err => Effect.succeed({ error: formatError(err) })),
-      Effect.provide(PersonRequests())
-    )
-  );
-}
-
-async function handleDownloadDebugJson(
-  msg: MessageOf<'DOWNLOAD_DEBUG_JSON'>
-): Promise<MessageResponse<'DOWNLOAD_DEBUG_JSON'>> {
-  if (!msg.json) {
-    return {
-      failure: OperationFailure.make({
-        code: 'DOWNLOAD_UNEXPECTED_FAILURE',
-        phase: 'browser-download',
-        scope: 'item',
-      }),
-    };
-  }
-  try {
-    // Use jsonToDataUrl — avoids URL.createObjectURL which is unavailable in
-    // Chromium MV3 service workers.
-    const url = jsonToDataUrl(msg.json);
-    await browser.downloads.download({
-      url,
-      filename: `gramgrab-debug-${Date.now()}.json`,
-      saveAs: true,
-    });
-    return { failure: undefined };
-  } catch (cause) {
-    return { failure: normalizeBrowserDownloadFailure(cause) };
-  }
 }
 
 const CONTEXT_MENU_ROOT = 'gramgrab';
@@ -1294,13 +1238,10 @@ const messageHandlers: MessageHandlers = {
     }
   },
   REDOWNLOAD_HISTORY_ENTRY: handleRedownloadHistoryEntry,
-  RECORD_FRAME_EXPORT: message => recordDocumentExport(message, 'frame'),
   DOWNLOAD_FRAME_EXPORT: handleDownloadFrameExport,
   RECORD_SILENT_EXPORT: message => recordDocumentExport(message, 'silent'),
   RECORD_DIRECT_EXPORT: message => recordDocumentExport(message, 'direct'),
   FETCH_VIDEO_BLOB: handleFetchVideoBlob,
-  DEBUG_SHAPE: handleDebugShape,
-  DOWNLOAD_DEBUG_JSON: handleDownloadDebugJson,
   WATCH_COMMAND: message =>
     runWatchCommand(message.command, runPreparedInDocument, undefined, message.login),
   WATCH_READ: message => runWatchRead(message.command, message.viewer, message.login),
