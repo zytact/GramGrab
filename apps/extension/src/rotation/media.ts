@@ -1,16 +1,4 @@
-import {
-  ALL_FORMATS,
-  BlobSource,
-  BufferTarget,
-  EncodedAudioPacketSource,
-  EncodedPacketSink,
-  EncodedVideoPacketSource,
-  Input,
-  Mp4OutputFormat,
-  Output,
-  type EncodedPacket,
-  type InputTrack,
-} from 'mediabunny';
+import type { EncodedPacket } from 'mediabunny';
 import { cropPixels, type Crop } from '../crop/contracts.ts';
 import { combineRotations, swapsAxes, type Rotation } from './contracts.ts';
 
@@ -76,11 +64,11 @@ export async function modifyImage(image: Blob, modifiers: Modifiers): Promise<Bl
 
 /** Copies one track's encoded packets unchanged apart from a timestamp shift. */
 async function copyPackets(
-  track: InputTrack,
+  packets: AsyncIterable<EncodedPacket>,
   shift: number,
   add: (packet: EncodedPacket) => Promise<void>
 ): Promise<void> {
-  for await (const packet of new EncodedPacketSink(track).packets())
+  for await (const packet of packets)
     await add(packet.clone({ timestamp: packet.timestamp - shift }));
 }
 
@@ -89,7 +77,16 @@ async function copyPackets(
  * copied through, so nothing is decoded or re-encoded.
  */
 export async function rotateVideo(video: Blob, rotation: Rotation): Promise<Blob> {
-  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(video) });
+  const {
+    BufferTarget,
+    EncodedAudioPacketSource,
+    EncodedPacketSink,
+    EncodedVideoPacketSource,
+    Mp4OutputFormat,
+    Output,
+    openVideoInput,
+  } = await import('../video/mediabunny.ts');
+  const input = openVideoInput(video);
   try {
     const format = new Mp4OutputFormat();
     const target = new BufferTarget();
@@ -121,14 +118,14 @@ export async function rotateVideo(video: Blob, rotation: Rotation): Promise<Blob
 
     await output.start();
     await Promise.all([
-      copyPackets(videoTrack, shift, packet => videoSource.add(packet, videoMeta)).then(() =>
-        videoSource.close()
-      ),
+      copyPackets(new EncodedPacketSink(videoTrack).packets(), shift, packet =>
+        videoSource.add(packet, videoMeta)
+      ).then(() => videoSource.close()),
       audioTrack &&
         audioSource &&
-        copyPackets(audioTrack, shift, packet => audioSource.add(packet, audioMeta)).then(() =>
-          audioSource.close()
-        ),
+        copyPackets(new EncodedPacketSink(audioTrack).packets(), shift, packet =>
+          audioSource.add(packet, audioMeta)
+        ).then(() => audioSource.close()),
     ]);
     await output.finalize();
     if (!target.buffer) throw new Error('The rotated video was not written.');

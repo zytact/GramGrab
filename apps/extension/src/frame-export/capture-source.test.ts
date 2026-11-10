@@ -15,7 +15,8 @@ const media = vi.hoisted(() => ({
 }));
 
 vi.mock('mediabunny', () => ({
-  ALL_FORMATS: [],
+  MP4: {},
+  QTFF: {},
   BlobSource: class {},
   Input: class {
     getPrimaryVideoTrack = () => Promise.resolve(media.track);
