@@ -59,9 +59,6 @@ describe('operation error contracts', () => {
     for (const code of FAILURE_CODES) {
       expect(FAILURE_PRESENTATION[code].title).not.toBe('');
     }
-  });
-
-  it('preserves the invalid-source input policy', () => {
     expect(FAILURE_PRESENTATION.INPUT_INVALID_SOURCE_URL).toEqual({
       title: 'Use an Instagram link',
       explanation: 'Enter a valid Instagram link.',

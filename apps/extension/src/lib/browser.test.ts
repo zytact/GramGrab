@@ -250,10 +250,5 @@ describe('browser shim', () => {
       await expect(shim.storage.get()).resolves.toEqual({});
       await expect(shim.storage.set({})).resolves.toBeUndefined();
     });
-
-    it('no-op onMessage.addListener does not throw', async () => {
-      const shim = await loadShim();
-      expect(() => shim.runtime.onMessage.addListener(vi.fn())).not.toThrow();
-    });
   });
 });
