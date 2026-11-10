@@ -820,7 +820,7 @@ describe('Popup', () => {
       render(<Popup />);
     });
     await waitFor(() => {
-      expect(screen.getByText(/Instagram URL detected/i)).toBeDefined();
+      expect(screen.getByText('Instagram URL detected. Ready to fetch.')).toBeDefined();
     });
   });
 

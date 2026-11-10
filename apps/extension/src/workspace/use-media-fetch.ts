@@ -32,7 +32,7 @@ function applyFetchSuccess(
   options.setStatus(items.length > 0 || options.acquisition === 'instants' ? 'done' : 'error');
   options.setMessage(
     items.length > 0
-      ? `${items.length} item${items.length !== 1 ? 's' : ''} found — select and download.`
+      ? `${items.length} item${items.length !== 1 ? 's' : ''} found. Select and download.`
       : options.acquisition === 'instants'
         ? 'No active Instants.'
         : 'No downloadable media found.'

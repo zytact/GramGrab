@@ -3,7 +3,7 @@
 /**
  * Integration tests: user drives the popup UI and we assert on real side-effects
  * (browser.downloads.download calls, rendered DOM). The background dispatcher runs
- * the actual message handlers — no stub at the message boundary except where we need
+ * the actual message handlers, with no stub at the message boundary except where we need
  * to avoid real network calls (FETCH_MEDIA stubs canned media; fetch() is mocked for
  * tests that route through the real graphql handler).
  */
@@ -98,7 +98,7 @@ describe('integration: user-facing flows', () => {
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('1 item found'));
   });
 
-  // ── Flow 3: Error path — invalid URL ────────────────────────────────────────
+  // ── Flow 3: Error path, invalid URL ────────────────────────────────────────
 
   it('shows error and triggers no downloads when background rejects the URL', async () => {
     const user = userEvent.setup();
@@ -121,7 +121,7 @@ describe('integration: user-facing flows', () => {
     expect(getDownloadCalls()).toHaveLength(0);
   });
 
-  // ── Flow 4: Fallback preview — GET_PREVIEW_URL triggered on img error ───────
+  // ── Flow 4: Fallback preview, GET_PREVIEW_URL triggered on img error ───────
 
   it('fetches fallback preview URL when image fails to load and updates the img src', async () => {
     const PREVIEW_DATA_URL = 'data:image/png;base64,abc==';

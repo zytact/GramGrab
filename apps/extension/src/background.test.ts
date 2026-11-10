@@ -949,7 +949,7 @@ describe('background dispatcher', () => {
     });
   });
 
-  describe('FETCH_MEDIA — shortcode fallback', () => {
+  describe('FETCH_MEDIA shortcode fallback', () => {
     it.each([
       [401, 'IG_NOT_AUTHENTICATED'],
       [403, 'IG_ACCESS_FORBIDDEN'],
@@ -1184,7 +1184,7 @@ describe('background dispatcher', () => {
     });
   });
 
-  describe('FETCH_MEDIA — story', () => {
+  describe('FETCH_MEDIA story', () => {
     const storyUrl = 'https://www.instagram.com/stories/instagram/';
     const storyReels = {
       data: {
@@ -1353,7 +1353,7 @@ describe('background dispatcher', () => {
 
   // ── FETCH_MEDIA (profile) ─────────────────────────────────────────────────
 
-  describe('FETCH_MEDIA — profile', () => {
+  describe('FETCH_MEDIA profile', () => {
     const profileUrl = 'https://www.instagram.com/someuser/';
     const COVER_URL = 'https://cdn.instagram.com/crop2.jpg';
     const profile = (user: Record<string, unknown>) => () =>

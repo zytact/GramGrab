@@ -9,7 +9,7 @@ remain inside the browser extension.
 | Operating system | Chromium                        | Firefox                         | Local endpoint                                               |
 | ---------------- | ------------------------------- | ------------------------------- | ------------------------------------------------------------ |
 | Linux            | Implemented, manual run pending | Implemented, manual run pending | `$XDG_RUNTIME_DIR/gramgrab-UID.sock`, falling back to `/tmp` |
-| macOS            | Implemented, manual run pending | Implemented, manual run pending | `/tmp/gramgrab-UID.sock`                                     |
+| macOS            | Implemented, manual run pending | Implemented, manual run pending | `$XDG_RUNTIME_DIR/gramgrab-UID.sock`, falling back to `/tmp` |
 | Windows          | Implemented, manual run pending | Implemented, manual run pending | `\\.\pipe\gramgrab`                                          |
 
 Node.js 22.18+ or 24.2+ is required. The extension, CLI, and native host must use the same protocol
@@ -25,6 +25,7 @@ The installer verifies `gramgrab-tools.tar.gz` against the release's `SHA256SUMS
 `~/.local/share/gramgrab/versions/VERSION`, points `~/.local/share/gramgrab/current` at it, and
 links `~/.local/bin/gramgrab`. It writes filled native-host manifests to
 `~/.local/share/gramgrab/chromium.json` and `firefox.json`, whose host path goes through `current`.
+`$XDG_DATA_HOME/gramgrab` replaces `~/.local/share/gramgrab` when that variable is set.
 Register the one for your browser once, as shown in the installer's output. Registration survives
 every update.
 
@@ -43,7 +44,7 @@ skip it.
 
 ## Portable artifacts
 
-Run `vp run package-tools` to create the self-contained Node.js distribution under `artifacts/`.
+Run `vp run package:tools` to create the self-contained Node.js distribution under `artifacts/`.
 The directory contains the `gramgrab.mjs` CLI, the `gramgrab-native-host.mjs` host, their shared
 hashed bundle, native-host manifest templates, and `SHA256SUMS`. Copy the entire directory because
 both entry points import the shared bundle. CI builds and launches this distribution on Linux,
@@ -89,10 +90,20 @@ decode a newer command. Additive and breaking wire changes both require a new pr
 updated participant decoders, shared compatibility fixtures, and an extension/native-host/CLI
 release produced from the same revision.
 
+Protocol 7 replaces `WatchListResult.otherLoginWatchCount` with `heldWatches`, the Watches no
+signed-in login can check, each with its owner (`linked` or `other`). Update the extension, native
+host and CLI together. Protocol 6 participants receive `PROTOCOL_VERSION_UNSUPPORTED` instead of a
+list without those Watches.
+
 Protocol 6 adds the optional `crop` on `ExportOperation` and `HistoryEntry`, plus the
 `CROP_FAILED` failure code. Update the extension, native host and CLI together. A protocol 5
 extension would drop a plan's crop and download the item uncropped, so it answers
 `PROTOCOL_VERSION_UNSUPPORTED` instead.
+
+Protocol 5 adds the optional `login` (`main` or `linked`) on `Request`, which `--login` sets, plus
+the `IG_LINKED_LOGIN_MISSING` and `IG_LINKED_LOGIN_ENDED` failure codes. Update the extension,
+native host and CLI together. A protocol 4 extension would run a linked-login request as the main
+login, so it answers `PROTOCOL_VERSION_UNSUPPORTED` instead.
 
 Protocol 4 adds `DiscoverySummary.instagramUrl`, the Instagram page that shows a Watch entry.
 Update the extension, native host and CLI together. Protocol 3 participants receive

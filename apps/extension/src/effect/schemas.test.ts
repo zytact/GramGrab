@@ -7,14 +7,14 @@ import {
 } from './schemas.ts';
 
 // ---------------------------------------------------------------------------
-// ShortcodeMediaResponseSchema — edge cases not covered by real fixtures
+// ShortcodeMediaResponseSchema edge cases not covered by real fixtures
 // ---------------------------------------------------------------------------
 
 describe('ShortcodeMediaResponseSchema', () => {
   it('fails when a display_resource src is missing on a known typename', async () => {
     // MediaResourceSchema.src is required. When __typename is a known image literal,
     // the Image variant is tried first and fails on the missing src.
-    // The union then tries Sidecar (wrong typename), then Unknown (succeeds — no src check).
+    // The union then tries Sidecar (wrong typename), then Unknown (succeeds, no src check).
     // Net result: decode succeeds via Unknown passthrough; normalizer warns + skips.
     // This test documents B2 behavior: the response is not rejected at schema level.
     const input = {
@@ -69,14 +69,14 @@ describe('ShortcodeMediaResponseSchema', () => {
         xdt_shortcode_media: {
           __typename: 'XDTGraphVideo',
           id: '99',
-          // video_resources absent — required on ShortcodeVideoSchema
+          // video_resources absent, required on ShortcodeVideoSchema
         },
       },
     };
     const result = await Effect.runPromise(
       Schema.decodeUnknown(ShortcodeMediaResponseSchema)(input).pipe(Effect.either)
     );
-    // Falls through to UnknownSchema and succeeds — __typename presence determines union branch.
+    // Falls through to UnknownSchema and succeeds. __typename presence determines union branch.
     // Unknown passthrough accepts it. The normalizer will warn and skip.
     expect(result._tag).toBe('Right');
   });
@@ -111,7 +111,7 @@ describe('ShortcodeMediaResponseSchema', () => {
 });
 
 // ---------------------------------------------------------------------------
-// HighlightsTrayResponseSchema — edge cases
+// HighlightsTrayResponseSchema edge cases
 // ---------------------------------------------------------------------------
 
 describe('HighlightsTrayResponseSchema', () => {
@@ -123,7 +123,7 @@ describe('HighlightsTrayResponseSchema', () => {
   });
 
   it('decodes when full_image_version is null (IG returns explicit null)', async () => {
-    // cover_media.full_image_version is NullOr — null must be preserved, not treated as absent
+    // cover_media.full_image_version is NullOr. Null must be preserved, not treated as absent
     const input = {
       tray: [
         {
@@ -159,7 +159,7 @@ describe('HighlightsTrayResponseSchema', () => {
 });
 
 // ---------------------------------------------------------------------------
-// ReelsMediaResponseSchema — edge cases
+// ReelsMediaResponseSchema edge cases
 // ---------------------------------------------------------------------------
 
 describe('ReelsMediaResponseSchema', () => {

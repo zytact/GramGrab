@@ -16,7 +16,7 @@ const DimensionsSchema = Schema.Struct({
 });
 
 // ---------------------------------------------------------------------------
-// Shortcode-media (post / reel) — tagged union on __typename
+// Shortcode-media (post / reel), a tagged union on __typename
 // ---------------------------------------------------------------------------
 
 // Sidecar child nodes share a flat shape (no nested sidecars in practice).
@@ -82,7 +82,7 @@ const ShortcodeSidecarSchema = Schema.Struct({
   is_video: Schema.optional(Schema.Boolean),
 });
 
-// Unknown passthrough — IG ships new typenames occasionally. Decode succeeds;
+// Unknown passthrough. IG ships new typenames occasionally. Decode succeeds;
 // normalizer skips the item and logs a console.warn with the typename.
 const ShortcodeUnknownSchema = Schema.Struct({
   __typename: Schema.optional(Schema.String),

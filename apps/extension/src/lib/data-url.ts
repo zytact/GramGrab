@@ -24,7 +24,7 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 
 /**
  * Serialize a JSON value to a base64 data URL suitable for browser.downloads.download().
- * Does not use URL.createObjectURL — safe in service workers.
+ * Does not use URL.createObjectURL, so it is safe in service workers.
  */
 export function jsonToDataUrl(value: unknown): string {
   const json = JSON.stringify(value, null, 2);

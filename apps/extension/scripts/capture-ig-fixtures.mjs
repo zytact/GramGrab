@@ -20,7 +20,7 @@
 
   // IG_HIGHLIGHT_ID is from /stories/highlights/<ID>/. IG_STORY_USERNAME must have an active Story.
   // IG_TRAY_USERNAME needs visible Highlights, and IG_PROFILE_USERNAME is used for the Posts grid. Posts may be public Instagram URLs or shortcodes.
-  // Shortcodes for each branch of the ShortcodeMedia union — one per __typename.
+  // Shortcodes for each branch of the ShortcodeMedia union, one per __typename.
   // Find one of each by browsing instagram.com: /p/<code>/ for image+sidecar, /reel/<code>/ for video.
   // ---------------------------------------------------------------------------
 
@@ -33,7 +33,7 @@
     // video vs image, sidecar children can be video vs image, tray lists every
     // highlight). Truncating them would silently drop branches we need to test,
     // so they're kept in full. All other arrays are capped at 3 to keep fixtures
-    // small — fine for size-variant lists like display_resources / video_resources
+    // small. That suits size-variant lists like display_resources / video_resources
     // where every entry is the same shape.
     const KEEP_FULL = new Set(['items', 'edges', 'tray']);
     function trim(v, parentKey) {
@@ -396,7 +396,7 @@
           const j = await r.json();
           if (!j?.tray || j.tray.length === 0) {
             console.warn(
-              `  @${TRAY_USERNAME} has no highlights tray — pick a user with visible highlights`
+              `  @${TRAY_USERNAME} has no highlights tray. Pick a user with visible highlights`
             );
           }
           dl('highlights-tray.json', trim(j));

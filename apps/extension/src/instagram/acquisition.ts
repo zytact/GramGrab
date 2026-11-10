@@ -111,7 +111,7 @@ export const resolveUsernameToId = (username: string) =>
   );
 
 // ---------------------------------------------------------------------------
-// Shared Effect pipelines — parse → fetch → normalize
+// Shared Effect pipelines: parse → fetch → normalize
 // ---------------------------------------------------------------------------
 
 function configuredGraphqlHeaders(request: ProtocolRequest): Record<string, string> {
