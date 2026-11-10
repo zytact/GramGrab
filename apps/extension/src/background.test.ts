@@ -711,7 +711,8 @@ describe('background dispatcher', () => {
     it('records a historical frame re-download using its immutable filename', async () => {
       const listener = await loadBackground();
       const result = await invoke(listener, {
-        type: 'RECORD_FRAME_EXPORT',
+        type: 'DOWNLOAD_FRAME_EXPORT',
+        dataUrl: 'data:image/jpeg;base64,ZmFrZQ==',
         sourceUrl: 'https://www.instagram.com/p/abc123/',
         item: {
           itemIndex: 0,
@@ -1185,29 +1186,6 @@ describe('background dispatcher', () => {
     });
   });
 
-  // ── DOWNLOAD_DEBUG_JSON ───────────────────────────────────────────────────
-
-  describe('DOWNLOAD_DEBUG_JSON', () => {
-    it('returns a typed failure when no json payload provided', async () => {
-      const listener = await loadBackground();
-      const result = await invoke(listener, { type: 'DOWNLOAD_DEBUG_JSON' });
-      expect(result).toMatchObject({ failure: { code: 'DOWNLOAD_UNEXPECTED_FAILURE' } });
-    });
-
-    it('downloads a data: URL (no URL.createObjectURL)', async () => {
-      // We verify the download is called with a data: URL — jsonToDataUrl never
-      // calls URL.createObjectURL, so we just check the argument shape.
-      const listener = await loadBackground();
-      await invoke(listener, { type: 'DOWNLOAD_DEBUG_JSON', json: { debug: true } });
-
-      expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: expect.stringMatching(/^data:application\/json;base64,/),
-        })
-      );
-    });
-  });
-
   describe('FETCH_MEDIA — story', () => {
     const storyUrl = 'https://www.instagram.com/stories/instagram/';
     const storyReels = {
@@ -1557,40 +1535,6 @@ describe('background dispatcher', () => {
         expect(response).toMatchObject({ failure: { code: 'WATCH_AVATAR_CHANGED' } });
         expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
       });
-    });
-  });
-
-  // ── DEBUG_SHAPE ───────────────────────────────────────────────────────────
-
-  describe('DEBUG_SHAPE', () => {
-    it('returns { error } for non-post/reel URLs', async () => {
-      const listener = await loadBackground();
-      const result = await invoke(listener, {
-        type: 'DEBUG_SHAPE',
-        url: 'https://www.instagram.com/stories/someuser/',
-      });
-      expect(result).toMatchObject({ error: expect.stringContaining('post or reel') });
-    });
-
-    it('returns { raw } on successful fetch', async () => {
-      const mockRaw = { status: 'ok', items: [{ pk: '123', code: 'abc123', media_type: 1 }] };
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: async () => mockRaw,
-        })
-      );
-      const listener = await loadBackground();
-      const result = await invoke(listener, {
-        type: 'DEBUG_SHAPE',
-        url: 'https://www.instagram.com/p/abc123/',
-      });
-      expect(result).toMatchObject({ raw: mockRaw });
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        expect.stringMatching(/^https:\/\/www\.instagram\.com\/api\/v1\/media\/\d+\/info\/$/),
-        expect.objectContaining({ credentials: 'include' })
-      );
     });
   });
 });

@@ -31,6 +31,13 @@ describe('decodeMessage', () => {
     });
   });
 
+  it('refuses a download request with malformed operation identities', () => {
+    expect(decodeMessage({ type: 'DOWNLOAD_MEDIA', operations: [{ requestId: 'bad' }] })).toEqual({
+      kind: 'unsupported',
+      type: 'DOWNLOAD_MEDIA',
+    });
+  });
+
   it.each([
     ['an unknown type', { type: 'FETCH_TELEPATHICALLY' }],
     ['a message with no type', { url: 'https://www.instagram.com/p/a/' }],

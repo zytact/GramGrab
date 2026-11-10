@@ -7,7 +7,6 @@ import {
   DownloadStartedResult,
   createOperationId,
   createRequestId,
-  decodeDownloadMediaRequest,
   validateCorrelatedResults,
 } from './contracts.ts';
 
@@ -50,12 +49,6 @@ describe('download contracts', () => {
       ],
     });
     expect(validateCorrelatedResults([first, second], response)).toMatchObject({ ok: true });
-  });
-
-  it('rejects malformed operation identities at the request boundary', async () => {
-    await expect(
-      decodeDownloadMediaRequest({ operations: [{ requestId: 'bad' }] })
-    ).rejects.toBeDefined();
   });
 
   it('rejects stale request results even when the operation ID matches', () => {

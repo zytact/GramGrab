@@ -36,18 +36,3 @@ export function decodeCanonicalBase64(
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return encodeCanonicalBase64(bytes) === value ? bytes : undefined;
 }
-
-export function splitIntoCanonicalBase64Chunks(
-  bytes: Uint8Array,
-  maximumChunkLength = WHATSAPP_MAX_CHUNK_BYTES
-): string[] {
-  const chunks: string[] = [];
-  for (let offset = 0; offset < bytes.length; offset += maximumChunkLength) {
-    chunks.push(
-      encodeCanonicalBase64(
-        bytes.subarray(offset, Math.min(offset + maximumChunkLength, bytes.length))
-      )
-    );
-  }
-  return chunks;
-}

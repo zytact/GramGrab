@@ -94,8 +94,6 @@ export const operationIdFrom = (value: string): OperationId =>
 export const requestIdFrom = (value: string): RequestId =>
   Schema.decodeUnknownSync(RequestIdSchema)(value);
 
-export const decodeDownloadMediaRequest = (value: unknown) =>
-  Effect.runPromise(Schema.decodeUnknown(DownloadMediaRequest)(value));
 export const decodeDownloadMediaResponse = (value: unknown) =>
   Effect.runPromise(Schema.decodeUnknown(DownloadMediaResponse)(value));
 
