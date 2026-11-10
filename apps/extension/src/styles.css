@@ -106,7 +106,7 @@ body {
   zoom: 1.15;
 }
 
-/* Top edge — warm amber strip like film leader */
+/* Top edge: warm amber strip like film leader */
 body::before {
   content: '';
   position: fixed;
@@ -167,7 +167,7 @@ body::before {
   flex-shrink: 0;
 }
 
-/* Sprocket holes — film strip top */
+/* Sprocket holes: film strip top */
 .ext-header::after {
   content: '○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○';
   position: absolute;
@@ -799,7 +799,7 @@ input:focus-visible {
   background: var(--brand);
 }
 
-/* Item number — film frame counter style */
+/* Item number: film frame counter style */
 .item-number {
   font-family: var(--font-display);
   font-size: 16px;
@@ -813,7 +813,7 @@ input:focus-visible {
   color: var(--brand);
 }
 
-/* Thumbnail — film frame style */
+/* Thumbnail: film frame style */
 .media-thumb {
   width: 56px;
   height: 42px;
@@ -1062,7 +1062,7 @@ input:focus-visible {
   text-transform: none;
 }
 
-/* Checkbox — square, industrial */
+/* Checkbox: square, industrial */
 .item-checkbox {
   appearance: none;
   -webkit-appearance: none;
@@ -1496,7 +1496,7 @@ body:has(.workspace-container) {
   position: relative;
 }
 
-/* Sprocket holes — film strip bottom */
+/* Sprocket holes: film strip bottom */
 .ext-footer::before {
   content: '○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○';
   position: absolute;

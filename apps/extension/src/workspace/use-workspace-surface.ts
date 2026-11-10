@@ -202,7 +202,7 @@ export function useWorkspaceSurface(options: WorkspaceSurfaceOptions) {
           const session = optionsRef.current;
           session.setUrl(currentUrl);
           session.setAutoDetected(true);
-          session.setMessage('Instagram URL detected — ready to fetch.');
+          session.setMessage('Instagram URL detected. Ready to fetch.');
         }
       })
       .catch(() => {});

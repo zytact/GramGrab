@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 const srcDir = 'extension/firefox';
 
 if (!existsSync(srcDir)) {
-  console.error(`[package-firefox] ${srcDir} not found — run "bun run build:firefox" first`);
+  console.error(`[package-firefox] ${srcDir} not found. Run "vp run build:firefox" first.`);
   process.exit(1);
 }
 

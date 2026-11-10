@@ -1010,7 +1010,7 @@ export default function Popup() {
                       </button>
                     </div>
                     {autoDetected && status === 'idle' && (
-                      <p className="detected-hint">Instagram URL detected — ready to fetch.</p>
+                      <p className="detected-hint">Instagram URL detected. Ready to fetch.</p>
                     )}
                     <div className="instants-row">
                       <LinkLoginEntry logins={logins} />

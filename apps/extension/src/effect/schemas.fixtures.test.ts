@@ -4,7 +4,7 @@
  * Each test decodes a real Instagram API response captured by
  * scripts/capture-ig-fixtures.mjs. They verify that our schemas can parse
  * the actual shapes IG serves today. If any test fails after a schema change,
- * it means the real API shape diverged — see src/effect/__fixtures__/README.md
+ * it means the real API shape diverged. See src/effect/__fixtures__/README.md
  * for the refresh workflow.
  */
 import { Effect, Schema } from 'effect';

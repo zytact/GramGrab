@@ -55,7 +55,7 @@ const hostPermissionDocumentation = [
   { permission: 'https://*.instagram.com/*', reason: 'Fetch media metadata from Instagram' },
   {
     permission: 'https://*.fbcdn.net/*',
-    reason: 'Load media previews and videos from Instagram’s CDN',
+    reason: "Load media previews and videos from Instagram's CDN",
   },
 ];
 

@@ -12,7 +12,7 @@ const srcDir = 'extension/chromium';
 const output = 'extension/chromium/gramgrab.crx';
 
 if (!existsSync(srcDir)) {
-  console.error(`[package-chromium] ${srcDir} not found — run "vp run build:chromium" first`);
+  console.error(`[package-chromium] ${srcDir} not found. Run "vp run build:chromium" first.`);
   process.exit(1);
 }
 

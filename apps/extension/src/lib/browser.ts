@@ -281,7 +281,7 @@ export type ContextMenuClickedCallback = (info: {
 export type ContextMenuShownCallback = (info: { pageUrl?: string; linkUrl?: string }) => void;
 
 // ---------------------------------------------------------------------------
-// Internal Chrome type (narrow — only what we need)
+// Internal Chrome type, narrowed to what we need
 // ---------------------------------------------------------------------------
 
 interface ChromeRuntime {
