@@ -5,7 +5,7 @@ import type { DownloadHistoryEntry } from './contracts.ts';
 const decodeProtocolEntry = Schema.decodeUnknownOption(ProtocolHistoryEntry);
 
 export function protocolHistoryEntry(
-  entry: DownloadHistoryEntry
+  entry: Omit<DownloadHistoryEntry, 'requestedExport'> & { requestedExport?: unknown }
 ): Option.Option<ProtocolHistoryEntry> {
   return decodeProtocolEntry({
     id: entry.id,

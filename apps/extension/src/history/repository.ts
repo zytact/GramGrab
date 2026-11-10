@@ -1,5 +1,4 @@
 import { Either, Option, Schema } from 'effect';
-import { ExportSettings } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
@@ -41,12 +40,10 @@ function validInstagramMetadata(value: unknown): value is HistoryMetadata {
 
 function decodeInstagramEntry(value: unknown): DownloadHistoryEntry | undefined {
   if (!isRecord(value) || !validInstagramMetadata(value)) return undefined;
-  const requestedExport = Schema.decodeUnknownOption(Schema.UndefinedOr(ExportSettings))(
-    value.requestedExport
-  );
-  if (Option.isNone(requestedExport)) return undefined;
-  const entry = { ...value, requestedExport: requestedExport.value };
-  return Option.isSome(protocolHistoryEntry(entry)) ? entry : undefined;
+  return Option.match(protocolHistoryEntry(value), {
+    onNone: () => undefined,
+    onSome: ({ requestedExport }) => ({ ...value, requestedExport }),
+  });
 }
 
 function hasValidIdentity(item: Partial<HistoryMetadata>): boolean {
