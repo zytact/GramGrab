@@ -517,8 +517,9 @@ async function handleRedownloadHistoryEntry(
   const resolved = await resolveHistoryItem(entry, msg.login);
   if (resolved.failure) return { failure: resolved.failure };
   const { item } = resolved;
-  const { mode } = historySettings(entry);
-  if (!needsRunner(entry)) return downloadHistoryOriginal(entry, item);
+  const settings = historySettings(entry);
+  if (deliversOriginal(settings)) return downloadHistoryOriginal(entry, item);
+  const { mode } = settings;
   const redownload = redownloadTarget(entry, item);
   if (mode._tag === 'FrameExport')
     return {
