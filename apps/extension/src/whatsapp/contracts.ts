@@ -29,7 +29,6 @@ const DurationMs = Schema.Number.pipe(
   Schema.between(WHATSAPP_MIN_VIDEO_DURATION_MS, WHATSAPP_MAX_VIDEO_DURATION_MS)
 );
 const CanonicalBase64Shape = Schema.String.pipe(
-  Schema.pattern(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u),
   Schema.filter(isCanonicalBase64Chunk, {
     message: () => 'must be canonical, non-empty base64 within the chunk limit',
   })

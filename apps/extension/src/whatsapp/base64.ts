@@ -30,13 +30,8 @@ export function isCanonicalBase64Chunk(value: string): boolean {
 export function decodeCanonicalBase64(value: string): Uint8Array<ArrayBuffer> | undefined {
   if (!isCanonicalBase64Chunk(value)) return undefined;
 
-  let binary: string;
-  try {
-    binary = atob(value);
-  } catch {
-    return undefined;
-  }
-  if (binary.length === 0 || binary.length > WHATSAPP_MAX_CHUNK_BYTES) return undefined;
+  const binary = atob(value);
+  if (binary.length > WHATSAPP_MAX_CHUNK_BYTES) return undefined;
 
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);

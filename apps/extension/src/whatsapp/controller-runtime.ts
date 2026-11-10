@@ -608,6 +608,7 @@ function isCanonicalBase64Shape(value: unknown): value is string {
     typeof value === 'string' &&
     value.length > 0 &&
     value.length % 4 === 0 &&
+    value.length <= Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4 &&
     /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value) &&
     hasZeroTrailingBits(value)
   );
@@ -858,7 +859,6 @@ function decodeChunk(value: Record<string, unknown>, base: InboundBase): Outboun
     !isIntegerBetween(value.sequence, 0, WHATSAPP_MAX_CHUNKS - 1) ||
     !isIntegerBetween(value.decodedLength, 1, WHATSAPP_MAX_CHUNK_BYTES) ||
     !isCanonicalBase64Shape(value.payload) ||
-    value.payload.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4 ||
     (value.payload.length / 4) * 3 - base64PaddingLength(value.payload) !== value.decodedLength
   )
     return undefined;
