@@ -160,24 +160,26 @@ node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/instagram/ --js
   falls back to the shortcode GraphQL requests. Each `/api/graphql` form POST
   among them reads the home page once for its LSD token, before its retries, and
   that read also refreshes the `fb_dtsg` token. A refused LSD read sends the
-  POST without one. To prove it, force the fallback and count the worker's
-  requests:
+  POST without one. To prove it, run one plain inspect first, since a Watch's
+  viewer check at startup also reads the home page. Then force every GraphQL
+  candidate to fail and count the worker's home page reads:
 
   ```bash
   T=.agents/skills/verify-gramgrab/scripts/throttle.mjs
-  node $T /api/v1/media/ 503 & REST=$!
-  node $T api/graphql 500 & GQL=$!
+  node $T /api/v1/media/ 503 > .local/verify/rest.log & REST=$!
+  node $T graphql 500 > .local/verify/gql.log & GQL=$!
+  until grep -q attached .local/verify/rest.log && grep -q attached .local/verify/gql.log; do sleep 0.2; done
   node $D eval "js/background.js" "performance.clearResourceTimings()"
   node apps/cli/bin/gramgrab.mjs inspect https://www.instagram.com/reel/SHORTCODE/ --json
   node $D eval "js/background.js" \
-    "JSON.stringify(performance.getEntriesByType('resource').map(e=>e.name.split('?')[0]))"
+    "performance.getEntriesByType('resource').filter(e=>e.name==='https://www.instagram.com/').length"
   kill $REST $GQL
   ```
 
-  Three home page reads among 16 requests, one per form request, is healthy.
-  One read per POST attempt, 12 in all, means the lookup is back inside the
-  retry. A home page read during an unrelated first run can be a Watch's viewer
-  check, so run the inspect twice and read the second.
+  3 is healthy, one read per form request. 12 means the lookup is back inside
+  the retry, one read per POST attempt. The inspect exits 1 with
+  `SOURCE_SERVER_FAILED` after 24 requests: REST, 3 home page reads, and 20
+  refused GraphQL attempts, which `gql.log` lists.
 - Image thumbnails are `loading="lazy"` and can sit unloaded in a driven tab for
   the whole wait, with `img.complete` false and no failure placeholder, even
   while `document.visibilityState` reads `visible`. Run
