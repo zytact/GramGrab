@@ -15,7 +15,7 @@ export type StoreFailureCode =
   | 'WATCH_STORE_UNREADABLE';
 
 export type StoreRead =
-  | { readonly kind: 'ok'; readonly store: WatchStore; readonly bytes: number }
+  | { readonly kind: 'ok'; readonly store: WatchStore }
   | { readonly kind: 'failed'; readonly code: StoreFailureCode };
 
 export type StoreWrite<T> =
@@ -53,22 +53,21 @@ const fromV1 = (watches: readonly Watch[]): WatchStore => ({
   })),
 });
 
-const storeBytes = (store: WatchStore): number =>
-  new TextEncoder().encode(JSON.stringify(encodeStore(store))).length;
+const encodedBytes = (encoded: typeof WatchStore.Encoded): number =>
+  new TextEncoder().encode(JSON.stringify(encoded)).length;
+
+/** The bytes `store` takes once written. Encodes the whole store. */
+export const storeBytes = (store: WatchStore): number => encodedBytes(encodeStore(store));
 
 export const withinStoreBudget = (store: WatchStore): boolean =>
   storeBytes(store) <= STORE_BUDGET_BYTES;
 
 function decode(value: unknown): StoreRead {
-  if (value === undefined) return { kind: 'ok', store: emptyStore, bytes: storeBytes(emptyStore) };
+  if (value === undefined) return { kind: 'ok', store: emptyStore };
   const decoded = decodeStore(value);
-  if (Either.isRight(decoded))
-    return { kind: 'ok', store: decoded.right, bytes: storeBytes(decoded.right) };
+  if (Either.isRight(decoded)) return { kind: 'ok', store: decoded.right };
   const v1 = decodeV1Store(value);
-  if (Either.isRight(v1)) {
-    const store = fromV1(v1.right.watches);
-    return { kind: 'ok', store, bytes: storeBytes(store) };
-  }
+  if (Either.isRight(v1)) return { kind: 'ok', store: fromV1(v1.right.watches) };
   const version =
     typeof value === 'object' && value !== null && 'version' in value ? value.version : undefined;
   // A store this build cannot read is kept exactly as it is: it is never read as empty or reset.
@@ -95,7 +94,7 @@ export function mutateStore<T>(change: StoreChange<T>): Promise<StoreWrite<T>> {
     const next = change(current.store);
     if (next.store === current.store) return { kind: 'ok', value: next.value, store: next.store };
     const encoded = encodeStore(next.store);
-    if (new TextEncoder().encode(JSON.stringify(encoded)).length > STORE_BUDGET_BYTES)
+    if (encodedBytes(encoded) > STORE_BUDGET_BYTES)
       return recordFailure('WATCH_STORE_CAPACITY_EXCEEDED');
     try {
       await browser.storage.set({ [STORE_KEY]: encoded });

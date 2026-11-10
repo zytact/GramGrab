@@ -438,6 +438,34 @@ request stops early. Do not induce either on a real account.
    confirm only where that operation is offered. Check problems are not action
    recovery targets. Removal affects inbox metadata only.
 
+## Add and delete
+
+`+ Add` opens Add Watch. `Find account` looks the target up, and creating the Watch
+selects it in the sidebar. `Delete Watch` on a selected Watch asks again in a
+`.opt-banner-error` with a second `Delete Watch` and `Keep`. Confirming removes the
+Watch and returns to Inbox. Both follow the store without a reload, and so does a
+Watch the worker or CLI writes while the page is open.
+
+1. Run `watch-problem.mjs hold 30` so no round starts while Watches come and go.
+   Open `options.html`, set an in-memory page marker, and read the `WATCHES (N)`
+   heading.
+2. Run `watch-fixtures.mjs seed 2`. Within a second, and with the marker intact,
+   the heading reads `WATCHES (N+2)`. This is the store-follow path with no click.
+3. Fixtures are paused `@instagram` rows. Select one, click `Delete Watch`, then
+   the banner's `Delete Watch`. Require the Inbox view, `WATCHES (N+1)`, the
+   marker, and, read from the worker, one fixture left (`targetId` starting
+   `9000000000000`) beside the real Watch. Run `watch-fixtures.mjs remove` in a
+   `finally` step and require `WATCHES (N)`.
+4. Creating a Watch through the page needs a target the login does not watch yet.
+   On the verification profile only, delete the `instagram` Watch the same way,
+   then add it again: `+ Add`, type `instagram`, `Find account`, tick
+   `.opt-disclosure input`, click `Add Watch`. Accept a notification prompt if one
+   appears. Require the new Watch selected, `First check pending`, and
+   `WATCHES (N)` again. Find account and Add Watch each look the target up, a
+   few Instagram requests in all, and deleting drops that Watch's
+   baselines and inbox on the copied profile. Stop on a 429 or request-cap
+   deferral. Run `watch-problem.mjs release` afterward.
+
 ## Check now
 
 The Watch detail's Check now state comes from the worker's `watch-scheduler`
@@ -542,12 +570,14 @@ node $D eval "js/background.js" "globalThis.__fault = { delay: 1500, fail: false
 
 ## Live page
 
-An open options page reloads its list, the open Watch and the inbox whenever the
-worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, or
-changes the rate-limit pause in `instagram-requests`. Those reloads go through the
-`WATCH_READ` message, once per signed-in login. The worker answers without an
-Instagram request while that login is still the last one any viewer read found,
-and verifies again otherwise. Opening the page first lists the Watches of the
+An open options page reloads its list, the open Watch and the inbox 250 ms after
+the worker writes `watch-store` or `watch-scheduler` in `chrome.storage.local`, or
+changes the rate-limit pause in `instagram-requests`. Every such write inside that
+window shares the one reload. The footer's schedule line and the hold banners read
+`watch-scheduler` and `instagram-requests` themselves, without that wait. Those
+reloads go through the `WATCH_READ` message, once per signed-in login. The worker
+answers without an Instagram request while that login is still the last one any
+viewer read found, and verifies again otherwise. Opening the page first lists the Watches of the
 logins `watch-viewer` and `watch-viewer.linked` name, then verifies. Returning to
 its tab or window and every action verify the login once. A verification the
 person starts reuses the worker's last viewer read from the past 5 minutes while

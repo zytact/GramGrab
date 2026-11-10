@@ -1194,8 +1194,32 @@ describe('Watches options page', { timeout: 15_000 }, () => {
 
     const next = await screen.findByText(/^Next check in 12h · \d+% storage$/);
     expect(next.getAttribute('title')).toBe(new Date(nextRoundAt).toLocaleString());
-    expect(screen.queryByText('First check pending')).toBeNull();
+    await waitFor(() => expect(screen.queryByText('First check pending')).toBeNull());
     expect(instagram.state.homePageReads).toBe(homePageReads);
+  });
+
+  it('rereads the lists once after a burst of Watch writes', async () => {
+    seedWatchWithProblemAndEntry();
+    render(<Watches />);
+    await screen.findByText(`@${VIEWER.username}`, {
+      selector: '.opt-logins-menu summary .opt-name',
+    });
+    const settle = () => new Promise(resolve => setTimeout(resolve, 400));
+    await settle();
+    const avatarReads = () =>
+      vi
+        .mocked(harness.browser.runtime.sendMessage)
+        .mock.calls.filter(([message]) => (message as { type?: string }).type === 'WATCH_AVATARS')
+        .length;
+    const lists = commandsOf('WatchList').length;
+    const avatars = avatarReads();
+
+    const store = harness.local.read('watch-store');
+    for (let write = 0; write < 5; write++) await harness.local.set({ 'watch-store': store });
+    await settle();
+
+    expect(commandsOf('WatchList')).toHaveLength(lists + 1);
+    expect(avatarReads()).toBe(avatars + 1);
   });
 
   it('follows another login once a background check verified it', async () => {
@@ -1215,7 +1239,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(
       await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
-    expect(instagram.state.homePageReads).toBe(homePageReads + 1);
+    await waitFor(() => expect(instagram.state.homePageReads).toBe(homePageReads + 1));
   });
 
   it('follows a login switch on window return without a Watch write or due check', async () => {

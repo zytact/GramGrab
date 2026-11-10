@@ -1207,6 +1207,8 @@ function useWatchList() {
   return { loaded, version, verify, refresh };
 }
 
+const STORAGE_SETTLE_MS = 250;
+
 const pauseChanged = (changes: StorageChanges) =>
   InstagramLogin.literals.some(login => {
     const ledger = changes[LEDGER_KEYS[login]];
@@ -1248,12 +1250,21 @@ export function Watches() {
   const ready = loaded.kind === 'ready';
   useEffect(() => {
     if (!ready) return;
+    let settle: ReturnType<typeof setTimeout> | undefined;
     const listener = (changes: StorageChanges) => {
-      if (STORE_KEY in changes || SCHEDULER_KEY in changes || pauseChanged(changes)) void refresh();
+      if (settle || !(STORE_KEY in changes || SCHEDULER_KEY in changes || pauseChanged(changes)))
+        return;
+      settle = setTimeout(() => {
+        settle = undefined;
+        void refresh();
+      }, STORAGE_SETTLE_MS);
     };
     browser.storage.onChanged.addListener(listener);
     void refresh();
-    return () => browser.storage.onChanged.removeListener(listener);
+    return () => {
+      clearTimeout(settle);
+      browser.storage.onChanged.removeListener(listener);
+    };
   }, [ready, refresh]);
 
   if (loaded.kind === 'loading') return <p className="opt-gate opt-meta">Loading Watches…</p>;

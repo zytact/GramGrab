@@ -88,6 +88,7 @@ import { confirmProfile, recentViewer, verifiedViewerId, type Account } from './
 import {
   mutateStore,
   readStore,
+  storeBytes,
   storeHealth,
   type StoreFailureCode,
   type StoreRead,
@@ -172,7 +173,7 @@ async function storageState(read: StoreRead): Promise<WatchStorage> {
     });
   const health = await storeHealth();
   return WatchStorage.make({
-    usedBytes: read.bytes,
+    usedBytes: storeBytes(read.store),
     budgetBytes: STORE_BUDGET_BYTES,
     status: health ? STORAGE_STATUS[health.code] : 'ok',
   });
