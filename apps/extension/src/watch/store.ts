@@ -53,10 +53,10 @@ const fromV1 = (watches: readonly Watch[]): WatchStore => ({
   })),
 });
 
-const encodedBytes = (encoded: unknown): number =>
+const encodedBytes = (encoded: typeof WatchStore.Encoded): number =>
   new TextEncoder().encode(JSON.stringify(encoded)).length;
 
-/** The bytes `store` takes once written. Encodes the whole store, so reads leave it to callers. */
+/** The bytes `store` takes once written. Encodes the whole store. */
 export const storeBytes = (store: WatchStore): number => encodedBytes(encodeStore(store));
 
 export const withinStoreBudget = (store: WatchStore): boolean =>

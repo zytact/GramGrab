@@ -1207,7 +1207,6 @@ function useWatchList() {
   return { loaded, version, verify, refresh };
 }
 
-/** How long a burst of Watch storage writes may run before the page rereads its lists once. */
 const STORAGE_SETTLE_MS = 250;
 
 const pauseChanged = (changes: StorageChanges) =>
@@ -1253,9 +1252,12 @@ export function Watches() {
     if (!ready) return;
     let settle: ReturnType<typeof setTimeout> | undefined;
     const listener = (changes: StorageChanges) => {
-      if (!(STORE_KEY in changes || SCHEDULER_KEY in changes || pauseChanged(changes))) return;
-      clearTimeout(settle);
-      settle = setTimeout(() => void refresh(), STORAGE_SETTLE_MS);
+      if (settle || !(STORE_KEY in changes || SCHEDULER_KEY in changes || pauseChanged(changes)))
+        return;
+      settle = setTimeout(() => {
+        settle = undefined;
+        void refresh();
+      }, STORAGE_SETTLE_MS);
     };
     browser.storage.onChanged.addListener(listener);
     void refresh();
