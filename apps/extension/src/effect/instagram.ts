@@ -1,7 +1,7 @@
 import { Effect, Schedule, Schema } from 'effect';
 import { blobToDataUrl } from '../lib/data-url.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
-import { postWebQuery } from '../instagram/dtsg.ts';
+import { postWebQuery, readHomePage } from '../instagram/dtsg.ts';
 import {
   InstagramRequests,
   type InstagramRequestInit,
@@ -75,24 +75,11 @@ const parseInstagramLsdToken = (html: string): string | undefined =>
   html.match(/"lsd":"([^"]+)"/)?.[1] ??
   html.match(/name="lsd"\s+value="([^"]+)"/)?.[1];
 
-const getInstagramLsdToken = (): Effect.Effect<string | undefined, never, InstagramRequests> => {
-  const inputToken =
-    globalThis.document?.querySelector<HTMLInputElement>('input[name="lsd"]')?.value;
-  if (inputToken) return Effect.succeed(inputToken);
-
-  const cookieToken = globalThis.document?.cookie.match(/(?:^|;\s*)lsd=([^;]+)/)?.[1];
-  if (cookieToken) return Effect.succeed(cookieToken);
-
-  return Effect.gen(function* () {
-    const requests = yield* InstagramRequests;
-    const res = yield* requests.fetch('https://www.instagram.com/', {
-      headers: { Accept: 'text/html' },
-    });
-    if (!res.ok) return undefined;
-    const html = yield* Effect.tryPromise(() => res.text());
-    return parseInstagramLsdToken(html);
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-};
+/** The home page's LSD token, or none when the page names none or cannot be read. */
+const readLsdToken = readHomePage(page => parseInstagramLsdToken(page) !== undefined).pipe(
+  Effect.map(({ page }) => parseInstagramLsdToken(page)),
+  Effect.catchAll(() => Effect.succeed(undefined))
+);
 
 export const graphqlFetch = (
   url: string,
@@ -137,38 +124,38 @@ export const graphqlPost = (
   Record<string, unknown>,
   NetworkError | GraphQLRequestFailed | RateLimited | ResponseShapeUnknown | WatchRequestDeferred,
   InstagramRequests
-> => {
-  const attempt = Effect.gen(function* () {
-    const lsd = yield* getInstagramLsdToken();
-    const body = new URLSearchParams({
-      [operationKey]: operationId,
-      variables: JSON.stringify(variables),
-    });
-    if (lsd) body.set('lsd', lsd);
+> =>
+  Effect.gen(function* () {
+    const lsd = yield* readLsdToken;
     const requests = yield* InstagramRequests;
-    const res = yield* requests.fetch(url, {
-      method: 'POST',
-      headers: {
-        ...headers,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        ...(lsd ? { 'X-FB-LSD': lsd } : {}),
-      },
-      body,
+    const attempt = Effect.gen(function* () {
+      const body = new URLSearchParams({
+        [operationKey]: operationId,
+        variables: JSON.stringify(variables),
+      });
+      if (lsd) body.set('lsd', lsd);
+      const res = yield* requests.fetch(url, {
+        method: 'POST',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...(lsd ? { 'X-FB-LSD': lsd } : {}),
+        },
+        body,
+      });
+      yield* requireSuccessfulResponse(
+        res,
+        response => new GraphQLRequestFailed({ status: response.status })
+      );
+      return yield* parseGraphqlJson(res);
     });
-    yield* requireSuccessfulResponse(
-      res,
-      response => new GraphQLRequestFailed({ status: response.status })
+    return yield* attempt.pipe(
+      Effect.retry({
+        schedule: GRAPHQL_RETRY_SCHEDULE,
+        while: shouldRetryGraphqlError,
+      })
     );
-    return yield* parseGraphqlJson(res);
   });
-
-  return attempt.pipe(
-    Effect.retry({
-      schedule: GRAPHQL_RETRY_SCHEDULE,
-      while: shouldRetryGraphqlError,
-    })
-  );
-};
 
 export const fetchInstantsFeed = (
   url: string,
