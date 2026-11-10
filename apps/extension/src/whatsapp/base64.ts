@@ -12,15 +12,12 @@ export function encodeCanonicalBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-export function decodeCanonicalBase64(
-  value: string,
-  maximumDecodedLength = WHATSAPP_MAX_CHUNK_BYTES
-): Uint8Array | undefined {
+export function decodeCanonicalBase64(value: string): Uint8Array | undefined {
   if (
     value.length === 0 ||
     value.length % 4 !== 0 ||
     !CANONICAL_BASE64.test(value) ||
-    value.length > Math.ceil(maximumDecodedLength / 3) * 4
+    value.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4
   )
     return undefined;
 
@@ -30,7 +27,7 @@ export function decodeCanonicalBase64(
   } catch {
     return undefined;
   }
-  if (binary.length === 0 || binary.length > maximumDecodedLength) return undefined;
+  if (binary.length === 0 || binary.length > WHATSAPP_MAX_CHUNK_BYTES) return undefined;
 
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);

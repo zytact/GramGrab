@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
+import { createOperationId, createRequestId } from '../download/contracts.ts';
 import { decodeMessage } from './contracts.ts';
 
 describe('decodeMessage', () => {
@@ -31,8 +32,22 @@ describe('decodeMessage', () => {
     });
   });
 
-  it('refuses a download request with malformed operation identities', () => {
-    expect(decodeMessage({ type: 'DOWNLOAD_MEDIA', operations: [{ requestId: 'bad' }] })).toEqual({
+  it('refuses a download request with a malformed request identity', () => {
+    const url = 'https://cdn.instagram.com/a.jpg';
+    const operation = {
+      operationId: createOperationId(),
+      requestId: createRequestId(),
+      itemIndex: 0,
+      url,
+      filename: 'a.jpg',
+      originalUrl: url,
+      originalFilename: 'a.jpg',
+      mediaType: 'image',
+    };
+    expect(decodeMessage({ type: 'DOWNLOAD_MEDIA', operations: [operation] }).kind).toBe('message');
+    expect(
+      decodeMessage({ type: 'DOWNLOAD_MEDIA', operations: [{ ...operation, requestId: 'bad' }] })
+    ).toEqual({
       kind: 'unsupported',
       type: 'DOWNLOAD_MEDIA',
     });

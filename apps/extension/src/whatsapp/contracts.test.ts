@@ -134,11 +134,8 @@ describe('WhatsApp capture contracts', () => {
     expect(
       decodeCanonicalBase64(encodeCanonicalBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES + 1)))
     ).toBeUndefined();
-    const quad = encodeCanonicalBase64(new Uint8Array([1, 2, 3, 4]));
-    expect([decodeCanonicalBase64(quad, 4)?.length, decodeCanonicalBase64(quad, 3)]).toEqual([
-      4,
-      undefined,
-    ]);
+    const fullChunk = encodeCanonicalBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES));
+    expect(decodeCanonicalBase64(fullChunk)?.length).toBe(WHATSAPP_MAX_CHUNK_BYTES);
   });
 
   it('rejects zero-length and malformed chunk envelopes before bytes are retained', () => {

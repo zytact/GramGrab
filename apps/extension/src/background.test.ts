@@ -708,7 +708,7 @@ describe('background dispatcher', () => {
       expect(fakeBrowserObj.fakeBrowser.storage.set).not.toHaveBeenCalled();
     });
 
-    it('records a historical frame re-download using its immutable filename', async () => {
+    it('records the frame filename and timestamp in history', async () => {
       const listener = await loadBackground();
       const result = await invoke(listener, {
         type: 'DOWNLOAD_FRAME_EXPORT',
