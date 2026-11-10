@@ -387,31 +387,26 @@ describe('graphqlPost', () => {
   });
 
   it('forgets the fb_dtsg token when an LSD read is refused', async () => {
-    const ok = () => ({ ok: true, status: 200, json: async () => ({ data: {} }) });
+    const html = (body: string) => new Response(body, { headers: { 'Content-Type': 'text/html' } });
+    const ok = () =>
+      new Response('{"data":{}}', { headers: { 'Content-Type': 'application/json' } });
     const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response('["DTSGInitialData",[],{"token":"DTSG_A"}],"lsd":"token123"', {
-          headers: { 'Content-Type': 'text/html' },
-        })
-      )
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(html('["DTSGInitialData",[],{"token":"DTSG_A"}],"lsd":"token123"'))
       .mockResolvedValueOnce(ok())
-      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockResolvedValueOnce(new Response(null, { status: 500 }))
       .mockResolvedValueOnce(ok())
-      .mockResolvedValueOnce(
-        new Response('["DTSGInitialData",[],{"token":"DTSG_B"}]', {
-          headers: { 'Content-Type': 'text/html' },
-        })
-      )
-      .mockResolvedValueOnce(ok());
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+      .mockResolvedValueOnce(html('["DTSGInitialData",[],{"token":"DTSG_B"}]'))
+      .mockImplementation(async () => ok());
+    vi.stubGlobal('fetch', fetchMock);
 
     await run(graphqlPost(TEST_URL, '12345', vars, {}));
     await run(graphqlPost(TEST_URL, '12345', vars, {}));
     await run(postWebQuery(protocolConfig.operations.profileById, {}));
 
     expect(fetchMock.mock.calls[4]?.[0]).toBe('https://www.instagram.com/');
-    expect(fetchMock.mock.calls[5]?.[1]?.body.get('fb_dtsg')).toBe('DTSG_B');
+    const body = fetchMock.mock.calls[5]?.[1]?.body;
+    expect(body instanceof URLSearchParams && body.get('fb_dtsg')).toBe('DTSG_B');
   });
 
   it('fails with GraphQLRequestFailed on non-ok non-429 response', async () => {
