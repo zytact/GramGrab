@@ -24,14 +24,17 @@ disagree about how to verify the app are worse than one.
 ## Launch
 
 Every route runs the same `launch.sh`; only the one-time browser setup differs.
-`[ -n "$WSL_DISTRO_NAME" ]` is true on WSL, and `launch.sh` failing with
-`No Chromium browser found` means the machine still needs that setup.
+`launch.sh` failing with `No Chromium browser found` means the machine still
+needs that setup.
 
 | Machine | One-time setup | What `launch.sh` starts |
 | --- | --- | --- |
 | Linux desktop | Helium or Chromium on `PATH` | That browser, headed |
-| WSL | `sudo apt install libnss3`, then the [Chrome for Testing download](#browser-choice) | Chrome for Testing, headed through WSLg |
 | No display (SSH, CI) | Either of the above | The same browser, headless, with the gaps in [Browser choice](#browser-choice) |
+
+On WSL every script here drives Windows Helium instead, with the same commands
+and session variables. Read [wsl.md](wsl.md) only when a WSL launch, sign-in, or
+cleanup fails, or a run needs a visible window.
 
 ```bash
 .agents/skills/verify-gramgrab/scripts/launch.sh
@@ -130,7 +133,7 @@ for Testing honour the switch.
 GRAMGRAB_BROWSER=chromium .agents/skills/verify-gramgrab/scripts/launch.sh
 ```
 
-A machine with none of those, WSL included, can download Chrome for Testing
+A machine with none of those can download Chrome for Testing
 without root:
 
 ```bash
@@ -143,8 +146,7 @@ starting instead of timing out on the CDP port. Prefer Chrome for Testing to a
 Chromium snapshot from the same tool: snapshots cannot play H.264 or AAC, so
 Instagram video previews read `No preview available` and frame export fails.
 
-The browser runs headed when `DISPLAY` or `WAYLAND_DISPLAY` is set, and WSLg
-sets one, so on WSL the window appears on the Windows desktop. An agent shell
+The browser runs headed when `DISPLAY` or `WAYLAND_DISPLAY` is set. An agent shell
 on a GNOME desktop may inherit neither. Pass `DISPLAY=:0` and `XAUTHORITY` set
 to the `/run/user/$UID/.mutter-Xwaylandauth.*` file with `GRAMGRAB_HEADLESS=0`;
 `WAYLAND_DISPLAY` alone fails with `Missing X server or $DISPLAY`.

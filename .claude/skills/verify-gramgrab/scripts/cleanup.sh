@@ -5,13 +5,20 @@
 # The profile at .local/verify-profile/ is left alone so its Instagram and
 # WhatsApp Web sign-ins survive. Pass --reset-profile to delete it too, which
 # means signing in by hand again. Evidence under .local/verify-evidence/ is
-# never touched.
+# never touched. On WSL the profile and downloads live on the Windows side;
+# ../wsl.md covers that path.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 session_dir="$repo/.local/verify"
 reset_profile=no
 [ "${1:-}" = "--reset-profile" ] && reset_profile=yes
+wsl=no
+if [ -n "${WSL_DISTRO_NAME:-}" ]; then
+  wsl=yes
+  # shellcheck source=wsl.sh
+  . "$(dirname "${BASH_SOURCE[0]}")/wsl.sh"
+fi
 
 if [ -f "$session_dir/session.env" ]; then
   # shellcheck disable=SC1091
@@ -28,6 +35,15 @@ if [ -f "$session_dir/session.env" ]; then
     done
   fi
 
+  # The recorded PID on WSL is the interop process, so a signal would not reach
+  # Helium. Stop the Windows process that holds this profile instead.
+  if [ "$wsl" = yes ] && kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null; then
+    echo "Browser did not close in 15s; stopping it. A very recent sign-in may be lost." >&2
+    for windows_pid in $(wsl_helium_pids "$(wslpath -w "$GRAMGRAB_VERIFY_PROFILE")"); do
+      win taskkill.exe /PID "$windows_pid" /T /F >/dev/null 2>&1 || true
+    done
+  fi
+
   if kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null; then
     kill "$GRAMGRAB_VERIFY_PID" 2>/dev/null || true
     for _ in $(seq 1 120); do
@@ -39,20 +55,27 @@ if [ -f "$session_dir/session.env" ]; then
       kill -9 "$GRAMGRAB_VERIFY_PID" 2>/dev/null || true
     fi
   fi
+  [ -n "${GRAMGRAB_VERIFY_RELAY_PID:-}" ] && kill "$GRAMGRAB_VERIFY_RELAY_PID" 2>/dev/null || true
   echo "Stopped session $GRAMGRAB_VERIFY_PID."
 else
   echo "No session to stop."
 fi
 
 rm -rf "$session_dir"
+default_profile="$repo/.local/verify-profile"
+if [ "$wsl" = yes ]; then
+  wsl_unregister_host
+  rm -rf "$wsl_root/downloads"
+  default_profile="$wsl_root/profile"
+fi
 
 if [ "$reset_profile" = yes ]; then
   # Only ever the default profile. A GRAMGRAB_PROFILE path belongs to the
   # person who named it, so this never deletes one.
-  rm -rf "$repo/.local/verify-profile"
-  echo "Deleted .local/verify-profile/. You will have to sign in again."
+  rm -rf "$default_profile"
+  echo "Deleted $default_profile. You will have to sign in again."
 else
-  echo "Kept .local/verify-profile/ with its sign-ins."
+  echo "Kept $default_profile with its sign-ins."
 fi
 
 echo "Evidence kept in $repo/.local/verify-evidence/."

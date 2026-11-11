@@ -228,13 +228,18 @@ if (command === 'targets') {
   const [match, selector, file] = rest;
   if (!match || !selector || !file) fail('Usage: drive.mjs upload <match> <selector> <file>');
   const { resolve } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  // On WSL the browser is Windows Helium, which needs a Windows path.
+  const path = process.env.WSL_DISTRO_NAME
+    ? execFileSync('wslpath', ['-w', resolve(file)], { encoding: 'utf8' }).trim()
+    : resolve(file);
   await session(await findTarget(match), async call => {
     const found = await call('Runtime.evaluate', {
       expression: `document.querySelector(${JSON.stringify(selector)})`,
     });
     if (found.result.subtype !== 'node') fail('File input not found.');
     await call('DOM.setFileInputFiles', {
-      files: [resolve(file)],
+      files: [path],
       objectId: found.result.objectId,
     });
   });
