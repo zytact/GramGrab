@@ -1,7 +1,6 @@
 import { Option } from 'effect';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  AccountIdSelector,
   CommandFailure,
   InstagramLogin,
   OperationFailure,
@@ -12,6 +11,7 @@ import {
   WatchAdd,
   WatchLifecycle,
   WatchList,
+  WatchIdSelector,
   WatchSet,
   type WatchAction,
   type WatchCommand,
@@ -64,6 +64,7 @@ import { AllInbox, WatchDetail, healthText, runCommand, runRead } from './watch-
 import { Avatar } from './avatar.tsx';
 import { DiagnosticsPreview } from './diagnostics-preview.tsx';
 import { WatchTransfer } from './watch-transfer.tsx';
+import { MoveWatch } from './move-watch.tsx';
 import { askToNotify } from './notify-permission.ts';
 import { LoginsMenu, LoginsPanel } from './logins.tsx';
 import {
@@ -546,7 +547,7 @@ function WatchSettings({
   onDeleted: () => void;
 }) {
   const { save, saving, pending, statusOf } = useSettingSave(onSave);
-  const selector = AccountIdSelector.make({ accountId: watch.accountId });
+  const selector = WatchIdSelector.make({ watchId: watch.watchId });
   const kinds =
     pending?.kinds ?? watch.kinds.filter(kind => kind._tag !== 'KindOff').map(kind => kind.kind);
   const actions = pending?.actions ?? watch.actions;
@@ -705,8 +706,8 @@ function AttentionView({
 }
 
 const HELD_NOTE: Record<HeldWatch['owner'], string> = {
-  linked: 'Paused · link this login again to resume',
-  other: 'Paused · sign in as that login to resume',
+  linked: 'Paused · link this login again or move it',
+  other: 'Paused · sign in as that login or move it',
 };
 
 function rowStatus({ watch, ...owner }: PageWatch): string {
@@ -1410,7 +1411,9 @@ function HeldDetail({
           <span className="opt-meta">{OWNER_LABEL[owner]}</span>
         </div>
       </div>
-      <p className="opt-banner">{HELD_DETAIL[owner]} Its inbox and baselines are kept.</p>
+      <p className="opt-banner">
+        {HELD_DETAIL[owner]} Or move it to a signed-in login. Its inbox and baselines are kept.
+      </p>
     </>
   );
 }
@@ -1564,29 +1567,37 @@ type PageModel = ReturnType<typeof usePageModel>;
 
 function Inspector({
   exporter,
+  page,
   selected,
   onSave,
   onRun,
+  onSend,
   onDeleted,
 }: {
   exporter: ReturnType<typeof useInboxExport>;
+  page: PageModel;
   selected: PageWatch | undefined;
   onSave: Run;
   onRun: Run;
+  onSend: (command: WatchCommand, login: InstagramLogin) => Promise<WatchCommandResponse>;
   onDeleted: () => void;
 }) {
   if (exporter.editing) return <InboxExportControls value={exporter} />;
   if (!selected) return <p className="opt-meta">Pick a Watch on the left to change it.</p>;
-  if (selected.held)
-    return <p className="opt-meta">Sign in as the login that owns this Watch to change it.</p>;
+  const runAs: InstagramLogin = selected.held ? 'main' : selected.owner;
+  const destinations = page.lists.flatMap(({ login, list }) =>
+    !selected.held && login === selected.owner ? [] : [{ login, username: list.viewer.username }]
+  );
   return (
-    <WatchSettings
-      key={selected.watch.watchId}
-      watch={selected.watch}
-      onSave={command => onSave(command, selected.owner)}
-      onRun={command => onRun(command, selected.owner)}
-      onDeleted={onDeleted}
-    />
+    <Fragment key={selected.watch.watchId}>
+      <WatchSettings
+        watch={selected.watch}
+        onSave={command => onSave(command, runAs)}
+        onRun={command => onRun(command, runAs)}
+        onDeleted={onDeleted}
+      />
+      <MoveWatch watch={selected.watch} destinations={destinations} onSend={onSend} />
+    </Fragment>
   );
 }
 
@@ -1669,9 +1680,11 @@ function Console({
           <section className="opt-inspector">
             <Inspector
               exporter={exporter}
+              page={page}
               selected={selected}
               onSave={save}
               onRun={run}
+              onSend={send}
               onDeleted={() => go('inbox')}
             />
           </section>

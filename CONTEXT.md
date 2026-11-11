@@ -83,11 +83,11 @@ One second Instagram login linked from an Incognito window, whose requests carry
 _Avoid_: Second profile, alt account
 
 **Owner**:
-The login that created a Watch. Only the owner's session checks the Watch and only the owner can change it, but the Watches page shows every login's Watches.
+The login a Watch belongs to: the one that created it, or the one it was moved to. Only the owner's session checks the Watch. Any signed-in login can change, delete, or move it.
 _Avoid_: Account (for the login), user
 
 **Held Watch**:
-A Watch whose owner is not signed in: a Linked login Instagram signed out, or a login that is neither the Main nor the Linked login. It stays paused until its owner is back.
+A Watch whose owner is not signed in: a Linked login Instagram signed out, or a login that is neither the Main nor the Linked login. It stays paused until its owner is back or it is moved to a signed-in login.
 _Avoid_: Hidden Watch, orphan
 
 ### Operations

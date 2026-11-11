@@ -20,9 +20,9 @@ const watchesFile = {
 };
 
 export const requestFixtures: readonly unknown[] = [
-  { version: 7, requestId, command: { _tag: 'WatchNeeds' } },
+  { version: 8, requestId, command: { _tag: 'WatchNeeds' } },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: {
       _tag: 'WatchAttentionRecover',
@@ -35,12 +35,12 @@ export const requestFixtures: readonly unknown[] = [
     { mode: { _tag: 'FrameExport', timestampSeconds: 8.5 }, rotation: 90 },
     { mode: { _tag: 'SilentExport', reencode: 'require' }, rotation: 270 },
   ].map(settings => ({
-    version: 7,
+    version: 8,
     requestId,
     command: { _tag: 'WatchInboxExport', entryIds: ['entry-1'], settings },
   })),
   {
-    version: 7,
+    version: 8,
     requestId,
     command: {
       _tag: 'WatchInboxRetry',
@@ -50,19 +50,19 @@ export const requestFixtures: readonly unknown[] = [
   },
 
   {
-    version: 7,
+    version: 8,
     requestId,
     command: { _tag: 'Inspect', sourceUrl: 'https://www.instagram.com/p/example/' },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     login: 'linked',
     command: { _tag: 'Inspect', sourceUrl: 'https://www.instagram.com/p/example/' },
   },
-  { version: 7, requestId, command: { _tag: 'InstantsInspect' } },
+  { version: 8, requestId, command: { _tag: 'InstantsInspect' } },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: {
       _tag: 'Export',
@@ -84,35 +84,35 @@ export const requestFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: {
       _tag: 'InstantsExport',
       operations: [{ operationId, itemNumber: 1, mediaIdentity, mode: { _tag: 'DirectExport' } }],
     },
   },
-  { version: 7, requestId, command: { _tag: 'HistoryList' } },
+  { version: 8, requestId, command: { _tag: 'HistoryList' } },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: { _tag: 'HistoryRemove', entryIds: ['history-1'] },
   },
-  { version: 7, requestId, command: { _tag: 'HistoryClear' } },
+  { version: 8, requestId, command: { _tag: 'HistoryClear' } },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: { _tag: 'HistoryRedownload', entryIds: ['history-1'] },
   },
-  { version: 7, requestId, command: { _tag: 'DebugGet' } },
-  { version: 7, requestId, command: { _tag: 'DebugExport' } },
-  { version: 7, requestId, command: { _tag: 'WatchList' } },
+  { version: 8, requestId, command: { _tag: 'DebugGet' } },
+  { version: 8, requestId, command: { _tag: 'DebugExport' } },
+  { version: 8, requestId, command: { _tag: 'WatchList' } },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: { _tag: 'WatchShow', watch: { _tag: 'AccountIdSelector', accountId: '2002' } },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: {
       _tag: 'WatchAdd',
@@ -123,7 +123,7 @@ export const requestFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: {
       _tag: 'WatchSet',
@@ -131,31 +131,39 @@ export const requestFixtures: readonly unknown[] = [
       actions: ['download'],
     },
   },
-  { version: 7, requestId, command: { _tag: 'WatchesExport' } },
+  { version: 8, requestId, command: { _tag: 'WatchesExport' } },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: { _tag: 'WatchesImport', file: watchesFile, acceptUnattended: true },
   },
-  { version: 7, requestId, command: { _tag: 'WatchCheck' } },
+  { version: 8, requestId, command: { _tag: 'WatchCheck' } },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: { _tag: 'WatchInboxList', watch: { _tag: 'AccountIdSelector', accountId: '2002' } },
   },
-  { version: 7, requestId, command: { _tag: 'WatchInboxRemove', entryIds: ['entry-1'] } },
+  { version: 8, requestId, command: { _tag: 'WatchInboxRemove', entryIds: ['entry-1'] } },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: { _tag: 'WatchRecover', action: 'notify', operation: 'retry', entryIds: ['entry-1'] },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     command: {
       _tag: 'WatchLifecycle',
       operation: 'pause',
       watches: [{ _tag: 'UsernameSelector', username: 'example' }],
+    },
+  },
+  {
+    version: 8,
+    requestId,
+    command: {
+      _tag: 'WatchMove',
+      watches: [{ _tag: 'WatchIdSelector', watchId: '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f' }],
     },
   },
 ];
@@ -425,12 +433,18 @@ const resultFixtures: readonly unknown[] = [
     watches: [watchSummary],
     unknownWatches: ['missing'],
   },
+  {
+    _tag: 'WatchMoveResult',
+    moved: [watchSummary],
+    alreadyWatched: [],
+    unknownWatches: ['missing'],
+  },
 ];
 
 export const eventFixtures: readonly unknown[] = [
-  { version: 7, requestId, event: { _tag: 'Accepted' } },
+  { version: 8, requestId, event: { _tag: 'Accepted' } },
   {
-    version: 7,
+    version: 8,
     requestId,
     event: {
       _tag: 'Progress',
@@ -443,7 +457,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     event: {
       _tag: 'Progress',
@@ -454,12 +468,12 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   ...resultFixtures.map(result => ({
-    version: 7,
+    version: 8,
     requestId,
     event: { _tag: 'Completed', result },
   })),
   {
-    version: 7,
+    version: 8,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -467,7 +481,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -475,7 +489,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -483,7 +497,7 @@ export const eventFixtures: readonly unknown[] = [
     },
   },
   {
-    version: 7,
+    version: 8,
     requestId,
     event: {
       _tag: 'Rejected',
@@ -498,7 +512,7 @@ export const eventFixtures: readonly unknown[] = [
     { _tag: 'UnattendedDisclosure', text: 'Watches check Instagram for you.' },
     { _tag: 'ExistingWatch', accountId: '2002', username: 'example' },
   ].map(detail => ({
-    version: 7,
+    version: 8,
     requestId,
     event: {
       _tag: 'Rejected',

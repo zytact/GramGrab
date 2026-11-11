@@ -395,6 +395,19 @@ describe('CLI watch grammar', () => {
     expect(() => command('show', 'someone', '--account-id')).toThrow('Invalid WATCH');
   });
 
+  it('reads a Watch ID as that Watch and moves only by Watch ID', () => {
+    const watchId = '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f';
+    expect(command('delete', watchId)).toMatchObject({
+      watches: [{ _tag: 'WatchIdSelector', watchId }],
+    });
+    expect(command('move', watchId, '--json')).toMatchObject({
+      _tag: 'WatchMove',
+      watches: [{ watchId }],
+    });
+    expect(() => command('move', 'instagram')).toThrow('Invalid WATCH_ID');
+    expect(() => command('move')).toThrow('needs at least one WATCH_ID');
+  });
+
   it('builds add, set, and multi-Watch lifecycle commands', () => {
     expect(
       command('add', 'someone', '--kinds', 'posts,stories', '--actions', 'collect', '--json')

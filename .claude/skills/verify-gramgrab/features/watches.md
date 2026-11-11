@@ -1013,9 +1013,10 @@ as the linked login and spend only `instagram-requests.linked`. Add Watch and
 Export or import show the `#instagram-login` picker, default `main`, and add to
 the login it names.
 
-Watches no signed-in login checks are held: greyed out, with no settings, and
-the row reads `Paused · link this login again to resume` for an ended linked
-login's Watch or `Paused · sign in as that login to resume` for another login's.
+Watches no signed-in login checks are held: greyed out, and the row reads
+`Paused · link this login again or move it` for an ended linked login's Watch or
+`Paused · sign in as that login or move it` for another login's. Any signed-in
+login can still change one ([Move a Watch](#move-a-watch)).
 
 1. Read both ledgers and `watch-scheduler` as counts and booleans.
 2. Open `options.html`, click `+ Add`, set `#instagram-login` to `linked`
@@ -1040,6 +1041,37 @@ account ID, plus fixture Watches whose `viewerId` is that ID or another unknown
 ID, from the worker. Restore both keys afterward. Forcing a real ended session
 means logging the second account out, so leave it to the synthetic tests in
 `linked-login.test.ts` unless the person asks for it.
+
+## Move a Watch
+
+Any signed-in login can change, delete, or move any Watch, held ones included
+(ADR 0009). The inspector of every Watch shows its settings, `Delete Watch`, and
+under `Owner` one `Move to Main (@name)` or `Move to Linked (@name)` button per
+signed-in login that does not own it. A move keeps the Watch ID, baselines and
+inbox, so the selection stays on the same Watch. The CLI names Watches by the
+`watchId` that `watch list --json` prints under `watches` or `heldWatches`:
+`watch set|pause|resume|delete WATCH_ID` change any login's Watch, and
+`watch move WATCH_ID... [--login linked]` moves Watches to that login. A
+username or account ID still matches only the login's own Watches.
+
+A held Watch needs no second account. Seed one from the worker with a `viewerId`
+no login has, such as `1234567890`, and a fixture `targetId`:
+
+1. Open it on `options.html`. The inspector shows `Watch for`, `Delete Watch`,
+   and `Move to Main (@name)`.
+2. Toggle one kind and require `✓ Saved` and the stored kinds to change while
+   `viewerId` stays the fixture ID.
+3. Click `Move to Main`. Require the row note to change from `Paused · sign in
+   as that login or move it` to the owned status, such as `First check pending`,
+   the stored `viewerId` to become the main viewer's, the tracking and
+   discoveries to match what was seeded, and the same Watch to stay selected.
+4. Seed a second held Watch and run `gramgrab watch move WATCH_ID --json`. Require
+   exit 0 and `moved` naming it. Then seed a held Watch of an account the main
+   login now watches and move it: exit 1, it is listed in `alreadyWatched`, and
+   its stored `viewerId` stays the fixture ID.
+5. `gramgrab watch delete WATCH_ID --json` on a third held fixture removes it.
+
+Remove every fixture afterward.
 
 ## Evidence
 

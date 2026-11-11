@@ -21,6 +21,7 @@ import {
   WatchInboxRemoveResult,
   WatchRecoverResult,
   WatchLifecycleResult,
+  WatchMoveResult,
   WatchesExportResult,
   WatchesImportResult,
   WatchListResult,
@@ -149,12 +150,27 @@ const owned = (store: WatchStore, viewer: Account) =>
   store.watches.filter(watch => watch.viewerId === viewer.accountId);
 
 const matches = (watch: Watch, selector: WatchSelector) =>
-  selector._tag === 'AccountIdSelector'
-    ? watch.targetId === selector.accountId
-    : watch.username.toLowerCase() === selector.username.toLowerCase();
+  Match.valueTags(selector, {
+    AccountIdSelector: ({ accountId }) => watch.targetId === accountId,
+    UsernameSelector: ({ username }) => watch.username.toLowerCase() === username.toLowerCase(),
+    WatchIdSelector: ({ watchId }) => watch.id === watchId,
+  });
 
 const selectorText = (selector: WatchSelector) =>
-  selector._tag === 'AccountIdSelector' ? selector.accountId : selector.username;
+  Match.valueTags(selector, {
+    AccountIdSelector: ({ accountId }) => accountId,
+    UsernameSelector: ({ username }) => username,
+    WatchIdSelector: ({ watchId }) => watchId,
+  });
+
+/**
+ * The Watch a command that changes Watches selects. A Watch ID names any stored Watch, whichever
+ * login owns it. An account ID or username picks among the viewer's own Watches.
+ */
+const findManaged = (store: WatchStore, viewer: Account, selector: WatchSelector) =>
+  (selector._tag === 'WatchIdSelector' ? store.watches : owned(store, viewer)).find(watch =>
+    matches(watch, selector)
+  );
 
 const STORAGE_STATUS = {
   WATCH_STORE_CAPACITY_EXCEEDED: 'full',
@@ -373,14 +389,14 @@ const importWatches = (command: Extract<WatchCommand, { _tag: 'WatchesImport' }>
     });
   });
 
-/** Replaces one owned Watch through `change`, failing if it disappeared meanwhile. */
+/** Replaces one selected Watch through `change`, failing if it disappeared meanwhile. */
 const updateWatch = <T>(
   viewer: Account,
   selector: WatchSelector,
   change: (watch: Watch) => { watch: Watch; value: T }
 ) =>
   save(store => {
-    const current = owned(store, viewer).find(watch => matches(watch, selector));
+    const current = findManaged(store, viewer, selector);
     if (!current) return { store, value: undefined };
     const next = change(current);
     return {
@@ -409,11 +425,10 @@ const lifecycle = (command: Extract<WatchCommand, { _tag: 'WatchLifecycle' }>) =
   Effect.gen(function* () {
     const viewer = yield* verifyViewer(yield* loadOrReject);
     return yield* save(store => {
-      const mine = owned(store, viewer);
       const selected = new Map<string, Watch>();
       const unknownWatches: string[] = [];
       for (const selector of command.watches) {
-        const watch = mine.find(candidate => matches(candidate, selector));
+        const watch = findManaged(store, viewer, selector);
         if (watch) selected.set(watch.id, watch);
         else unknownWatches.push(selectorText(selector));
       }
@@ -431,6 +446,40 @@ const lifecycle = (command: Extract<WatchCommand, { _tag: 'WatchLifecycle' }>) =
         value: WatchLifecycleResult.make({
           operation: command.operation,
           watches: changed.map(watch => summarize(watch)),
+          unknownWatches,
+        }),
+      };
+    });
+  });
+
+/** Moves the named Watches to the viewer, unless the viewer already watches the same account. */
+const move = (command: Extract<WatchCommand, { _tag: 'WatchMove' }>) =>
+  Effect.gen(function* () {
+    const viewer = yield* verifyViewer(yield* loadOrReject);
+    return yield* save(store => {
+      let watches = store.watches;
+      const moved: Watch[] = [];
+      const alreadyWatched: Watch[] = [];
+      const unknownWatches: string[] = [];
+      for (const watchId of new Set(command.watches.map(selector => selector.watchId))) {
+        const watch = watches.find(candidate => candidate.id === watchId);
+        if (!watch) unknownWatches.push(watchId);
+        else if (watch.viewerId === viewer.accountId) moved.push(watch);
+        else if (
+          owned({ ...store, watches }, viewer).some(mine => mine.targetId === watch.targetId)
+        )
+          alreadyWatched.push(watch);
+        else {
+          const next = { ...watch, viewerId: viewer.accountId };
+          watches = watches.map(candidate => (candidate.id === watchId ? next : candidate));
+          moved.push(next);
+        }
+      }
+      return {
+        store: watches === store.watches ? store : { ...store, watches },
+        value: WatchMoveResult.make({
+          moved: moved.map(watch => summarize(watch)),
+          alreadyWatched: alreadyWatched.map(watch => summarize(watch)),
           unknownWatches,
         }),
       };
@@ -887,6 +936,7 @@ const program = (
     WatchAdd: add,
     WatchSet: set,
     WatchLifecycle: lifecycle,
+    WatchMove: move,
     WatchesExport: () => exportWatches,
     WatchesImport: importWatches,
     WatchCheck: command => check(command, onProgress),

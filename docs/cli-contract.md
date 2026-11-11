@@ -1,6 +1,6 @@
 # CLI capability contract
 
-This document inventories the public GramGrab operations covered by protocol version 7.
+This document inventories the public GramGrab operations covered by protocol version 8.
 
 ## Item identity
 
@@ -39,6 +39,7 @@ gramgrab watch check WATCH...|--all [--json]
 gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
 gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
 gramgrab watch pause|resume|delete WATCH... [--json]
+gramgrab watch move WATCH_ID... [--json]
 gramgrab watch needs [--json]
 gramgrab watch retry|dismiss|confirm ATTENTION_ID... [--json]
 gramgrab watch recover notify retry|dismiss ENTRY_ID... [--json]
@@ -91,9 +92,14 @@ preserve its server order, and apply the same item numbering and export-mode rul
 
 Watches (Beta) are standing instructions the extension owns; the CLI only manages them. Kinds are
 `posts`, `stories`, `instants`, and `avatar`, and actions are `notify`, `download`, and `collect`.
-`TARGET` is a username or profile URL. `WATCH` is a username or numeric account ID: all digits mean
-an account ID, and `--account-id` or `--username` forces one reading. Selectors match only the
-verified Instagram login's Watches; another login's Watch is `WATCH_NOT_FOUND`, and an unverifiable
+`TARGET` is a username or profile URL. `WATCH` is a username, a numeric account ID, or a Watch ID: all digits mean
+an account ID, and `--account-id` or `--username` forces one reading. A username or account ID
+matches only the verified Instagram login's Watches; another login's Watch is `WATCH_NOT_FOUND`. A
+Watch ID, as `watch list` prints it under `watches` or `heldWatches`, names that Watch whichever
+login owns it, so `set`, `pause`, `resume`, and `delete` change any Watch. `check`, `show`, and
+`inbox` still reach only the login's own. `move` moves Watches, named by Watch ID, with their
+baselines and inbox to the login given by `--login`; one whose account that login already watches
+stays put and is listed in `alreadyWatched`, and exits 1 like an unknown Watch ID. An unverifiable
 login rejects every Watch command with `IG_NOT_AUTHENTICATED` and only the stored Watch count. Only
 `add` resolves its target over the network. `add` requires `--accept-unattended` on every call;
 without it the rejection carries the full disclosure. An identical repeated `add` returns the
@@ -192,6 +198,7 @@ transport failure.
 | Add a Watch                                                              | `WatchAdd`                                                                  | Requires the per-call disclosure acknowledgement; duplicates return or point to the existing one    |
 | Change a Watch's kinds or actions                                        | `WatchSet`                                                                  | Replaces the supplied sets; initialized baselines are kept                                          |
 | Pause, resume, or delete Watches                                         | `WatchLifecycle`                                                            | Unknown selectors are reported per Watch; deletion keeps files and History                          |
+| Move Watches to another login                                            | `WatchMove`                                                                 | By Watch ID; keeps baselines and inbox; an account the login already watches stays put              |
 | Check Watches now                                                        | `WatchCheck`                                                                | Selected Watches or all enabled ones; unknown selectors are reported per Watch                      |
 | List and act on what needs the person                                    | `WatchNeeds`, `WatchAttentionRecover`                                       | Only failed or unconfirmed actions accept operations; others are refused per ID                     |
 | List, remove, export, or retry Inbox entries                             | `WatchInboxList`, `WatchInboxRemove`, `WatchInboxExport`, `WatchInboxRetry` | Export uses the entry's frozen plan; unknown entry IDs are reported in `unknownEntryIds`            |

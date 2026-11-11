@@ -1,11 +1,13 @@
 import { parseWatchInbox } from './watch-inbox.ts';
-import { Schema } from 'effect';
+import { Option, Schema } from 'effect';
 import {
   AccountId,
   AccountIdSelector,
   InstagramUsername,
   UsernameSelector,
   WatchActions,
+  WatchIdSelector,
+  WatchMove,
   WatchAdd,
   WatchCheck,
   WatchNeeds,
@@ -57,14 +59,24 @@ function split(arguments_: readonly string[]): WatchArguments {
 const decodeAccountId = Schema.decodeUnknownSync(AccountId);
 const decodeUsername = Schema.decodeUnknownSync(InstagramUsername);
 
+const decodeWatchId = Schema.decodeUnknownOption(WatchIdSelector.fields.watchId);
+
+/** The Watch `value` names by its Watch ID, or undefined when it is no Watch ID. */
+const watchIdSelector = (value: string) =>
+  Option.getOrUndefined(
+    Option.map(decodeWatchId(value), watchId => WatchIdSelector.make({ watchId }))
+  );
+
 /**
- * Reads a WATCH selector. All digits mean an account ID unless --username forces a username;
- * --account-id forces an account ID.
+ * Reads a WATCH selector. A Watch ID names that Watch whichever login owns it. All digits mean an
+ * account ID unless --username forces a username; --account-id forces an account ID.
  */
 function selector(value: string, flags: ReadonlySet<string>): WatchSelector {
   const asAccountId = flags.has('--account-id');
   const asUsername = flags.has('--username');
   if (asAccountId && asUsername) throw new Error('Use either --account-id or --username.');
+  const byId = watchIdSelector(value);
+  if (byId) return byId;
   const username = value.replace(/^@/, '');
   try {
     if (asAccountId || (!asUsername && /^\d+$/.test(value)))
@@ -161,6 +173,15 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
     if (!first) throw new Error('gramgrab watch recover needs at least one ENTRY_ID.');
     return WatchRecover.make({ action, operation, entryIds: [first, ...rest] });
   },
+  move: ({ positionals }) => {
+    const [first, ...rest] = positionals.map(value => {
+      const byId = watchIdSelector(value);
+      if (!byId) throw new Error(`Invalid WATCH_ID: ${value}`);
+      return byId;
+    });
+    if (!first) throw new Error('gramgrab watch move needs at least one WATCH_ID.');
+    return WatchMove.make({ watches: [first, ...rest] });
+  },
   ...Object.fromEntries(
     (['pause', 'resume', 'delete'] as const).map(operation => [
       operation,
@@ -195,6 +216,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   pause: ['--json', '--account-id', '--username'],
   resume: ['--json', '--account-id', '--username'],
   delete: ['--json', '--account-id', '--username'],
+  move: ['--json'],
   check: ['--json', '--all', '--account-id', '--username'],
   recover: ['--json'],
 };
@@ -205,7 +227,7 @@ export function parseWatchArguments(arguments_: readonly string[]): WatchCommand
   const parse = Object.hasOwn(parsers, action) ? parsers[action] : undefined;
   if (!parse)
     throw new Error(
-      'Usage: gramgrab watch list|show|add|set|pause|resume|delete|check|needs|retry|dismiss|confirm|inbox'
+      'Usage: gramgrab watch list|show|add|set|pause|resume|delete|move|check|needs|retry|dismiss|confirm|inbox'
     );
   const parsed = split(arguments_.slice(1));
   const unknown = [...parsed.flags, ...parsed.values.keys()].find(

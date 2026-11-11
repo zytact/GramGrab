@@ -156,23 +156,25 @@ interface KindStep {
 }
 
 /**
- * Applies `change` to the Watch as it is stored now. A deleted Watch stays deleted, so its value
- * is undefined.
+ * Applies `change` to the Watch as it is stored now. A Watch deleted or moved to another login
+ * since the check read it is left alone, so its value is undefined.
  */
 const update = <T>(
-  watchId: string,
+  watch: Watch,
   change: (watch: Watch, now: number) => { readonly watch: Watch; readonly value: T }
 ) =>
   Effect.promise(() =>
     mutateStore(store => {
-      const current = store.watches.find(candidate => candidate.id === watchId);
+      const current = store.watches.find(
+        candidate => candidate.id === watch.id && candidate.viewerId === watch.viewerId
+      );
       if (!current) return { store, value: undefined };
       const applied = change(current, Date.now());
       return {
         store: {
           ...store,
           watches: store.watches.map(candidate =>
-            candidate.id === watchId ? applied.watch : candidate
+            candidate.id === current.id ? applied.watch : candidate
           ),
         },
         value: applied.value,
@@ -192,7 +194,7 @@ function written<T>(
 }
 
 /** A kind's failed acquisition: throttling defers the check, anything else is the kind's problem. */
-const failed = (watchId: string, kind: WatchKind, error: Acquisition) =>
+const failed = (watch: Watch, kind: WatchKind, error: Acquisition) =>
   Effect.gen(function* () {
     const until = deferral(error, (yield* InstagramRequests).login);
     if (until !== undefined)
@@ -202,8 +204,8 @@ const failed = (watchId: string, kind: WatchKind, error: Acquisition) =>
         deferredUntil: until,
       } satisfies KindStep;
     const problem = kindProblem(error);
-    const write = yield* update(watchId, (watch, now) => ({
-      watch: applyKindProblem(watch, kind, problem, now),
+    const write = yield* update(watch, (current, now) => ({
+      watch: applyKindProblem(current, kind, problem, now),
       value: KindCheckFailed.make({ kind, code: problem.code }),
     }));
     const step = written(kind, write, outcome => ({ outcome }));
@@ -215,8 +217,8 @@ const checkKind = (watch: Watch, kind: TimedKind, acquire: Acquirer, scope: Chec
     const { checkId } = scope;
     const proposedCutoff = Math.floor(Date.now() / 1000);
     const result = yield* Effect.either(acquire(watch, proposedCutoff, scope.feedScope));
-    if (Either.isLeft(result)) return yield* failed(watch.id, kind, result.left);
-    const write = yield* update(watch.id, (current, now) => {
+    if (Either.isLeft(result)) return yield* failed(watch, kind, result.left);
+    const write = yield* update(watch, (current, now) => {
       const applied = applyTimedCheck(current, kind, result.right, {
         checkId,
         proposedCutoff,
@@ -255,12 +257,12 @@ interface TraversalContext {
 
 /** Records one page's discoveries, and the check's success when the page completes it. */
 const recordPage = (
-  watchId: string,
+  watch: Watch,
   refs: readonly TimedRef[],
   done: boolean,
   context: TraversalContext
 ) =>
-  update(watchId, (current, now) => {
+  update(watch, (current, now) => {
     const found = discoverNew(current, refs, { ...context, now });
     const posts: TimedTracking = done
       ? {
@@ -286,14 +288,14 @@ const postsPageStep = (watch: Watch, traversal: Traversal | undefined, context: 
         yield* saveTraversal(watch.id, undefined);
       return {
         _tag: 'end',
-        step: yield* failed(watch.id, 'posts', result.left),
+        step: yield* failed(watch, 'posts', result.left),
       } satisfies PageStep;
     }
     const { refs, next } = result.right;
     const done =
       next === undefined ||
       !refs.some(ref => eligible(ref.takenAt, context.cutoff, context.windowStart));
-    const write = yield* recordPage(watch.id, refs, done, context);
+    const write = yield* recordPage(watch, refs, done, context);
     if (write.kind === 'failed' || write.value === undefined) {
       yield* saveTraversal(watch.id, undefined);
       return { _tag: 'end', step: written('posts', write, () => ({})) } satisfies PageStep;
@@ -326,7 +328,7 @@ const traversePosts = (watch: Watch, cutoff: number, checkId: string) =>
       if (step._tag === 'done') return { outcome: succeeded(false) } satisfies KindStep;
       traversal = step.traversal;
     }
-    const write = yield* update(watch.id, (current, now) => ({
+    const write = yield* update(watch, (current, now) => ({
       watch: withPosts(current, { ...current.tracking.posts, lastCheckAt: now, catchingUp: true }),
       value: succeeded(true),
     }));
@@ -339,8 +341,8 @@ const checkAvatar = (watch: Watch, checkId: string, profile: Profile | undefined
     const result = yield* Effect.either(
       profile ? readAvatar(profile) : fetchAvatar(watch.targetId)
     );
-    if (Either.isLeft(result)) return yield* failed(watch.id, 'avatar', result.left);
-    const write = yield* update(watch.id, (current, now) => {
+    if (Either.isLeft(result)) return yield* failed(watch, 'avatar', result.left);
+    const write = yield* update(watch, (current, now) => {
       const applied = applyAvatarCheck(current, result.right.pictureId, { checkId, now });
       return { watch: applied.watch, value: applied.outcome };
     });
@@ -377,7 +379,7 @@ const profileStage = (watch: Watch, kinds: readonly WatchKind[]) =>
   Effect.gen(function* () {
     const result = yield* Effect.either(confirmProfile(watch.targetId));
     if (Either.isRight(result)) {
-      const write = yield* update(watch.id, current => ({
+      const write = yield* update(watch, current => ({
         watch: renamed(current, result.right.username),
         value: true,
       }));
@@ -385,7 +387,7 @@ const profileStage = (watch: Watch, kinds: readonly WatchKind[]) =>
     }
     const steps: KindStep[] = [];
     for (const kind of kinds) {
-      const step = yield* failed(watch.id, kind, result.left);
+      const step = yield* failed(watch, kind, result.left);
       steps.push(kind === 'avatar' ? { ...step, avatarAttempted: true } : step);
       if (step.stop) break;
     }
