@@ -58,8 +58,8 @@ confirm the matching entry's downloaded timestamp or count changed. Click its
 
 From the CLI, an entry saved as a frame, silent, rotated, or cropped export
 re-downloads through the runner document, and a direct entry never opens it.
-The popup does those exports itself, in the popup or, for videos, the
-workspace. One CLI `history redownload` resolves each entry's source once,
+The popup does those exports itself. Frames and edited images run in the
+popup, and silent or edited videos move to the workspace. One CLI `history redownload` resolves each entry's source once,
 hands that media to the runner, and keeps a single runner window for every
 entry in the command. To count resolves for Posts, Reels, Stories, or a
 profile, run `throttle.mjs` as a pass-through counter in the background before
