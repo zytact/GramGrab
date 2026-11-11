@@ -99,3 +99,61 @@ describe('validationFailureFrom', () => {
     expect(validationFailureFrom(cause)).toMatchObject({ _tag: 'ValidationFailure', message });
   });
 });
+
+describe('native bridge reconnection', () => {
+  async function startRecordingBridge() {
+    vi.useFakeTimers();
+    const runtime = getMockBrowser().runtime as unknown as Record<string, unknown>;
+    const originalConnectNative = runtime.connectNative;
+    const gaps: number[] = [];
+    let lastConnect: number | undefined;
+    const disconnects: (() => void)[] = [];
+    runtime.connectNative = () => {
+      if (lastConnect !== undefined) gaps.push(Date.now() - lastConnect);
+      lastConnect = Date.now();
+      return {
+        postMessage: () => {},
+        onMessage: { addListener: () => {} },
+        onDisconnect: { addListener: (listener: () => void) => disconnects.push(listener) },
+      };
+    };
+    onTestFinished(() => {
+      runtime.connectNative = originalConnectNative;
+      vi.useRealTimers();
+      vi.resetModules();
+    });
+    vi.resetModules();
+    const bridge = await import('./native-bridge.ts');
+    bridge.startNativeBridge(async () => {});
+    const disconnectLatest = () => disconnects.at(-1)?.();
+    return { disconnectLatest, gaps };
+  }
+
+  it('backs off when the host keeps refusing the connection', async () => {
+    const { disconnectLatest, gaps } = await startRecordingBridge();
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      disconnectLatest();
+      await vi.runOnlyPendingTimersAsync();
+    }
+
+    expect(gaps).toEqual([1_000, 2_000, 4_000, 8_000]);
+  });
+
+  it('resets the backoff only after a connection stayed up for 10 seconds', async () => {
+    const { disconnectLatest, gaps } = await startRecordingBridge();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      disconnectLatest();
+      await vi.runOnlyPendingTimersAsync();
+    }
+
+    await vi.advanceTimersByTimeAsync(9_999);
+    disconnectLatest();
+    await vi.runOnlyPendingTimersAsync();
+    await vi.advanceTimersByTimeAsync(10_000);
+    disconnectLatest();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(gaps.slice(-2)).toEqual([9_999 + 8_000, 10_000 + 1_000]);
+  });
+});
