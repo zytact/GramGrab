@@ -101,7 +101,7 @@ describe('validationFailureFrom', () => {
 });
 
 describe('native bridge reconnection', () => {
-  async function bridgeWithPorts() {
+  async function startRecordingBridge() {
     vi.useFakeTimers();
     const runtime = getMockBrowser().runtime as unknown as Record<string, unknown>;
     const originalConnectNative = runtime.connectNative;
@@ -130,7 +130,7 @@ describe('native bridge reconnection', () => {
   }
 
   it('backs off when the host keeps refusing the connection', async () => {
-    const { disconnectLatest, gaps } = await bridgeWithPorts();
+    const { disconnectLatest, gaps } = await startRecordingBridge();
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       disconnectLatest();
@@ -140,17 +140,20 @@ describe('native bridge reconnection', () => {
     expect(gaps).toEqual([1_000, 2_000, 4_000, 8_000]);
   });
 
-  it('reconnects quickly after a connection that stayed up', async () => {
-    const { disconnectLatest, gaps } = await bridgeWithPorts();
+  it('resets the backoff only after a connection stayed up for 10 seconds', async () => {
+    const { disconnectLatest, gaps } = await startRecordingBridge();
     for (let attempt = 0; attempt < 3; attempt += 1) {
       disconnectLatest();
       await vi.runOnlyPendingTimersAsync();
     }
 
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(9_999);
+    disconnectLatest();
+    await vi.runOnlyPendingTimersAsync();
+    await vi.advanceTimersByTimeAsync(10_000);
     disconnectLatest();
     await vi.runOnlyPendingTimersAsync();
 
-    expect(gaps.at(-1)).toBe(61_000);
+    expect(gaps.slice(-2)).toEqual([9_999 + 8_000, 10_000 + 1_000]);
   });
 });
