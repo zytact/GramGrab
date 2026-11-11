@@ -56,6 +56,29 @@ Both actions must start a new browser download. Reopen the history list and
 confirm the matching entry's downloaded timestamp or count changed. Click its
 `Open source` link and require the canonical Instagram source in the new tab.
 
+From the CLI, an entry saved as a frame, silent, rotated, or cropped export
+re-downloads through the runner document, and a direct entry never opens it.
+The popup does those exports itself. Frames and edited images run in the
+popup, and silent or edited videos move to the workspace. One CLI `history redownload` resolves each entry's source once,
+hands that media to the runner, and keeps a single runner window for every
+entry in the command. To count resolves for Posts, Reels, Stories, or a
+profile, run `throttle.mjs` as a pass-through counter in the background before
+the command. After its `attached` line it prints one `passed <path>` line per
+worker request to `www.instagram.com`. Count the `/api/graphql` and
+`/api/v1/media/` lines per entry, and ignore `/`, the home page reads the
+worker makes for its tokens. A Story entry costs two `/api/graphql` lines,
+so a second resolve shows up as double that:
+
+```bash
+node .agents/skills/verify-gramgrab/scripts/throttle.mjs www.instagram.com 200 --pass 1000 > "$EV/requests.log" &
+node apps/cli/bin/gramgrab.mjs history redownload FRAME_ENTRY_ID --json
+kill %1
+```
+
+A frame entry that re-downloads from the CLI saves `<hint>_<N>_frame.jpg`. The
+popup's re-download of the same entry saves `<hint>_frame_MM-SS.jpg`. Watches
+exports also use the timestamp form.
+
 The button's `textContent` is `History`, but CSS uppercases it, so `drive.mjs
 text` and `wait` see `HISTORY` and `RESULTS`. Select on `textContent`, wait on
 the uppercase form.

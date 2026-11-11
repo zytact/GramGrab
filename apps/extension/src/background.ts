@@ -15,6 +15,7 @@ import {
   HistoryClearResult,
   HistoryListResult,
   HistoryMarker as ProtocolHistoryMarker,
+  HistoryRedownload,
   HistoryRedownloadFailed,
   HistoryRedownloadResult,
   HistoryRedownloadStarted,
@@ -38,6 +39,7 @@ import {
   type Request,
   type InstagramLogin,
   deliversOriginal,
+  type ExportSettings,
 } from '@gramgrab/protocol';
 import {
   canonicalizeInstagramUrl,
@@ -404,33 +406,37 @@ function missingFailure(entry: DownloadHistoryEntry): OperationFailure {
   return OperationFailure.make({ code: 'MEDIA_NOT_FOUND', phase: 'source', scope: 'item' });
 }
 
-// fallow-ignore-next-line complexity
-async function handleRedownloadHistoryEntry(
-  msg: MessageOf<'REDOWNLOAD_HISTORY_ENTRY'>
-): Promise<MessageResponse<'REDOWNLOAD_HISTORY_ENTRY'>> {
+async function findHistoryEntry(
+  entryId: string
+): Promise<{ entry: DownloadHistoryEntry; failure?: never } | { failure: OperationFailure }> {
   const history = await getHistory();
   if (history.kind === 'unknown-version')
     return { failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
   const entry = history.entries.find(
-    (candidate): candidate is DownloadHistoryEntry =>
-      'id' in candidate && candidate.id === msg.entryId
+    (candidate): candidate is DownloadHistoryEntry => 'id' in candidate && candidate.id === entryId
   );
-  if (!entry) return { failure: historyFailure('HISTORY_ENTRY_NOT_FOUND') };
+  return entry ? { entry } : { failure: historyFailure('HISTORY_ENTRY_NOT_FOUND') };
+}
+
+/** Finds the item an entry's source returns for it now. */
+async function resolveHistoryItem(
+  entry: DownloadHistoryEntry,
+  login: InstagramLogin | undefined
+): Promise<{ item: MediaItem; failure?: never } | { failure: OperationFailure }> {
+  const empty = { items: undefined as MediaItem[] | undefined };
   const resolved =
     entry.origin.kind === 'instants'
       ? await runOperationHandler(
           fetchedItems(fetchInstantMedia()),
-          {
-            items: undefined as MediaItem[] | undefined,
-          },
+          empty,
           normalizeSourceFailure,
-          msg.login
+          login
         )
       : await runOperationHandler(
           fetchedItems(resolveMediaEffect(entry.origin.sourceUrl)),
-          { items: undefined as MediaItem[] | undefined },
+          empty,
           normalizeSourceFailure,
-          msg.login
+          login
         );
   if (resolved.failure) return { failure: resolved.failure };
   if (!resolved.items)
@@ -444,25 +450,31 @@ async function handleRedownloadHistoryEntry(
   const match = reconcileHistoryEntry(entry, resolved.items);
   if (match.kind === 'missing') return { failure: missingFailure(entry) };
   if (match.kind === 'ambiguous') return { failure: historyFailure('HISTORY_ITEM_UNRESOLVED') };
-  const item = resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!;
-  const redownload = {
-    itemIndex: item.itemIndex,
-    ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-    url: item.url,
-    filenameHint: item.filenameHint,
-    sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
-    originKind: entry.origin.kind,
+  return {
+    item: resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!,
+  };
+}
+
+/** The export settings a re-download reproduces, derived from the entry's mode, rotation and crop. */
+function historySettings(entry: DownloadHistoryEntry): ExportSettings {
+  return {
+    mode:
+      entry.exportMode === 'frame'
+        ? FrameExport.make({ timestampSeconds: entry.frameTimestampSeconds ?? 5 })
+        : entry.exportMode === 'silent'
+          ? SilentExport.make({ reencode: 'allow' })
+          : DirectExport.make(),
     ...(entry.rotation ? { rotation: entry.rotation } : {}),
     ...(entry.crop ? { crop: entry.crop } : {}),
   };
-  if (entry.exportMode === 'frame')
-    return {
-      frame: { ...redownload, timestampSeconds: entry.frameTimestampSeconds ?? 5 },
-      failure: undefined,
-    };
-  if (entry.exportMode === 'silent') return { silent: redownload, failure: undefined };
-  if (entry.rotation || entry.crop)
-    return { modified: { ...redownload, mediaType: item.type }, failure: undefined };
+}
+
+function needsRunner(entry: DownloadHistoryEntry): boolean {
+  return !deliversOriginal(historySettings(entry));
+}
+
+function downloadHistoryOriginal(entry: DownloadHistoryEntry, item: MediaItem) {
+  const filename = `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
   return handleDownloadMedia({
     type: 'DOWNLOAD_MEDIA',
     ...(entry.origin.kind === 'source' ? { sourceUrl: entry.origin.sourceUrl } : {}),
@@ -474,13 +486,48 @@ async function handleRedownloadHistoryEntry(
         itemIndex: item.itemIndex,
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         url: item.url,
-        filename: `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
+        filename,
         originalUrl: item.url,
-        originalFilename: `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`,
+        originalFilename: filename,
         mediaType: item.type,
       },
     ],
   });
+}
+
+function redownloadTarget(entry: DownloadHistoryEntry, item: MediaItem) {
+  return {
+    itemIndex: item.itemIndex,
+    ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+    url: item.url,
+    filenameHint: item.filenameHint,
+    sourceUrl: entry.origin.kind === 'source' ? entry.origin.sourceUrl : '',
+    originKind: entry.origin.kind,
+    ...(entry.rotation ? { rotation: entry.rotation } : {}),
+    ...(entry.crop ? { crop: entry.crop } : {}),
+  };
+}
+
+async function handleRedownloadHistoryEntry(
+  msg: MessageOf<'REDOWNLOAD_HISTORY_ENTRY'>
+): Promise<MessageResponse<'REDOWNLOAD_HISTORY_ENTRY'>> {
+  const found = await findHistoryEntry(msg.entryId);
+  if (found.failure) return { failure: found.failure };
+  const { entry } = found;
+  const resolved = await resolveHistoryItem(entry, msg.login);
+  if (resolved.failure) return { failure: resolved.failure };
+  const { item } = resolved;
+  const settings = historySettings(entry);
+  if (deliversOriginal(settings)) return downloadHistoryOriginal(entry, item);
+  const { mode } = settings;
+  const redownload = redownloadTarget(entry, item);
+  if (mode._tag === 'FrameExport')
+    return {
+      frame: { ...redownload, timestampSeconds: mode.timestampSeconds },
+      failure: undefined,
+    };
+  if (mode._tag === 'SilentExport') return { silent: redownload, failure: undefined };
+  return { modified: { ...redownload, mediaType: item.type }, failure: undefined };
 }
 
 /** Records an export a document downloaded itself, so history holds what the file became. */
@@ -641,7 +688,6 @@ let runnerWindowId: number | undefined;
 let runnerReady: Promise<number> | undefined;
 let resolveRunnerReady: ((tabId: number) => void) | undefined;
 let runnerProgress: ((event: Progress) => void) | undefined;
-let runnerIdleTimer: ReturnType<typeof setTimeout> | undefined;
 let exportQueue: Promise<void> = Promise.resolve();
 
 function cancellationError(): Error {
@@ -692,35 +738,76 @@ async function getRunner(): Promise<number> {
 
 type ProtocolExportCommand = ProtocolExport | ProtocolInstantsExport;
 
-async function runInDocument(command: ProtocolExportCommand, login: InstagramLogin | undefined) {
-  const tabId = await getRunner();
-  return sendTabMessage(tabId, {
-    type: 'RUN_EXPORT',
-    sourceUrl: command._tag === 'Export' ? command.sourceUrl : '',
-    originKind: command._tag === 'InstantsExport' ? 'instants' : 'source',
-    ...(login ? { login } : {}),
-    command,
-  });
-}
-
-async function runPreparedInDocument(
-  request: Omit<MessageOf<'RUN_EXPORT'>, 'type'>
-): Promise<ProtocolExportResult> {
+/**
+ * Gives `use` the runner document to itself for one whole operation, however many exports it sends,
+ * then closes the runner. Aborting `signal` closes the runner at once.
+ */
+async function withRunner<T>(signal: AbortSignal, use: () => Promise<T>): Promise<T> {
   let release = () => {};
   const turn = new Promise<void>(resolve => {
     release = resolve;
   });
   const previous = exportQueue;
   exportQueue = previous.then(() => turn);
-  await previous;
   try {
-    const tabId = await getRunner();
-    return Schema.decodeUnknownSync(ProtocolExportResult)(
-      await sendTabMessage(tabId, { type: 'RUN_EXPORT', ...request })
-    );
+    await abortable(previous, signal);
+  } catch (error) {
+    release();
+    throw error;
+  }
+  signal.addEventListener('abort', discardRunner, { once: true });
+  try {
+    return await use();
   } finally {
+    signal.removeEventListener('abort', discardRunner);
     release();
     discardRunner();
+  }
+}
+
+async function runPreparedInDocument(
+  request: Omit<MessageOf<'RUN_EXPORT'>, 'type'>
+): Promise<ProtocolExportResult> {
+  return withRunner(new AbortController().signal, async () =>
+    Schema.decodeUnknownSync(ProtocolExportResult)(
+      await sendTabMessage(await getRunner(), { type: 'RUN_EXPORT', ...request })
+    )
+  );
+}
+
+/** Sends one export to the runner, retrying once in a fresh runner. Call it inside `withRunner`. */
+async function exportInRunner(
+  command: ProtocolExportCommand,
+  emit: (event: EventPayload) => void,
+  signal: AbortSignal,
+  login: InstagramLogin | undefined,
+  preparedMedia?: readonly MediaItem[]
+): Promise<CommandResult> {
+  const send = async () =>
+    Schema.decodeUnknownSync(CommandResult)(
+      await abortable(
+        getRunner().then(tabId =>
+          sendTabMessage(tabId, {
+            type: 'RUN_EXPORT',
+            sourceUrl: command._tag === 'Export' ? command.sourceUrl : '',
+            originKind: command._tag === 'InstantsExport' ? 'instants' : 'source',
+            ...(login ? { login } : {}),
+            command,
+            ...(preparedMedia ? { preparedMedia } : {}),
+          })
+        ),
+        signal
+      )
+    );
+  runnerProgress = emit;
+  try {
+    return await send().catch(() => {
+      if (signal.aborted) throw cancellationError();
+      discardRunner();
+      return send();
+    });
+  } finally {
+    runnerProgress = undefined;
   }
 }
 
@@ -794,44 +881,7 @@ async function runExport(
 ) {
   if (command.operations.every(deliversOriginal))
     return runDirectExport(command, emit, signal, login);
-  let release = () => {};
-  const turn = new Promise<void>(resolve => {
-    release = resolve;
-  });
-  const previous = exportQueue;
-  exportQueue = previous.then(() => turn);
-  const abort = () => discardRunner();
-  try {
-    await abortable(previous, signal);
-  } catch (error) {
-    release();
-    throw error;
-  }
-  try {
-    if (runnerIdleTimer) clearTimeout(runnerIdleTimer);
-    runnerIdleTimer = undefined;
-    runnerProgress = emit;
-    signal.addEventListener('abort', abort, { once: true });
-    try {
-      return Schema.decodeUnknownSync(CommandResult)(
-        await abortable(runInDocument(command, login), signal)
-      );
-    } catch {
-      if (signal.aborted) throw cancellationError();
-      const staleTabId = runnerTabId;
-      runnerTabId = undefined;
-      runnerReady = undefined;
-      if (staleTabId !== undefined) discardRunner();
-      return Schema.decodeUnknownSync(CommandResult)(
-        await abortable(runInDocument(command, login), signal)
-      );
-    }
-  } finally {
-    signal.removeEventListener('abort', abort);
-    runnerProgress = undefined;
-    release();
-    discardRunner();
-  }
+  return withRunner(signal, () => exportInRunner(command, emit, signal, login));
 }
 
 // fallow-ignore-next-line complexity
@@ -928,6 +978,83 @@ async function runDirectExport(
   });
 }
 
+/** The export that reproduces a history entry's recorded mode, rotation and crop. */
+function historyExport(entry: DownloadHistoryEntry, item: MediaItem): ProtocolExportCommand {
+  const operations = [
+    ProtocolExportOperation.make({
+      operationId: Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID()),
+      itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(item.itemIndex + 1),
+      mediaIdentity: MediaIdentity.make({
+        itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(item.itemIndex),
+        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+      }),
+      ...historySettings(entry),
+    }),
+  ];
+  return entry.origin.kind === 'instants'
+    ? ProtocolInstantsExport.make({ operations })
+    : ProtocolExport.make({ sourceUrl: entry.origin.sourceUrl, operations });
+}
+
+/** Re-downloads one entry from a single resolve, answering the failure code if it did not start. */
+async function redownloadEntry(
+  entry: DownloadHistoryEntry,
+  emit: (event: EventPayload) => void,
+  signal: AbortSignal,
+  login: InstagramLogin | undefined
+): Promise<ProtocolOperationFailure['code'] | undefined> {
+  const resolved = await abortable(resolveHistoryItem(entry, login), signal);
+  if (resolved.failure) return resolved.failure.code;
+  const { item } = resolved;
+  if (!needsRunner(entry)) {
+    const response = await abortable(downloadHistoryOriginal(entry, item), signal);
+    if (response.failure) return response.failure.code;
+    return response.results.every(result => result.status === 'started')
+      ? undefined
+      : 'MEDIA_NOT_FOUND';
+  }
+  const result = await exportInRunner(historyExport(entry, item), emit, signal, login, [item]);
+  return result._tag === 'ExportResult' &&
+    result.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded')
+    ? 'DOWNLOAD_UNEXPECTED_FAILURE'
+    : undefined;
+}
+
+/** Re-downloads CLI history entries in turn, holding one runner across them when any needs it. */
+async function redownloadHistory(
+  command: HistoryRedownload,
+  emit: (event: EventPayload) => void,
+  signal: AbortSignal,
+  login: InstagramLogin | undefined
+): Promise<HistoryRedownloadResult> {
+  const before = await abortable(getHistory(), signal);
+  if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
+  const known = new Map(
+    before.entries.flatMap(entry => ('id' in entry ? [[entry.id, entry] as const] : []))
+  );
+  const entries = command.entryIds.flatMap(id => known.get(id) ?? []);
+  const redownloadAll = async () => {
+    const outcomes = [];
+    for (const entry of entries) {
+      signal.throwIfAborted();
+      const code = await redownloadEntry(entry, emit, signal, login);
+      outcomes.push(
+        code
+          ? HistoryRedownloadFailed.make({
+              entryId: entry.id,
+              failure: ProtocolOperationFailure.make({ code, scope: 'item' }),
+            })
+          : HistoryRedownloadStarted.make({ entryId: entry.id })
+      );
+    }
+    return HistoryRedownloadResult.make({
+      outcomes,
+      unknownEntryIds: command.entryIds.filter(id => !known.has(id)),
+    });
+  };
+  return entries.some(needsRunner) ? withRunner(signal, redownloadAll) : redownloadAll();
+}
+
 // fallow-ignore-next-line complexity
 async function executeCommand(
   request: Request,
@@ -990,85 +1117,9 @@ async function executeCommand(
         result = HistoryClearResult.make({ clearedCount: before.entries.length });
         break;
       }
-      case 'HistoryRedownload': {
-        const before = await abortable(getHistory(), signal);
-        if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
-        const instagramEntries = before.entries.filter(
-          (entry): entry is DownloadHistoryEntry => 'id' in entry
-        );
-        const known = new Set(instagramEntries.map(entry => entry.id));
-        const outcomes = [];
-        for (const entryId of command.entryIds.filter(id => known.has(id))) {
-          signal.throwIfAborted();
-          const entry = instagramEntries.find(candidate => candidate.id === entryId);
-          const response = await abortable(
-            handleRedownloadHistoryEntry({ type: 'REDOWNLOAD_HISTORY_ENTRY', entryId, login }),
-            signal
-          );
-          const frame = 'frame' in response ? response.frame : undefined;
-          const silent = 'silent' in response ? response.silent : undefined;
-          const modified = 'modified' in response ? response.modified : undefined;
-          const resolvedItem = frame ?? silent ?? modified;
-          if (entry && resolvedItem) {
-            const operations = [
-              ProtocolExportOperation.make({
-                operationId: Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID()),
-                itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(resolvedItem.itemIndex + 1),
-                mediaIdentity: MediaIdentity.make({
-                  itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(resolvedItem.itemIndex),
-                  ...(resolvedItem.mediaId ? { mediaId: resolvedItem.mediaId } : {}),
-                }),
-                mode: frame
-                  ? FrameExport.make({ timestampSeconds: frame.timestampSeconds })
-                  : silent
-                    ? SilentExport.make({ reencode: 'allow' })
-                    : DirectExport.make(),
-                ...(resolvedItem.rotation ? { rotation: resolvedItem.rotation } : {}),
-                ...(resolvedItem.crop ? { crop: resolvedItem.crop } : {}),
-              }),
-            ];
-            const historyExport =
-              entry.origin.kind === 'instants'
-                ? ProtocolInstantsExport.make({ operations })
-                : ProtocolExport.make({ sourceUrl: entry.origin.sourceUrl, operations });
-            const exportResult = await runExport(historyExport, emit, signal, login);
-            const failed =
-              exportResult._tag === 'ExportResult' &&
-              exportResult.outcomes.some(outcome => outcome._tag !== 'ItemSucceeded');
-            outcomes.push(
-              failed
-                ? HistoryRedownloadFailed.make({
-                    entryId,
-                    failure: ProtocolOperationFailure.make({
-                      code: 'DOWNLOAD_UNEXPECTED_FAILURE',
-                      scope: 'item',
-                    }),
-                  })
-                : HistoryRedownloadStarted.make({ entryId })
-            );
-            continue;
-          }
-          const failure = response.failure;
-          const directFailed =
-            'results' in response && response.results.some(result => result.status !== 'started');
-          outcomes.push(
-            failure || directFailed
-              ? HistoryRedownloadFailed.make({
-                  entryId,
-                  failure: ProtocolOperationFailure.make({
-                    code: failure?.code ?? 'MEDIA_NOT_FOUND',
-                    scope: 'item',
-                  }),
-                })
-              : HistoryRedownloadStarted.make({ entryId })
-          );
-        }
-        result = HistoryRedownloadResult.make({
-          outcomes,
-          unknownEntryIds: command.entryIds.filter(id => !known.has(id)),
-        });
+      case 'HistoryRedownload':
+        result = await redownloadHistory(command, emit, signal, login);
         break;
-      }
       case 'DebugGet': {
         signal.throwIfAborted();
         emit(Progress.make({ phase: 'diagnostics' }));

@@ -9,11 +9,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { Schema } from 'effect';
 import {
+  CancelRequest,
   DirectExport,
   Event,
   Export,
   ExportOperation,
   FrameExport,
+  HistoryRedownload,
   HumanItemNumber,
   Inspect,
   InstantsExport,
@@ -837,6 +839,140 @@ describe('background dispatcher', () => {
         modified: { mediaId, mediaType: 'image', rotation: 270, crop, originKind: 'instants' },
       });
       expect(fakeBrowserObj.fakeBrowser.downloads.download).not.toHaveBeenCalled();
+    });
+
+    describe('from the CLI', () => {
+      const frameStore = (mediaId: string) => {
+        const store = historyStore(mediaId);
+        const [entry] = store['download-history'].entries;
+        const frame = { ...entry!, exportMode: 'frame', frameTimestampSeconds: 3 };
+        store['download-history'].entries = [frame, { ...frame, id: 'second-history' }];
+        return store;
+      };
+
+      function redownload(entryIds: string[]) {
+        const request = Schema.decodeUnknownSync(Request)({
+          version: PROTOCOL_VERSION,
+          requestId: crypto.randomUUID(),
+          command: HistoryRedownload.make({ entryIds }),
+        });
+        fakeBrowserObj.getNativeMessageListener()?.(Schema.encodeSync(Request)(request));
+        return request;
+      }
+
+      it('resolves each entry once and keeps one runner for the whole command', async () => {
+        const fixture = instantFixture('instants-photo.json') as {
+          data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };
+        };
+        const mediaId = String(fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]!.id);
+        fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(frameStore(mediaId));
+        globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+        fakeBrowserObj.fakeBrowser.tabs.sendMessage.mockImplementation(
+          async (
+            _tabId: number,
+            message: { command: { operations: { operationId: string }[] } }
+          ) => ({
+            _tag: 'ExportResult',
+            outcomes: [
+              {
+                _tag: 'ItemSucceeded',
+                operationId: message.command.operations[0]!.operationId,
+                itemNumber: 1,
+                mediaIdentity: { itemIndex: 0, mediaId },
+              },
+            ],
+          })
+        );
+        const listener = await loadBackground();
+
+        redownload(['instant-history', 'second-history']);
+        await vi.waitFor(() =>
+          expect(fakeBrowserObj.fakeBrowser.windows.create).toHaveBeenCalledTimes(1)
+        );
+        listener({ type: 'RUNNER_READY' }, { tab: { id: 1 } }, vi.fn());
+
+        await vi.waitFor(() =>
+          expect(fakeBrowserObj.nativeMessages).toContainEqual(
+            expect.objectContaining({
+              event: expect.objectContaining({
+                _tag: 'Completed',
+                result: expect.objectContaining({
+                  outcomes: [
+                    expect.objectContaining({ _tag: 'HistoryRedownloadStarted' }),
+                    expect.objectContaining({ _tag: 'HistoryRedownloadStarted' }),
+                  ],
+                }),
+              }),
+            })
+          )
+        );
+        const runs = fakeBrowserObj.fakeBrowser.tabs.sendMessage.mock.calls;
+        expect(runs).toHaveLength(2);
+        for (const [, message] of runs)
+          expect(message).toMatchObject({
+            type: 'RUN_EXPORT',
+            preparedMedia: [expect.objectContaining({ mediaId })],
+          });
+        expect(apiCalls()).toHaveLength(2);
+        expect(fakeBrowserObj.fakeBrowser.windows.create).toHaveBeenCalledTimes(1);
+        expect(fakeBrowserObj.fakeBrowser.windows.remove).toHaveBeenCalledTimes(1);
+      });
+
+      it('downloads a direct entry without opening the runner', async () => {
+        const fixture = instantFixture('instants-photo.json') as {
+          data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };
+        };
+        const mediaId = String(fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]!.id);
+        fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(historyStore(mediaId));
+        globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+        await loadBackground();
+
+        redownload(['instant-history']);
+
+        await vi.waitFor(() =>
+          expect(fakeBrowserObj.nativeMessages).toContainEqual(
+            expect.objectContaining({
+              event: expect.objectContaining({
+                _tag: 'Completed',
+                result: expect.objectContaining({
+                  outcomes: [expect.objectContaining({ _tag: 'HistoryRedownloadStarted' })],
+                }),
+              }),
+            })
+          )
+        );
+        expect(fakeBrowserObj.fakeBrowser.downloads.download).toHaveBeenCalledTimes(1);
+        expect(fakeBrowserObj.fakeBrowser.windows.create).not.toHaveBeenCalled();
+      });
+
+      it('closes the runner when the command is cancelled', async () => {
+        const fixture = instantFixture('instants-photo.json') as {
+          data: { xdt_get_quick_snaps: { items_ordered_by_time: Record<string, unknown>[] } };
+        };
+        const mediaId = String(fixture.data.xdt_get_quick_snaps.items_ordered_by_time[0]!.id);
+        fakeBrowserObj.fakeBrowser.storage.get.mockResolvedValue(frameStore(mediaId));
+        globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
+        fakeBrowserObj.fakeBrowser.tabs.sendMessage.mockReturnValue(new Promise(() => {}));
+        const listener = await loadBackground();
+
+        const request = redownload(['instant-history']);
+        await vi.waitFor(() =>
+          expect(fakeBrowserObj.fakeBrowser.windows.create).toHaveBeenCalledTimes(1)
+        );
+        listener({ type: 'RUNNER_READY' }, { tab: { id: 1 } }, vi.fn());
+        await vi.waitFor(() =>
+          expect(fakeBrowserObj.fakeBrowser.tabs.sendMessage).toHaveBeenCalledTimes(1)
+        );
+        fakeBrowserObj.getNativeMessageListener()?.(
+          Schema.encodeSync(CancelRequest)(
+            CancelRequest.make({ version: PROTOCOL_VERSION, requestId: request.requestId })
+          )
+        );
+
+        await vi.waitFor(() =>
+          expect(fakeBrowserObj.fakeBrowser.windows.remove).toHaveBeenCalledWith(2)
+        );
+      });
     });
 
     it('keeps History and reports an inactive Instant without downloading', async () => {
