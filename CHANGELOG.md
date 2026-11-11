@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.8.1](https://github.com/zytact/GramGrab/compare/v4.8.0...v4.8.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* **history:** keep history list working when a stored entry has odd values ([#381](https://github.com/zytact/GramGrab/issues/381)) ([3c6230c](https://github.com/zytact/GramGrab/commit/3c6230cd5266ac2deb808a7df080b935e5a14914))
+
+
+### Performance Improvements
+
+* **cli:** resolve history re-downloads once and keep one runner per command ([#390](https://github.com/zytact/GramGrab/issues/390)) ([39aadef](https://github.com/zytact/GramGrab/commit/39aadef03103ac30571b80a2c3c94c6d7bd4c1d4))
+* **instagram:** read the LSD token once per request, not once per retry ([#382](https://github.com/zytact/GramGrab/issues/382)) ([981cc3e](https://github.com/zytact/GramGrab/commit/981cc3e694ab7d0ca4aa5fdbf8fc6acdf6a7a3de))
+* **popup:** load mediabunny on demand and cut the popup's upfront JS by 43% ([#389](https://github.com/zytact/GramGrab/issues/389)) ([6cbbe3d](https://github.com/zytact/GramGrab/commit/6cbbe3d75b3df4c4d5b2ef8fa2b7fb257a5fb294))
+* **watch:** stop re-encoding the Watch store on every read and batch page rereads ([#384](https://github.com/zytact/GramGrab/issues/384)) ([6268492](https://github.com/zytact/GramGrab/commit/6268492783a25cbe1917798ddb204bdab65b609f))
+* **whatsapp:** copy each captured chunk once instead of four times ([#394](https://github.com/zytact/GramGrab/issues/394)) ([6c0cd11](https://github.com/zytact/GramGrab/commit/6c0cd111c04cba6b9420454c82deacac84b40452))
+
 ## [4.8.0](https://github.com/zytact/GramGrab/compare/v4.7.2...v4.8.0) (2026-11-08)
 
 
