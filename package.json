@@ -1,6 +1,6 @@
 {
   "name": "gramgrab",
-  "version": "4.8.1",
+  "version": "4.9.0",
   "type": "module",
   "private": true,
   "bin": {
