@@ -294,6 +294,7 @@ Prefer these handles, which the source owns and tests already depend on:
 | Next check, storage  | `.opt-list-foot summary`; click it to open         |
 | Hold banner          | `.opt-feed-body > .opt-banner`, its time `span[title]` |
 | Watch owner tag      | `.opt-owner`, filter `.opt-filter button`          |
+| Move a Watch         | `.opt-inspector button`, text `Move to Main (@name)` |
 | Watch search         | `.opt-search` (`Search Watches`)                   |
 | All inbox filters    | `.opt-chip-filter[aria-label="Account"] button`, `.opt-chip-filter[aria-label="Media type"] button` |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
