@@ -93,7 +93,7 @@ if [ "$wsl" = yes ]; then
   downloads="$wsl_root/downloads"
   [ -f "$profile/Local State" ] || {
     echo "No verification profile at $profile." >&2
-    echo "Close your Helium, then run scripts/signin.sh to copy its sign-ins." >&2
+    echo "Ask the person to close Helium. Once they confirm, run scripts/signin.sh yourself." >&2
     exit 2
   }
   if [ -n "$(wsl_helium_pids "$(wslpath -w "$profile")")" ]; then

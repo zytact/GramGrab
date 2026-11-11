@@ -17,10 +17,12 @@ only whether current WhatsApp Web, Chromium, and Firefox meet the adopted contra
    vp run build:firefox
    vp run verify:whatsapp-packages
    ```
-2. Use separate dedicated QA WhatsApp accounts and a dedicated browser profile. Do not use a
-   personal account, a real contact, production chat content, or an account with personal history.
-3. Create exactly two purpose-made, generic test cards: one ordinary photo and one ordinary MP4
-   video. They must contain no person, contact data, location, account name, meaningful text, or
+2. Use a dedicated browser profile. The WhatsApp account may be a dedicated QA account or the
+   maintainer's own account, linked in a copy of their browser profile as the verify-gramgrab skill
+   does on WSL. Either way, capture only the test cards below, posted by that account. Never open
+   or capture a real contact's Status or chat content.
+3. Post exactly two purpose-made, generic test cards as Status: one ordinary photo and one ordinary
+   MP4 video. They must contain no person, contact data, location, account name, meaningful text, or
    identifying visual material.
 4. Load only the matching unpacked package into Chromium or Firefox. Confirm the generated manifest
    requests `activeTab` and `scripting`, and no WhatsApp host permission.

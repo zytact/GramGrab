@@ -35,14 +35,14 @@ folders. That comes to about 100 MB of the profile's several gigabytes.
 
 Helium locks its cookie file while it runs, and no flag lifts that lock, so the
 copy needs every Helium window closed. When `launch.sh` reports no profile, or a
-run fails at Instagram authentication, ask the person to close Helium, then run
-`signin.sh`. They can reopen Helium as soon as it prints `Copied`. The copy
-lasts until Instagram expires that session.
+run fails at Instagram authentication, ask the person to close Helium. Closing
+it is the only step they do. Once they confirm, run `signin.sh` yourself, and
+tell them they can reopen Helium as soon as it prints `Copied`. The copy lasts
+until Instagram expires that session.
 
-The copy includes the person's WhatsApp Web link. Live capture is still a human
-checkpoint as described in `features/whatsapp-status.md`, and the evidence rules
-in `docs/whatsapp-live-verification.md` still apply: no screenshots of Status
-content.
+The copy includes the person's own WhatsApp Web link, which
+`docs/whatsapp-live-verification.md` allows. Live capture is still a human
+checkpoint as described in `features/whatsapp-status.md`.
 
 ## Native messaging
 

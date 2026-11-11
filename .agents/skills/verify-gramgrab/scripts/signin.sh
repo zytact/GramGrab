@@ -22,7 +22,7 @@ if [ -n "${WSL_DISTRO_NAME:-}" ]; then
   fi
   # Helium locks its cookie file while it runs, so the copy needs it closed.
   if [ -n "$(wsl_helium_pids '')" ]; then
-    echo "Helium is running. Ask the person to close every Helium window, then run this again." >&2
+    echo "Helium is running. Ask the person to close every Helium window, then run this again yourself." >&2
     exit 2
   fi
   source="$wsl_daily_profile"
@@ -60,7 +60,7 @@ Two tabs are open. Sign in to both:
 
 Use accounts you are willing to test with. WhatsApp verification has its own
 rules in docs/whatsapp-privacy.md and docs/whatsapp-live-verification.md, which
-call for dedicated QA accounts and purpose-made test cards.
+say which accounts to use and allow capturing only purpose-made test cards.
 
 When both are signed in, run:
   $here/cleanup.sh
