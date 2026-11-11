@@ -536,11 +536,14 @@ function SaveStatus({ status, onRetry }: { status: SettingSave; onRetry: () => v
 
 function WatchSettings({
   watch,
+  held,
   onSave,
   onRun,
   onDeleted,
 }: {
   watch: WatchSummary;
+  /** No signed-in login checks it, so pausing or resuming would change nothing. */
+  held: boolean;
   /** Saves a setting change. Its outcome shows on the changed row. */
   onSave: (command: WatchCommand) => Promise<WatchFailure | undefined>;
   onRun: (command: WatchCommand) => Promise<WatchFailure | undefined>;
@@ -584,25 +587,27 @@ function WatchSettings({
       />
       <span className="opt-label">Watch</span>
       <div className="opt-col">
-        <div className="opt-row">
-          <button
-            className="opt-btn"
-            disabled={saving}
-            onClick={() =>
-              save(
-                'checks',
-                WatchLifecycle.make({
-                  operation: watch.enabled ? 'pause' : 'resume',
-                  watches: [selector],
-                })
-              )
-            }
-          >
-            {watch.enabled ? 'Pause checks' : 'Resume checks'}
-          </button>
-          {statusOf('checks')}
-        </div>
-        {watch.enabled && (
+        {!held && (
+          <div className="opt-row">
+            <button
+              className="opt-btn"
+              disabled={saving}
+              onClick={() =>
+                save(
+                  'checks',
+                  WatchLifecycle.make({
+                    operation: watch.enabled ? 'pause' : 'resume',
+                    watches: [selector],
+                  })
+                )
+              }
+            >
+              {watch.enabled ? 'Pause checks' : 'Resume checks'}
+            </button>
+            {statusOf('checks')}
+          </div>
+        )}
+        {watch.enabled && !held && (
           <p className="opt-meta">
             Pausing keeps baselines and the inbox. Resuming catches up on the last 30 days.
           </p>
@@ -1592,6 +1597,7 @@ function Inspector({
     <Fragment key={selected.watch.watchId}>
       <WatchSettings
         watch={selected.watch}
+        held={selected.held}
         onSave={command => onSave(command, runAs)}
         onRun={command => onRun(command, runAs)}
         onDeleted={onDeleted}

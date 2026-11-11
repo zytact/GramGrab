@@ -7,7 +7,7 @@ import {
   UsernameSelector,
   WatchActions,
   WatchIdSelector,
-  WatchTransfer,
+  WatchMove,
   WatchAdd,
   WatchCheck,
   WatchNeeds,
@@ -173,14 +173,14 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
     if (!first) throw new Error('gramgrab watch recover needs at least one ENTRY_ID.');
     return WatchRecover.make({ action, operation, entryIds: [first, ...rest] });
   },
-  transfer: ({ positionals }) => {
+  move: ({ positionals }) => {
     const [first, ...rest] = positionals.map(value => {
       const byId = watchIdSelector(value);
       if (!byId) throw new Error(`Invalid WATCH_ID: ${value}`);
       return byId;
     });
-    if (!first) throw new Error('gramgrab watch transfer needs at least one WATCH_ID.');
-    return WatchTransfer.make({ watches: [first, ...rest] });
+    if (!first) throw new Error('gramgrab watch move needs at least one WATCH_ID.');
+    return WatchMove.make({ watches: [first, ...rest] });
   },
   ...Object.fromEntries(
     (['pause', 'resume', 'delete'] as const).map(operation => [
@@ -216,7 +216,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   pause: ['--json', '--account-id', '--username'],
   resume: ['--json', '--account-id', '--username'],
   delete: ['--json', '--account-id', '--username'],
-  transfer: ['--json'],
+  move: ['--json'],
   check: ['--json', '--all', '--account-id', '--username'],
   recover: ['--json'],
 };
@@ -227,7 +227,7 @@ export function parseWatchArguments(arguments_: readonly string[]): WatchCommand
   const parse = Object.hasOwn(parsers, action) ? parsers[action] : undefined;
   if (!parse)
     throw new Error(
-      'Usage: gramgrab watch list|show|add|set|pause|resume|delete|transfer|check|needs|retry|dismiss|confirm|inbox'
+      'Usage: gramgrab watch list|show|add|set|pause|resume|delete|move|check|needs|retry|dismiss|confirm|inbox'
     );
   const parsed = split(arguments_.slice(1));
   const unknown = [...parsed.flags, ...parsed.values.keys()].find(

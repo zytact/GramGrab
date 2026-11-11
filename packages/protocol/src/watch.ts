@@ -92,7 +92,7 @@ export class WatchLifecycle extends Schema.TaggedClass<WatchLifecycle>()('WatchL
  * Moves each named Watch, with its baselines and inbox, to the login the command runs as. A Watch
  * whose account that login already watches stays where it is.
  */
-export class WatchTransfer extends Schema.TaggedClass<WatchTransfer>()('WatchTransfer', {
+export class WatchMove extends Schema.TaggedClass<WatchMove>()('WatchMove', {
   watches: Schema.Array(WatchIdSelector).pipe(Schema.minItems(1)),
 }) {}
 
@@ -186,7 +186,7 @@ export const WatchCommand = Schema.Union(
   WatchAdd,
   WatchSet,
   WatchLifecycle,
-  WatchTransfer,
+  WatchMove,
   WatchesExport,
   WatchesImport,
   WatchCheck,
@@ -562,15 +562,12 @@ export class WatchLifecycleResult extends Schema.TaggedClass<WatchLifecycleResul
   }
 ) {}
 
-export class WatchTransferResult extends Schema.TaggedClass<WatchTransferResult>()(
-  'WatchTransferResult',
-  {
-    moved: Schema.Array(WatchSummary),
-    /** Watches left with their owner, since the login already watches the same account. */
-    alreadyWatched: Schema.Array(WatchSummary),
-    unknownWatches: Schema.Array(NonEmptyString),
-  }
-) {}
+export class WatchMoveResult extends Schema.TaggedClass<WatchMoveResult>()('WatchMoveResult', {
+  moved: Schema.Array(WatchSummary),
+  /** Watches left with their owner, since the login already watches the same account. */
+  alreadyWatched: Schema.Array(WatchSummary),
+  unknownWatches: Schema.Array(NonEmptyString),
+}) {}
 
 export class WatchesExportResult extends Schema.TaggedClass<WatchesExportResult>()(
   'WatchesExportResult',
@@ -619,7 +616,7 @@ export const WatchResult = Schema.Union(
   WatchAddResult,
   WatchSetResult,
   WatchLifecycleResult,
-  WatchTransferResult,
+  WatchMoveResult,
   WatchesExportResult,
   WatchesImportResult,
   WatchCheckResult,

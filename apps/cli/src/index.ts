@@ -93,7 +93,7 @@ Usage:
   gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
   gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
   gramgrab watch pause|resume|delete WATCH ... [--json]
-  gramgrab watch transfer WATCH_ID ... [--login main|linked] [--json]
+  gramgrab watch move WATCH_ID ... [--json]
   gramgrab watch needs [--json]
   gramgrab watch retry|dismiss|confirm ATTENTION_ID... [--json]
   gramgrab watch inbox list [WATCH] [--json]
@@ -582,7 +582,7 @@ function unsuccessful(result: CommandResult): boolean {
     ),
     Match.tag('WatchLifecycleResult', result => result.unknownWatches.length > 0),
     Match.tag(
-      'WatchTransferResult',
+      'WatchMoveResult',
       result => result.unknownWatches.length > 0 || result.alreadyWatched.length > 0
     ),
     Match.tag(

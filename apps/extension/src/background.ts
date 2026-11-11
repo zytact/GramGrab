@@ -1156,6 +1156,7 @@ async function executeCommand(
       case 'WatchAdd':
       case 'WatchSet':
       case 'WatchLifecycle':
+      case 'WatchMove':
       case 'WatchCheck':
       case 'WatchNeeds':
       case 'WatchAttentionRecover':
@@ -1181,8 +1182,13 @@ async function executeCommand(
         result = outcome.result;
         break;
       }
-      default:
+      case 'Echo':
+      case 'Status':
+      case 'WatchesExport':
+      case 'WatchesImport':
         throw new Error('Unsupported command.');
+      default:
+        return command satisfies never;
     }
     emit(Completed.make({ result }));
   } catch (error) {

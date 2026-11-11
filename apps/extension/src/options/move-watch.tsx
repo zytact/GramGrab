@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   WatchIdSelector,
-  WatchTransfer,
+  WatchMove,
   type InstagramLogin,
   type WatchCommand,
   type WatchSummary,
@@ -29,11 +29,11 @@ export function MoveWatch({
   const move = (login: InstagramLogin) => {
     setOutcome('moving');
     void onSend(
-      WatchTransfer.make({ watches: [WatchIdSelector.make({ watchId: watch.watchId })] }),
+      WatchMove.make({ watches: [WatchIdSelector.make({ watchId: watch.watchId })] }),
       login
     ).then(response =>
       setOutcome(
-        response.result?._tag === 'WatchTransferResult' && response.result.alreadyWatched.length
+        response.result?._tag === 'WatchMoveResult' && response.result.alreadyWatched.length
           ? 'already-watched'
           : undefined
       )

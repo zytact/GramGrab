@@ -11,7 +11,7 @@ import {
   WatchIdSelector,
   WatchSet,
   WatchShow,
-  WatchTransfer,
+  WatchMove,
   WatchesExport,
   WatchesImport,
   type CommandFailure,
@@ -207,7 +207,7 @@ describe("any login's Watch", () => {
     expect(stored()).toEqual([]);
   });
 
-  it("moves another login's Watch with its baselines, unless the login already watches it", async () => {
+  it("moves another login's Watch with its baselines, unless the login already watches it, from the page and the CLI", async () => {
     await addTarget();
     const watches = stored();
     watches[0]!.tracking = { stories: { baselineCutoff: 100, lastSuccessAt: 1 } };
@@ -217,20 +217,20 @@ describe("any login's Watch", () => {
     await addTarget();
     const duplicate = stored()[1]!;
 
-    const refused = await run(WatchTransfer.make({ watches: [byId(original)] }));
-    expect(refused.result?._tag === 'WatchTransferResult' && refused.result).toMatchObject({
+    const refused = await run(WatchMove.make({ watches: [byId(original)] }));
+    expect(refused.result?._tag === 'WatchMoveResult' && refused.result).toMatchObject({
       moved: [],
       alreadyWatched: [{ watchId: original.id }],
     });
     await run(WatchLifecycle.make({ operation: 'delete', watches: [byId(duplicate)] }));
     const missing = '00000000-0000-4000-8000-000000000000';
-    const moved = await run(
-      WatchTransfer.make({
+    const moved = await harness.command(
+      WatchMove.make({
         watches: [byId(original), WatchIdSelector.make({ watchId: missing })],
       })
     );
 
-    expect(moved.result?._tag === 'WatchTransferResult' && moved.result).toMatchObject({
+    expect(moved._tag === 'Completed' && moved.result).toMatchObject({
       moved: [{ watchId: original.id }],
       unknownWatches: [missing],
     });

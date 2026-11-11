@@ -39,7 +39,7 @@ gramgrab watch check WATCH...|--all [--json]
 gramgrab watch add TARGET --kinds K[,K] --actions A[,A] --accept-unattended [--json]
 gramgrab watch set WATCH [--kinds K[,K]] [--actions A[,A]] [--json]
 gramgrab watch pause|resume|delete WATCH... [--json]
-gramgrab watch transfer WATCH_ID... [--json]
+gramgrab watch move WATCH_ID... [--json]
 gramgrab watch needs [--json]
 gramgrab watch retry|dismiss|confirm ATTENTION_ID... [--json]
 gramgrab watch recover notify retry|dismiss ENTRY_ID... [--json]
@@ -97,7 +97,7 @@ an account ID, and `--account-id` or `--username` forces one reading. A username
 matches only the verified Instagram login's Watches; another login's Watch is `WATCH_NOT_FOUND`. A
 Watch ID, as `watch list` prints it under `watches` or `heldWatches`, names that Watch whichever
 login owns it, so `set`, `pause`, `resume`, and `delete` change any Watch. `check`, `show`, and
-`inbox` still reach only the login's own. `transfer` moves Watches, named by Watch ID, with their
+`inbox` still reach only the login's own. `move` moves Watches, named by Watch ID, with their
 baselines and inbox to the login given by `--login`; one whose account that login already watches
 stays put and is listed in `alreadyWatched`, and exits 1 like an unknown Watch ID. An unverifiable
 login rejects every Watch command with `IG_NOT_AUTHENTICATED` and only the stored Watch count. Only
@@ -198,7 +198,7 @@ transport failure.
 | Add a Watch                                                              | `WatchAdd`                                                                  | Requires the per-call disclosure acknowledgement; duplicates return or point to the existing one    |
 | Change a Watch's kinds or actions                                        | `WatchSet`                                                                  | Replaces the supplied sets; initialized baselines are kept                                          |
 | Pause, resume, or delete Watches                                         | `WatchLifecycle`                                                            | Unknown selectors are reported per Watch; deletion keeps files and History                          |
-| Move Watches to another login                                            | `WatchTransfer`                                                             | By Watch ID; keeps baselines and inbox; an account the login already watches stays put              |
+| Move Watches to another login                                            | `WatchMove`                                                                 | By Watch ID; keeps baselines and inbox; an account the login already watches stays put              |
 | Check Watches now                                                        | `WatchCheck`                                                                | Selected Watches or all enabled ones; unknown selectors are reported per Watch                      |
 | List and act on what needs the person                                    | `WatchNeeds`, `WatchAttentionRecover`                                       | Only failed or unconfirmed actions accept operations; others are refused per ID                     |
 | List, remove, export, or retry Inbox entries                             | `WatchInboxList`, `WatchInboxRemove`, `WatchInboxExport`, `WatchInboxRetry` | Export uses the entry's frozen plan; unknown entry IDs are reported in `unknownEntryIds`            |

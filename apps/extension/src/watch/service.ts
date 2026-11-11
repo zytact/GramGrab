@@ -21,7 +21,7 @@ import {
   WatchInboxRemoveResult,
   WatchRecoverResult,
   WatchLifecycleResult,
-  WatchTransferResult,
+  WatchMoveResult,
   WatchesExportResult,
   WatchesImportResult,
   WatchListResult,
@@ -453,7 +453,7 @@ const lifecycle = (command: Extract<WatchCommand, { _tag: 'WatchLifecycle' }>) =
   });
 
 /** Moves the named Watches to the viewer, unless the viewer already watches the same account. */
-const transfer = (command: Extract<WatchCommand, { _tag: 'WatchTransfer' }>) =>
+const move = (command: Extract<WatchCommand, { _tag: 'WatchMove' }>) =>
   Effect.gen(function* () {
     const viewer = yield* verifyViewer(yield* loadOrReject);
     return yield* save(store => {
@@ -477,7 +477,7 @@ const transfer = (command: Extract<WatchCommand, { _tag: 'WatchTransfer' }>) =>
       }
       return {
         store: watches === store.watches ? store : { ...store, watches },
-        value: WatchTransferResult.make({
+        value: WatchMoveResult.make({
           moved: moved.map(watch => summarize(watch)),
           alreadyWatched: alreadyWatched.map(watch => summarize(watch)),
           unknownWatches,
@@ -936,7 +936,7 @@ const program = (
     WatchAdd: add,
     WatchSet: set,
     WatchLifecycle: lifecycle,
-    WatchTransfer: transfer,
+    WatchMove: move,
     WatchesExport: () => exportWatches,
     WatchesImport: importWatches,
     WatchCheck: command => check(command, onProgress),

@@ -162,7 +162,7 @@ export const requestFixtures: readonly unknown[] = [
     version: 8,
     requestId,
     command: {
-      _tag: 'WatchTransfer',
+      _tag: 'WatchMove',
       watches: [{ _tag: 'WatchIdSelector', watchId: '6f1b2a9e-7c3d-4b8a-9e1f-2a3b4c5d6e7f' }],
     },
   },
@@ -434,7 +434,7 @@ const resultFixtures: readonly unknown[] = [
     unknownWatches: ['missing'],
   },
   {
-    _tag: 'WatchTransferResult',
+    _tag: 'WatchMoveResult',
     moved: [watchSummary],
     alreadyWatched: [],
     unknownWatches: ['missing'],
