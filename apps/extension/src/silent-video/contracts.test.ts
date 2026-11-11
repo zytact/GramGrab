@@ -5,20 +5,20 @@ import { decodeSilentWorkerRequest, InspectSilentVideo, ProcessSilentVideo } fro
 describe('silent video worker protocol', () => {
   it('decodes correlated inspect and process requests', async () => {
     const operationId = createOperationId();
-    const inspect = InspectSilentVideo.make({
+    const inspectRequest = InspectSilentVideo.make({
       operationId,
       requestId: createRequestId(),
       url: 'https://example.com/video.mp4',
       useCachedInput: false,
     });
-    const process = ProcessSilentVideo.make({
+    const processRequest = ProcessSilentVideo.make({
       operationId,
       requestId: createRequestId(),
       transcode: false,
       keepAudio: false,
     });
-    await expect(decodeSilentWorkerRequest(inspect)).resolves.toEqual(inspect);
-    await expect(decodeSilentWorkerRequest(process)).resolves.toEqual(process);
+    await expect(decodeSilentWorkerRequest(inspectRequest)).resolves.toEqual(inspectRequest);
+    await expect(decodeSilentWorkerRequest(processRequest)).resolves.toEqual(processRequest);
   });
 
   it('rejects malformed cross-thread messages', async () => {

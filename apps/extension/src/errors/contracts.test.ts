@@ -54,7 +54,7 @@ describe('operation error contracts', () => {
     ).rejects.toBeDefined();
   });
 
-  it('has an exhaustive presentation and recovery policy that never retries invalid input', () => {
+  it('has an exhaustive presentation and recovery policy and pins the invalid-source policy', () => {
     expect(Object.keys(FAILURE_PRESENTATION).sort()).toEqual([...FAILURE_CODES].sort());
     for (const code of FAILURE_CODES) {
       expect(FAILURE_PRESENTATION[code].title).not.toBe('');
