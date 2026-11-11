@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.9.0](https://github.com/zytact/GramGrab/compare/v4.8.1...v4.9.0) (2026-11-11)
+
+
+### Features
+
+* **watch:** move, edit, or delete any Watch, whichever login owns it ([#398](https://github.com/zytact/GramGrab/issues/398)) ([62418d4](https://github.com/zytact/GramGrab/commit/62418d4c9b4ca3c190796b09c23bb1679a2201d2))
+
+
+### Bug Fixes
+
+* **cli:** stop retrying a refusing native host every second ([#395](https://github.com/zytact/GramGrab/issues/395)) ([cb60cad](https://github.com/zytact/GramGrab/commit/cb60cade12ccdefe62762fd899dbdad9f0f9fec2))
+
 ## [4.8.1](https://github.com/zytact/GramGrab/compare/v4.8.0...v4.8.1) (2026-11-11)
 
 
