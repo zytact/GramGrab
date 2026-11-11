@@ -18,12 +18,16 @@ import { browser, type NativePort } from './lib/browser.ts';
 
 const HOST_NAME = 'dev.zytact.gramgrab';
 const HOST_VERSION = '0.0.0';
+const INITIAL_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
+// A connection that stays up this long was healthy, so losing it reconnects without backoff.
+const STABLE_CONNECTION_MS = 10_000;
 const RequestEnvelope = Schema.Struct({ version: Schema.Number, requestId: RequestId });
 type RequestEnvelope = Schema.Schema.Type<typeof RequestEnvelope>;
 
 let port: NativePort | undefined;
-let reconnectDelay = 1_000;
+let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+let attemptStartedAt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let commandHandler:
   | ((
@@ -141,6 +145,8 @@ function scheduleReconnect(): void {
   for (const controller of activeRequests.values()) controller.abort();
   activeRequests.clear();
   port = undefined;
+  if (Date.now() - attemptStartedAt >= STABLE_CONNECTION_MS)
+    reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
   if (reconnectTimer) clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(connect, reconnectDelay);
   reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
@@ -148,12 +154,12 @@ function scheduleReconnect(): void {
 
 function connect(): void {
   reconnectTimer = undefined;
+  attemptStartedAt = Date.now();
   try {
     const next = browser.runtime.connectNative(HOST_NAME);
     port = next;
     next.onMessage.addListener(handleNativeMessage);
     next.onDisconnect.addListener(scheduleReconnect);
-    reconnectDelay = 1_000;
   } catch {
     scheduleReconnect();
   }

@@ -99,3 +99,58 @@ describe('validationFailureFrom', () => {
     expect(validationFailureFrom(cause)).toMatchObject({ _tag: 'ValidationFailure', message });
   });
 });
+
+describe('native bridge reconnection', () => {
+  async function bridgeWithPorts() {
+    vi.useFakeTimers();
+    const runtime = getMockBrowser().runtime as unknown as Record<string, unknown>;
+    const originalConnectNative = runtime.connectNative;
+    const gaps: number[] = [];
+    let lastConnect: number | undefined;
+    const disconnects: (() => void)[] = [];
+    runtime.connectNative = () => {
+      if (lastConnect !== undefined) gaps.push(Date.now() - lastConnect);
+      lastConnect = Date.now();
+      return {
+        postMessage: () => {},
+        onMessage: { addListener: () => {} },
+        onDisconnect: { addListener: (listener: () => void) => disconnects.push(listener) },
+      };
+    };
+    onTestFinished(() => {
+      runtime.connectNative = originalConnectNative;
+      vi.useRealTimers();
+      vi.resetModules();
+    });
+    vi.resetModules();
+    const bridge = await import('./native-bridge.ts');
+    bridge.startNativeBridge(async () => {});
+    const disconnectLatest = () => disconnects.at(-1)?.();
+    return { disconnectLatest, gaps };
+  }
+
+  it('backs off when the host keeps refusing the connection', async () => {
+    const { disconnectLatest, gaps } = await bridgeWithPorts();
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      disconnectLatest();
+      await vi.runOnlyPendingTimersAsync();
+    }
+
+    expect(gaps).toEqual([1_000, 2_000, 4_000, 8_000]);
+  });
+
+  it('reconnects quickly after a connection that stayed up', async () => {
+    const { disconnectLatest, gaps } = await bridgeWithPorts();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      disconnectLatest();
+      await vi.runOnlyPendingTimersAsync();
+    }
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    disconnectLatest();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(gaps.at(-1)).toBe(61_000);
+  });
+});
