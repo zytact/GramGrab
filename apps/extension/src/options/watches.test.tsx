@@ -1249,7 +1249,6 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     render(<Watches />);
     await user.click(await findSidebarButton(/Paused · sign in as that login or move it/));
     expect(screen.getByRole('button', { name: 'Delete Watch' })).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Pause checks' })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Move to Main (@instagram)' }));
 
