@@ -267,6 +267,12 @@ describe('isolated WhatsApp foreground extraction', () => {
     ).toBe('CaptureFailure');
     expect(decodeControllerOutbound({ ...base, unexpected: true })).toBeUndefined();
     expect(decodeControllerOutbound({ ...base, payload: 'AQ' })).toBeUndefined();
+    expect(decodeControllerOutbound({ ...base, payload: 'AR==' })).toBeUndefined();
+    expect(decodeControllerOutbound({ ...base, payload: 'AAF=' })).toBeUndefined();
+    expect(decodeControllerOutbound({ ...base, decodedLength: 2 })).toBeUndefined();
+    expect(decodeControllerOutbound({ ...base, decodedLength: 2, payload: 'AAE=' })?.tag).toBe(
+      'CaptureChunk'
+    );
   });
 
   it('streams a happy-path capture with one acknowledged chunk and final guard validation', async () => {

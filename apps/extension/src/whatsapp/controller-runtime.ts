@@ -13,6 +13,7 @@ const WHATSAPP_MIN_VIDEO_DURATION_MS = 1;
 const WHATSAPP_MAX_VIDEO_DURATION_MS = 600_000;
 const PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const VIDEO_MIME_TYPES = ['video/mp4'];
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 type WhatsAppMediaKind = 'photo' | 'video';
 type WhatsAppMimeType = 'image/jpeg' | 'image/png' | 'image/webp' | 'video/mp4';
@@ -607,8 +608,22 @@ function isCanonicalBase64Shape(value: unknown): value is string {
     typeof value === 'string' &&
     value.length > 0 &&
     value.length % 4 === 0 &&
-    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value)
+    value.length <= Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4 &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value) &&
+    hasZeroTrailingBits(value)
   );
+}
+
+function base64PaddingLength(value: string): 0 | 1 | 2 {
+  if (value.endsWith('==')) return 2;
+  return value.endsWith('=') ? 1 : 0;
+}
+
+function hasZeroTrailingBits(value: string): boolean {
+  const padding = base64PaddingLength(value);
+  if (padding === 0) return true;
+  const lastSextet = BASE64_ALPHABET.indexOf(value.charAt(value.length - padding - 1));
+  return (lastSextet & (padding === 2 ? 0b1111 : 0b11)) === 0;
 }
 
 function isShapeEvidence(value: unknown): value is WhatsAppShapeEvidence {
@@ -844,17 +859,8 @@ function decodeChunk(value: Record<string, unknown>, base: InboundBase): Outboun
     !isIntegerBetween(value.sequence, 0, WHATSAPP_MAX_CHUNKS - 1) ||
     !isIntegerBetween(value.decodedLength, 1, WHATSAPP_MAX_CHUNK_BYTES) ||
     !isCanonicalBase64Shape(value.payload) ||
-    value.payload.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4
+    (value.payload.length / 4) * 3 - base64PaddingLength(value.payload) !== value.decodedLength
   )
-    return undefined;
-  let binary: string;
-  try {
-    binary = atob(value.payload);
-  } catch {
-    return undefined;
-  }
-  const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
-  if (encodeControllerBase64(bytes) !== value.payload || bytes.length !== value.decodedLength)
     return undefined;
   return {
     ...base,
@@ -971,7 +977,7 @@ function encodeControllerBase64(bytes: Uint8Array): string {
 function splitBytes(bytes: Uint8Array): Uint8Array[] {
   const chunks: Uint8Array[] = [];
   for (let offset = 0; offset < bytes.length; offset += WHATSAPP_MAX_CHUNK_BYTES) {
-    chunks.push(bytes.slice(offset, Math.min(offset + WHATSAPP_MAX_CHUNK_BYTES, bytes.length)));
+    chunks.push(bytes.subarray(offset, Math.min(offset + WHATSAPP_MAX_CHUNK_BYTES, bytes.length)));
   }
   return chunks;
 }

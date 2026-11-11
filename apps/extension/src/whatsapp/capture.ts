@@ -163,7 +163,7 @@ function metadataDescriptor(
 }
 
 function chunkFitsCapture(
-  decoded: Uint8Array,
+  decoded: Uint8Array<ArrayBuffer>,
   metadata: CaptureMetadataValue,
   chunkCount: number,
   aggregateLength: number
@@ -180,7 +180,7 @@ function chunkFitsCapture(
 function completedCapture(
   metadata: CaptureMetadataValue,
   captureCompletedAt: number,
-  chunks: Uint8Array[]
+  chunks: Uint8Array<ArrayBuffer>[]
 ):
   | {
       readonly descriptor: WhatsAppCaptureDescriptor;
@@ -215,7 +215,7 @@ class WhatsAppCaptureSession {
   #editLeaseTimer: ReturnType<typeof setTimeout> | undefined;
   #editLeaseDeadline: number | undefined;
   #metadata: CaptureMetadataValue | undefined;
-  #chunks: Uint8Array[] = [];
+  #chunks: Uint8Array<ArrayBuffer>[] = [];
   #aggregateLength = 0;
   #expectedSequence = 0;
   #seenRequestIds = new Set<string>();
@@ -456,7 +456,7 @@ class WhatsAppCaptureSession {
     this.#metadata = message;
   }
 
-  #acceptedChunkBytes(message: CaptureChunk): Uint8Array | undefined {
+  #acceptedChunkBytes(message: CaptureChunk): Uint8Array<ArrayBuffer> | undefined {
     const metadata = this.#metadata;
     if (!metadata || this.#settled || message.sequence !== this.#expectedSequence) return undefined;
     const decoded = decodeCanonicalBase64(message.payload);

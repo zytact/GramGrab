@@ -11,7 +11,7 @@ import {
   createWhatsAppCaptureId,
   type WhatsAppCaptureDescriptor,
 } from './contracts.ts';
-import { decodeCanonicalBase64, encodeCanonicalBase64 } from './base64.ts';
+import { decodeCanonicalBase64 } from './base64.ts';
 import {
   WHATSAPP_MAX_CHUNK_BYTES,
   WHATSAPP_MAX_CHUNKS,
@@ -24,6 +24,8 @@ import {
   WHATSAPP_TRANSFER_TIMEOUT_MS,
   WHATSAPP_IDLE_TIMEOUT_MS,
 } from './limits.ts';
+
+const encodeBase64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
 describe('WhatsApp capture contracts', () => {
   const operationId = createOperationId();
@@ -126,15 +128,19 @@ describe('WhatsApp capture contracts', () => {
 
   it('accepts only canonical standard base64 and bounded decoded lengths', () => {
     const bytes = new Uint8Array([0, 1, 2, 253, 254]);
-    const encoded = encodeCanonicalBase64(bytes);
+    const encoded = encodeBase64(bytes);
     expect(decodeCanonicalBase64(encoded)).toEqual(bytes);
     expect(decodeCanonicalBase64(encoded.replace(/=+$/u, ''))).toBeUndefined();
     expect(decodeCanonicalBase64('-w==')).toBeUndefined();
     expect(decodeCanonicalBase64(`${encoded} `)).toBeUndefined();
+    expect(decodeCanonicalBase64('AQ==')).toEqual(new Uint8Array([1]));
+    expect(decodeCanonicalBase64('AR==')).toBeUndefined();
+    expect(decodeCanonicalBase64('AAE=')).toEqual(new Uint8Array([0, 1]));
+    expect(decodeCanonicalBase64('AAF=')).toBeUndefined();
     expect(
-      decodeCanonicalBase64(encodeCanonicalBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES + 1)))
+      decodeCanonicalBase64(encodeBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES + 1)))
     ).toBeUndefined();
-    const fullChunk = encodeCanonicalBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES));
+    const fullChunk = encodeBase64(new Uint8Array(WHATSAPP_MAX_CHUNK_BYTES));
     expect(decodeCanonicalBase64(fullChunk)?.length).toBe(WHATSAPP_MAX_CHUNK_BYTES);
   });
 
