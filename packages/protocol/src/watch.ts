@@ -39,8 +39,16 @@ export class UsernameSelector extends Schema.TaggedClass<UsernameSelector>()('Us
   username: InstagramUsername,
 }) {}
 
-/** Picks one of the verified login's Watches. It never matches another login's Watch. */
-export const WatchSelector = Schema.Union(AccountIdSelector, UsernameSelector);
+/** Names one stored Watch by its ID, whichever login owns it. */
+export class WatchIdSelector extends Schema.TaggedClass<WatchIdSelector>()('WatchIdSelector', {
+  watchId: Schema.UUID,
+}) {}
+
+/**
+ * Picks a Watch. An account ID or username picks among the verified login's Watches. A Watch ID
+ * picks that Watch whichever login owns it, for the commands that change or move a Watch.
+ */
+export const WatchSelector = Schema.Union(AccountIdSelector, UsernameSelector, WatchIdSelector);
 export type WatchSelector = Schema.Schema.Type<typeof WatchSelector>;
 
 export class WatchList extends Schema.TaggedClass<WatchList>()('WatchList', {}) {}
@@ -78,6 +86,14 @@ export class WatchSet extends Schema.TaggedClass<WatchSet>()('WatchSet', {
 export class WatchLifecycle extends Schema.TaggedClass<WatchLifecycle>()('WatchLifecycle', {
   operation: Schema.Literal('pause', 'resume', 'delete'),
   watches: Schema.Array(WatchSelector).pipe(Schema.minItems(1)),
+}) {}
+
+/**
+ * Moves each named Watch, with its baselines and inbox, to the login the command runs as. A Watch
+ * whose account that login already watches stays where it is.
+ */
+export class WatchTransfer extends Schema.TaggedClass<WatchTransfer>()('WatchTransfer', {
+  watches: Schema.Array(WatchIdSelector).pipe(Schema.minItems(1)),
 }) {}
 
 /** One Watch as a Watches file carries it: the account and its settings, nothing a check found. */
@@ -170,6 +186,7 @@ export const WatchCommand = Schema.Union(
   WatchAdd,
   WatchSet,
   WatchLifecycle,
+  WatchTransfer,
   WatchesExport,
   WatchesImport,
   WatchCheck,
@@ -545,6 +562,16 @@ export class WatchLifecycleResult extends Schema.TaggedClass<WatchLifecycleResul
   }
 ) {}
 
+export class WatchTransferResult extends Schema.TaggedClass<WatchTransferResult>()(
+  'WatchTransferResult',
+  {
+    moved: Schema.Array(WatchSummary),
+    /** Watches left with their owner, since the login already watches the same account. */
+    alreadyWatched: Schema.Array(WatchSummary),
+    unknownWatches: Schema.Array(NonEmptyString),
+  }
+) {}
+
 export class WatchesExportResult extends Schema.TaggedClass<WatchesExportResult>()(
   'WatchesExportResult',
   { file: WatchesFile }
@@ -592,6 +619,7 @@ export const WatchResult = Schema.Union(
   WatchAddResult,
   WatchSetResult,
   WatchLifecycleResult,
+  WatchTransferResult,
   WatchesExportResult,
   WatchesImportResult,
   WatchCheckResult,

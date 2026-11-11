@@ -1242,6 +1242,24 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     await waitFor(() => expect(instagram.state.homePageReads).toBe(homePageReads + 1));
   });
 
+  it('changes a Watch another login owns and moves it to the signed-in login', async () => {
+    seedWatchWithProblemAndEntry();
+    instagram.state.viewer = { id: '1002', username: 'instagram' };
+    const user = userEvent.setup();
+    render(<Watches />);
+    await user.click(await findSidebarButton(/Paused · sign in as that login or move it/));
+    expect(screen.getByRole('button', { name: 'Delete Watch' })).toBeDefined();
+
+    await user.click(screen.getByRole('button', { name: 'Move to Main (@instagram)' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText('Paused · sign in as that login or move it')).toBeNull()
+    );
+    const store = harness.local.read('watch-store') as { watches: { viewerId: string }[] };
+    expect(store.watches.map(watch => watch.viewerId)).toEqual(['1002']);
+    expect(screen.queryByRole('button', { name: /^Move to/ })).toBeNull();
+  });
+
   it('follows a login switch on window return without a Watch write or due check', async () => {
     seedWatchWithProblemAndEntry();
     const user = userEvent.setup();
@@ -1261,7 +1279,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(
       await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
-    expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
+    expect(screen.getByText('Paused · sign in as that login or move it')).toBeDefined();
     expect(screen.queryByRole('checkbox', { name: 'Select inbox item' })).toBeNull();
     expect(screen.queryByRole('toolbar', { name: BAR })).toBeNull();
     expect(instagram.state.homePageReads).toBe(homePageReads + 1);
@@ -1312,7 +1330,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(await harness.command(WatchList.make())).toMatchObject({ _tag: 'Completed' });
     const homePageReads = instagram.state.homePageReads;
 
-    expect(await screen.findByText('Paused · sign in as that login to resume')).toBeDefined();
+    expect(await screen.findByText('Paused · sign in as that login or move it')).toBeDefined();
     expect(instagram.state.homePageReads).toBe(homePageReads + 1);
   });
 
@@ -1378,7 +1396,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(
       await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
-    expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
+    expect(screen.getByText('Paused · sign in as that login or move it')).toBeDefined();
     expect(instagram.state.homePageReads).toBe(homePageReads + 1);
     unmount();
     fireEvent(window, new Event('blur'));
@@ -1407,7 +1425,7 @@ describe('Watches options page', { timeout: 15_000 }, () => {
     expect(
       await screen.findByText('@instagram', { selector: '.opt-logins-menu summary .opt-name' })
     ).toBeDefined();
-    expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
+    expect(screen.getByText('Paused · sign in as that login or move it')).toBeDefined();
     expect(instagram.state.homePageReads).toBe(2);
   });
 
@@ -1700,7 +1718,7 @@ describe('Watches of both logins', { timeout: 15_000 }, () => {
       'Linked',
       'Other login',
     ]);
-    expect(screen.getByText('Paused · sign in as that login to resume')).toBeDefined();
+    expect(screen.getByText('Paused · sign in as that login or move it')).toBeDefined();
     await user.click(screen.getByRole('button', { name: 'Linked' }));
     await user.click(screen.getByRole('button', { name: /^@instagram/ }));
     await user.click(await screen.findByText('Pause checks'));

@@ -8,8 +8,10 @@ import {
   WatchAdd,
   WatchLifecycle,
   WatchList,
+  WatchIdSelector,
   WatchSet,
   WatchShow,
+  WatchTransfer,
   WatchesExport,
   WatchesImport,
   type CommandFailure,
@@ -179,6 +181,60 @@ describe('owner-bound access', () => {
       expect(failureOf(response)?.detail).toEqual({ _tag: 'StoredWatchCount', count: 1 });
       expect(response.result).toBeUndefined();
     }
+  });
+});
+
+describe("any login's Watch", () => {
+  type StoredWatch = { id: string; viewerId: string; tracking: Record<string, unknown> };
+  const stored = () => (harness.local.read('watch-store') as { watches: StoredWatch[] }).watches;
+  const byId = (watch: StoredWatch) => WatchIdSelector.make({ watchId: watch.id });
+
+  it("changes and deletes another login's Watch by its Watch ID, never by its account", async () => {
+    await addTarget();
+    const watch = stored()[0]!;
+    instagram.state.viewer = { id: '3003', username: 'someone.else' };
+
+    const byAccount = await run(
+      WatchSet.make({ watch: AccountIdSelector.make({ accountId: TARGET.id }), kinds: ['posts'] })
+    );
+    expect(failureOf(byAccount)?.failure.code).toBe('WATCH_NOT_FOUND');
+    const changed = await run(WatchSet.make({ watch: byId(watch), actions: ['notify'] }));
+    expect(changed.result?._tag === 'WatchSetResult' && changed.result.watch.actions).toEqual([
+      'notify',
+    ]);
+    await run(WatchLifecycle.make({ operation: 'delete', watches: [byId(watch)] }));
+
+    expect(stored()).toEqual([]);
+  });
+
+  it("moves another login's Watch with its baselines, unless the login already watches it", async () => {
+    await addTarget();
+    const watches = stored();
+    watches[0]!.tracking = { stories: { baselineCutoff: 100, lastSuccessAt: 1 } };
+    harness.local.write('watch-store', { version: 2, watches });
+    const original = stored()[0]!;
+    instagram.state.viewer = { id: '3003', username: 'someone.else' };
+    await addTarget();
+    const duplicate = stored()[1]!;
+
+    const refused = await run(WatchTransfer.make({ watches: [byId(original)] }));
+    expect(refused.result?._tag === 'WatchTransferResult' && refused.result).toMatchObject({
+      moved: [],
+      alreadyWatched: [{ watchId: original.id }],
+    });
+    await run(WatchLifecycle.make({ operation: 'delete', watches: [byId(duplicate)] }));
+    const missing = '00000000-0000-4000-8000-000000000000';
+    const moved = await run(
+      WatchTransfer.make({
+        watches: [byId(original), WatchIdSelector.make({ watchId: missing })],
+      })
+    );
+
+    expect(moved.result?._tag === 'WatchTransferResult' && moved.result).toMatchObject({
+      moved: [{ watchId: original.id }],
+      unknownWatches: [missing],
+    });
+    expect(stored()).toEqual([{ ...original, viewerId: '3003' }]);
   });
 });
 

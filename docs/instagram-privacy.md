@@ -80,10 +80,12 @@ Watches are the one exception to request-in-the-moment access. See
   account it adds with one ID-keyed profile request. See
   [ADR 0006](./adr/0006-watches-file-carries-definitions-only.md).
 
-- **Ownership and lifetime.** Watch state belongs to the Instagram login that created it. Only
-  that login's session checks it, and only that login can change it. The Watches page lists every
-  stored Watch, and a Watch whose owner is not signed in shows as paused. See
-  [ADR 0008](./adr/0008-watches-page-shows-every-login.md). Inbox entries expire 30 days after
+- **Ownership and lifetime.** Watch state belongs to one Instagram login, the one that created it
+  or the one it was moved to, and only that login's session checks it. Any signed-in login can
+  change, delete, or move a Watch to itself. The Watches page lists every stored Watch, and a Watch
+  whose owner is not signed in shows as paused. See
+  [ADR 0008](./adr/0008-watches-page-shows-every-login.md) and
+  [ADR 0009](./adr/0009-any-login-changes-and-moves-watches.md). Inbox entries expire 30 days after
   discovery. The whole store stays under a 2 MiB budget. Deleting a Watch removes its state, while
   downloaded files and History receipts remain.
 
