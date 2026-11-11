@@ -5,12 +5,13 @@
 #
 # The profile persists across runs at .local/verify-profile/ so a hand-made
 # Instagram and WhatsApp Web sign-in survives. Only the run state under
-# .local/verify/ is throwaway.
+# .local/verify/ is throwaway. On WSL the browser is Windows Helium instead;
+# ../wsl.md covers that path.
 #
 #   GRAMGRAB_BROWSER   browser binary or name (default: helium, chromium, Chrome
 #                      for Testing in ~/.cache/gramgrab-verify-browser)
 #   GRAMGRAB_PROFILE   use a different profile directory, e.g. a second account
-#   GRAMGRAB_HEADLESS  1 or 0 (default: 1 only without a display)
+#   GRAMGRAB_HEADLESS  1 or 0 (default: 1 on WSL or without a display)
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
@@ -32,60 +33,89 @@ if [ -f "$session_dir/session.env" ]; then
   exit 2
 fi
 
-browser=""
-downloaded="$(ls -d "$HOME"/.cache/gramgrab-verify-browser/chrome/linux-*/chrome-linux64/chrome 2>/dev/null | sort -V | tail -n 1 || true)"
-for candidate in "${GRAMGRAB_BROWSER:-}" helium chromium "$downloaded" google-chrome google-chrome-stable; do
-  [ -n "$candidate" ] || continue
-  if [ -x "$candidate" ]; then browser="$candidate"; break; fi
-  if resolved="$(command -v "$candidate" 2>/dev/null)"; then browser="$resolved"; break; fi
-done
-[ -n "$browser" ] || { echo "No Chromium browser found. Set GRAMGRAB_BROWSER." >&2; exit 2; }
-
-# A downloaded browser starts without its system libraries and only says so in
-# browser.log after the CDP wait times out, so name them up front.
-missing="$(ldd "$browser" 2>/dev/null | awk '/not found/ {print $1}' || true)"
-if [ -n "$missing" ]; then
-  echo "$browser is missing shared libraries:" $missing >&2
-  echo "On Ubuntu, sudo apt install libnss3 provides the usual ones." >&2
-  exit 2
+wsl=no
+if [ -n "${WSL_DISTRO_NAME:-}" ]; then
+  wsl=yes
+  # shellcheck source=wsl.sh
+  . "$(dirname "${BASH_SOURCE[0]}")/wsl.sh"
 fi
 
+browser=""
+if [ "$wsl" = yes ]; then
+  [ -x "$wsl_helium" ] || { echo "No Windows Helium at $wsl_helium. Set GRAMGRAB_BROWSER to its chrome.exe." >&2; exit 2; }
+  browser="$wsl_helium"
+else
+  downloaded="$(ls -d "$HOME"/.cache/gramgrab-verify-browser/chrome/linux-*/chrome-linux64/chrome 2>/dev/null | sort -V | tail -n 1 || true)"
+  for candidate in "${GRAMGRAB_BROWSER:-}" helium chromium "$downloaded" google-chrome google-chrome-stable; do
+    [ -n "$candidate" ] || continue
+    if [ -x "$candidate" ]; then browser="$candidate"; break; fi
+    if resolved="$(command -v "$candidate" 2>/dev/null)"; then browser="$resolved"; break; fi
+  done
+  [ -n "$browser" ] || { echo "No Chromium browser found. Set GRAMGRAB_BROWSER." >&2; exit 2; }
+
+  # A downloaded browser starts without its system libraries and only says so in
+  # browser.log after the CDP wait times out, so name them up front.
+  missing="$(ldd "$browser" 2>/dev/null | awk '/not found/ {print $1}' || true)"
+  if [ -n "$missing" ]; then
+    echo "$browser is missing shared libraries:" $missing >&2
+    echo "On Ubuntu, sudo apt install libnss3 provides the usual ones." >&2
+    exit 2
+  fi
+
+  # Google Chrome 137+ ignores --load-extension unless enterprise policy allows it.
+  # Helium, Chromium and Chrome for Testing still honour it. Say so before burning
+  # a minute on a launch that cannot work.
+  case "$("$browser" --version 2>/dev/null)" in
+    "Google Chrome for Testing"*) ;;
+    "Google Chrome"*)
+      echo "Google Chrome ignores --load-extension since 137, so the extension will not load." >&2
+      echo "Use Helium, Chromium or Chrome for Testing: GRAMGRAB_BROWSER=helium $0" >&2
+      exit 2
+      ;;
+  esac
+fi
+
+# On WSL a window would take focus from whatever the person is doing, so the
+# Windows browser runs headless unless someone asks for a window.
 headless="${GRAMGRAB_HEADLESS:-}"
 if [ -z "$headless" ]; then
-  if [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then headless=1; else headless=0; fi
+  if [ "$wsl" = yes ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then headless=1; else headless=0; fi
 fi
 headless_flag=()
 [ "$headless" = 1 ] && headless_flag=(--headless --window-size=1280,900)
-
-# Google Chrome 137+ ignores --load-extension unless enterprise policy allows it.
-# Helium, Chromium and Chrome for Testing still honour it. Say so before burning
-# a minute on a launch that cannot work.
-case "$("$browser" --version 2>/dev/null)" in
-  "Google Chrome for Testing"*) ;;
-  "Google Chrome"*)
-    echo "Google Chrome ignores --load-extension since 137, so the extension will not load." >&2
-    echo "Use Helium, Chromium or Chrome for Testing: GRAMGRAB_BROWSER=helium $0" >&2
-    exit 2
-    ;;
-esac
 
 if [ "$restart" = no ]; then vp run build:chromium >/dev/null; fi
 build_fingerprint="$(rg --files "$ext_dir" -0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
 
 mkdir -p "$session_dir"
-profile="${GRAMGRAB_PROFILE:-$repo/.local/verify-profile}"
-downloads="$session_dir/downloads"
+if [ "$wsl" = yes ]; then
+  profile="${GRAMGRAB_PROFILE:-$wsl_root/profile}"
+  downloads="$wsl_root/downloads"
+  [ -f "$profile/Local State" ] || {
+    echo "No verification profile at $profile." >&2
+    echo "Ask the person to close Helium. Once they confirm, run scripts/signin.sh yourself." >&2
+    exit 2
+  }
+  if [ -n "$(wsl_helium_pids "$(wslpath -w "$profile")")" ]; then
+    echo "Profile $profile is in use by another Helium." >&2
+    echo "Run scripts/cleanup.sh, or wait for that run to end." >&2
+    exit 2
+  fi
+  mkdir -p "$profile/Default" "$downloads"
+else
+  profile="${GRAMGRAB_PROFILE:-$repo/.local/verify-profile}"
+  downloads="$session_dir/downloads"
 
-# A running browser that holds the profile takes the launch over and never opens
-# this run's CDP port, so fail with the owner instead of a port timeout.
-lock_pid="$(readlink "$profile/SingletonLock" 2>/dev/null | sed 's/.*-//' || true)"
-if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
-  echo "Profile $profile is in use by browser pid $lock_pid." >&2
-  echo "Copy it and set GRAMGRAB_PROFILE to the copy, or wait for that run to end." >&2
-  exit 2
+  # A running browser that holds the profile takes the launch over and never opens
+  # this run's CDP port, so fail with the owner instead of a port timeout.
+  lock_pid="$(readlink "$profile/SingletonLock" 2>/dev/null | sed 's/.*-//' || true)"
+  if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+    echo "Profile $profile is in use by browser pid $lock_pid." >&2
+    echo "Copy it and set GRAMGRAB_PROFILE to the copy, or wait for that run to end." >&2
+    exit 2
+  fi
+  mkdir -p "$profile/NativeMessagingHosts" "$profile/Default" "$downloads"
 fi
-
-mkdir -p "$profile/NativeMessagingHosts" "$profile/Default" "$downloads"
 
 # Force the download directory on every launch, not only the first. Chromium
 # rewrites Preferences on exit, and a profile that arrived any other way would
@@ -100,7 +130,7 @@ node -e '
   prefs.download={...prefs.download,default_directory:dir,prompt_for_download:false};
   prefs.savefile={...prefs.savefile,default_directory:dir};
   writeFileSync(file,JSON.stringify(prefs));
-' "$profile/Default/Preferences" "$downloads"
+' "$profile/Default/Preferences" "$([ "$wsl" = yes ] && wslpath -w "$downloads" || echo "$downloads")"
 
 # Chromium caches the extension's service worker script per profile and does not
 # re-read it just because the unpacked directory changed. A rebuilt extension
@@ -127,31 +157,61 @@ ext_id="$(node --input-type=module -e '
   process.stdout.write(CHROMIUM_EXTENSION_ID);
 ' "$repo/apps/extension/scripts/release.mjs")"
 
-port="$(node -e '
-  const net=require("node:net");const s=net.createServer();
-  s.listen(0,"127.0.0.1",()=>{process.stdout.write(String(s.address().port));s.close();});
-')"
-
 ipc_path="$session_dir/gramgrab.sock"
 if [ "${#ipc_path}" -gt 107 ]; then
   echo "Socket path $ipc_path exceeds the 107-byte Unix socket limit. Launch from a shorter checkout path or a symlink to it." >&2
   exit 1
 fi
 
-sed -e "s#__GRAMGRAB_NATIVE_HOST_PATH__#$repo/apps/native-host/bin/gramgrab-native-host.mjs#" \
-    "$repo/apps/native-host/manifests/chromium.json" \
-    > "$profile/NativeMessagingHosts/dev.zytact.gramgrab.json"
+relay_pid=""
+if [ "$wsl" = yes ]; then
+  # Windows Helium cannot load an extension or profile from the WSL filesystem,
+  # so the build is copied next to the profile.
+  rm -rf "$wsl_root/ext"
+  cp -r "$ext_dir" "$wsl_root/ext"
+  wsl_register_host "$repo"
 
-GRAMGRAB_IPC_PATH="$ipc_path" nohup "$browser" \
-  --user-data-dir="$profile" \
-  --load-extension="$ext_dir" \
-  --remote-debugging-port="$port" \
-  --no-first-run \
-  --no-default-browser-check \
-  "${headless_flag[@]}" \
-  about:blank \
-  >"$session_dir/browser.log" 2>&1 &
-pid=$!
+  # Helium picks its own CDP port and prints it, since WSL cannot test which
+  # Windows ports are free. WSLENV carries the socket path through Helium into
+  # the host shim, which is what tells it this is the verify browser.
+  GRAMGRAB_IPC_PATH="$ipc_path" WSLENV="${WSLENV:+$WSLENV:}GRAMGRAB_IPC_PATH" nohup "$browser" \
+    --user-data-dir="$(wslpath -w "$profile")" \
+    --load-extension="$(wslpath -w "$wsl_root/ext")" \
+    --remote-debugging-port=0 \
+    --no-first-run \
+    --no-default-browser-check \
+    "${headless_flag[@]}" \
+    about:blank \
+    >"$session_dir/browser.log" 2>&1 &
+  pid=$!
+  windows_port=""
+  for _ in $(seq 1 60); do
+    windows_port="$(sed -n 's#^DevTools listening on ws://127.0.0.1:\([0-9]*\)/.*#\1#p' "$session_dir/browser.log" 2>/dev/null || true)"
+    [ -n "$windows_port" ] && break
+    sleep 0.5
+  done
+  port=0
+  [ -n "$windows_port" ] && read -r port relay_pid < <(wsl_start_relay "$windows_port" "$session_dir/relay.log")
+else
+  port="$(node -e '
+    const net=require("node:net");const s=net.createServer();
+    s.listen(0,"127.0.0.1",()=>{process.stdout.write(String(s.address().port));s.close();});
+  ')"
+  sed -e "s#__GRAMGRAB_NATIVE_HOST_PATH__#$repo/apps/native-host/bin/gramgrab-native-host.mjs#" \
+      "$repo/apps/native-host/manifests/chromium.json" \
+      > "$profile/NativeMessagingHosts/dev.zytact.gramgrab.json"
+
+  GRAMGRAB_IPC_PATH="$ipc_path" nohup "$browser" \
+    --user-data-dir="$profile" \
+    --load-extension="$ext_dir" \
+    --remote-debugging-port="$port" \
+    --no-first-run \
+    --no-default-browser-check \
+    "${headless_flag[@]}" \
+    about:blank \
+    >"$session_dir/browser.log" 2>&1 &
+  pid=$!
+fi
 
 cat > "$session_dir/session.env" <<ENV
 export GRAMGRAB_VERIFY_PID=$pid
@@ -163,6 +223,7 @@ export GRAMGRAB_VERIFY_DIR=$session_dir
 export GRAMGRAB_VERIFY_PROFILE=$profile
 export GRAMGRAB_VERIFY_DOWNLOADS=$downloads
 export GRAMGRAB_VERIFY_HEADLESS=$headless
+export GRAMGRAB_VERIFY_RELAY_PID=$relay_pid
 ENV
 
 for _ in $(seq 1 60); do

@@ -60,12 +60,12 @@ Web`. Capture needs the real toolbar popup, opened by a person, on a real
 WhatsApp tab. That is `activeTab` working as ADR 0001 intends, not an obstacle
 to route around.
 
-Follow `docs/whatsapp-live-verification.md` for the rest: dedicated QA accounts,
-a dedicated profile, two purpose-made generic test cards, and the fixed evidence
-schema in `docs/whatsapp-live-verification-evidence.md`. A signed-in personal
-WhatsApp is the wrong account for this. Capturing a real contact's Status to
-prove a code path violates the same privacy contract the code is written to
-honour.
+Follow `docs/whatsapp-live-verification.md` for the rest: which account to use,
+two purpose-made generic test cards, and the fixed evidence schema in
+`docs/whatsapp-live-verification-evidence.md`. The maintainer's own WhatsApp is
+allowed, but capture only the Status cards the tester posted. Capturing a real
+contact's Status to prove a code path violates the same privacy contract the
+code is written to honour.
 
 ## What proves it works
 
