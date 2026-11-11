@@ -54,14 +54,11 @@ describe('operation error contracts', () => {
     ).rejects.toBeDefined();
   });
 
-  it('has an exhaustive presentation and recovery policy', () => {
+  it('has an exhaustive presentation and recovery policy and pins the invalid-source policy', () => {
     expect(Object.keys(FAILURE_PRESENTATION).sort()).toEqual([...FAILURE_CODES].sort());
     for (const code of FAILURE_CODES) {
       expect(FAILURE_PRESENTATION[code].title).not.toBe('');
     }
-  });
-
-  it('preserves the invalid-source input policy', () => {
     expect(FAILURE_PRESENTATION.INPUT_INVALID_SOURCE_URL).toEqual({
       title: 'Use an Instagram link',
       explanation: 'Enter a valid Instagram link.',

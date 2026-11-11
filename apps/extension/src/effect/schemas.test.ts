@@ -11,41 +11,28 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('ShortcodeMediaResponseSchema', () => {
-  it('fails when a display_resource src is missing on a known typename', async () => {
-    // MediaResourceSchema.src is required. When __typename is a known image literal,
-    // the Image variant is tried first and fails on the missing src.
-    // The union then tries Sidecar (wrong typename), then Unknown (succeeds, no src check).
-    // Net result: decode succeeds via Unknown passthrough; normalizer warns + skips.
-    // This test documents B2 behavior: the response is not rejected at schema level.
-    const input = {
-      data: {
-        xdt_shortcode_media: {
-          __typename: 'XDTGraphImage',
-          display_resources: [{ config_width: 1080 }], // src absent
+  it.each([
+    ['an unknown __typename', { __typename: 'XDTGraphCarouselV2', id: '123' }],
+    [
+      'a known image without a display_resource src',
+      { __typename: 'XDTGraphImage', display_resources: [{ config_width: 1080 }] },
+    ],
+    ['a known video without video_resources', { __typename: 'XDTGraphVideo', id: '99' }],
+    [
+      'a sidecar child without a display_resource src',
+      {
+        __typename: 'XDTGraphSidecar',
+        edge_sidecar_to_children: {
+          edges: [{ node: { display_resources: [{ config_width: 640 }] } }],
         },
       },
-    };
+    ],
+  ])('decodes %s through the Unknown passthrough', async (_, media) => {
+    // A new or malformed node must not reject the response. The normalizer warns and skips it.
     const result = await Effect.runPromise(
-      Schema.decodeUnknown(ShortcodeMediaResponseSchema)(input).pipe(Effect.either)
+      Schema.decodeUnknown(ShortcodeMediaResponseSchema)({ data: { xdt_shortcode_media: media } })
     );
-    // Succeeds via Unknown passthrough (B2 design decision)
-    expect(result._tag).toBe('Right');
-  });
-
-  it('succeeds with an unknown __typename (Unknown passthrough)', async () => {
-    // Verifies that a new IG typename does not reject the response
-    const input = {
-      data: {
-        xdt_shortcode_media: {
-          __typename: 'XDTGraphCarouselV2', // hypothetical new type
-          id: '123',
-        },
-      },
-    };
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(ShortcodeMediaResponseSchema)(input)
-    );
-    expect(result.data?.xdt_shortcode_media?.__typename).toBe('XDTGraphCarouselV2');
+    expect(result.data?.xdt_shortcode_media?.__typename).toBe(media.__typename);
   });
 
   it('succeeds when data wrapper is absent (top-level aliases)', async () => {
@@ -61,52 +48,6 @@ describe('ShortcodeMediaResponseSchema', () => {
       Schema.decodeUnknown(ShortcodeMediaResponseSchema)(input)
     );
     expect(result.shortcode_media?.__typename).toBe('GraphVideo');
-  });
-
-  it('fails when a video node is missing video_resources (required on video variant)', async () => {
-    const input = {
-      data: {
-        xdt_shortcode_media: {
-          __typename: 'XDTGraphVideo',
-          id: '99',
-          // video_resources is absent but required on ShortcodeVideoSchema
-        },
-      },
-    };
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(ShortcodeMediaResponseSchema)(input).pipe(Effect.either)
-    );
-    // Falls through to UnknownSchema and succeeds. __typename presence determines union branch.
-    // Unknown passthrough accepts it. The normalizer will warn and skip.
-    expect(result._tag).toBe('Right');
-  });
-
-  it('decodes a sidecar edge child without a src (normalizer skips, schema passes)', async () => {
-    // SidecarChildNodeSchema.display_resources items require src.
-    // A missing src inside a sidecar child causes the sidecar decode to fail,
-    // and the union falls through to Unknown passthrough (B2). The response succeeds;
-    // the normalizer will produce no MediaItem for that child.
-    const input = {
-      data: {
-        xdt_shortcode_media: {
-          __typename: 'XDTGraphSidecar',
-          edge_sidecar_to_children: {
-            edges: [
-              {
-                node: {
-                  display_resources: [{ config_width: 640 }], // no src
-                },
-              },
-            ],
-          },
-        },
-      },
-    };
-    const result = await Effect.runPromise(
-      Schema.decodeUnknown(ShortcodeMediaResponseSchema)(input).pipe(Effect.either)
-    );
-    // Succeeds via Unknown passthrough (B2 design decision)
-    expect(result._tag).toBe('Right');
   });
 });
 

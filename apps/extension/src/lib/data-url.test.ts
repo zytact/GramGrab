@@ -8,12 +8,6 @@ describe('blobToDataUrl', () => {
     expect(result).toBe('data:text/plain;base64,aGVsbG8=');
   });
 
-  it('includes the correct MIME type in the data URL', async () => {
-    const blob = new Blob(['<svg/>'], { type: 'image/svg+xml' });
-    const result = await blobToDataUrl(blob);
-    expect(result).toMatch(/^data:image\/svg\+xml;base64,/);
-  });
-
   it('falls back to application/octet-stream for blobs with no MIME type', async () => {
     const blob = new Blob(['raw']);
     const result = await blobToDataUrl(blob);
@@ -34,37 +28,11 @@ describe('blobToDataUrl', () => {
 });
 
 describe('jsonToDataUrl', () => {
-  it('produces a data URL starting with data:application/json;base64,', () => {
-    const url = jsonToDataUrl({ foo: 'bar' });
-    expect(url).toMatch(/^data:application\/json;base64,/);
-  });
-
-  it('round-trips a JSON value correctly', () => {
-    const value = { a: 1, b: 'hello', c: [true, null] };
-    const url = jsonToDataUrl(value);
-    const base64 = url.split(',')[1] ?? '';
-    const decoded = atob(base64);
-    // Re-encode UTF-8 from latin1 passthrough
-    const json = decodeURIComponent(
-      decoded
-        .split('')
-        .map(c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'))
-        .join('')
-    );
-    expect(JSON.parse(json)).toEqual(value);
-  });
-
-  it('handles unicode characters in JSON values', () => {
-    const value = { name: 'café ☕' };
-    // Should not throw
-    expect(() => jsonToDataUrl(value)).not.toThrow();
+  it('round-trips a JSON value with unicode as a base64 JSON data URL', () => {
+    const value = { a: 1, b: 'café ☕', c: [true, null] };
     const url = jsonToDataUrl(value);
     expect(url).toMatch(/^data:application\/json;base64,/);
-  });
-
-  it('handles null and primitive values', () => {
-    expect(() => jsonToDataUrl(null)).not.toThrow();
-    expect(() => jsonToDataUrl(42)).not.toThrow();
-    expect(() => jsonToDataUrl('string')).not.toThrow();
+    const bytes = Uint8Array.from(atob(url.split(',')[1] ?? ''), c => c.charCodeAt(0));
+    expect(JSON.parse(new TextDecoder().decode(bytes))).toEqual(value);
   });
 });

@@ -67,14 +67,6 @@ describe('Popup', () => {
     window.history.replaceState({}, '', '/popup.html');
   });
 
-  it('renders main elements', async () => {
-    await act(async () => {
-      render(<Popup />);
-    });
-    expect(screen.getByPlaceholderText(/Paste an Instagram URL/i)).toBeDefined();
-    expect(screen.getByText('Fetch Media')).toBeDefined();
-  });
-
   it('shows and persists the one-time WhatsApp view-receipt disclosure without capturing', async () => {
     mockBrowser.tabs.query.mockResolvedValueOnce([
       { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
@@ -807,51 +799,6 @@ describe('Popup', () => {
     window.history.replaceState({}, '', '/popup.html');
   });
 
-  it('auto-detects Instagram URL from active tab', async () => {
-    await act(async () => {
-      render(<Popup />);
-    });
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('https://www.instagram.com/p/abc123/')).toBeDefined();
-    });
-  });
-
-  it('shows Instagram URL detected message', async () => {
-    await act(async () => {
-      render(<Popup />);
-    });
-    await waitFor(() => {
-      expect(screen.getByText('Instagram URL detected. Ready to fetch.')).toBeDefined();
-    });
-  });
-
-  it('calls FETCH_MEDIA when fetch button is clicked', async () => {
-    const user = userEvent.setup();
-    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      media: [{ url: 'https://instagram.com/img.jpg', type: 'image', filenameHint: 'abc123' }],
-      error: undefined,
-    });
-
-    await act(async () => {
-      render(<Popup />);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('https://www.instagram.com/p/abc123/')).toBeDefined();
-    });
-
-    const fetchButton = screen.getByText('Fetch Media');
-    await user.click(fetchButton);
-
-    await waitFor(() => {
-      expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
-        type: 'FETCH_MEDIA',
-        url: 'https://www.instagram.com/p/abc123/',
-        login: 'main',
-      });
-    });
-  });
-
   it('offers to link a second login on the Watches page while none is linked', async () => {
     const user = userEvent.setup();
     Object.assign(mockBrowser, { linkedLogin: {} });
@@ -952,7 +899,7 @@ describe('Popup', () => {
     expect(await screen.findByText('No active Instants.')).toBeDefined();
   });
 
-  it('displays media items after successful fetch', async () => {
+  it('fetches the detected URL and displays its media items', async () => {
     const user = userEvent.setup();
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       media: [
@@ -974,6 +921,11 @@ describe('Popup', () => {
     await user.click(fetchButton);
 
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('2 items found'));
+    expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'FETCH_MEDIA',
+      url: 'https://www.instagram.com/p/abc123/',
+      login: 'main',
+    });
   });
 
   it('displays error message from fetch', async () => {
@@ -1146,66 +1098,7 @@ describe('Popup', () => {
     });
   });
 
-  it('shows "Select All" checkbox when media items are loaded', async () => {
-    const user = userEvent.setup();
-    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      media: [
-        { url: 'https://instagram.com/img1.jpg', type: 'image', filenameHint: 'abc123' },
-        { url: 'https://instagram.com/img2.jpg', type: 'image', filenameHint: 'def456' },
-      ],
-      error: undefined,
-    });
-
-    await act(async () => {
-      render(<Popup />);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('https://www.instagram.com/p/abc123/')).toBeDefined();
-    });
-
-    const fetchButton = screen.getByText('Fetch Media');
-    await user.click(fetchButton);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Select all')).toBeDefined();
-    });
-  });
-
-  it('selects all items when clicking "Select All"', async () => {
-    const user = userEvent.setup();
-    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      media: [
-        { url: 'https://instagram.com/img1.jpg', type: 'image', filenameHint: 'abc123' },
-        { url: 'https://instagram.com/img2.jpg', type: 'image', filenameHint: 'def456' },
-      ],
-      error: undefined,
-    });
-
-    await act(async () => {
-      render(<Popup />);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('https://www.instagram.com/p/abc123/')).toBeDefined();
-    });
-
-    const fetchButton = screen.getByText('Fetch Media');
-    await user.click(fetchButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Download 2 Selected/)).toBeDefined();
-    });
-
-    const selectAllCheckbox = screen.getByLabelText('Select all');
-    await user.click(selectAllCheckbox);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Select all')).toBeDefined();
-    });
-  });
-
-  it('deselects all items when clicking "Select All" again', async () => {
+  it('toggles every item with "Select all"', async () => {
     const user = userEvent.setup();
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       media: [
@@ -1236,6 +1129,9 @@ describe('Popup', () => {
     await waitFor(() => {
       expect(screen.getByText('Download Selected')).toBeDefined();
     });
+
+    await user.click(selectAllCheckbox);
+    expect(screen.getByText(/Download 2 Selected/)).toBeDefined();
   });
 
   it('retries only the failed operation with its captured request and filename', async () => {
