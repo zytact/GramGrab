@@ -45,6 +45,7 @@ import {
   type InstantsInspect,
   type MediaItem as ProtocolMediaItem,
   type MediaType,
+  type ProgressPhase,
 } from '@gramgrab/protocol';
 import {
   canonicalizeInstagramUrl,
@@ -171,7 +172,7 @@ const invalidSourceUrl = () =>
 
 /**
  * Resolves what an origin holds now as `login`, after marking the items seen by that login's
- * Watches of their owners.
+ * Watches of the accounts that posted them.
  */
 function resolveItems(origin: HistoryOrigin, login: InstagramLogin | undefined) {
   return runOperationHandler(
@@ -433,7 +434,7 @@ function needsRunner(entry: DownloadHistoryEntry): boolean {
   return !deliversOriginal(historySettings(entry));
 }
 
-/** Downloads one item exactly as Instagram serves it. */
+/** The operation that downloads one item exactly as Instagram serves it. */
 function originalDownload(
   operationId: OperationId,
   item: {
@@ -815,7 +816,7 @@ async function inspect(
   command: Inspect | InstantsInspect | ProtocolExportCommand,
   login: InstagramLogin | undefined
 ): Promise<InspectResult | InstantsInspectResult> {
-  if (!('sourceUrl' in command))
+  if (command._tag === 'InstantsInspect' || command._tag === 'InstantsExport')
     return InstantsInspectResult.make({ items: await inspectedMedia({ kind: 'instants' }, login) });
   const origin = sourceOrigin(command.sourceUrl);
   if (!origin) throw protocolFailure(invalidSourceUrl());
@@ -1223,7 +1224,7 @@ function answer<T extends BackgroundMessageType>(
   return messageHandlers[type](message);
 }
 
-const RUNNER_PHASES: Record<string, Progress['phase']> = {
+const RUNNER_PHASES: Record<string, ProgressPhase> = {
   'direct-download': 'direct-download',
   'frame-metadata': 'frame-metadata',
   'frame-export': 'frame-export',
