@@ -6,14 +6,18 @@ export class FrameExport extends Schema.TaggedClass<FrameExport>()('FrameExport'
   timestampSeconds: Schema.Number.pipe(Schema.finite(), Schema.nonNegative()),
 }) {}
 
+/** Whether a silent export may re-encode: never, when it must, or always. */
+export const SilentReencode = Schema.Literal('forbid', 'allow', 'require');
+export type SilentReencode = Schema.Schema.Type<typeof SilentReencode>;
+
 export class SilentExport extends Schema.TaggedClass<SilentExport>()('SilentExport', {
-  reencode: Schema.Literal('forbid', 'allow', 'require'),
+  reencode: SilentReencode,
 }) {}
 
 export const ExportMode = Schema.Union(DirectExport, FrameExport, SilentExport);
 export type ExportMode = Schema.Schema.Type<typeof ExportMode>;
 
-/** The Export mode a History entry records, by name. */
+/** An Export mode by name. */
 export const ExportModeKind = Schema.Literal('direct', 'frame', 'silent');
 export type ExportModeKind = Schema.Schema.Type<typeof ExportModeKind>;
 

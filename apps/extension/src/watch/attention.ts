@@ -4,6 +4,7 @@ import {
   WatchRecover,
   type WatchAttention,
   type ActionOutcome,
+  AttentionOperation,
 } from '@gramgrab/protocol';
 import { summarizeDiscovery } from './discoveries.ts';
 import { recoverable } from './recovery.ts';
@@ -65,7 +66,7 @@ function attentionAction(
     outcome.state === 'unconfirmed'
       ? `uncertain.${entry.id}.${child}`
       : `action.${action}.${entry.id}${child === undefined ? '' : `.${child}`}`;
-  const operations = (['retry', 'dismiss', 'confirm'] as const).filter(
+  const operations = AttentionOperation.literals.filter(
     operation =>
       watch.enabled &&
       recoverable(

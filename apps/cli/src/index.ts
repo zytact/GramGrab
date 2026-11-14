@@ -35,6 +35,7 @@ import {
   type InstagramLogin,
   type InspectResult,
   type InstantsInspectResult,
+  SilentReencode,
 } from '@gramgrab/protocol';
 import { version } from '../../../package.json';
 import { update, versionSkewHint } from './update.ts';
@@ -216,7 +217,7 @@ function exportMode(arguments_: readonly string[]): ExportMode {
           })
         : mode === 'silent'
           ? SilentExport.make({
-              reencode: Schema.decodeUnknownSync(Schema.Literal('forbid', 'allow', 'require'))(
+              reencode: Schema.decodeUnknownSync(SilentReencode)(
                 required(
                   option(arguments_, '--reencode'),
                   'Missing --reencode forbid|allow|require.'

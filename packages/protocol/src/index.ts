@@ -7,6 +7,7 @@ export {
   ExportMode,
   ExportModeKind,
   ExportRecovery,
+  SilentReencode,
   Rotation,
   Crop,
   ExportSettings,
@@ -27,7 +28,6 @@ export type InstagramLogin = Schema.Schema.Type<typeof InstagramLogin>;
 export const MediaType = Schema.Literal('image', 'video');
 export type MediaType = Schema.Schema.Type<typeof MediaType>;
 
-/** The kind of Instagram Source a URL addresses. */
 export const SourceKind = Schema.Literal('post', 'reel', 'story', 'highlight', 'profile');
 export type SourceKind = Schema.Schema.Type<typeof SourceKind>;
 
