@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect';
-import { ExportSettings } from '@gramgrab/protocol';
+import { ExportRecovery, ExportSettings, MediaType } from '@gramgrab/protocol';
 import { OperationFailure, OperationWarning, SkipCodeSchema } from '../errors/contracts.ts';
 
 export const OperationIdSchema = Schema.UUID.pipe(Schema.brand('OperationId'));
@@ -16,9 +16,9 @@ export class DownloadOperation extends Schema.Class<DownloadOperation>('Download
   filename: Schema.String.pipe(Schema.nonEmptyString()),
   originalUrl: Schema.String.pipe(Schema.nonEmptyString()),
   originalFilename: Schema.String.pipe(Schema.nonEmptyString()),
-  mediaType: Schema.Literal('image', 'video'),
+  mediaType: MediaType,
   requestedExport: Schema.optional(ExportSettings),
-  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
+  recovery: Schema.optional(ExportRecovery),
 }) {}
 
 export class DownloadMediaRequest extends Schema.Class<DownloadMediaRequest>(

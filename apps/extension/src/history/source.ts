@@ -1,9 +1,9 @@
 import { canonicalizeInstagramUrl } from '../workspace/contracts.ts';
-import type { HistorySourceKind } from './contracts.ts';
+import type { SourceKind } from '@gramgrab/protocol';
 
 export interface HistorySource {
   url: string;
-  kind: HistorySourceKind;
+  kind: SourceKind;
 }
 
 /** Canonical identity intentionally omits Post's UI-only img_index selection. */

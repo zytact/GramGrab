@@ -5,6 +5,7 @@ import {
   WatchKind as WatchKindSchema,
   type FailureCode,
   type WatchKind,
+  FailureScope,
 } from '@gramgrab/protocol';
 
 export { FAILURE_CODES, FailureCodeSchema, WatchKindSchema, type FailureCode, type WatchKind };
@@ -200,7 +201,7 @@ class InstagramOperationFailure extends Schema.Class<InstagramOperationFailure>(
   platform: Schema.Literal('instagram'),
   code: InstagramFailureCodeSchema,
   phase: FailurePhaseSchema,
-  scope: Schema.Literal('batch', 'item'),
+  scope: FailureScope,
   cause: Schema.optionalWith(DiagnosticCause, { exact: true }),
 }) {}
 
@@ -242,14 +243,14 @@ class WatchOperationFailure extends Schema.Class<WatchOperationFailure>('WatchOp
   platform: Schema.Literal('watch'),
   code: WatchFailureCodeSchema,
   phase: Schema.Literal('resolving', 'watch'),
-  scope: Schema.Literal('batch', 'item'),
+  scope: FailureScope,
   mediaKind: Schema.optionalWith(WatchKindSchema, { exact: true }),
 }) {}
 
 const LegacyInstagramOperationFailure = Schema.Struct({
   code: InstagramFailureCodeSchema,
   phase: FailurePhaseSchema,
-  scope: Schema.Literal('batch', 'item'),
+  scope: FailureScope,
   cause: Schema.optionalWith(DiagnosticCause, { exact: true }),
 });
 
@@ -279,7 +280,7 @@ export type OperationFailure = Schema.Schema.Type<typeof OperationFailureSchema>
 type InstagramOperationFailureInput = {
   readonly code: InstagramFailureCode;
   readonly phase: FailurePhase;
-  readonly scope: 'batch' | 'item';
+  readonly scope: FailureScope;
   readonly cause?: DiagnosticCause;
 };
 

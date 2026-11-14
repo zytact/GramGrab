@@ -1,4 +1,5 @@
 import { Effect } from 'effect';
+import type { MediaType } from '@gramgrab/protocol';
 import { MediaDashOnlyUnsupported, ResponseShapeUnknown } from '../effect/errors.ts';
 import type {
   HighlightsTrayItem,
@@ -60,7 +61,7 @@ function pickBestResource(
 export interface MediaItem {
   itemIndex: number;
   mediaId?: string;
-  type: 'image' | 'video';
+  type: MediaType;
   url: string;
   previewUrl?: string;
   width?: number;
@@ -234,7 +235,7 @@ function buildShortcodeMediaContext(
 function createShortcodeMediaItem(
   context: MediaContext,
   url: string,
-  type: 'image' | 'video',
+  type: MediaType,
   width?: number,
   height?: number,
   previewUrl?: string

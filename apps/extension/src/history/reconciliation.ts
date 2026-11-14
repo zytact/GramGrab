@@ -1,9 +1,10 @@
-import type { DownloadHistoryEntry, HistoryMediaType } from './contracts.ts';
+import type { MediaType } from '@gramgrab/protocol';
+import type { DownloadHistoryEntry } from './contracts.ts';
 
 export interface ReconciledMediaItem {
   itemIndex: number;
   mediaId?: string;
-  type: HistoryMediaType;
+  type: MediaType;
 }
 
 export type Reconciliation<Item extends ReconciledMediaItem> =

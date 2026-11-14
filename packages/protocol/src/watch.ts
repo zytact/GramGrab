@@ -1,6 +1,6 @@
 import { Schema } from 'effect';
 import { FailureCodeSchema } from './failures.ts';
-import { ExportSettings } from './export-modes.ts';
+import { ExportRecovery, ExportSettings } from './export-modes.ts';
 
 const NonEmptyString = Schema.String.pipe(Schema.nonEmptyString());
 const EpochMillis = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
@@ -83,8 +83,11 @@ export class WatchSet extends Schema.TaggedClass<WatchSet>()('WatchSet', {
   actions: Schema.optional(WatchActions),
 }) {}
 
+export const LifecycleOperation = Schema.Literal('pause', 'resume', 'delete');
+export type LifecycleOperation = Schema.Schema.Type<typeof LifecycleOperation>;
+
 export class WatchLifecycle extends Schema.TaggedClass<WatchLifecycle>()('WatchLifecycle', {
-  operation: Schema.Literal('pause', 'resume', 'delete'),
+  operation: LifecycleOperation,
   watches: Schema.Array(WatchSelector).pipe(Schema.minItems(1)),
 }) {}
 
@@ -167,7 +170,7 @@ export class WatchInboxRetry extends Schema.TaggedClass<WatchInboxRetry>()('Watc
   plans: Schema.Array(Schema.Struct({ entryId: NonEmptyString, planId: Schema.UUID })).pipe(
     Schema.minItems(1)
   ),
-  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
+  recovery: Schema.optional(ExportRecovery),
 }) {}
 
 /** Retries or dismisses a failed action of each entry; other entries cannot be recovered so. */
@@ -556,7 +559,7 @@ export class WatchSetResult extends Schema.TaggedClass<WatchSetResult>()('WatchS
 export class WatchLifecycleResult extends Schema.TaggedClass<WatchLifecycleResult>()(
   'WatchLifecycleResult',
   {
-    operation: Schema.Literal('pause', 'resume', 'delete'),
+    operation: LifecycleOperation,
     watches: Schema.Array(WatchSummary),
     unknownWatches: Schema.Array(NonEmptyString),
   }

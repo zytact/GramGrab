@@ -1,4 +1,5 @@
 import { Effect, Option, Schema } from 'effect';
+import type { MediaType } from '@gramgrab/protocol';
 import { HttpError, NetworkError, RateLimited, ResponseShapeUnknown } from '../effect/errors.ts';
 import { protocolConfig } from '../instagram-protocol/config.ts';
 import { InstagramRequests } from './requests.ts';
@@ -97,7 +98,7 @@ interface ExpectedMedia {
   readonly mediaType: 1 | 2 | 8;
   readonly children?: readonly {
     readonly mediaId: string;
-    readonly mediaType: 'image' | 'video';
+    readonly mediaType: MediaType;
   }[];
 }
 

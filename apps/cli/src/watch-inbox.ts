@@ -11,6 +11,8 @@ import {
   type WatchCommand,
   type WatchSelector,
   type ExportMode,
+  ExportRecovery,
+  SilentReencode,
 } from '@gramgrab/protocol';
 import type { WatchArguments } from './watch.ts';
 
@@ -28,9 +30,7 @@ function exportMode(values: ReadonlyMap<string, string>): ExportMode {
     return FrameExport.make({ timestampSeconds: Number(values.get('--at') ?? '5') });
   if (mode === 'silent')
     return SilentExport.make({
-      reencode: Schema.decodeUnknownSync(Schema.Literal('forbid', 'allow', 'require'))(
-        values.get('--reencode')
-      ),
+      reencode: Schema.decodeUnknownSync(SilentReencode)(values.get('--reencode')),
     });
   throw new Error(`Unknown export mode: ${mode}`);
 }
@@ -57,7 +57,7 @@ function retryEntries(ids: readonly string[], values: ReadonlyMap<string, string
       : []
   );
   const recovery = values.has('--recovery')
-    ? Schema.decodeUnknownSync(Schema.Literal('original', 'reencode'))(values.get('--recovery'))
+    ? Schema.decodeUnknownSync(ExportRecovery)(values.get('--recovery'))
     : undefined;
   return WatchInboxRetry.make({ plans, ...(recovery ? { recovery } : {}) });
 }

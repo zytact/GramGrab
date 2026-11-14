@@ -1,4 +1,5 @@
 import { Context, Effect, Schema } from 'effect';
+import { MediaType } from '@gramgrab/protocol';
 import { runFrameExportBatch } from '../frame-export/batch.ts';
 import { clampFrameSecond, frameFilename } from '../frame-export/timestamp.ts';
 import {
@@ -36,7 +37,7 @@ export class ExportCandidate extends Schema.Class<ExportCandidate>('ExportCandid
   index: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
   itemIndex: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.nonNegative())),
   mediaId: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
-  type: Schema.Literal('image', 'video'),
+  type: MediaType,
   url: Schema.String.pipe(Schema.nonEmptyString()),
   filenameHint: Schema.String.pipe(Schema.nonEmptyString()),
   selected: Schema.Boolean,

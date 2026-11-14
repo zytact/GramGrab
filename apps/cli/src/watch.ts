@@ -20,6 +20,8 @@ import {
   WatchShow,
   type WatchCommand,
   type WatchSelector,
+  AttentionOperation,
+  LifecycleOperation,
 } from '@gramgrab/protocol';
 
 const FLAGS = new Set(['--json', '--accept-unattended', '--account-id', '--username', '--all']);
@@ -118,7 +120,7 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
   },
   inbox: parsed => parseWatchInbox(parsed, selector),
   ...Object.fromEntries(
-    (['retry', 'dismiss', 'confirm'] as const).map(operation => [
+    AttentionOperation.literals.map(operation => [
       operation,
       ({ positionals }: WatchArguments) => {
         if (!positionals.length)
@@ -184,7 +186,7 @@ const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {
     return WatchMove.make({ watches: [first, ...rest] });
   },
   ...Object.fromEntries(
-    (['pause', 'resume', 'delete'] as const).map(operation => [
+    LifecycleOperation.literals.map(operation => [
       operation,
       ({ positionals, flags }: WatchArguments) => {
         const [first, ...rest] = positionals.map(value => selector(value, flags));
