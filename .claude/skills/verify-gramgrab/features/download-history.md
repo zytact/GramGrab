@@ -52,8 +52,9 @@ node apps/cli/bin/gramgrab.mjs history redownload ENTRY_ID --json
 node $D click "popup.html?surface" ".history-redownload"
 ```
 
-Both actions must start a new browser download. Reopen the history list and
-confirm the matching entry's downloaded timestamp or count changed. Click its
+Both actions must start a new browser download. A re-download records its own
+receipt and leaves the original entry as it was, so reopen the history list and
+confirm it gained one entry for the same item. Click its
 `Open source` link and require the canonical Instagram source in the new tab.
 
 From the CLI, an entry saved as a frame, silent, rotated, or cropped export
