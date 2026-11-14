@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.9.1](https://github.com/zytact/GramGrab/compare/v4.9.0...v4.9.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **verify:** let each worktree run its own WSL verify session ([#402](https://github.com/zytact/GramGrab/issues/402)) ([da49b25](https://github.com/zytact/GramGrab/commit/da49b25342342f820c3ea21f02189c2a9d11f42d))
+
+
+### Performance Improvements
+
+* **popup:** read video duration from the blob instead of a stored base64 data URL ([#405](https://github.com/zytact/GramGrab/issues/405)) ([c32da2a](https://github.com/zytact/GramGrab/commit/c32da2abc01d27e3199acfc6b86250be33c56511))
+
 ## [4.9.0](https://github.com/zytact/GramGrab/compare/v4.8.1...v4.9.0) (2026-11-11)
 
 
