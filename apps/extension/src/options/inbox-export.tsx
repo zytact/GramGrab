@@ -8,6 +8,7 @@ import {
   type InboxExportOutcome,
   type WatchCommand,
   type FailureCode,
+  type ExportRecovery,
 } from '@gramgrab/protocol';
 import { sendMessage } from '../messaging/send.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
@@ -37,7 +38,7 @@ function canRecover(code: FailureCode) {
     policy.actions.includes('try-reencode')
   );
 }
-function applicable(outcome: InboxExportOutcome, recovery?: 'original' | 'reencode') {
+function applicable(outcome: InboxExportOutcome, recovery?: ExportRecovery) {
   if (recovery && outcome.skipped?.length) return true;
   return outcome.failures.some(failure => {
     const policy = FAILURE_PRESENTATION[failure.code];
@@ -276,7 +277,7 @@ export function useInboxExport(
       select(new Map());
     },
     /** Retries one entry's failed plan, optionally through a recovery. */
-    retryEntry: (entry: DiscoverySummary, planId: string, recovery?: 'original' | 'reencode') =>
+    retryEntry: (entry: DiscoverySummary, planId: string, recovery?: ExportRecovery) =>
       void runOnRows(
         [entry],
         loginOf(entry.watchId),
@@ -391,7 +392,7 @@ export function RowRecovery({
   )
     return null;
   const disabled = value.busy || value.rows.get(entry.entryId)?._tag === 'saving';
-  const retry = (recovery?: 'original' | 'reencode') => {
+  const retry = (recovery?: ExportRecovery) => {
     setConsent(false);
     value.retryEntry(entry, planId, recovery);
   };

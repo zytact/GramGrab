@@ -1,4 +1,5 @@
 import { Effect, Either, Schema } from 'effect';
+import type { MediaType } from '@gramgrab/protocol';
 import { ResponseShapeUnknown } from '../effect/errors.ts';
 import { requestReels } from '../effect/instagram.ts';
 import { ReelsMediaResponseSchema } from '../effect/schemas.ts';
@@ -42,7 +43,7 @@ const untrusted = () => new ResponseShapeUnknown({ context: 'watch_export' });
  */
 const exact = (
   items: readonly MediaItem[],
-  ref: { readonly mediaId: string; readonly mediaType: 'image' | 'video' },
+  ref: { readonly mediaId: string; readonly mediaType: MediaType },
   absent: Unavailable
 ) => {
   const [match, ...others] = items.filter(item => item.mediaId === ref.mediaId);

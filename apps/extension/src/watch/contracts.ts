@@ -1,6 +1,8 @@
 import { Option, Schema } from 'effect';
 import {
   ExportSettings,
+  ExportRecovery,
+  MediaType,
   AccountId,
   CheckIncompleteReason,
   FailureCodeSchema,
@@ -22,7 +24,6 @@ export const MediaId = Schema.String.pipe(Schema.pattern(/^\d{1,30}(?:_\d{1,30})
 /** The CDN asset name of an Avatar's picture, opaque to GramGrab. */
 export const PictureId = Schema.String.pipe(Schema.pattern(/^[0-9A-Za-z_:-]{1,128}$/));
 export const Shortcode = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{1,64}$/));
-const MediaType = Schema.Literal('image', 'video');
 
 export const STORE_KEY = 'watch-store';
 /** Where the browser session records each login's last verified viewer. */
@@ -238,7 +239,7 @@ const ManualExportPlan = Schema.Struct({
     Schema.Struct({
       operationId: Schema.UUID,
       requested: ExportSettings,
-      recovery: Schema.optional(Schema.Literal('original', 'reencode')),
+      recovery: Schema.optional(ExportRecovery),
       state: Schema.Literal('pending', 'starting', 'accepted', 'failed', 'skipped', 'excluded'),
       code: Schema.optional(
         Schema.Union(FailureCodeSchema, Schema.Literal('SILENT_REENCODE_DECLINED'))

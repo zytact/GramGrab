@@ -11,6 +11,7 @@ import {
   type WatchCommand,
   type WatchSelector,
   type ExportMode,
+  ExportRecovery,
 } from '@gramgrab/protocol';
 import type { WatchArguments } from './watch.ts';
 
@@ -57,7 +58,7 @@ function retryEntries(ids: readonly string[], values: ReadonlyMap<string, string
       : []
   );
   const recovery = values.has('--recovery')
-    ? Schema.decodeUnknownSync(Schema.Literal('original', 'reencode'))(values.get('--recovery'))
+    ? Schema.decodeUnknownSync(ExportRecovery)(values.get('--recovery'))
     : undefined;
   return WatchInboxRetry.make({ plans, ...(recovery ? { recovery } : {}) });
 }

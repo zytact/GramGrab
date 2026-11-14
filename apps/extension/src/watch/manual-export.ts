@@ -6,6 +6,7 @@ import {
   type ExportSettings,
   type FailureCode,
   type WatchCommand,
+  type MediaType,
 } from '@gramgrab/protocol';
 import type { MessageOf } from '../messaging/contracts.ts';
 import type { Discovery, ManualExportPlan, Watch } from './contracts.ts';
@@ -23,13 +24,13 @@ export class InboxExportExecution extends Context.Tag('watch/InboxExportExecutio
 type Fresh = Extract<WatchCommand, { _tag: 'WatchInboxExport' }>;
 type Retry = Extract<WatchCommand, { _tag: 'WatchInboxRetry' }>;
 
-function childTypes({ ref }: Discovery): readonly ('image' | 'video')[] {
+function childTypes({ ref }: Discovery): readonly MediaType[] {
   if (ref._tag === 'Avatar') return ['image'];
   return ref._tag === 'Sidecar' ? ref.children.map(child => child.mediaType) : [ref.mediaType];
 }
 
 /** Only a video keeps a mode other than a direct export. */
-function childSettings(type: 'image' | 'video', settings: ExportSettings): ExportSettings {
+function childSettings(type: MediaType, settings: ExportSettings): ExportSettings {
   return { ...settings, mode: type === 'video' ? settings.mode : DirectExport.make() };
 }
 

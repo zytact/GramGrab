@@ -1,4 +1,5 @@
 import { Either, Option, Schema } from 'effect';
+import { ExportModeKind, ExportRecovery, MediaType, SourceKind } from '@gramgrab/protocol';
 import { browser } from '../lib/browser.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
@@ -19,8 +20,10 @@ import { historySource } from './source.ts';
 
 let mutationQueue: Promise<void> = Promise.resolve();
 
-const validKinds = new Set(['post', 'reel', 'story', 'highlight', 'profile']);
-const validTypes = new Set(['image', 'video']);
+const isSourceKind = Schema.is(SourceKind);
+const isMediaType = Schema.is(MediaType);
+const isExportModeKind = Schema.is(ExportModeKind);
+const isExportRecovery = Schema.is(ExportRecovery);
 const isRotation = Schema.is(RotationSchema);
 const isCrop = Schema.is(CropSchema);
 const supportedHistoryVersions = new Set([1, 2, 3, 4]);
@@ -52,17 +55,14 @@ function hasValidIdentity(item: Partial<HistoryMetadata>): boolean {
 // fallow-ignore-next-line complexity
 function hasValidMedia(item: Partial<HistoryMetadata>): boolean {
   return Boolean(
-    (item.origin?.kind === 'instants' || validKinds.has(item.origin?.sourceKind ?? '')) &&
+    (item.origin?.kind === 'instants' || isSourceKind(item.origin?.sourceKind)) &&
     typeof item.itemIndex === 'number' &&
     Number.isSafeInteger(item.itemIndex) &&
     item.itemIndex >= 0 &&
     (item.mediaId === undefined || typeof item.mediaId === 'string') &&
-    validTypes.has(item.mediaType ?? '') &&
+    isMediaType(item.mediaType) &&
     typeof item.filenameHint === 'string' &&
-    (item.exportMode === undefined ||
-      item.exportMode === 'direct' ||
-      item.exportMode === 'frame' ||
-      item.exportMode === 'silent') &&
+    (item.exportMode === undefined || isExportModeKind(item.exportMode)) &&
     (item.frameTimestampSeconds === undefined ||
       (Number.isFinite(item.frameTimestampSeconds) && item.frameTimestampSeconds >= 0)) &&
     (item.exportMode !== 'frame' || item.frameTimestampSeconds !== undefined) &&
@@ -75,7 +75,7 @@ function hasValidOutcome(item: Partial<HistoryMetadata>): boolean {
   return (
     Number.isFinite(item.downloadedAt) &&
     item.outcome === 'accepted' &&
-    (item.recovery === undefined || item.recovery === 'original' || item.recovery === 'reencode')
+    (item.recovery === undefined || isExportRecovery(item.recovery))
   );
 }
 

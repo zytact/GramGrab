@@ -13,6 +13,7 @@ import {
   TransportFailure,
   ValidationFailure,
   validationFailureFrom,
+  type BrowserName,
 } from '@gramgrab/protocol';
 import { browser, type NativePort } from './lib/browser.ts';
 
@@ -40,7 +41,7 @@ let commandHandler:
   | undefined;
 const activeRequests = new Map<RequestId, AbortController>();
 
-function browserName(): 'chromium' | 'firefox' | 'unknown' {
+function browserName(): BrowserName {
   const userAgent = globalThis.navigator?.userAgent ?? '';
   if (/Firefox/i.test(userAgent)) return 'firefox';
   if (/Chrom(?:e|ium)/i.test(userAgent)) return 'chromium';

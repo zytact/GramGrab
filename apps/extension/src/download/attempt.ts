@@ -1,5 +1,6 @@
 import { createRequestId, DownloadOperation, type DownloadOperationResult } from './contracts.ts';
 import { Schema } from 'effect';
+import { ExportModeKind } from '@gramgrab/protocol';
 import { OperationFailure, type OperationWarning, type SkipCode } from '../errors/contracts.ts';
 import { FAILURE_PRESENTATION, presentationForFailure, retryable } from '../errors/presentation.ts';
 import { CropSchema } from '../crop/contracts.ts';
@@ -7,7 +8,7 @@ import { RotationSchema, type Rotation } from '../rotation/contracts.ts';
 
 export const AttemptOperationSchema = Schema.Struct({
   ...DownloadOperation.fields,
-  mode: Schema.Literal('direct', 'frame', 'silent'),
+  mode: ExportModeKind,
   displayIndex: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
   frameTimestampSeconds: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
   rotation: Schema.optional(RotationSchema),

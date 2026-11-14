@@ -1,16 +1,20 @@
 import { Either, Schema } from 'effect';
 import type { Crop } from '../crop/contracts.ts';
 import type { Rotation } from '../rotation/contracts.ts';
-import type { ExportSettings } from '@gramgrab/protocol';
+import type {
+  ExportModeKind,
+  ExportRecovery,
+  ExportSettings,
+  MediaType,
+  SourceKind,
+} from '@gramgrab/protocol';
 
 export const DOWNLOAD_HISTORY_KEY = 'download-history';
 export const DOWNLOAD_HISTORY_VERSION = 4 as const;
 export const DOWNLOAD_HISTORY_LIMIT = 1000;
 
-export type HistorySourceKind = 'post' | 'reel' | 'story' | 'highlight' | 'profile';
-export type HistoryMediaType = 'image' | 'video';
 export type HistoryOrigin =
-  | { kind: 'source'; sourceUrl: string; sourceKind: HistorySourceKind }
+  | { kind: 'source'; sourceUrl: string; sourceKind: SourceKind }
   | { kind: 'instants' };
 
 export interface DownloadHistoryEntry {
@@ -18,14 +22,14 @@ export interface DownloadHistoryEntry {
   origin: HistoryOrigin;
   itemIndex: number;
   mediaId?: string;
-  mediaType: HistoryMediaType;
+  mediaType: MediaType;
   filenameHint: string;
-  exportMode?: 'direct' | 'frame' | 'silent';
+  exportMode?: ExportModeKind;
   frameTimestampSeconds?: number;
   rotation?: Rotation;
   crop?: Crop;
   requestedExport?: ExportSettings;
-  recovery?: 'original' | 'reencode';
+  recovery?: ExportRecovery;
   downloadedAt: number;
   outcome: 'accepted';
 }

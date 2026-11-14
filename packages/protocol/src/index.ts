@@ -1,10 +1,12 @@
 import { Schema } from 'effect';
-import { Crop, ExportSettings, Rotation } from './export-modes.ts';
+import { Crop, ExportModeKind, ExportRecovery, ExportSettings, Rotation } from './export-modes.ts';
 export {
   DirectExport,
   FrameExport,
   SilentExport,
   ExportMode,
+  ExportModeKind,
+  ExportRecovery,
   Rotation,
   Crop,
   ExportSettings,
@@ -21,6 +23,17 @@ export const PROTOCOL_VERSION = 8 as const;
 /** Which Instagram login an operation runs as: the browser's own, or the linked second login. */
 export const InstagramLogin = Schema.Literal('main', 'linked');
 export type InstagramLogin = Schema.Schema.Type<typeof InstagramLogin>;
+
+export const MediaType = Schema.Literal('image', 'video');
+export type MediaType = Schema.Schema.Type<typeof MediaType>;
+
+/** The kind of Instagram Source a URL addresses. */
+export const SourceKind = Schema.Literal('post', 'reel', 'story', 'highlight', 'profile');
+export type SourceKind = Schema.Schema.Type<typeof SourceKind>;
+
+/** Whether a failure stopped the whole operation or one item of it. */
+export const FailureScope = Schema.Literal('batch', 'item');
+export type FailureScope = Schema.Schema.Type<typeof FailureScope>;
 
 export const RequestId = Schema.UUID.pipe(Schema.brand('RequestId'));
 export type RequestId = Schema.Schema.Type<typeof RequestId>;
@@ -130,7 +143,7 @@ export * from './watch.ts';
 
 export class OperationFailure extends Schema.Class<OperationFailure>('ProtocolOperationFailure')({
   code: FailureCodeSchema,
-  scope: Schema.Literal('batch', 'item'),
+  scope: FailureScope,
 }) {}
 
 export class TransportFailure extends Schema.TaggedClass<TransportFailure>()('TransportFailure', {
@@ -205,7 +218,7 @@ export class HistoryMarker extends Schema.Class<HistoryMarker>('HistoryMarker')(
 export const MediaItem = Schema.Struct({
   itemIndex: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
   mediaId: Schema.optional(Schema.String),
-  type: Schema.Literal('image', 'video'),
+  type: MediaType,
   url: Schema.String.pipe(Schema.nonEmptyString()),
   filenameHint: Schema.String,
   previewUrl: Schema.optional(Schema.String),
@@ -220,7 +233,7 @@ export type MediaItem = Schema.Schema.Type<typeof MediaItem>;
 export class InspectedMedia extends Schema.Class<InspectedMedia>('InspectedMedia')({
   itemNumber: HumanItemNumber,
   mediaIdentity: MediaIdentity,
-  mediaType: Schema.Literal('image', 'video'),
+  mediaType: MediaType,
   url: Schema.String.pipe(Schema.nonEmptyString()),
   previewUrl: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
   filenameHint: Schema.String.pipe(Schema.nonEmptyString()),
@@ -251,19 +264,19 @@ export class HistoryEntry extends Schema.Class<HistoryEntry>('HistoryEntry')({
     Schema.Struct({
       kind: Schema.Literal('source'),
       sourceUrl: Schema.String.pipe(Schema.nonEmptyString()),
-      sourceKind: Schema.Literal('post', 'reel', 'story', 'highlight', 'profile'),
+      sourceKind: SourceKind,
     }),
     Schema.Struct({ kind: Schema.Literal('instants') })
   ),
   mediaIdentity: MediaIdentity,
-  mediaType: Schema.Literal('image', 'video'),
+  mediaType: MediaType,
   filenameHint: Schema.String.pipe(Schema.nonEmptyString()),
-  exportMode: Schema.optional(Schema.Literal('direct', 'frame', 'silent')),
+  exportMode: Schema.optional(ExportModeKind),
   frameTimestampSeconds: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
   rotation: Schema.optional(Rotation),
   crop: Schema.optional(Crop),
   requestedExport: Schema.optional(ExportSettings),
-  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
+  recovery: Schema.optional(ExportRecovery),
   downloadedAt: Schema.Number.pipe(Schema.nonNegative()),
 }) {}
 
@@ -328,8 +341,11 @@ export class DebugExportResult extends Schema.TaggedClass<DebugExportResult>()(
   }
 ) {}
 
+export const BrowserName = Schema.Literal('chromium', 'firefox', 'unknown');
+export type BrowserName = Schema.Schema.Type<typeof BrowserName>;
+
 export class StatusResult extends Schema.TaggedClass<StatusResult>()('StatusResult', {
-  browser: Schema.Literal('chromium', 'firefox', 'unknown'),
+  browser: BrowserName,
   extensionVersion: Schema.String.pipe(Schema.nonEmptyString()),
   hostVersion: Schema.String.pipe(Schema.nonEmptyString()),
   protocolVersion: Schema.Number.pipe(Schema.int(), Schema.positive()),
@@ -358,23 +374,26 @@ export type CommandResult = Schema.Schema.Type<typeof CommandResult>;
 
 export class Accepted extends Schema.TaggedClass<Accepted>()('Accepted', {}) {}
 
+export const ProgressPhase = Schema.Literal(
+  'watch-check',
+  'resolving',
+  'direct-download',
+  'frame-metadata',
+  'frame-export',
+  'silent-inspection',
+  'silent-copy',
+  'silent-reencode',
+  'silent-validation',
+  'history',
+  'diagnostics'
+);
+export type ProgressPhase = Schema.Schema.Type<typeof ProgressPhase>;
+
 export class Progress extends Schema.TaggedClass<Progress>()('Progress', {
   operationId: Schema.optional(OperationId),
   itemNumber: Schema.optional(HumanItemNumber),
   watchCheck: Schema.optional(WatchCheckProgress),
-  phase: Schema.Literal(
-    'watch-check',
-    'resolving',
-    'direct-download',
-    'frame-metadata',
-    'frame-export',
-    'silent-inspection',
-    'silent-copy',
-    'silent-reencode',
-    'silent-validation',
-    'history',
-    'diagnostics'
-  ),
+  phase: ProgressPhase,
   progress: Schema.optional(Schema.Number.pipe(Schema.between(0, 1))),
 }) {}
 

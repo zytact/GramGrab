@@ -12,6 +12,15 @@ export class SilentExport extends Schema.TaggedClass<SilentExport>()('SilentExpo
 
 export const ExportMode = Schema.Union(DirectExport, FrameExport, SilentExport);
 export type ExportMode = Schema.Schema.Type<typeof ExportMode>;
+
+/** The Export mode a History entry records, by name. */
+export const ExportModeKind = Schema.Literal('direct', 'frame', 'silent');
+export type ExportModeKind = Schema.Schema.Type<typeof ExportModeKind>;
+
+/** How a retry recovers a failed export: download the original instead, or let a silent export re-encode. */
+export const ExportRecovery = Schema.Literal('original', 'reencode');
+export type ExportRecovery = Schema.Schema.Type<typeof ExportRecovery>;
+
 export const Rotation = Schema.Literal(90, 180, 270);
 export type Rotation = Schema.Schema.Type<typeof Rotation>;
 

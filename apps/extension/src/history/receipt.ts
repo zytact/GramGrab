@@ -1,19 +1,19 @@
 import type { Crop } from '../crop/contracts.ts';
 import type { Rotation } from '../rotation/contracts.ts';
-import type { ExportSettings } from '@gramgrab/protocol';
+import type { ExportModeKind, ExportRecovery, ExportSettings, MediaType } from '@gramgrab/protocol';
 import type { DownloadHistoryEntry } from './contracts.ts';
 
 export interface AcceptedHistoryOperation {
   itemIndex: number;
   mediaId?: string;
-  mediaType: 'image' | 'video';
+  mediaType: MediaType;
   filename: string;
-  exportMode?: 'direct' | 'frame' | 'silent';
+  exportMode?: ExportModeKind;
   frameTimestampSeconds?: number;
   rotation?: Rotation;
   crop?: Crop;
   requestedExport?: ExportSettings;
-  recovery?: 'original' | 'reencode';
+  recovery?: ExportRecovery;
 }
 
 function createHistoryId(): string {

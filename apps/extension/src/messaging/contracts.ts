@@ -12,6 +12,8 @@ import {
   WatchShow,
   WatchViewer,
   ExportSettings,
+  ExportRecovery,
+  MediaType,
   MediaItem as ProtocolMediaItem,
   type FailureCode,
   type CommandFailure,
@@ -41,11 +43,11 @@ const HistoryItem = Schema.Struct({
   mediaId: Schema.optional(Schema.String),
   url: Schema.String.pipe(Schema.nonEmptyString()),
   filename: Schema.String.pipe(Schema.nonEmptyString()),
-  mediaType: Schema.Literal('image', 'video'),
+  mediaType: MediaType,
   rotation: Schema.optional(RotationSchema),
   crop: Schema.optional(CropSchema),
   requestedExport: Schema.optional(ExportSettings),
-  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
+  recovery: Schema.optional(ExportRecovery),
 });
 
 const FrameHistoryItem = Schema.Struct({
@@ -184,7 +186,7 @@ const RunExport = Schema.Struct({
   command: Schema.Union(ProtocolExport, ProtocolInstantsExport),
   preparedMedia: Schema.optional(Schema.Array(ProtocolMediaItem)),
   requestedExport: Schema.optional(ExportSettings),
-  recovery: Schema.optional(Schema.Literal('original', 'reencode')),
+  recovery: Schema.optional(ExportRecovery),
 });
 
 const RunnerReady = Schema.Struct({ type: Schema.Literal('RUNNER_READY') });
@@ -290,7 +292,7 @@ interface RedownloadFrame {
 
 type RedownloadSilent = Omit<RedownloadFrame, 'timestampSeconds'>;
 
-type RedownloadModified = RedownloadSilent & { mediaType: 'image' | 'video' };
+type RedownloadModified = RedownloadSilent & { mediaType: MediaType };
 
 type RedownloadHistoryEntryResponse =
   | { failure: OperationFailure }

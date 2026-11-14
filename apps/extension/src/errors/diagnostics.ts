@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { CheckIncompleteReason } from '@gramgrab/protocol';
+import { CheckIncompleteReason, MediaType, FailureScope } from '@gramgrab/protocol';
 import type { AttemptOutcome, DownloadAttempt } from '../download/attempt.ts';
 import {
   FailurePhaseSchema,
@@ -72,7 +72,7 @@ type MediaUrlDescriptor = Schema.Schema.Type<typeof MediaUrlDescriptor>;
 class DiagnosticsFailure extends Schema.Class<DiagnosticsFailure>('DiagnosticsFailure')({
   code: FailureCodeSchema,
   phase: FailurePhaseSchema,
-  scope: Schema.Literal('batch', 'item'),
+  scope: FailureScope,
 }) {}
 
 class DiagnosticsWarning extends Schema.Class<DiagnosticsWarning>('DiagnosticsWarning')({
@@ -92,7 +92,7 @@ const DiagnosticsOutcome = Schema.Union(
 type DiagnosticsOutcome = Schema.Schema.Type<typeof DiagnosticsOutcome>;
 
 class DiagnosticsItem extends Schema.Class<DiagnosticsItem>('DiagnosticsItem')({
-  mediaType: Schema.Literal('image', 'video'),
+  mediaType: MediaType,
   mediaUrl: MediaUrlDescriptor,
   executionCount: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
   manualRetryCount: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
@@ -148,7 +148,7 @@ class WatchDiagnosticFailure extends Schema.Class<WatchDiagnosticFailure>('Watch
   {
     code: FailureCodeSchema,
     phase: FailurePhaseSchema,
-    scope: Schema.Literal('batch', 'item'),
+    scope: FailureScope,
     mediaKind: Schema.optionalWith(WatchKindSchema, { exact: true }),
     reason: Schema.optionalWith(CheckIncompleteReason, { exact: true }),
   }
@@ -435,7 +435,7 @@ export interface WatchDiagnosticsInput {
   readonly failure: {
     readonly code: FailureCode;
     readonly phase: FailurePhase;
-    readonly scope: 'batch' | 'item';
+    readonly scope: FailureScope;
     readonly mediaKind?: WatchKind;
     readonly reason?: CheckIncompleteReason;
   };
