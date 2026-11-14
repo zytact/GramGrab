@@ -198,6 +198,10 @@ rsync -a --exclude 'Singleton*' --exclude 'Default/Service Worker' \
 The copy carries that profile's extension storage, Watches and request ledger
 included, so read the state you inherited before treating it as this run's.
 
+On WSL the profile lives on Windows, one per checkout, and a new worktree's
+first `launch.sh` seeds it from the last `signin.sh`. Skip the copy above.
+[wsl.md](wsl.md) has the details.
+
 ## Doctor
 
 ```bash

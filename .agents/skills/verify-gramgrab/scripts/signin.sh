@@ -21,25 +21,16 @@ if [ -n "${WSL_DISTRO_NAME:-}" ]; then
     exit 2
   fi
   # Helium locks its cookie file while it runs, so the copy needs it closed.
-  if [ -n "$(wsl_helium_pids '')" ]; then
+  # Verification browsers in other checkouts use their own profiles and can stay.
+  if [ -n "$(wsl_daily_helium_pids)" ]; then
     echo "Helium is running. Ask the person to close every Helium window, then run this again yourself." >&2
     exit 2
   fi
-  source="$wsl_daily_profile"
-  target="$wsl_root/profile"
-  rm -rf "$target"
-  mkdir -p "$target/Default/IndexedDB"
-  cp "$source/Local State" "$target/"
-  # Only what carries the Instagram and WhatsApp Web sessions. The rest of the
-  # profile is gigabytes of cache and unrelated sites.
-  (
-    cd "$source/Default"
-    cp Preferences "Secure Preferences" "$target/Default/"
-    cp -r Network "Local Storage" "Session Storage" "$target/Default/"
-    cp -r IndexedDB/https_web.whatsapp.com_0.indexeddb.* IndexedDB/https_www.instagram.com_0.indexeddb.* \
-      "$target/Default/IndexedDB/" 2>/dev/null || true
-  )
-  echo "Copied the Helium sign-ins to $target. Helium can be reopened now."
+  # The seed is what launch.sh copies into a checkout that has no profile yet.
+  wsl_copy_signins "$wsl_daily_profile" "$wsl_seed"
+  echo "Helium can be reopened now."
+  wsl_copy_signins "$wsl_seed" "$wsl_dir/profile"
+  echo "Copied the Helium sign-ins to $wsl_dir/profile and $wsl_seed."
   exit 0
 fi
 
