@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
+import { describe, it, expect, vi, beforeEach, onTestFinished } from 'vite-plus/test';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Popup from './popup';
@@ -1595,6 +1595,7 @@ describe('Popup', () => {
     const fetchVideo = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response(null, { status: 403, statusText: 'Forbidden' }));
+    onTestFinished(() => fetchVideo.mockRestore());
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       media: [{ url: 'https://instagram.com/video.mp4', type: 'video', filenameHint: 'clip' }],
       error: undefined,
@@ -1618,7 +1619,6 @@ describe('Popup', () => {
         ([message]) => (message as { type?: string }).type === 'FETCH_VIDEO_BLOB'
       )
     ).toBe(false);
-    fetchVideo.mockRestore();
   });
 
   it('uses an accessible, timestamped frame selector for video exports', async () => {

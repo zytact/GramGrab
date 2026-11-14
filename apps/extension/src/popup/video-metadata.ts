@@ -6,8 +6,10 @@ import { fetchMedia } from '../download/fetch-media';
 
 const VIDEO_METADATA_UNAVAILABLE = 'Could not load video metadata. Retry.';
 
-const failureMessage = (failure: OperationFailure) =>
-  `${presentationForFailure(failure).title}. ${presentationForFailure(failure).explanation}`;
+function failureMessage(failure: OperationFailure) {
+  const { title, explanation } = presentationForFailure(failure);
+  return `${title}. ${explanation}`;
+}
 
 /**
  * Fetches one video through the background worker as a data URL, for a page that shows the video
