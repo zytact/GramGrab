@@ -1590,6 +1590,37 @@ describe('Popup', () => {
     expect(selectionCheckbox.checked).toBe(false);
   });
 
+  it('measures a video without preview metadata by fetching it in the popup', async () => {
+    const user = userEvent.setup();
+    const fetchVideo = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 403, statusText: 'Forbidden' }));
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [{ url: 'https://instagram.com/video.mp4', type: 'video', filenameHint: 'clip' }],
+      error: undefined,
+    });
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    await user.click(await screen.findByLabelText('Frame'));
+
+    expect(
+      await screen.findByText(
+        'Media link expired. Fetch the source again to get a fresh media link.'
+      )
+    ).toBeDefined();
+    expect(fetchVideo).toHaveBeenCalledWith('https://instagram.com/video.mp4', {
+      credentials: 'omit',
+    });
+    expect(
+      mockBrowser.runtime.sendMessage.mock.calls.some(
+        ([message]) => (message as { type?: string }).type === 'FETCH_VIDEO_BLOB'
+      )
+    ).toBe(false);
+    fetchVideo.mockRestore();
+  });
+
   it('uses an accessible, timestamped frame selector for video exports', async () => {
     const user = userEvent.setup();
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({

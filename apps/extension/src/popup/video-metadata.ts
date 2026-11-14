@@ -1,12 +1,18 @@
 import { sendMessage } from '../messaging/send';
 import { presentationForFailure } from '../errors/presentation';
+import { isOperationFailure, type OperationFailure } from '../errors/contracts';
 import { maximumFrameSecond } from '../frame-export/timestamp';
+import { fetchMedia } from '../download/fetch-media';
 
 const VIDEO_METADATA_UNAVAILABLE = 'Could not load video metadata. Retry.';
 
+const failureMessage = (failure: OperationFailure) =>
+  `${presentationForFailure(failure).title}. ${presentationForFailure(failure).explanation}`;
+
 /**
- * Fetches one video through the background worker and measures it. A failure the worker classified
- * is reported in its own words; anything the popup itself could not do stays generic.
+ * Fetches one video through the background worker as a data URL, for a page that shows the video
+ * from that URL, and measures it. A failure the worker classified is reported in its own words;
+ * anything the page itself could not do stays generic.
  */
 export async function loadVideoMetadata(
   url: string
@@ -15,22 +21,38 @@ export async function loadVideoMetadata(
     const response = await sendMessage({ type: 'FETCH_VIDEO_BLOB', url });
     if (!response.dataUrl)
       return {
-        error: response.failure
-          ? `${presentationForFailure(response.failure).title}. ${presentationForFailure(response.failure).explanation}`
-          : VIDEO_METADATA_UNAVAILABLE,
+        error: response.failure ? failureMessage(response.failure) : VIDEO_METADATA_UNAVAILABLE,
       };
     return {
       dataUrl: response.dataUrl,
-      durationSeconds: await getVideoDuration(response.dataUrl),
+      durationSeconds: await measureDuration(response.dataUrl),
     };
   } catch {
     return { error: VIDEO_METADATA_UNAVAILABLE };
   }
 }
 
-function createExportVideo(dataUrl: string) {
+/** Fetches one video and measures it straight from its bytes, keeping only the duration. */
+export async function loadVideoDuration(
+  url: string
+): Promise<{ durationSeconds: number } | { error: string }> {
+  try {
+    const objectUrl = URL.createObjectURL(await fetchMedia(url));
+    try {
+      return { durationSeconds: await measureDuration(objectUrl) };
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  } catch (cause) {
+    return {
+      error: isOperationFailure(cause) ? failureMessage(cause) : VIDEO_METADATA_UNAVAILABLE,
+    };
+  }
+}
+
+function createExportVideo(src: string) {
   const exportVideo = document.createElement('video');
-  exportVideo.src = dataUrl;
+  exportVideo.src = src;
   exportVideo.muted = true;
   exportVideo.playsInline = true;
   exportVideo.crossOrigin = 'anonymous';
@@ -42,9 +64,9 @@ function releaseVideo(video: HTMLVideoElement) {
   video.load();
 }
 
-function getVideoDuration(dataUrl: string): Promise<number> {
+function measureDuration(src: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const video = createExportVideo(dataUrl);
+    const video = createExportVideo(src);
     const cleanup = () => {
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
       video.removeEventListener('error', onError);

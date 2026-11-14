@@ -19,7 +19,6 @@ export type MediaItem = Omit<ResolvedMediaItem, 'itemIndex'> & {
 export type FrameRuntime = {
   status: 'idle' | 'loading' | 'ready' | 'failed' | 'exporting';
   durationSeconds?: number;
-  dataUrl?: string;
   error?: string;
   warning?: string;
 };

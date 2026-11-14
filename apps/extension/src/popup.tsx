@@ -1,4 +1,4 @@
-import { loadVideoMetadata } from './popup/video-metadata';
+import { loadVideoDuration } from './popup/video-metadata';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import './styles.css';
 import { browser } from './lib/browser';
@@ -246,19 +246,13 @@ export default function Popup() {
         return;
       }
       patchRuntime(index, current => withFrame(current, { status: 'loading' }));
-      const loaded = await loadVideoMetadata(itemUrl);
+      const loaded = await loadVideoDuration(itemUrl);
       if (generation !== resultsGeneration.current || mediaItems[index]?.url !== itemUrl) return;
-      if ('error' in loaded) {
+      if ('error' in loaded)
         patchRuntime(index, current =>
           withFrame(current, { status: 'failed', error: loaded.error })
         );
-        return;
-      }
-      patchRuntime(index, current => withFrame(current, { status: 'ready', ...loaded }));
-      const resetToDefault = pendingFrameDefaults.current.delete(index);
-      setFrameExportSettings(previous =>
-        withClampedFrameSecond(previous, index, loaded.durationSeconds, resetToDefault)
-      );
+      else setFrameDuration(index, loaded.durationSeconds);
     },
     [mediaItems, patchRuntime, setFrameDuration]
   );
