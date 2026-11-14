@@ -193,6 +193,14 @@ re-encoded video prints `video,720,720` and `audio`.
   before anything reaches the browser.
 - Re-encoding is CPU-bound and can outlast a short timeout. The terminal
   deadline is 30 minutes for a reason.
+- Turning `Frame` on sizes the slider from the preview's own `duration`. A
+  preview with no metadata yet sends the popup down its fallback: it fetches the
+  video itself and measures the bytes, with no `FETCH_VIDEO_BLOB` message. The
+  Watches inbox keeps the worker's `FETCH_VIDEO_BLOB` data URL on purpose. To
+  drive the popup fallback, clear the preview before clicking `Frame`:
+  `(() => { const v = document.querySelector('video.media-preview'); v.removeAttribute('src'); v.load(); })()`.
+  The popup's `performance.getEntriesByType('resource')` then lists the video
+  URL as a `fetch`, and the slider `max` is `ceil(duration) - 1`.
 - Frame export, video rotation and WhatsApp Remove audio load the video
   library on first use as `js/mediabunny.js`; the popup does not load it at
   open. To prove that live, trace CDP `Network.requestWillBeSent` on the popup
