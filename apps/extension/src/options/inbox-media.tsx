@@ -315,16 +315,18 @@ export function useInboxMedia(
         patchRuntime(item.index, runtime => ({ ...runtime, preview: 'failed' }));
     }
   };
-  const settings = (item: InboxItem): ExportSettings => ({
-    mode:
-      item.type === 'video' && frames[item.index]?.enabled
-        ? FrameExport.make({ timestampSeconds: frames[item.index]!.timestampSeconds })
+  const settings = (item: InboxItem): ExportSettings => {
+    const frame = item.type === 'video' ? frames[item.index] : undefined;
+    return {
+      mode: frame?.enabled
+        ? FrameExport.make({ timestampSeconds: frame.timestampSeconds })
         : silent.has(item.index)
           ? SilentExport.make({ reencode: item.crop ? 'allow' : 'forbid' })
           : DirectExport.make(),
-    ...(item.rotation ? { rotation: item.rotation } : {}),
-    ...(item.crop ? { crop: item.crop } : {}),
-  });
+      ...(item.rotation ? { rotation: item.rotation } : {}),
+      ...(item.crop ? { crop: item.crop } : {}),
+    };
+  };
   const chosen = items.filter(item => item.selected);
   const selections = chosen.map(item => ({
     entryId: item.entryId,

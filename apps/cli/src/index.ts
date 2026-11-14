@@ -64,11 +64,9 @@ const endpoint = localIpcEndpoint({
 export interface ParsedCli {
   readonly command: Command;
   readonly json: boolean;
-  readonly expandAll?: {
-    readonly sourceUrl?: string;
-    readonly origin: 'source' | 'instants';
-    readonly mode: ExportMode;
-  };
+  readonly expandAll?:
+    | { readonly origin: 'source'; readonly sourceUrl: string; readonly mode: ExportMode }
+    | { readonly origin: 'instants'; readonly mode: ExportMode };
 }
 
 export const HELP = `GramGrab CLI
@@ -204,7 +202,7 @@ function itemNumber(value: string | undefined) {
 }
 
 function operationId() {
-  return Schema.decodeUnknownSync(OperationId)(crypto.randomUUID());
+  return OperationId.make(crypto.randomUUID());
 }
 
 function exportMode(arguments_: readonly string[]): ExportMode {
@@ -241,12 +239,12 @@ function exportOperation(arguments_: readonly string[]): ExportOperation {
 function validateInstantsArguments(arguments_: readonly string[], action: 'inspect' | 'export') {
   const valueOptions =
     action === 'inspect' ? new Set<string>() : new Set(['--item', '--mode', '--at', '--reencode']);
-  for (let index = 2; index < arguments_.length; index++) {
-    const argument = arguments_[index]!;
+  const options = arguments_.slice(2).values();
+  for (const argument of options) {
     if (argument === '--json') continue;
     if (!valueOptions.has(argument))
       throw new Error(`gramgrab instants ${action} does not accept a Source argument.`);
-    const value = arguments_[++index];
+    const value = options.next().value;
     if (!value || value.startsWith('--')) throw new Error(`Missing value for ${argument}.`);
   }
 }
@@ -692,7 +690,7 @@ function expandedExport(
   );
   return pending.origin === 'instants'
     ? InstantsExport.make({ operations })
-    : Export.make({ sourceUrl: pending.sourceUrl!, operations });
+    : Export.make({ sourceUrl: pending.sourceUrl, operations });
 }
 
 if (import.meta.main) {

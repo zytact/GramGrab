@@ -45,10 +45,8 @@ type WatchHold = {
 /** What holds Watch work back under `ledger` at `now`, or undefined when nothing does. */
 export function watchHold(ledger: LedgerView, now: number): WatchHold | undefined {
   const recent = ledger.attempts.filter(at => at > now - HOUR_MS);
-  const capacityAt =
-    recent.length >= HOURLY_REQUEST_CAP
-      ? recent[recent.length - HOURLY_REQUEST_CAP]! + HOUR_MS
-      : now;
+  const oldestCounted = recent.at(-HOURLY_REQUEST_CAP);
+  const capacityAt = oldestCounted === undefined ? now : oldestCounted + HOUR_MS;
   const pausedUntil = ledger.pause && ledger.pause.until > now ? ledger.pause.until : undefined;
   const until = Math.max(now, ledger.nextWatchAt, capacityAt, pausedUntil ?? now);
   if (until <= now) return undefined;

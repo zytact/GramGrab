@@ -6,23 +6,21 @@ export interface ReconciledMediaItem {
   type: HistoryMediaType;
 }
 
-export type Reconciliation =
-  | { kind: 'found'; item: ReconciledMediaItem }
+export type Reconciliation<Item extends ReconciledMediaItem> =
+  | { kind: 'found'; item: Item }
   | { kind: 'missing' }
   | { kind: 'ambiguous' };
 
-export function reconcileHistoryEntry(
+export function reconcileHistoryEntry<Item extends ReconciledMediaItem>(
   entry: Pick<DownloadHistoryEntry, 'itemIndex' | 'mediaId' | 'mediaType'>,
-  items: readonly ReconciledMediaItem[]
-): Reconciliation {
+  items: readonly Item[]
+): Reconciliation<Item> {
   if (entry.mediaId) {
-    const candidates = items.filter(item => item.mediaId === entry.mediaId);
-    if (candidates.length === 1)
-      return candidates[0]!.type === entry.mediaType
-        ? { kind: 'found', item: candidates[0]! }
-        : { kind: 'missing' };
-    if (candidates.length > 1) return { kind: 'ambiguous' };
-    return { kind: 'missing' };
+    const [candidate, ...others] = items.filter(item => item.mediaId === entry.mediaId);
+    if (others.length > 0) return { kind: 'ambiguous' };
+    return candidate?.type === entry.mediaType
+      ? { kind: 'found', item: candidate }
+      : { kind: 'missing' };
   }
   const item = items.find(candidate => candidate.itemIndex === entry.itemIndex);
   return item && item.type === entry.mediaType ? { kind: 'found', item } : { kind: 'missing' };

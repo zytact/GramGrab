@@ -208,9 +208,9 @@ async function resolveDownloadSource(
   operation: AttemptOperation,
   client: SilentVideoClient
 ): Promise<DownloadSource> {
-  if (!processed.alreadySilent)
+  if (processed.opfsName)
     return {
-      url: URL.createObjectURL(await readOutput(processed.opfsName!)),
+      url: URL.createObjectURL(await readOutput(processed.opfsName)),
       artifact: 'output',
     };
   try {

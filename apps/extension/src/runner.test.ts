@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { Schema } from 'effect';
 import {
   DirectExport,
   ExportOperation,
@@ -13,10 +12,10 @@ import { resolveRequestedRunnerMedia } from './runner.ts';
 describe('runner media reconciliation', () => {
   it('resolves a reordered Instant by stable media ID', () => {
     const operation = ExportOperation.make({
-      operationId: Schema.decodeUnknownSync(OperationId)('00000000-0000-4000-8000-000000000001'),
-      itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(1),
+      operationId: OperationId.make('00000000-0000-4000-8000-000000000001'),
+      itemNumber: HumanItemNumber.make(1),
       mediaIdentity: MediaIdentity.make({
-        itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(0),
+        itemIndex: InternalItemIndex.make(0),
         mediaId: 'target',
       }),
       mode: DirectExport.make({}),

@@ -351,9 +351,7 @@ describe('background dispatcher', () => {
 
   it('decodes a plain runner failure before encoding it to the native protocol', async () => {
     const listener = await loadBackground();
-    const operationId = Schema.decodeUnknownSync(OperationId)(
-      '00000000-0000-4000-8000-000000000001'
-    );
+    const operationId = OperationId.make('00000000-0000-4000-8000-000000000001');
     fakeBrowserObj.fakeBrowser.tabs.sendMessage.mockResolvedValue({
       _tag: 'ExportResult',
       outcomes: [
@@ -374,7 +372,7 @@ describe('background dispatcher', () => {
         operations: [
           ExportOperation.make({
             operationId,
-            itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(1),
+            itemNumber: HumanItemNumber.make(1),
             mode: FrameExport.make({ timestampSeconds: 0 }),
           }),
         ],
@@ -452,9 +450,7 @@ describe('background dispatcher', () => {
     fixture.data.xdt_get_quick_snaps.items_ordered_by_time = [other, target];
     globalThis.fetch = fetchMock(async () => jsonResponse(fixture));
     await loadBackground();
-    const operationId = Schema.decodeUnknownSync(OperationId)(
-      '00000000-0000-4000-8000-000000000002'
-    );
+    const operationId = OperationId.make('00000000-0000-4000-8000-000000000002');
     const request = Schema.decodeUnknownSync(Request)({
       version: PROTOCOL_VERSION,
       requestId: crypto.randomUUID(),
@@ -462,9 +458,9 @@ describe('background dispatcher', () => {
         operations: [
           ExportOperation.make({
             operationId,
-            itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(1),
+            itemNumber: HumanItemNumber.make(1),
             mediaIdentity: MediaIdentity.make({
-              itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(0),
+              itemIndex: InternalItemIndex.make(0),
               mediaId: targetId,
             }),
             mode: DirectExport.make({}),

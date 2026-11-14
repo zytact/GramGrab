@@ -48,7 +48,8 @@ export function CropOverlay({
   const lock = aspect === undefined ? undefined : { ratio: aspect, frameRatio };
 
   const pointAt = (event: PointerEvent) => {
-    const bounds = frameRef.current!.getBoundingClientRect();
+    const bounds = frameRef.current?.getBoundingClientRect();
+    if (!bounds) return undefined;
     return {
       x: (event.clientX - bounds.left) / bounds.width,
       y: (event.clientY - bounds.top) / bounds.height,
@@ -62,8 +63,8 @@ export function CropOverlay({
   };
   const continueDrag = (event: PointerEvent) => {
     const current = drag.current;
-    if (!current) return;
     const point = pointAt(event);
+    if (!current || !point) return;
     onChange(
       current.kind === 'move'
         ? moveCrop(current.start, point.x - current.startX, point.y - current.startY)
@@ -100,7 +101,8 @@ export function CropOverlay({
               onKeyDown,
               onPointerDown: (event: PointerEvent) => {
                 const point = pointAt(event);
-                startDrag(event, { kind: 'move', startX: point.x, startY: point.y, start: area });
+                if (point)
+                  startDrag(event, { kind: 'move', startX: point.x, startY: point.y, start: area });
               },
               onPointerMove: continueDrag,
               onPointerUp: () => (drag.current = undefined),

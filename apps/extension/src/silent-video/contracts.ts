@@ -64,7 +64,7 @@ export class SilentInspected extends Schema.TaggedClass<SilentInspected>()('insp
 export class SilentProcessed extends Schema.TaggedClass<SilentProcessed>()('processed', {
   operationId: OperationIdSchema,
   requestId: RequestIdSchema,
-  alreadySilent: Schema.Boolean,
+  /** The processed output in OPFS, absent when the input was already silent. */
   opfsName: Schema.optional(Schema.String),
 }) {}
 export class SilentReleased extends Schema.TaggedClass<SilentReleased>()('released', {

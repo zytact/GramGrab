@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { ALL_FORMATS, BlobSource, Input, type StreamTargetChunk } from 'mediabunny';
-import { operationIdFrom, requestIdFrom } from '../download/contracts.ts';
+import { OperationIdSchema, RequestIdSchema } from '../download/contracts.ts';
 import { evenCropRectangle, inspectSilentVideo, processSilentVideo } from './engine.ts';
 
 type StoredPart = string | StreamTargetChunk;
@@ -90,8 +90,8 @@ describe('silent video media processing', () => {
   });
 
   it('packet-copies an audiovisual MP4 into a playable video-only MP4', async () => {
-    const requestId = requestIdFrom('00000000-0000-4000-8000-000000000001');
-    const operationId = operationIdFrom('10000000-0000-4000-8000-000000000001');
+    const requestId = RequestIdSchema.make('00000000-0000-4000-8000-000000000001');
+    const operationId = OperationIdSchema.make('10000000-0000-4000-8000-000000000001');
     const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
     directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
 
@@ -103,7 +103,6 @@ describe('silent video media processing', () => {
       () => {}
     );
 
-    expect(result.alreadySilent).toBe(false);
     expect(result.opfsName).toBe(`${operationId}.mp4`);
     const outputBytes = directory.files.get(`${operationId}.mp4`) ?? new Uint8Array();
     const output = new File([outputBytes.buffer], `${operationId}.mp4`);
@@ -115,8 +114,8 @@ describe('silent video media processing', () => {
   });
 
   it('writes a requested rotation into the silent output', async () => {
-    const requestId = requestIdFrom('00000000-0000-4000-8000-000000000002');
-    const operationId = operationIdFrom('10000000-0000-4000-8000-000000000002');
+    const requestId = RequestIdSchema.make('00000000-0000-4000-8000-000000000002');
+    const operationId = OperationIdSchema.make('10000000-0000-4000-8000-000000000002');
     const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
     directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
 

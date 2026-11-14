@@ -349,7 +349,7 @@ export function createExtensionHarness() {
     login?: Request['login']
   ): Promise<EventPayload> {
     if (!nativeListener) throw new Error('Native bridge is not connected');
-    const requestId = Schema.decodeUnknownSync(Request.fields.requestId)(crypto.randomUUID());
+    const requestId = Request.fields.requestId.make(crypto.randomUUID());
     const terminal = new Promise<EventPayload>(resolve => {
       const subscriber = (message: unknown) => {
         const event = Schema.decodeUnknownSync(Event)(message);
@@ -418,7 +418,7 @@ export function createExtensionHarness() {
         Schema.encodeSync(CancelRequest)(
           CancelRequest.make({
             version: PROTOCOL_VERSION,
-            requestId: Schema.decodeUnknownSync(Request.fields.requestId)(requestId),
+            requestId: Request.fields.requestId.make(requestId),
           })
         )
       ),

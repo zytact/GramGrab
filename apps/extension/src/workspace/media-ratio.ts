@@ -6,15 +6,19 @@ export function resolveMediaRatio(
   intrinsicWidth?: number,
   intrinsicHeight?: number
 ): number {
-  if (isPositiveFinitePair(width, height)) return width! / height!;
-  if (isPositiveFinitePair(intrinsicWidth, intrinsicHeight))
-    return intrinsicWidth! / intrinsicHeight!;
+  if (isPositiveFinite(width) && isPositiveFinite(height)) return width / height;
+  if (isPositiveFinite(intrinsicWidth) && isPositiveFinite(intrinsicHeight))
+    return intrinsicWidth / intrinsicHeight;
   return DEFAULT_MEDIA_RATIO;
+}
+
+export function isPositiveFinite(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value > 0;
 }
 
 export function isPositiveFinitePair(
   width: number | undefined,
   height: number | undefined
 ): boolean {
-  return Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0;
+  return isPositiveFinite(width) && isPositiveFinite(height);
 }

@@ -1,4 +1,3 @@
-import { Schema } from 'effect';
 import { describe, expect, it } from 'vite-plus/test';
 import {
   DirectExport,
@@ -13,15 +12,13 @@ import { SilentPreflight } from './contracts.ts';
 import { approvedReencodeOperationIds } from './policy.ts';
 
 function operationId(suffix: number) {
-  return Schema.decodeUnknownSync(OperationId)(
-    `00000000-0000-4000-8000-${suffix.toString().padStart(12, '0')}`
-  );
+  return OperationId.make(`00000000-0000-4000-8000-${suffix.toString().padStart(12, '0')}`);
 }
 
 function requested(suffix: number, reencode: 'forbid' | 'allow' | 'require') {
   return ExportOperation.make({
     operationId: operationId(suffix),
-    itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(suffix),
+    itemNumber: HumanItemNumber.make(suffix),
     mode: SilentExport.make({ reencode }),
   });
 }
@@ -74,13 +71,13 @@ describe('CLI silent policy', () => {
   it('treats a requested direct crop as consent and a plain direct export as none', () => {
     const crop = ExportOperation.make({
       operationId: operationId(4),
-      itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(4),
+      itemNumber: HumanItemNumber.make(4),
       mode: DirectExport.make(),
       crop: { x: 0, y: 0, width: 0.5, height: 0.5 },
     });
     const plain = ExportOperation.make({
       operationId: operationId(5),
-      itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(5),
+      itemNumber: HumanItemNumber.make(5),
       mode: DirectExport.make(),
       rotation: 90,
     });

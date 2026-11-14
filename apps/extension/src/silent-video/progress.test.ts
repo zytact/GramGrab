@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { operationIdFrom, requestIdFrom } from '../download/contracts.ts';
+import { OperationIdSchema, RequestIdSchema } from '../download/contracts.ts';
 import type { AttemptEntry, AttemptOperation, AttemptOutcome } from '../download/attempt.ts';
 import { silentProgressMessage } from './progress.ts';
 
 const operation = (index: number): AttemptOperation => ({
-  operationId: operationIdFrom(`10000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
-  requestId: requestIdFrom(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
+  operationId: OperationIdSchema.make(`10000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
+  requestId: RequestIdSchema.make(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
   itemIndex: index,
   displayIndex: index,
   url: `https://example.com/${index}.mp4`,

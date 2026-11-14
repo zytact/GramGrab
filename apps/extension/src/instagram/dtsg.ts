@@ -71,8 +71,8 @@ export const postWebQuery = (
   variables: Readonly<Record<string, unknown>>
 ) =>
   Effect.gen(function* () {
-    const candidate = operation.candidates[0]!;
-    const request = candidate.requests[0]!;
+    const [candidate] = operation.candidates;
+    const [request] = candidate.requests;
     const requests = yield* InstagramRequests;
     const send = (dtsgToken: string) =>
       requests.fetch(request.endpoint, {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { operationIdFrom, requestIdFrom } from '../download/contracts.ts';
+import { OperationIdSchema, RequestIdSchema } from '../download/contracts.ts';
 import { OperationFailure } from '../errors/contracts.ts';
 import { SilentVideoClient } from './client.ts';
 import { SilentWorkerError } from './contracts.ts';
@@ -51,8 +51,8 @@ describe('SilentVideoClient', () => {
 
     await expect(
       client.inspect(
-        operationIdFrom('10000000-0000-4000-8000-000000000001'),
-        requestIdFrom('00000000-0000-4000-8000-000000000001'),
+        OperationIdSchema.make('10000000-0000-4000-8000-000000000001'),
+        RequestIdSchema.make('00000000-0000-4000-8000-000000000001'),
         'https://example.com/video.mp4',
         false,
         undefined
@@ -63,8 +63,8 @@ describe('SilentVideoClient', () => {
   });
 
   it('preserves worker error kind and reason for callers', async () => {
-    const requestId = requestIdFrom('00000000-0000-4000-8000-000000000002');
-    const operationId = operationIdFrom('10000000-0000-4000-8000-000000000002');
+    const requestId = RequestIdSchema.make('00000000-0000-4000-8000-000000000002');
+    const operationId = OperationIdSchema.make('10000000-0000-4000-8000-000000000002');
     const client = new SilentVideoClient();
     const pending = client.process(operationId, requestId, false, { keepAudio: false }, undefined);
 
@@ -84,15 +84,14 @@ describe('SilentVideoClient', () => {
   });
 
   it('rejects a valid worker response correlated to the wrong operation ID', async () => {
-    const operationId = operationIdFrom('10000000-0000-4000-8000-000000000003');
-    const requestId = requestIdFrom('00000000-0000-4000-8000-000000000003');
+    const operationId = OperationIdSchema.make('10000000-0000-4000-8000-000000000003');
+    const requestId = RequestIdSchema.make('00000000-0000-4000-8000-000000000003');
     const client = new SilentVideoClient();
     const pending = client.process(operationId, requestId, false, { keepAudio: false }, undefined);
     FakeWorker.instances[0]?.emitMessage(
       SilentProcessed.make({
-        operationId: operationIdFrom('20000000-0000-4000-8000-000000000003'),
+        operationId: OperationIdSchema.make('20000000-0000-4000-8000-000000000003'),
         requestId,
-        alreadySilent: true,
       })
     );
     await expect(pending).rejects.toMatchObject({ code: 'SILENT_WORKER_PROTOCOL_FAILURE' });

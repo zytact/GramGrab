@@ -375,7 +375,7 @@ const renamed = (watch: Watch, username: string): Watch =>
  * Confirms the current username and Avatar for the kinds that need it. A failure is each of those
  * kinds' problem, and they are not checked this time; for Avatar it is the attempted lookup.
  */
-const profileStage = (watch: Watch, kinds: readonly WatchKind[]) =>
+const profileStage = (watch: Watch, kinds: readonly [WatchKind, ...WatchKind[]]) =>
   Effect.gen(function* () {
     const result = yield* Effect.either(confirmProfile(watch.targetId));
     if (Either.isRight(result)) {
@@ -383,7 +383,7 @@ const profileStage = (watch: Watch, kinds: readonly WatchKind[]) =>
         watch: renamed(current, result.right.username),
         value: true,
       }));
-      return { steps: [written(kinds[0]!, write, () => ({}))], profile: result.right };
+      return { steps: [written(kinds[0], write, () => ({}))], profile: result.right };
     }
     const steps: KindStep[] = [];
     for (const kind of kinds) {
@@ -417,9 +417,9 @@ const runStage = (
     return selected(watch, stage, only) && profile !== 'blocked'
       ? turn(watch, stage, scope, profile).pipe(Effect.map(step => ({ steps: [step], profile })))
       : Effect.succeed({ steps: [], profile });
-  const kinds = NEEDS_PROFILE.filter(kind => selected(watch, kind, only));
-  return kinds.length > 0 && watch.enabled
-    ? profileStage(watch, kinds)
+  const [first, ...rest] = NEEDS_PROFILE.filter(kind => selected(watch, kind, only));
+  return first !== undefined && watch.enabled
+    ? profileStage(watch, [first, ...rest])
     : Effect.succeed({ steps: [], profile });
 };
 

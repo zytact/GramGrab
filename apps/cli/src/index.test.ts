@@ -746,10 +746,8 @@ describe('CLI output', () => {
   it('bounds JSON progress while preserving phase transitions and completion', () => {
     const lines: string[] = [];
     const print = createProgressPrinter(true, line => lines.push(line));
-    const operationId = Schema.decodeUnknownSync(OperationId)(
-      '00000000-0000-4000-8000-000000000001'
-    );
-    const itemNumber = Schema.decodeUnknownSync(HumanItemNumber)(1);
+    const operationId = OperationId.make('00000000-0000-4000-8000-000000000001');
+    const itemNumber = HumanItemNumber.make(1);
     for (let index = 0; index <= 2_900; index++)
       print(
         Progress.make({

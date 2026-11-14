@@ -120,11 +120,10 @@ export async function processSilentVideo(
   transcode: boolean,
   edits: VideoEdits,
   onProgress: (progress: number) => void
-): Promise<{ alreadySilent: boolean; opfsName?: string }> {
+): Promise<{ opfsName?: string }> {
   const file = await readInput(operationId);
   const preflight = await inspectSilentVideo(operationId, requestId, file);
-  if (preflight.audioTrackCount === 0 && !edits.rotation && !edits.crop)
-    return { alreadySilent: true };
+  if (preflight.audioTrackCount === 0 && !edits.rotation && !edits.crop) return {};
   if ((!preflight.copyCompatible || edits.crop) && !transcode)
     throw silentFailure('SILENT_COPY_FAILED', 'silent-copy');
   const owned = await createOutput(operationId);
@@ -138,7 +137,7 @@ export async function processSilentVideo(
       onProgress
     );
     await validateOutput(owned.name, edits.keepAudio);
-    return { alreadySilent: false, opfsName: owned.name };
+    return { opfsName: owned.name };
   } catch (error) {
     const failure = normalizeProcessingFailure(error, transcode);
     await cleanFailedOutput(owned.name, failure);

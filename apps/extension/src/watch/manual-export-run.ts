@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from 'effect';
+import { Effect, Either } from 'effect';
 import {
   DirectExport,
   InboxExportOutcome,
@@ -95,10 +95,10 @@ function processingRequest(
   const origin = historyOrigin(watch, discovery.ref);
   const sourceUrl = origin.kind === 'source' ? origin.sourceUrl : '';
   const operation = ExportOperation.make({
-    operationId: Schema.decodeUnknownSync(OperationId)(child.operationId),
-    itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(index + 1),
+    operationId: OperationId.make(child.operationId),
+    itemNumber: HumanItemNumber.make(index + 1),
     mediaIdentity: MediaIdentity.make({
-      itemIndex: Schema.decodeUnknownSync(MediaIdentity.fields.itemIndex)(index),
+      itemIndex: MediaIdentity.fields.itemIndex.make(index),
       ...(item.mediaId ? { mediaId: item.mediaId } : {}),
     }),
     ...settings,
@@ -186,9 +186,9 @@ const settle = Effect.fn(function* (
   discovery: Discovery,
   plan: ManualExportPlan,
   index: number,
+  child: Child,
   slot: Slot
 ) {
-  const child = plan.children[index]!;
   const ref = discovery.ref;
   const recorded = ref._tag === 'Sidecar' ? ref.children[index] : undefined;
   if (recorded && discovery.missingChildren?.includes(recorded.mediaId))
@@ -201,7 +201,7 @@ const settle = Effect.fn(function* (
     } satisfies Delivery;
   const authorization = yield* exportAuthorization(watch, discovery);
   if (authorization) return { _tag: 'failed', code: authorization } satisfies Delivery;
-  const code = yield* claimChild(watch, discovery.id, plan, index);
+  const code = yield* claimChild(watch, discovery.id, plan, index, child);
   if (code) return { _tag: 'failed', code } satisfies Delivery;
   return yield* deliver(watch, discovery, slot.item, index, child);
 });
@@ -245,7 +245,7 @@ const exportEntry = Effect.fn(function* (
     if (child.state !== 'pending') continue;
     const slot = slots.right[index];
     const delivery: Delivery = slot
-      ? yield* settle(watch, discovery, plan, index, slot)
+      ? yield* settle(watch, discovery, plan, index, child, slot)
       : { _tag: 'failed', code: 'IG_RESPONSE_SHAPE_UNKNOWN' };
     const next = settledChild(child, delivery);
     yield* persistDelivery(watch, discovery, plan, index, next);

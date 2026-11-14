@@ -6,7 +6,7 @@ import { acceptedHistoryEntry } from '../history/receipt.ts';
 import { appendHistory, getHistory } from '../history/repository.ts';
 import { avatarMediaId, type MediaItem } from '../instagram/normalize.ts';
 import { OwnerRequests } from '../instagram/requests.ts';
-import type { ChildDownload, Discovery, Watch } from './contracts.ts';
+import { childMediaId, type ChildDownload, type Discovery, type Watch } from './contracts.ts';
 import { historyOrigin, originalFilename, reacquire, type Slot } from './export.ts';
 import { fetchViewer } from './identity.ts';
 import { mutateStore, readStore } from './store.ts';
@@ -353,10 +353,10 @@ async function recordMissing(
 ) {
   await changeChild(watch, entry, index, { status: 'failed', at: Date.now(), code }, 'pending');
   await changeDiscovery(watch.id, watch.viewerId, entry.id, current => {
-    if (entry.ref._tag !== 'Sidecar') return { ...current, unavailable: code };
-    const missingChildren = [
-      ...new Set([...(current.missingChildren ?? []), entry.ref.children[index]!.mediaId]),
-    ];
+    const mediaId = childMediaId(entry.ref, index);
+    if (entry.ref._tag !== 'Sidecar' || mediaId === undefined)
+      return { ...current, unavailable: code };
+    const missingChildren = [...new Set([...(current.missingChildren ?? []), mediaId])];
     return {
       ...current,
       missingChildren,
@@ -369,10 +369,8 @@ async function recordMissing(
 
 const settleSlot = Effect.fn(function* (watch: Watch, entry: Discovery, index: number, slot: Slot) {
   if (entry.download?.children[index]?.status !== 'pending') return;
-  if (
-    entry.ref._tag === 'Sidecar' &&
-    entry.missingChildren?.includes(entry.ref.children[index]!.mediaId)
-  ) {
+  const mediaId = childMediaId(entry.ref, index);
+  if (mediaId !== undefined && entry.missingChildren?.includes(mediaId)) {
     yield* Effect.promise(() => recordMissing(watch, entry, index, 'WATCH_MEDIA_UNAVAILABLE'));
     return;
   }

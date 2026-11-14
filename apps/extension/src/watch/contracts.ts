@@ -167,6 +167,10 @@ export function instagramPage(username: string, ref: MediaRef): string {
   }
 }
 
+/** The media ID of a Sidecar's child at `index`, or undefined for any other ref. */
+export const childMediaId = (ref: MediaRef, index: number): string | undefined =>
+  ref._tag === 'Sidecar' ? ref.children[index]?.mediaId : undefined;
+
 export const profilePage = (username: string) => `https://www.instagram.com/${username}/`;
 
 const NotifyRecord = Schema.Union(

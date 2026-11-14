@@ -3,17 +3,18 @@ export function distributeMasonryItems<T>(
   columnCount: number,
   estimateHeight: (item: T) => number
 ): T[][] {
-  const columns = Array.from({ length: Math.max(1, columnCount) }, () => [] as T[]);
-  const heights = columns.map(() => 0);
+  const columns = Array.from({ length: Math.max(1, columnCount) }, () => ({
+    items: [] as T[],
+    height: 0,
+  }));
 
   for (const item of items) {
-    const column = heights.reduce(
-      (shortest, height, index) => (height < heights[shortest]! ? index : shortest),
-      0
+    const shortest = columns.reduce((best, column) =>
+      column.height < best.height ? column : best
     );
-    columns[column]!.push(item);
-    heights[column]! += estimateHeight(item);
+    shortest.items.push(item);
+    shortest.height += estimateHeight(item);
   }
 
-  return columns;
+  return columns.map(column => column.items);
 }

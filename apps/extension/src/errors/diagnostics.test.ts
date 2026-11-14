@@ -2,8 +2,8 @@ import { Schema } from 'effect';
 import { describe, expect, it } from 'vite-plus/test';
 import {
   DownloadOperation,
-  operationIdFrom,
-  requestIdFrom,
+  OperationIdSchema,
+  RequestIdSchema,
   type DownloadOperation as DownloadOperationType,
 } from '../download/contracts.ts';
 import type { AttemptOperation, DownloadAttempt } from '../download/attempt.ts';
@@ -26,8 +26,8 @@ function operation(
   mediaType: 'image' | 'video'
 ): AttemptOperation {
   const downloadOperation: DownloadOperationType = DownloadOperation.make({
-    operationId: operationIdFrom(operationId),
-    requestId: requestIdFrom(requestId),
+    operationId: OperationIdSchema.make(operationId),
+    requestId: RequestIdSchema.make(requestId),
     itemIndex: 0,
     url,
     filename: 'FILENAME_SECRET.mp4',

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
-  operationIdFrom,
-  requestIdFrom,
+  OperationIdSchema,
+  RequestIdSchema,
   type OperationId,
   type RequestId,
 } from '../download/contracts.ts';
@@ -24,8 +24,10 @@ const NativeURL = globalThis.URL;
 
 function operation(index: number): AttemptOperation {
   return {
-    operationId: operationIdFrom(`10000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
-    requestId: requestIdFrom(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
+    operationId: OperationIdSchema.make(
+      `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+    ),
+    requestId: RequestIdSchema.make(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
     itemIndex: index,
     displayIndex: index,
     url: `https://example.com/${index}.mp4`,
@@ -160,7 +162,6 @@ describe('silent video batch', () => {
           SilentProcessed.make({
             operationId: request.operationId,
             requestId: request.requestId,
-            alreadySilent: false,
             opfsName: `${request.requestId}.mp4`,
           })
         );
@@ -220,7 +221,6 @@ describe('silent video batch', () => {
           SilentProcessed.make({
             operationId: request.operationId,
             requestId: request.requestId,
-            alreadySilent: false,
             opfsName: `${request.requestId}.mp4`,
           })
         );
@@ -315,7 +315,6 @@ describe('silent video batch', () => {
           SilentProcessed.make({
             operationId: request.operationId,
             requestId: request.requestId,
-            alreadySilent: true,
           })
         );
       if (request._tag === 'release')
@@ -402,7 +401,6 @@ describe('silent video batch', () => {
           SilentProcessed.make({
             operationId: request.operationId,
             requestId: request.requestId,
-            alreadySilent: false,
             opfsName: `${request.requestId}.mp4`,
           })
         );
@@ -495,7 +493,10 @@ describe('silent video batch', () => {
     });
 
     approved.add(first.operationId);
-    const second = { ...first, requestId: requestIdFrom('00000000-0000-4000-8000-000000000104') };
+    const second = {
+      ...first,
+      requestId: RequestIdSchema.make('00000000-0000-4000-8000-000000000104'),
+    };
     const secondBatch = runSilentVideoBatch(
       [second],
       candidates =>
@@ -516,7 +517,6 @@ describe('silent video batch', () => {
           SilentProcessed.make({
             operationId: request.operationId,
             requestId: request.requestId,
-            alreadySilent: true,
           })
         );
       if (request._tag === 'release')

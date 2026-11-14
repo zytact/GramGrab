@@ -208,7 +208,7 @@ export type WhatsAppCaptureDescriptor = Schema.Schema.Type<typeof WhatsAppCaptur
 export type WhatsAppCaptureId = Schema.Schema.Type<typeof CaptureIdSchema>;
 
 export function createWhatsAppCaptureId(): WhatsAppCaptureId {
-  return Schema.decodeUnknownSync(CaptureIdSchema)(crypto.randomUUID());
+  return CaptureIdSchema.make(crypto.randomUUID());
 }
 
 const StrictParseOptions = { onExcessProperty: 'error' as const };

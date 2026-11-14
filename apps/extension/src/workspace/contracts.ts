@@ -3,6 +3,7 @@ import type { MediaItem } from '../popup/media-item.ts';
 import { FrameExportSettingSchema } from '../frame-export/timestamp.ts';
 import { CropSchema } from '../crop/contracts.ts';
 import { RotationSchema } from '../rotation/contracts.ts';
+import { isPositiveFinitePair } from './media-ratio.ts';
 import { Option, Schema } from 'effect';
 import { InstagramLogin } from '@gramgrab/protocol';
 
@@ -66,13 +67,12 @@ export function isInstagramSource(value: string): boolean {
   return canonicalizeInstagramUrl(value) !== null;
 }
 
-export interface InstagramTarget {
-  type: 'post' | 'reel' | 'story' | 'highlight' | 'profile';
-  shortcode?: string;
-  username?: string;
-  highlightId?: string;
-  carouselIndex?: number;
-}
+export type InstagramTarget =
+  | { type: 'post'; shortcode: string; carouselIndex?: number }
+  | { type: 'reel'; shortcode: string }
+  | { type: 'highlight'; highlightId: string }
+  | { type: 'story'; username: string }
+  | { type: 'profile'; username: string };
 
 export interface CanonicalInstagramUrl {
   url: string;
@@ -93,8 +93,12 @@ const USERNAME = /^[a-zA-Z0-9._]{1,30}$/;
 const SHORTCODE = /^[a-zA-Z0-9_-]+$/;
 const NUMERIC_ID = /^\d+$/;
 
-function isUsernamePathSegment(value: string): boolean {
-  return USERNAME.test(value) && !RESERVED_PROFILE_PATHS.has(value.toLowerCase());
+function isUsernamePathSegment(value: string | undefined): value is string {
+  return matches(USERNAME, value) && !RESERVED_PROFILE_PATHS.has(value.toLowerCase());
+}
+
+function matches(pattern: RegExp, value: string | undefined): value is string {
+  return value !== undefined && pattern.test(value);
 }
 
 interface ParsedInstagramTarget {
@@ -103,46 +107,57 @@ interface ParsedInstagramTarget {
   search?: string;
 }
 
-function parsePost(path: string[], imgIndex: string | null): ParsedInstagramTarget | undefined {
-  if (path.length !== 2 || path[0] !== 'p' || !SHORTCODE.test(path[1]!)) return undefined;
+function parsePost(
+  [kind, shortcode, ...rest]: string[],
+  imgIndex: string | null
+): ParsedInstagramTarget | undefined {
+  if (rest.length > 0 || kind !== 'p' || !matches(SHORTCODE, shortcode)) return undefined;
   const carouselIndex = parseCarouselIndex(imgIndex);
   return {
-    target: { type: 'post', shortcode: path[1], carouselIndex },
-    path: `/p/${path[1]!}/`,
+    target: { type: 'post', shortcode, carouselIndex },
+    path: `/p/${shortcode}/`,
     search: carouselIndex === undefined ? '' : `?img_index=${carouselIndex + 1}`,
   };
 }
 
-function parseReel(path: string[]): ParsedInstagramTarget | undefined {
-  if (path.length !== 2 || !['reel', 'reels'].includes(path[0]!) || !SHORTCODE.test(path[1]!))
+function parseReel([kind, shortcode, ...rest]: string[]): ParsedInstagramTarget | undefined {
+  if (rest.length > 0 || (kind !== 'reel' && kind !== 'reels') || !matches(SHORTCODE, shortcode))
     return undefined;
-  return { target: { type: 'reel', shortcode: path[1] }, path: `/reel/${path[1]!}/` };
+  return { target: { type: 'reel', shortcode }, path: `/reel/${shortcode}/` };
 }
 
-function parseHighlight(path: string[]): ParsedInstagramTarget | undefined {
+function parseHighlight([kind, section, highlightId, ...rest]: string[]):
+  | ParsedInstagramTarget
+  | undefined {
   if (
-    path.length !== 3 ||
-    path[0] !== 'stories' ||
-    path[1] !== 'highlights' ||
-    !NUMERIC_ID.test(path[2]!)
+    rest.length > 0 ||
+    kind !== 'stories' ||
+    section !== 'highlights' ||
+    !matches(NUMERIC_ID, highlightId)
   )
     return undefined;
   return {
-    target: { type: 'highlight', highlightId: path[2] },
-    path: `/stories/highlights/${path[2]!}/`,
+    target: { type: 'highlight', highlightId },
+    path: `/stories/highlights/${highlightId}/`,
   };
 }
 
-function parseStory(path: string[]): ParsedInstagramTarget | undefined {
-  const hasStoryId = path.length === 3 && NUMERIC_ID.test(path[2]!);
-  if ((path.length !== 2 && !hasStoryId) || path[0] !== 'stories' || !USERNAME.test(path[1]!))
+function parseStory([kind, username, storyId, ...rest]: string[]):
+  | ParsedInstagramTarget
+  | undefined {
+  if (
+    rest.length > 0 ||
+    (storyId !== undefined && !NUMERIC_ID.test(storyId)) ||
+    kind !== 'stories' ||
+    !matches(USERNAME, username)
+  )
     return undefined;
-  return { target: { type: 'story', username: path[1] }, path: `/stories/${path[1]!}/` };
+  return { target: { type: 'story', username }, path: `/stories/${username}/` };
 }
 
-function parseProfile(path: string[]): ParsedInstagramTarget | undefined {
-  if (path.length !== 1 || !isUsernamePathSegment(path[0]!)) return undefined;
-  return { target: { type: 'profile', username: path[0] }, path: `/${path[0]!}/` };
+function parseProfile([username, ...rest]: string[]): ParsedInstagramTarget | undefined {
+  if (rest.length > 0 || !isUsernamePathSegment(username)) return undefined;
+  return { target: { type: 'profile', username }, path: `/${username}/` };
 }
 
 /** Returns a supported target and its single display/storage URL. */
@@ -156,7 +171,7 @@ export function canonicalizeInstagramUrl(value: string): CanonicalInstagramUrl |
       return null;
     const path = url.pathname.split('/').filter(Boolean);
     const permanentMediaPath =
-      path.length === 3 && isUsernamePathSegment(path[0]!) ? path.slice(1) : path;
+      path.length === 3 && isUsernamePathSegment(path[0]) ? path.slice(1) : path;
     const parsed = [
       parsePost(permanentMediaPath, url.searchParams.get('img_index')),
       parseReel(permanentMediaPath),
@@ -230,8 +245,4 @@ export function sanitizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot
       index => Number.isSafeInteger(index) && index >= 0
     ),
   };
-}
-
-function isPositiveFinitePair(width: number | undefined, height: number | undefined): boolean {
-  return Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0;
 }
