@@ -254,7 +254,10 @@ as an ordinary tab instead. Opened plain it is the popup surface; opened with
 `?surface=workspace` the same React root turns on workspace behaviour, which
 `src/workspace/use-workspace-surface.ts` reads from that parameter. A target whose
 URL ends with the match wins, so `popup.html` selects the plain popup and
-`popup.html?surface` the workspace even when both tabs are open.
+`popup.html?surface` the workspace even when both tabs are open. Otherwise the
+first page whose URL contains the match wins. A fetch adds `&source=...` to the
+workspace URL, so after one, `popup.html?surface` is only unambiguous while a
+single workspace tab is open.
 
 `click` supplies a CDP user gesture so a button can request optional notification
 permission. Accept the browser's permission prompt if it appears. A plain `eval`
