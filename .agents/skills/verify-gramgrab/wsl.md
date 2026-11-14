@@ -87,8 +87,8 @@ the batch file turns it away.
 
 Every launch writes the same batch file, manifest and key, rewriting a file only
 when its bytes differ. Cleanup removes the key only when no other checkout that
-still exists has a `.local/verify/`, since launch creates that directory before
-the key.
+still exists has a `.local/verify/gramgrab.sock.host` launcher, since launch
+writes that launcher before the key.
 
 Helium reads the `Chromium` key before `Google\Chrome`. While any session runs,
 it therefore hides a real Windows install of the GramGrab host, which
@@ -121,7 +121,8 @@ with `GRAMGRAB_HEADLESS=0`.
   from `/mnt/c`, and confirm `.local/verify/gramgrab.sock.host` exists and is
   executable.
 - A key left behind after every session ended means a checkout kept its
-  `.local/verify/` after its session died, for example across a Windows reboot.
+  `.local/verify/gramgrab.sock.host` after its session died, for example across
+  a Windows reboot.
   Run `cleanup.sh` in that checkout. Its `checkout` file under
   `gramgrab-verify\<id>` names it.
 - `drive.mjs upload` converts its file argument with `wslpath -w`, so give it a

@@ -37,7 +37,7 @@ wsl_daily_helium_pids() { wsl_browser_pids "-not \$c.Contains('$(wslpath -w "$ws
 # The copy lands under a temporary name and moves into place once complete, so
 # an interrupted copy never leaves a profile that launch.sh would accept.
 wsl_copy_signins() {
-  local source=$1 target=$2 partial="$2.partial.$$"
+  local source=$1 target=$2 partial="$2.partial"
   rm -rf "$partial"
   mkdir -p "$partial/Default/IndexedDB"
   cp "$source/Local State" "$partial/"
@@ -48,8 +48,10 @@ wsl_copy_signins() {
     cp -r IndexedDB/https_web.whatsapp.com_0.indexeddb.* IndexedDB/https_www.instagram.com_0.indexeddb.* \
       "$partial/Default/IndexedDB/" 2>/dev/null || true
   )
-  rm -rf "$target"
+  rm -rf "$target.old"
+  [ ! -e "$target" ] || mv "$target" "$target.old"
   mv "$partial" "$target"
+  rm -rf "$target.old"
 }
 
 wsl_add_host_key() {
@@ -64,12 +66,12 @@ wsl_write_if_changed() {
 
 # Registers this session's native host. The registry key is per user, not per
 # profile, so every Helium sees the same generic batch file. It serves only a
-# browser launched with GRAMGRAB_IPC_PATH, and runs
-# "$GRAMGRAB_IPC_PATH.host", the launcher this writes next to that session's
-# socket. The person's own Helium has no GRAMGRAB_IPC_PATH and is turned away.
+# browser launched with GRAMGRAB_IPC_PATH, and runs "$GRAMGRAB_IPC_PATH.host",
+# the launcher this writes next to that session's socket. The person's own
+# Helium has no GRAMGRAB_IPC_PATH and is turned away.
 #
-# launch.sh creates .local/verify before calling this, and cleanup.sh removes it
-# before wsl_unregister_host, which is what wsl_sessions_remain relies on.
+# The checkout file and the .host launcher go down before the key, and cleanup.sh
+# removes the launcher before wsl_unregister_host. wsl_sessions_remain relies on both.
 wsl_register_host() {
   local ipc_path=$1 host="$wsl_root/host"
   mkdir -p "$wsl_dir" "$host"
@@ -93,17 +95,19 @@ wsl_register_host() {
 
 # True while a session runs in a checkout that still exists. A deleted worktree
 # that never ran cleanup leaves its directory here, and it must not pin the key.
+# A launch that failed before registering never wrote the launcher.
 wsl_sessions_remain() {
   local checkout
   for checkout in "$wsl_root"/*/checkout; do
-    [ -d "$(cat "$checkout" 2>/dev/null)/.local/verify" ] && return 0
+    [ -f "$checkout" ] || continue
+    [ -x "$(cat "$checkout")/.local/verify/gramgrab.sock.host" ] && return 0
   done
   return 1
 }
 
 # Removes the registry key once no session in any checkout remains, so it stops
 # hiding a real Windows install of the host that docs/cli-setup.md registers
-# under Google\Chrome. A launch elsewhere creates .local/verify before the key, so
+# under Google\Chrome. A launch elsewhere writes its launcher before the key, so
 # the second check gives back a key this removal raced with.
 wsl_unregister_host() {
   wsl_sessions_remain && return
