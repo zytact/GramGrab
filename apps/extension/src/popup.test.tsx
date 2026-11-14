@@ -1590,7 +1590,7 @@ describe('Popup', () => {
     expect(selectionCheckbox.checked).toBe(false);
   });
 
-  it('measures a video without preview metadata by fetching it in the popup', async () => {
+  it('fetches a video without preview metadata in the popup and reports a refused link', async () => {
     const user = userEvent.setup();
     const fetchVideo = vi
       .spyOn(globalThis, 'fetch')
