@@ -39,7 +39,7 @@ if [ -f "$session_dir/session.env" ]; then
   # Helium. Stop the Windows process that holds this profile instead.
   if [ "$wsl" = yes ] && kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null; then
     echo "Browser did not close in 15s; stopping it. A very recent sign-in may be lost." >&2
-    for windows_pid in $(wsl_helium_pids "$(wslpath -w "$GRAMGRAB_VERIFY_PROFILE")"); do
+    for windows_pid in $(wsl_profile_pids "$(wslpath -w "$GRAMGRAB_VERIFY_PROFILE")"); do
       win taskkill.exe /PID "$windows_pid" /T /F >/dev/null 2>&1 || true
     done
   fi
@@ -65,15 +65,19 @@ rm -rf "$session_dir"
 default_profile="$repo/.local/verify-profile"
 if [ "$wsl" = yes ]; then
   wsl_unregister_host
-  rm -rf "$wsl_root/downloads"
-  default_profile="$wsl_root/profile"
+  rm -rf "$wsl_dir/downloads"
+  default_profile="$wsl_dir/profile"
 fi
 
 if [ "$reset_profile" = yes ]; then
   # Only ever the default profile. A GRAMGRAB_PROFILE path belongs to the
   # person who named it, so this never deletes one.
   rm -rf "$default_profile"
-  echo "Deleted $default_profile. You will have to sign in again."
+  if [ "$wsl" = yes ] && [ -f "$wsl_seed/Local State" ]; then
+    echo "Deleted $default_profile. The next launch copies it again from $wsl_seed."
+  else
+    echo "Deleted $default_profile. You will have to sign in again."
+  fi
 else
   echo "Kept $default_profile with its sign-ins."
 fi

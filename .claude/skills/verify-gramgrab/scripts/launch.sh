@@ -89,14 +89,19 @@ build_fingerprint="$(rg --files "$ext_dir" -0 | sort -z | xargs -0 sha256sum | s
 
 mkdir -p "$session_dir"
 if [ "$wsl" = yes ]; then
-  profile="${GRAMGRAB_PROFILE:-$wsl_root/profile}"
-  downloads="$wsl_root/downloads"
+  profile="${GRAMGRAB_PROFILE:-$wsl_dir/profile}"
+  downloads="$wsl_dir/downloads"
+  # A new checkout starts from the sign-ins signin.sh last copied, so only the
+  # first checkout on a machine has to close the person's Helium.
+  if [ ! -f "$profile/Local State" ] && [ -z "${GRAMGRAB_PROFILE:-}" ] && [ -f "$wsl_seed/Local State" ]; then
+    wsl_copy_signins "$wsl_seed" "$profile"
+  fi
   [ -f "$profile/Local State" ] || {
     echo "No verification profile at $profile." >&2
     echo "Ask the person to close Helium. Once they confirm, run scripts/signin.sh yourself." >&2
     exit 2
   }
-  if [ -n "$(wsl_helium_pids "$(wslpath -w "$profile")")" ]; then
+  if [ -n "$(wsl_profile_pids "$(wslpath -w "$profile")")" ]; then
     echo "Profile $profile is in use by another Helium." >&2
     echo "Run scripts/cleanup.sh, or wait for that run to end." >&2
     exit 2
@@ -167,16 +172,18 @@ relay_pid=""
 if [ "$wsl" = yes ]; then
   # Windows Helium cannot load an extension or profile from the WSL filesystem,
   # so the build is copied next to the profile.
-  rm -rf "$wsl_root/ext"
-  cp -r "$ext_dir" "$wsl_root/ext"
-  wsl_register_host "$repo"
+  rm -rf "$wsl_dir/ext"
+  cp -r "$ext_dir" "$wsl_dir/ext"
+  wsl_register_host "$ipc_path"
 
   # Helium picks its own CDP port and prints it, since WSL cannot test which
   # Windows ports are free. WSLENV carries the socket path through Helium into
-  # the host shim, which is what tells it this is the verify browser.
-  GRAMGRAB_IPC_PATH="$ipc_path" WSLENV="${WSLENV:+$WSLENV:}GRAMGRAB_IPC_PATH" nohup "$browser" \
+  # the host batch file, which is what tells it this is a verify browser and
+  # which session it serves.
+  GRAMGRAB_IPC_PATH="$ipc_path" \
+    WSLENV="${WSLENV:+$WSLENV:}GRAMGRAB_IPC_PATH" nohup "$browser" \
     --user-data-dir="$(wslpath -w "$profile")" \
-    --load-extension="$(wslpath -w "$wsl_root/ext")" \
+    --load-extension="$(wslpath -w "$wsl_dir/ext")" \
     --remote-debugging-port=0 \
     --no-first-run \
     --no-default-browser-check \
