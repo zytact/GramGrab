@@ -4,7 +4,6 @@ import {
   DownloadFailedResult,
   type DownloadOperationResult,
 } from '../download/contracts.ts';
-import { HttpError, NetworkError } from '../effect/errors.ts';
 import {
   diagnosticCause,
   isOperationFailure,
@@ -15,23 +14,10 @@ import {
   normalizeBrowserDownloadFailure,
   normalizeMediaTransferFailure,
 } from '../errors/normalize.ts';
+import { fetchMedia } from '../download/fetch-media.ts';
 import { browser } from '../lib/browser.ts';
 import { sendMessage } from '../messaging/send.ts';
 import { modifyImage, rotateVideo } from './media.ts';
-
-async function fetchMedia(url: string): Promise<Blob> {
-  let response: Response;
-  try {
-    response = await fetch(url, { credentials: 'omit' });
-  } catch (cause) {
-    throw normalizeMediaTransferFailure(new NetworkError({ cause }));
-  }
-  if (!response.ok)
-    throw normalizeMediaTransferFailure(
-      new HttpError({ status: response.status, message: response.statusText })
-    );
-  return response.blob();
-}
 
 async function modify(media: Blob, operation: ModifiedOperation) {
   try {

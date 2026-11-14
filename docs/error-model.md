@@ -109,7 +109,8 @@ saved as `profile-avatar:<username>`, which name no picture and so never match.
 
 `MEDIA_UNEXPECTED_FAILURE` is the media-transfer sibling of the other `*_UNEXPECTED_FAILURE` codes.
 It covers a direct read of an already-resolved media URL that failed for a reason HTTP status does
-not classify, including a message this build could not read.
+not classify, including a message this build could not read. A read whose request or response body
+fails in transit is `MEDIA_NETWORK_FAILED` instead, the same as the background worker's fetch.
 
 `retention-expired` remains a producer reason rather than a new failure code. It normalizes to
 `WHATSAPP_ACQUISITION_FAILED` with structural invariant `retention-expired`, and uses the
