@@ -63,8 +63,9 @@ export function CropOverlay({
   };
   const continueDrag = (event: PointerEvent) => {
     const current = drag.current;
+    if (!current) return;
     const point = pointAt(event);
-    if (!current || !point) return;
+    if (!point) return;
     onChange(
       current.kind === 'move'
         ? moveCrop(current.start, point.x - current.startX, point.y - current.startY)

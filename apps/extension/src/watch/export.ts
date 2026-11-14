@@ -14,6 +14,7 @@ import { fetchRestShortcodeMedia } from '../instagram/rest-shortcode.ts';
 import {
   instagramPage,
   profilePage,
+  storyPage,
   type Discovery,
   type MediaRef,
   type Watch,
@@ -125,11 +126,7 @@ export function historyOrigin(watch: Watch, ref: MediaRef): DownloadHistoryEntry
     case 'Sidecar':
       return { kind: 'source', sourceUrl: instagramPage(watch.username, ref), sourceKind: 'post' };
     case 'Story':
-      return {
-        kind: 'source',
-        sourceUrl: `https://www.instagram.com/stories/${watch.username}/`,
-        sourceKind: 'story',
-      };
+      return { kind: 'source', sourceUrl: storyPage(watch.username), sourceKind: 'story' };
     case 'Avatar':
       return { kind: 'source', sourceUrl: profilePage(watch.username), sourceKind: 'profile' };
   }

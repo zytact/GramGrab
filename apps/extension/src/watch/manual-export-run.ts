@@ -201,7 +201,7 @@ const settle = Effect.fn(function* (
     } satisfies Delivery;
   const authorization = yield* exportAuthorization(watch, discovery);
   if (authorization) return { _tag: 'failed', code: authorization } satisfies Delivery;
-  const code = yield* claimChild(watch, discovery.id, plan, index, child);
+  const code = yield* claimChild(watch, discovery.id, plan.id, index, child);
   if (code) return { _tag: 'failed', code } satisfies Delivery;
   return yield* deliver(watch, discovery, slot.item, index, child);
 });

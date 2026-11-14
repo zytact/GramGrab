@@ -203,12 +203,12 @@ export function planOutcome(
 export const claimChild = Effect.fn(function* (
   watch: Watch,
   entryId: string,
-  plan: ManualExportPlan,
+  planId: string,
   index: number,
   child: ExportChild
 ) {
   const write = yield* Effect.promise(() =>
-    saveChild(watch, entryId, plan.id, index, { ...child, state: 'starting' }, 'pending')
+    saveChild(watch, entryId, planId, index, { ...child, state: 'starting' }, 'pending')
   );
   return write.kind === 'ok'
     ? write.value
