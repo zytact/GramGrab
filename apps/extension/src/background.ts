@@ -39,7 +39,12 @@ import {
   type Request,
   type InstagramLogin,
   deliversOriginal,
+  type ExportModeKind,
   type ExportSettings,
+  type Inspect,
+  type InstantsInspect,
+  type MediaItem as ProtocolMediaItem,
+  type MediaType,
 } from '@gramgrab/protocol';
 import {
   canonicalizeInstagramUrl,
@@ -63,10 +68,12 @@ import {
 import {
   decodeWhatsAppHistoryReceipt,
   type DownloadHistoryEntry,
+  type HistoryEntry,
   type HistoryMarker,
+  type HistoryOrigin,
 } from './history/contracts.ts';
 import { jsonToDataUrl } from './lib/data-url.ts';
-import { fetchInstantMedia, resolveMediaEffect, type Resolution } from './instagram/acquisition.ts';
+import { fetchInstantMedia, resolveMediaEffect } from './instagram/acquisition.ts';
 import { runOperationHandler } from './effect/runtime.ts';
 import { fetchBlobAsDataUrl } from './effect/instagram.ts';
 import { isAvatarMediaId, type MediaItem } from './instagram/normalize.ts';
@@ -77,6 +84,7 @@ import {
   createOperationId,
   createRequestId,
   type DownloadOperation,
+  type OperationId,
   type DownloadOperationResult,
 } from './download/contracts.ts';
 import {
@@ -111,7 +119,7 @@ import {
 } from './watch/scheduler.ts';
 import { notifiedWatch } from './watch/notify.ts';
 import { recordFetched } from './watch/fetched.ts';
-import { acceptedHistoryEntry, type AcceptedHistoryOperation } from './history/receipt.ts';
+import { acceptedHistoryEntry } from './history/receipt.ts';
 import { buildDiagnostics } from './errors/diagnostics.ts';
 import {
   historyFailure,
@@ -147,49 +155,59 @@ function hasValidMediaDimensions(
   return isPositiveFinite(item.width) && isPositiveFinite(item.height);
 }
 
-/** The items a person asked for, after marking them seen by that login's Watches of their owners. */
-const fetchedItems = <E, R>(resolution: Effect.Effect<Resolution, E, R>) =>
-  resolution.pipe(
-    Effect.tap(({ fetched }) => recordFetched(fetched)),
-    Effect.map(({ items }) => ({ items }))
-  );
+/** Instagram download receipts, leaving out WhatsApp receipts. */
+function instagramEntries(entries: readonly HistoryEntry[]): DownloadHistoryEntry[] {
+  return entries.filter((entry): entry is DownloadHistoryEntry => 'id' in entry);
+}
 
-async function handleFetchMedia(
-  msg: MessageOf<'FETCH_MEDIA'>
-): Promise<MessageResponse<'FETCH_MEDIA'>> {
-  const source = historySource(msg.url);
-  if (!source)
-    return {
-      media: undefined,
-      failure: OperationFailure.make({
-        code: 'INPUT_INVALID_SOURCE_URL',
-        phase: 'input',
-        scope: 'batch',
-      }),
-    };
-  const result = await runOperationHandler(
-    fetchedItems(resolveMediaEffect(source.url)),
-    { items: undefined as MediaItem[] | undefined },
+/** The History origin of an Instagram Source URL, or null when the URL is not one. */
+function sourceOrigin(url: string): Extract<HistoryOrigin, { kind: 'source' }> | null {
+  const source = historySource(url);
+  return source && { kind: 'source', sourceUrl: source.url, sourceKind: source.kind };
+}
+
+const invalidSourceUrl = () =>
+  OperationFailure.make({ code: 'INPUT_INVALID_SOURCE_URL', phase: 'input', scope: 'batch' });
+
+/**
+ * Resolves what an origin holds now as `login`, after marking the items seen by that login's
+ * Watches of their owners.
+ */
+function resolveItems(origin: HistoryOrigin, login: InstagramLogin | undefined) {
+  return runOperationHandler(
+    Effect.gen(function* () {
+      const { items, fetched } = yield* origin.kind === 'instants'
+        ? fetchInstantMedia()
+        : resolveMediaEffect(origin.sourceUrl);
+      yield* recordFetched(fetched);
+      return { items };
+    }),
+    {},
     normalizeSourceFailure,
-    msg.login
+    login
   );
-  if (result.failure || !result.items) return { media: undefined, failure: result.failure };
+}
+
+/** An origin's items as the popup receives them, each marked with its History. */
+async function mediaWithHistory(
+  origin: HistoryOrigin,
+  login: InstagramLogin | undefined
+): Promise<{ media: ProtocolMediaItem[]; failure?: never } | { failure: OperationFailure }> {
+  const resolved = await resolveItems(origin, login);
+  if (resolved.failure) return { failure: resolved.failure };
   const stored = await getHistory();
   if (stored.kind === 'unknown-version')
-    return { media: undefined, failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
-  const instagramHistory = stored.entries.filter(
-    (entry): entry is DownloadHistoryEntry => 'origin' in entry
-  );
+    return { failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
+  const history = instagramEntries(stored.entries);
   return {
-    sourceUrl: source.url,
-    media: result.items.map(item => ({
+    media: resolved.items.map(item => ({
       url: item.url,
       itemIndex: item.itemIndex,
       ...(item.mediaId ? { mediaId: item.mediaId } : {}),
       type: item.type,
       filenameHint: item.filenameHint,
-      previewUrl: item.previewUrl,
-      history: historyMarker(instagramHistory, source.url, item),
+      ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
+      history: historyMarker(history, origin, item),
       ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
       ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
       ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}),
@@ -197,49 +215,35 @@ async function handleFetchMedia(
   };
 }
 
+async function handleFetchMedia(
+  msg: MessageOf<'FETCH_MEDIA'>
+): Promise<MessageResponse<'FETCH_MEDIA'>> {
+  const origin = sourceOrigin(msg.url);
+  if (!origin) return { failure: invalidSourceUrl() };
+  const result = await mediaWithHistory(origin, msg.login);
+  return result.failure ? result : { sourceUrl: origin.sourceUrl, media: result.media };
+}
+
 async function handleFetchInstants(
   msg: MessageOf<'FETCH_INSTANTS'>
 ): Promise<MessageResponse<'FETCH_INSTANTS'>> {
-  const result = await runOperationHandler(
-    fetchedItems(fetchInstantMedia()),
-    { items: undefined as MediaItem[] | undefined },
-    normalizeSourceFailure,
-    msg.login
-  );
-  if (result.failure || !result.items) return { media: undefined, failure: result.failure };
-  const stored = await getHistory();
-  if (stored.kind === 'unknown-version')
-    return { media: undefined, failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
-  const instagramHistory = stored.entries.filter(
-    (entry): entry is DownloadHistoryEntry => 'origin' in entry
-  );
-  return {
-    acquisition: 'instants' as const,
-    media: result.items.map(item => ({
-      url: item.url,
-      itemIndex: item.itemIndex,
-      ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-      type: item.type,
-      filenameHint: item.filenameHint,
-      ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
-      ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
-      history: historyMarker(instagramHistory, { kind: 'instants' }, item),
-      ...(hasValidMediaDimensions(item) ? { width: item.width, height: item.height } : {}),
-    })),
-  };
+  const result = await mediaWithHistory({ kind: 'instants' }, msg.login);
+  return result.failure ? result : { acquisition: 'instants', media: result.media };
 }
+
+const sameOrigin = (a: HistoryOrigin, b: HistoryOrigin) =>
+  a.kind === 'instants'
+    ? b.kind === 'instants'
+    : b.kind === 'source' && a.sourceUrl === b.sourceUrl;
 
 function historyMarker(
   entries: readonly DownloadHistoryEntry[],
-  origin: DownloadHistoryEntry['origin'] | string,
+  origin: HistoryOrigin,
   item: MediaItem
 ): HistoryMarker {
   const matches = entries.filter(
     entry =>
-      (typeof origin === 'string'
-        ? entry.origin.kind === 'source' && entry.origin.sourceUrl === origin
-        : entry.origin.kind === origin.kind) &&
-      reconcileHistoryEntry(entry, [item]).kind === 'found'
+      sameOrigin(entry.origin, origin) && reconcileHistoryEntry(entry, [item]).kind === 'found'
   );
   const latest = matches.reduce<number | undefined>(
     (value, entry) =>
@@ -293,20 +297,13 @@ async function downloadItem(operation: DownloadOperation): Promise<DownloadAttem
   }
 }
 
-async function appendAcceptedHistory(
-  item: AcceptedHistoryOperation,
-  origin: DownloadHistoryEntry['origin']
-) {
-  await appendHistory(acceptedHistoryEntry(item, origin));
-}
-
 /**
  * One history write covers a whole download batch. A failed write warns every entry it would have
  * held, so an item still reports its own history outcome.
  */
 async function recordAcceptedHistory(
   attempts: readonly DownloadAttempt[],
-  origin: DownloadHistoryEntry['origin']
+  origin: HistoryOrigin
 ): Promise<DownloadOperationResult[]> {
   const accepted = attempts.filter(attempt => attempt.result.status === 'started');
   if (accepted.length === 0) return attempts.map(attempt => attempt.result);
@@ -332,22 +329,11 @@ async function recordAcceptedHistory(
 async function handleDownloadMedia(
   request: MessageOf<'DOWNLOAD_MEDIA'>
 ): Promise<MessageResponse<'DOWNLOAD_MEDIA'>> {
-  const source = request.sourceUrl ? historySource(request.sourceUrl) : null;
-  if (request.sourceUrl && !source)
-    return DownloadMediaResponse.make({
-      results: [],
-      failure: OperationFailure.make({
-        code: 'INPUT_INVALID_SOURCE_URL',
-        phase: 'input',
-        scope: 'batch',
-      }),
-    });
-  const origin =
-    request.originKind === 'instants'
-      ? ({ kind: 'instants' } as const)
-      : source
-        ? ({ kind: 'source', sourceUrl: source.url, sourceKind: source.kind } as const)
-        : undefined;
+  const source = request.sourceUrl ? sourceOrigin(request.sourceUrl) : undefined;
+  if (source === null)
+    return DownloadMediaResponse.make({ results: [], failure: invalidSourceUrl() });
+  const origin: HistoryOrigin | undefined =
+    request.originKind === 'instants' ? { kind: 'instants' } : source;
   const attempts = await mapWithConcurrency(request.operations, DOWNLOAD_CONCURRENCY, downloadItem);
   return DownloadMediaResponse.make({
     results: origin
@@ -361,6 +347,18 @@ async function handleGetDownloadHistory(): Promise<MessageResponse<'GET_DOWNLOAD
   return history.kind === 'unknown-version'
     ? { entries: [], failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') }
     : { entries: [...history.entries].reverse(), failure: undefined };
+}
+
+/** History newest first after `change` writes it, or HISTORY_STORE_FAILED when the write throws. */
+async function historyAfter(
+  change: () => Promise<readonly HistoryEntry[]>
+): Promise<MessageResponse<'DELETE_HISTORY_ENTRY'>> {
+  try {
+    const entries = await change();
+    return { entries: [...entries].reverse(), failure: undefined };
+  } catch {
+    return { entries: [], failure: historyFailure('HISTORY_STORE_FAILED') };
+  }
 }
 
 async function handleRecordWhatsAppHistory(
@@ -382,12 +380,7 @@ async function handleDeleteWhatsAppHistoryReceipt(
   const receipt = decodeWhatsAppHistoryReceipt(message.receipt);
   if (Either.isLeft(receipt))
     return { entries: [], failure: historyFailure('HISTORY_ENTRY_NOT_FOUND') };
-  try {
-    const entries = await removeWhatsAppHistoryReceipt(receipt.right);
-    return { entries: [...entries].reverse(), failure: undefined };
-  } catch {
-    return { entries: [], failure: historyFailure('HISTORY_STORE_FAILED') };
-  }
+  return historyAfter(() => removeWhatsAppHistoryReceipt(receipt.right));
 }
 
 /** Why a receipt's recorded media is no longer among what its source returns. */
@@ -405,9 +398,7 @@ async function findHistoryEntry(
   const history = await getHistory();
   if (history.kind === 'unknown-version')
     return { failure: historyFailure('HISTORY_VERSION_UNSUPPORTED') };
-  const entry = history.entries.find(
-    (candidate): candidate is DownloadHistoryEntry => 'id' in candidate && candidate.id === entryId
-  );
+  const entry = instagramEntries(history.entries).find(candidate => candidate.id === entryId);
   return entry ? { entry } : { failure: historyFailure('HISTORY_ENTRY_NOT_FOUND') };
 }
 
@@ -416,30 +407,8 @@ async function resolveHistoryItem(
   entry: DownloadHistoryEntry,
   login: InstagramLogin | undefined
 ): Promise<{ item: MediaItem; failure?: never } | { failure: OperationFailure }> {
-  const empty = { items: undefined as MediaItem[] | undefined };
-  const resolved =
-    entry.origin.kind === 'instants'
-      ? await runOperationHandler(
-          fetchedItems(fetchInstantMedia()),
-          empty,
-          normalizeSourceFailure,
-          login
-        )
-      : await runOperationHandler(
-          fetchedItems(resolveMediaEffect(entry.origin.sourceUrl)),
-          empty,
-          normalizeSourceFailure,
-          login
-        );
+  const resolved = await resolveItems(entry.origin, login);
   if (resolved.failure) return { failure: resolved.failure };
-  if (!resolved.items)
-    return {
-      failure: OperationFailure.make({
-        code: 'SOURCE_UNEXPECTED_FAILURE',
-        phase: 'source',
-        scope: 'batch',
-      }),
-    };
   const match = reconcileHistoryEntry(entry, resolved.items);
   if (match.kind === 'missing') return { failure: missingFailure(entry) };
   if (match.kind === 'ambiguous') return { failure: historyFailure('HISTORY_ITEM_UNRESOLVED') };
@@ -464,25 +433,37 @@ function needsRunner(entry: DownloadHistoryEntry): boolean {
   return !deliversOriginal(historySettings(entry));
 }
 
+/** Downloads one item exactly as Instagram serves it. */
+function originalDownload(
+  operationId: OperationId,
+  item: {
+    readonly itemIndex: number;
+    readonly mediaId?: string | undefined;
+    readonly url: string;
+    readonly filenameHint: string;
+    readonly mediaType: MediaType;
+  }
+): DownloadOperation {
+  const filename = `${item.filenameHint}_${item.itemIndex + 1}.${item.mediaType === 'video' ? 'mp4' : 'jpg'}`;
+  return {
+    operationId,
+    requestId: createRequestId(),
+    itemIndex: item.itemIndex,
+    ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+    url: item.url,
+    filename,
+    originalUrl: item.url,
+    originalFilename: filename,
+    mediaType: item.mediaType,
+  };
+}
+
 function downloadHistoryOriginal(entry: DownloadHistoryEntry, item: MediaItem) {
-  const filename = `${item.filenameHint}_${item.itemIndex + 1}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
   return handleDownloadMedia({
     type: 'DOWNLOAD_MEDIA',
     ...(entry.origin.kind === 'source' ? { sourceUrl: entry.origin.sourceUrl } : {}),
     originKind: entry.origin.kind,
-    operations: [
-      {
-        operationId: createOperationId(),
-        requestId: createRequestId(),
-        itemIndex: item.itemIndex,
-        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-        url: item.url,
-        filename,
-        originalUrl: item.url,
-        originalFilename: filename,
-        mediaType: item.type,
-      },
-    ],
+    operations: [originalDownload(createOperationId(), { ...item, mediaType: item.type })],
   });
 }
 
@@ -524,16 +505,13 @@ async function handleRedownloadHistoryEntry(
 /** Records an export a document downloaded itself, so history holds what the file became. */
 async function recordDocumentExport(
   msg: MessageOf<'DOWNLOAD_FRAME_EXPORT' | 'RECORD_SILENT_EXPORT' | 'RECORD_DIRECT_EXPORT'>,
-  exportMode: 'direct' | 'frame' | 'silent'
+  exportMode: ExportModeKind
 ): Promise<MessageResponse<'DOWNLOAD_FRAME_EXPORT'>> {
-  const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
-  const origin: DownloadHistoryEntry['origin'] | null =
-    msg.originKind === 'instants'
-      ? { kind: 'instants' }
-      : source && { kind: 'source', sourceUrl: source.url, sourceKind: source.kind };
+  const origin: HistoryOrigin | null =
+    msg.originKind === 'instants' ? { kind: 'instants' } : sourceOrigin(msg.sourceUrl);
   if (!origin) return { warning: 'HISTORY_SAVE_FAILED' };
   try {
-    await appendAcceptedHistory({ ...msg.item, exportMode }, origin);
+    await appendHistory(acceptedHistoryEntry({ ...msg.item, exportMode }, origin));
     return {};
   } catch {
     return { warning: 'HISTORY_SAVE_FAILED' };
@@ -805,61 +783,45 @@ function protocolFailure(failure: OperationFailure): ProtocolOperationFailure {
   return ProtocolOperationFailure.make({ code: failure.code, scope: failure.scope });
 }
 
-async function inspectCommand(
-  sourceUrl: string,
+/** Resolves an origin for the CLI, numbering its items from 1. */
+async function inspectedMedia(
+  origin: HistoryOrigin,
   login: InstagramLogin | undefined
-): Promise<InspectResult> {
-  const response = await handleFetchMedia({ type: 'FETCH_MEDIA', url: sourceUrl, login });
-  if (response.failure) throw protocolFailure(response.failure);
-  if (!response.media || !response.sourceUrl)
-    throw ProtocolOperationFailure.make({ code: 'SOURCE_MEDIA_NOT_FOUND', scope: 'batch' });
-  return InspectResult.make({
-    sourceUrl: response.sourceUrl,
-    items: response.media.map((item, index) =>
-      InspectedMedia.make({
-        itemNumber: HumanItemNumber.make(index + 1),
-        mediaIdentity: MediaIdentity.make({
-          itemIndex: InternalItemIndex.make(item.itemIndex),
-          ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-        }),
-        mediaType: item.type === 'video' ? 'video' : 'image',
-        url: item.url,
-        ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
-        filenameHint: item.filenameHint,
-        ...(item.width ? { width: item.width } : {}),
-        ...(item.height ? { height: item.height } : {}),
-        ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}),
-        ...(item.history ? { history: ProtocolHistoryMarker.make(item.history) } : {}),
-      })
-    ),
-  });
+): Promise<InspectedMedia[]> {
+  const result = await mediaWithHistory(origin, login);
+  if (result.failure) throw protocolFailure(result.failure);
+  return result.media.map((item, index) =>
+    InspectedMedia.make({
+      itemNumber: HumanItemNumber.make(index + 1),
+      mediaIdentity: MediaIdentity.make({
+        itemIndex: InternalItemIndex.make(item.itemIndex),
+        ...(item.mediaId ? { mediaId: item.mediaId } : {}),
+      }),
+      mediaType: item.type,
+      url: item.url,
+      ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
+      filenameHint: item.filenameHint,
+      ...(item.width ? { width: item.width } : {}),
+      ...(item.height ? { height: item.height } : {}),
+      ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
+      ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}),
+      ...(item.history ? { history: ProtocolHistoryMarker.make(item.history) } : {}),
+    })
+  );
 }
 
-async function inspectInstantsCommand(
+/** Resolves what a command addresses: the Source it names, or else the Instants feed. */
+async function inspect(
+  command: Inspect | InstantsInspect | ProtocolExportCommand,
   login: InstagramLogin | undefined
-): Promise<InstantsInspectResult> {
-  const response = await handleFetchInstants({ type: 'FETCH_INSTANTS', login });
-  if (response.failure) throw protocolFailure(response.failure);
-  if (!response.media)
-    throw ProtocolOperationFailure.make({ code: 'SOURCE_MEDIA_NOT_FOUND', scope: 'batch' });
-  return InstantsInspectResult.make({
-    items: response.media.map((item, index) =>
-      InspectedMedia.make({
-        itemNumber: HumanItemNumber.make(index + 1),
-        mediaIdentity: MediaIdentity.make({
-          itemIndex: InternalItemIndex.make(item.itemIndex),
-          ...(item.mediaId ? { mediaId: item.mediaId } : {}),
-        }),
-        mediaType: item.type === 'video' ? 'video' : 'image',
-        url: item.url,
-        ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
-        filenameHint: item.filenameHint,
-        ...(item.width ? { width: item.width } : {}),
-        ...(item.height ? { height: item.height } : {}),
-        ...(item.creatorUsername ? { creatorUsername: item.creatorUsername } : {}),
-        ...(item.history ? { history: ProtocolHistoryMarker.make(item.history) } : {}),
-      })
-    ),
+): Promise<InspectResult | InstantsInspectResult> {
+  if (!('sourceUrl' in command))
+    return InstantsInspectResult.make({ items: await inspectedMedia({ kind: 'instants' }, login) });
+  const origin = sourceOrigin(command.sourceUrl);
+  if (!origin) throw protocolFailure(invalidSourceUrl());
+  return InspectResult.make({
+    sourceUrl: origin.sourceUrl,
+    items: await inspectedMedia(origin, login),
   });
 }
 
@@ -881,10 +843,7 @@ async function runDirectExport(
   signal: AbortSignal,
   login: InstagramLogin | undefined
 ) {
-  const inspected =
-    command._tag === 'InstantsExport'
-      ? await abortable(inspectInstantsCommand(login), signal)
-      : await abortable(inspectCommand(command.sourceUrl, login), signal);
+  const inspected = await abortable(inspect(command, login), signal);
   const operations: DownloadOperation[] = [];
   for (const requested of command.operations) {
     const requestedMediaId = requested.mediaIdentity?.mediaId;
@@ -910,18 +869,15 @@ async function runDirectExport(
         phase: 'direct-download',
       })
     );
-    const extension = item.mediaType === 'video' ? 'mp4' : 'jpg';
-    operations.push({
-      operationId: requested.operationId,
-      requestId: createRequestId(),
-      itemIndex: item.mediaIdentity.itemIndex,
-      ...(item.mediaIdentity.mediaId ? { mediaId: item.mediaIdentity.mediaId } : {}),
-      url: item.url,
-      filename: `${item.filenameHint}_${item.mediaIdentity.itemIndex + 1}.${extension}`,
-      originalUrl: item.url,
-      originalFilename: `${item.filenameHint}_${item.mediaIdentity.itemIndex + 1}.${extension}`,
-      mediaType: item.mediaType,
-    });
+    operations.push(
+      originalDownload(requested.operationId, {
+        itemIndex: item.mediaIdentity.itemIndex,
+        mediaId: item.mediaIdentity.mediaId,
+        url: item.url,
+        filenameHint: item.filenameHint,
+        mediaType: item.mediaType,
+      })
+    );
   }
   if (signal.aborted) throw cancellationError();
   const response = await handleDownloadMedia({
@@ -1010,6 +966,19 @@ async function redownloadEntry(
     : undefined;
 }
 
+/** Reads History for a CLI command, which cannot go on from a store a newer version wrote. */
+async function readHistory(signal: AbortSignal) {
+  const history = await abortable(getHistory(), signal);
+  if (history.kind === 'unknown-version') throw new Error('Unsupported history version.');
+  return history;
+}
+
+const diagnosticsReport = () =>
+  buildDiagnostics({
+    extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
+    userAgent: globalThis.navigator?.userAgent ?? '',
+  });
+
 /** Re-downloads CLI history entries in turn, holding one runner across them when any needs it. */
 async function redownloadHistory(
   command: HistoryRedownload,
@@ -1017,11 +986,8 @@ async function redownloadHistory(
   signal: AbortSignal,
   login: InstagramLogin | undefined
 ): Promise<HistoryRedownloadResult> {
-  const before = await abortable(getHistory(), signal);
-  if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
-  const known = new Map(
-    before.entries.flatMap(entry => ('id' in entry ? [[entry.id, entry] as const] : []))
-  );
+  const before = await readHistory(signal);
+  const known = new Map(instagramEntries(before.entries).map(entry => [entry.id, entry]));
   const entries = command.entryIds.flatMap(id => known.get(id) ?? []);
   const redownloadAll = async () => {
     const outcomes = [];
@@ -1056,28 +1022,20 @@ async function executeCommand(
     let result: CommandResult;
     switch (command._tag) {
       case 'Inspect':
-        emit(Progress.make({ phase: 'resolving' }));
-        result = await abortable(inspectCommand(command.sourceUrl, login), signal);
-        break;
       case 'InstantsInspect':
         emit(Progress.make({ phase: 'resolving' }));
-        result = await abortable(inspectInstantsCommand(login), signal);
+        result = await abortable(inspect(command, login), signal);
         break;
       case 'Export':
-        emit(Progress.make({ phase: 'resolving' }));
-        result = await runExport(command, emit, signal, login);
-        break;
       case 'InstantsExport':
         emit(Progress.make({ phase: 'resolving' }));
         result = await runExport(command, emit, signal, login);
         break;
       case 'HistoryList': {
         emit(Progress.make({ phase: 'history' }));
-        const history = await abortable(getHistory(), signal);
-        if (history.kind === 'unknown-version') throw new Error('Unsupported history version.');
+        const history = await readHistory(signal);
         result = HistoryListResult.make({
-          entries: history.entries
-            .filter((entry): entry is DownloadHistoryEntry => 'id' in entry)
+          entries: instagramEntries(history.entries)
             .reverse()
             .flatMap(entry => Option.toArray(protocolHistoryEntry(entry))),
           repaired: history.repaired,
@@ -1085,12 +1043,8 @@ async function executeCommand(
         break;
       }
       case 'HistoryRemove': {
-        const before = await abortable(getHistory(), signal);
-        if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
-        const instagramEntries = before.entries.filter(
-          (entry): entry is DownloadHistoryEntry => 'id' in entry
-        );
-        const known = new Set(instagramEntries.map(entry => entry.id));
+        const before = await readHistory(signal);
+        const known = new Set(instagramEntries(before.entries).map(entry => entry.id));
         const removedEntryIds = command.entryIds.filter(id => known.has(id));
         if (removedEntryIds.length > 0)
           await abortable(removeHistoryEntries(removedEntryIds), signal);
@@ -1101,8 +1055,7 @@ async function executeCommand(
         break;
       }
       case 'HistoryClear': {
-        const before = await abortable(getHistory(), signal);
-        if (before.kind === 'unknown-version') throw new Error('Unsupported history version.');
+        const before = await readHistory(signal);
         await abortable(clearHistory(), signal);
         result = HistoryClearResult.make({ clearedCount: before.entries.length });
         break;
@@ -1113,24 +1066,14 @@ async function executeCommand(
       case 'DebugGet': {
         signal.throwIfAborted();
         emit(Progress.make({ phase: 'diagnostics' }));
-        result = DebugGetResult.make({
-          diagnosticsVersion: 2,
-          report: buildDiagnostics({
-            extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
-            userAgent: globalThis.navigator?.userAgent ?? '',
-          }),
-        });
+        result = DebugGetResult.make({ diagnosticsVersion: 2, report: diagnosticsReport() });
         break;
       }
       case 'DebugExport': {
         signal.throwIfAborted();
         const filename = `gramgrab-debug-${Date.now()}.json`;
-        const report = buildDiagnostics({
-          extensionVersion: browser.runtime.getManifest().version ?? 'unknown',
-          userAgent: globalThis.navigator?.userAgent ?? '',
-        });
         await browser.downloads.download({
-          url: jsonToDataUrl(JSON.parse(report)),
+          url: jsonToDataUrl(JSON.parse(diagnosticsReport())),
           filename,
           saveAs: true,
         });
@@ -1246,14 +1189,7 @@ const messageHandlers: MessageHandlers = {
   GET_DOWNLOAD_HISTORY: handleGetDownloadHistory,
   RECORD_WHATSAPP_HISTORY: handleRecordWhatsAppHistory,
   DELETE_WHATSAPP_HISTORY_RECEIPT: handleDeleteWhatsAppHistoryReceipt,
-  DELETE_HISTORY_ENTRY: async message => {
-    try {
-      const entries = await removeHistoryEntries([message.entryId]);
-      return { entries: [...entries].reverse(), failure: undefined };
-    } catch {
-      return { entries: [], failure: historyFailure('HISTORY_STORE_FAILED') };
-    }
-  },
+  DELETE_HISTORY_ENTRY: message => historyAfter(() => removeHistoryEntries([message.entryId])),
   CLEAR_DOWNLOAD_HISTORY: async () => {
     try {
       await clearHistory();
