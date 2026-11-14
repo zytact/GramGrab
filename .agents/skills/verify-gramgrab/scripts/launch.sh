@@ -173,16 +173,15 @@ if [ "$wsl" = yes ]; then
   # Windows Helium cannot load an extension or profile from the WSL filesystem,
   # so the build is copied next to the profile.
   rm -rf "$wsl_dir/ext"
-  mkdir -p "$wsl_dir"
   cp -r "$ext_dir" "$wsl_dir/ext"
   wsl_register_host "$ipc_path"
 
   # Helium picks its own CDP port and prints it, since WSL cannot test which
-  # Windows ports are free. WSLENV carries the socket path and distro through
-  # Helium into the host batch file, which is what tells it this is a verify
-  # browser and which session it serves.
-  GRAMGRAB_IPC_PATH="$ipc_path" GRAMGRAB_WSL_DISTRO="$WSL_DISTRO_NAME" \
-    WSLENV="${WSLENV:+$WSLENV:}GRAMGRAB_IPC_PATH:GRAMGRAB_WSL_DISTRO" nohup "$browser" \
+  # Windows ports are free. WSLENV carries the socket path through Helium into
+  # the host batch file, which is what tells it this is a verify browser and
+  # which session it serves.
+  GRAMGRAB_IPC_PATH="$ipc_path" \
+    WSLENV="${WSLENV:+$WSLENV:}GRAMGRAB_IPC_PATH" nohup "$browser" \
     --user-data-dir="$(wslpath -w "$profile")" \
     --load-extension="$(wslpath -w "$wsl_dir/ext")" \
     --remote-debugging-port=0 \

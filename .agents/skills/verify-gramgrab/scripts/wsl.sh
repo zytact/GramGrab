@@ -34,18 +34,22 @@ wsl_daily_helium_pids() { wsl_browser_pids "-not \$c.Contains('$(wslpath -w "$ws
 
 # Copies only what carries the Instagram and WhatsApp Web sessions from profile
 # $1 to $2. The rest of a profile is gigabytes of cache and unrelated sites.
+# The copy lands under a temporary name and moves into place once complete, so
+# an interrupted copy never leaves a profile that launch.sh would accept.
 wsl_copy_signins() {
-  local source=$1 target=$2
-  rm -rf "$target"
-  mkdir -p "$target/Default/IndexedDB"
-  cp "$source/Local State" "$target/"
+  local source=$1 target=$2 partial="$2.partial.$$"
+  rm -rf "$partial"
+  mkdir -p "$partial/Default/IndexedDB"
+  cp "$source/Local State" "$partial/"
   (
     cd "$source/Default"
-    cp Preferences "Secure Preferences" "$target/Default/"
-    cp -r Network "Local Storage" "Session Storage" "$target/Default/"
+    cp Preferences "Secure Preferences" "$partial/Default/"
+    cp -r Network "Local Storage" "Session Storage" "$partial/Default/"
     cp -r IndexedDB/https_web.whatsapp.com_0.indexeddb.* IndexedDB/https_www.instagram.com_0.indexeddb.* \
-      "$target/Default/IndexedDB/" 2>/dev/null || true
+      "$partial/Default/IndexedDB/" 2>/dev/null || true
   )
+  rm -rf "$target"
+  mv "$partial" "$target"
 }
 
 wsl_add_host_key() {
@@ -60,16 +64,16 @@ wsl_write_if_changed() {
 
 # Registers this session's native host. The registry key is per user, not per
 # profile, so every Helium sees the same generic batch file. It serves only a
-# browser launched with GRAMGRAB_IPC_PATH and GRAMGRAB_WSL_DISTRO, and runs
+# browser launched with GRAMGRAB_IPC_PATH, and runs
 # "$GRAMGRAB_IPC_PATH.host", the launcher this writes next to that session's
-# socket. The person's own Helium has neither variable and is turned away.
+# socket. The person's own Helium has no GRAMGRAB_IPC_PATH and is turned away.
 #
-# The session marker goes down before the key, which wsl_unregister_host relies on.
+# launch.sh creates .local/verify before calling this, and cleanup.sh removes it
+# before wsl_unregister_host, which is what wsl_sessions_remain relies on.
 wsl_register_host() {
   local ipc_path=$1 host="$wsl_root/host"
   mkdir -p "$wsl_dir" "$host"
   printf '%s\n' "$repo" > "$wsl_dir/checkout"
-  : > "$wsl_dir/session"
   printf '#!/usr/bin/env bash\ncd %q && exec %q apps/native-host/bin/gramgrab-native-host.mjs "$@"\n' \
     "$repo" "$(command -v node)" > "$ipc_path.host"
   chmod 700 "$ipc_path.host"
@@ -77,8 +81,7 @@ wsl_register_host() {
     '@echo off' \
     'rem GramGrab verification host. Only a verify browser sets GRAMGRAB_IPC_PATH.' \
     'if not defined GRAMGRAB_IPC_PATH exit /b 1' \
-    'if not defined GRAMGRAB_WSL_DISTRO exit /b 1' \
-    'wsl.exe -d %GRAMGRAB_WSL_DISTRO% -e "%GRAMGRAB_IPC_PATH%.host" %*')"
+    "wsl.exe -d $WSL_DISTRO_NAME -e \"%GRAMGRAB_IPC_PATH%.host\" %*")"
   wsl_write_if_changed "$host/dev.zytact.gramgrab.json" "$(node -e '
     const { readFileSync } = require("node:fs");
     const [template, bat] = process.argv.slice(1);
@@ -89,21 +92,20 @@ wsl_register_host() {
 }
 
 # True while a session runs in a checkout that still exists. A deleted worktree
-# that never ran cleanup leaves a marker, and it must not pin the key forever.
+# that never ran cleanup leaves its directory here, and it must not pin the key.
 wsl_sessions_remain() {
-  local marker
-  for marker in "$wsl_root"/*/session; do
-    [ -f "$marker" ] && [ -d "$(cat "${marker%session}checkout" 2>/dev/null)" ] && return 0
+  local checkout
+  for checkout in "$wsl_root"/*/checkout; do
+    [ -d "$(cat "$checkout" 2>/dev/null)/.local/verify" ] && return 0
   done
   return 1
 }
 
 # Removes the registry key once no session in any checkout remains, so it stops
 # hiding a real Windows install of the host that docs/cli-setup.md registers
-# under Google\Chrome. A launch elsewhere writes its marker before the key, so
+# under Google\Chrome. A launch elsewhere creates .local/verify before the key, so
 # the second check gives back a key this removal raced with.
 wsl_unregister_host() {
-  rm -f "$wsl_dir/session"
   wsl_sessions_remain && return
   win reg.exe delete "$wsl_host_key" /f >/dev/null 2>&1 || true
   if wsl_sessions_remain; then wsl_add_host_key; fi

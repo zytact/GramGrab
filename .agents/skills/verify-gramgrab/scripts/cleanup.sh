@@ -73,7 +73,11 @@ if [ "$reset_profile" = yes ]; then
   # Only ever the default profile. A GRAMGRAB_PROFILE path belongs to the
   # person who named it, so this never deletes one.
   rm -rf "$default_profile"
-  echo "Deleted $default_profile. You will have to sign in again."
+  if [ "$wsl" = yes ] && [ -f "$wsl_seed/Local State" ]; then
+    echo "Deleted $default_profile. The next launch copies it again from $wsl_seed."
+  else
+    echo "Deleted $default_profile. You will have to sign in again."
+  fi
 else
   echo "Kept $default_profile with its sign-ins."
 fi

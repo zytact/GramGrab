@@ -23,7 +23,6 @@ in that directory names the worktree it belongs to.
 | Profile | `gramgrab-verify\<id>\profile`, kept across runs |
 | Extension | `gramgrab-verify\<id>\ext`, copied from `extension/chromium` on every launch |
 | Downloads | `gramgrab-verify\<id>\downloads`, removed by cleanup |
-| Session marker | `gramgrab-verify\<id>\session`, present while a session runs |
 | Sign-in seed | `gramgrab-verify\seed`, shared, written only by `signin.sh` |
 | Native host | `gramgrab-verify\host`, shared and identical for every checkout, plus one registry key |
 
@@ -74,21 +73,22 @@ On Windows, Helium finds native hosts only through the registry, never in the
 profile. `launch.sh` sets
 `HKCU\Software\Chromium\NativeMessagingHosts\dev.zytact.gramgrab` to a manifest
 whose host is `gramgrab.bat`. That batch file names no checkout. It runs
-`wsl.exe -d %GRAMGRAB_WSL_DISTRO% -e "%GRAMGRAB_IPC_PATH%.host"`, and
+`wsl.exe -d <distro> -e "%GRAMGRAB_IPC_PATH%.host"`, and
 `launch.sh` writes that `.host` launcher next to the session's socket in
 `.local/verify/`. The launcher starts this checkout's
 `apps/native-host/bin/gramgrab-native-host.mjs`, so each browser reaches its
 own checkout's host and socket, all in WSL.
 
-`launch.sh` passes both variables through `WSLENV`. Plain
-`WSLENV=GRAMGRAB_IPC_PATH:GRAMGRAB_WSL_DISTRO` works here, while the `/u` flag
-silently drops a variable. The key is per user, so the person's own Helium sees
-it too, and their installed GramGrab connects to it. That browser has neither
-variable, and the batch file turns it away.
+`launch.sh` passes the socket path through `WSLENV`. Plain
+`WSLENV=GRAMGRAB_IPC_PATH` works here, while the `/u` flag silently drops the
+variable. The key is per user, so the person's own Helium sees it too, and their
+installed GramGrab connects to it. That browser has no `GRAMGRAB_IPC_PATH`, and
+the batch file turns it away.
 
 Every launch writes the same batch file, manifest and key, rewriting a file only
-when its bytes differ. Cleanup removes the key only when no other checkout's
-`session` marker remains, since launch writes its marker before the key.
+when its bytes differ. Cleanup removes the key only when no other checkout that
+still exists has a `.local/verify/`, since launch creates that directory before
+the key.
 
 Helium reads the `Chromium` key before `Google\Chrome`. While any session runs,
 it therefore hides a real Windows install of the GramGrab host, which
@@ -120,8 +120,9 @@ with `GRAMGRAB_HEADLESS=0`.
   `reg.exe query 'HKCU\Software\Chromium\NativeMessagingHosts\dev.zytact.gramgrab'`
   from `/mnt/c`, and confirm `.local/verify/gramgrab.sock.host` exists and is
   executable.
-- A key left behind after every session ended means a marker outlived its
-  session. Find `gramgrab-verify\*\session` whose checkout has no
-  `.local/verify/session.env`, delete it, and run `cleanup.sh` once more.
+- A key left behind after every session ended means a checkout kept its
+  `.local/verify/` after its session died, for example across a Windows reboot.
+  Run `cleanup.sh` in that checkout. Its `checkout` file under
+  `gramgrab-verify\<id>` names it.
 - `drive.mjs upload` converts its file argument with `wslpath -w`, so give it a
   WSL path as usual.
