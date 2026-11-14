@@ -87,13 +87,8 @@ export class OperationBatchOutcome extends Schema.Class<OperationBatchOutcome>(
   failure: Schema.optional(OperationFailure),
 }) {}
 
-export const createOperationId = (): OperationId => operationIdFrom(crypto.randomUUID());
-export const createRequestId = (): RequestId => requestIdFrom(crypto.randomUUID());
-export const operationIdFrom = (value: string): OperationId =>
-  Schema.decodeUnknownSync(OperationIdSchema)(value);
-export const requestIdFrom = (value: string): RequestId =>
-  Schema.decodeUnknownSync(RequestIdSchema)(value);
-
+export const createOperationId = (): OperationId => OperationIdSchema.make(crypto.randomUUID());
+export const createRequestId = (): RequestId => RequestIdSchema.make(crypto.randomUUID());
 export const decodeDownloadMediaResponse = (value: unknown) =>
   Effect.runPromise(Schema.decodeUnknown(DownloadMediaResponse)(value));
 

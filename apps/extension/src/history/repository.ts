@@ -53,8 +53,9 @@ function hasValidIdentity(item: Partial<HistoryMetadata>): boolean {
 function hasValidMedia(item: Partial<HistoryMetadata>): boolean {
   return Boolean(
     (item.origin?.kind === 'instants' || validKinds.has(item.origin?.sourceKind ?? '')) &&
+    typeof item.itemIndex === 'number' &&
     Number.isSafeInteger(item.itemIndex) &&
-    item.itemIndex! >= 0 &&
+    item.itemIndex >= 0 &&
     (item.mediaId === undefined || typeof item.mediaId === 'string') &&
     validTypes.has(item.mediaType ?? '') &&
     typeof item.filenameHint === 'string' &&

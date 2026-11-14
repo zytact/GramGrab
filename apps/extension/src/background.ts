@@ -47,6 +47,7 @@ import {
   type WorkspaceSnapshot,
 } from './workspace/contracts.ts';
 import { replaceWorkspace } from './workspace/coordinator.ts';
+import { isPositiveFinite } from './workspace/media-ratio.ts';
 import { protocolHistoryEntry } from './history/protocol.ts';
 import { historySource } from './history/source.ts';
 import { reconcileHistoryEntry } from './history/reconciliation.ts';
@@ -127,13 +128,10 @@ async function mapWithConcurrency<T, R>(
   mapper: (item: T, index: number) => Promise<R>
 ): Promise<R[]> {
   const results = Array.from({ length: items.length }) as R[];
-  let cursor = 0;
+  const queue = items.entries();
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (cursor < items.length) {
-        const index = cursor++;
-        results[index] = await mapper(items[index]!, index);
-      }
+      for (const [index, item] of queue) results[index] = await mapper(item, index);
     })
   );
   return results;
@@ -146,12 +144,7 @@ async function mapWithConcurrency<T, R>(
 function hasValidMediaDimensions(
   item: MediaItem
 ): item is MediaItem & { width: number; height: number } {
-  return (
-    Number.isFinite(item.width) &&
-    Number.isFinite(item.height) &&
-    item.width! > 0 &&
-    item.height! > 0
-  );
+  return isPositiveFinite(item.width) && isPositiveFinite(item.height);
 }
 
 /** The items a person asked for, after marking them seen by that login's Watches of their owners. */
@@ -450,9 +443,7 @@ async function resolveHistoryItem(
   const match = reconcileHistoryEntry(entry, resolved.items);
   if (match.kind === 'missing') return { failure: missingFailure(entry) };
   if (match.kind === 'ambiguous') return { failure: historyFailure('HISTORY_ITEM_UNRESOLVED') };
-  return {
-    item: resolved.items.find(candidate => candidate.itemIndex === match.item.itemIndex)!,
-  };
+  return { item: match.item };
 }
 
 /** The export settings a re-download reproduces, derived from the entry's mode, rotation and crop. */
@@ -536,14 +527,13 @@ async function recordDocumentExport(
   exportMode: 'direct' | 'frame' | 'silent'
 ): Promise<MessageResponse<'DOWNLOAD_FRAME_EXPORT'>> {
   const source = msg.originKind === 'instants' ? null : historySource(msg.sourceUrl);
-  if (msg.originKind !== 'instants' && !source) return { warning: 'HISTORY_SAVE_FAILED' };
+  const origin: DownloadHistoryEntry['origin'] | null =
+    msg.originKind === 'instants'
+      ? { kind: 'instants' }
+      : source && { kind: 'source', sourceUrl: source.url, sourceKind: source.kind };
+  if (!origin) return { warning: 'HISTORY_SAVE_FAILED' };
   try {
-    await appendAcceptedHistory(
-      { ...msg.item, exportMode },
-      msg.originKind === 'instants'
-        ? { kind: 'instants' }
-        : { kind: 'source', sourceUrl: source!.url, sourceKind: source!.kind }
-    );
+    await appendAcceptedHistory({ ...msg.item, exportMode }, origin);
     return {};
   } catch {
     return { warning: 'HISTORY_SAVE_FAILED' };
@@ -827,9 +817,9 @@ async function inspectCommand(
     sourceUrl: response.sourceUrl,
     items: response.media.map((item, index) =>
       InspectedMedia.make({
-        itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(index + 1),
+        itemNumber: HumanItemNumber.make(index + 1),
         mediaIdentity: MediaIdentity.make({
-          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(item.itemIndex),
+          itemIndex: InternalItemIndex.make(item.itemIndex),
           ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         }),
         mediaType: item.type === 'video' ? 'video' : 'image',
@@ -855,9 +845,9 @@ async function inspectInstantsCommand(
   return InstantsInspectResult.make({
     items: response.media.map((item, index) =>
       InspectedMedia.make({
-        itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(index + 1),
+        itemNumber: HumanItemNumber.make(index + 1),
         mediaIdentity: MediaIdentity.make({
-          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(item.itemIndex),
+          itemIndex: InternalItemIndex.make(item.itemIndex),
           ...(item.mediaId ? { mediaId: item.mediaId } : {}),
         }),
         mediaType: item.type === 'video' ? 'video' : 'image',
@@ -957,7 +947,7 @@ async function runDirectExport(
       const identity =
         requested.mediaIdentity ??
         MediaIdentity.make({
-          itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(requested.itemNumber - 1),
+          itemIndex: InternalItemIndex.make(requested.itemNumber - 1),
         });
       return result?.status === 'started'
         ? ItemSucceeded.make({
@@ -982,10 +972,10 @@ async function runDirectExport(
 function historyExport(entry: DownloadHistoryEntry, item: MediaItem): ProtocolExportCommand {
   const operations = [
     ProtocolExportOperation.make({
-      operationId: Schema.decodeUnknownSync(ProtocolOperationId)(crypto.randomUUID()),
-      itemNumber: Schema.decodeUnknownSync(HumanItemNumber)(item.itemIndex + 1),
+      operationId: ProtocolOperationId.make(crypto.randomUUID()),
+      itemNumber: HumanItemNumber.make(item.itemIndex + 1),
       mediaIdentity: MediaIdentity.make({
-        itemIndex: Schema.decodeUnknownSync(InternalItemIndex)(item.itemIndex),
+        itemIndex: InternalItemIndex.make(item.itemIndex),
         ...(item.mediaId ? { mediaId: item.mediaId } : {}),
       }),
       ...historySettings(entry),

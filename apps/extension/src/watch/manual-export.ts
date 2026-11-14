@@ -23,21 +23,14 @@ export class InboxExportExecution extends Context.Tag('watch/InboxExportExecutio
 type Fresh = Extract<WatchCommand, { _tag: 'WatchInboxExport' }>;
 type Retry = Extract<WatchCommand, { _tag: 'WatchInboxRetry' }>;
 
-function requestedChildren(
-  discovery: Discovery,
-  settings: ExportSettings
-): readonly ExportSettings[] {
-  const ref = discovery.ref;
-  const types =
-    ref._tag === 'Avatar'
-      ? ['image']
-      : ref._tag === 'Sidecar'
-        ? ref.children.map(child => child.mediaType)
-        : [ref.mediaType];
-  return types.map(type => ({
-    ...settings,
-    mode: type === 'video' ? settings.mode : DirectExport.make(),
-  }));
+function childTypes({ ref }: Discovery): readonly ('image' | 'video')[] {
+  if (ref._tag === 'Avatar') return ['image'];
+  return ref._tag === 'Sidecar' ? ref.children.map(child => child.mediaType) : [ref.mediaType];
+}
+
+/** Only a video keeps a mode other than a direct export. */
+function childSettings(type: 'image' | 'video', settings: ExportSettings): ExportSettings {
+  return { ...settings, mode: type === 'video' ? settings.mode : DirectExport.make() };
 }
 
 function recoveryApplies(child: ExportChild, recovery: Retry['recovery']) {
@@ -69,17 +62,16 @@ export function requestedPlan(
     command._tag === 'WatchInboxExport'
       ? command.items?.filter(item => item.entryId === discovery.id)
       : undefined;
-  const settings = requestedChildren(
-    discovery,
+  const settings =
     command._tag === 'WatchInboxExport'
       ? (command.settings ?? { mode: DirectExport.make() })
-      : { mode: DirectExport.make() }
-  );
+      : { mode: DirectExport.make() };
+  const types = childTypes(discovery);
   if (
     selections &&
     (selections.length === 0 ||
       new Set(selections.map(item => item.child)).size !== selections.length ||
-      selections.some(item => item.child >= settings.length))
+      selections.some(item => item.child >= types.length))
   )
     return undefined;
   if (
@@ -93,12 +85,12 @@ export function requestedPlan(
   if (command._tag === 'WatchInboxExport')
     return {
       id: crypto.randomUUID(),
-      children: settings.map((requested, child) => ({
+      children: types.map((type, child) => ({
         operationId: crypto.randomUUID(),
-        requested: requestedChildren(
-          discovery,
-          selections?.find(item => item.child === child)?.settings ?? requested
-        )[child]!,
+        requested: childSettings(
+          type,
+          selections?.find(item => item.child === child)?.settings ?? settings
+        ),
         state:
           selections && !selections.some(item => item.child === child) ? 'excluded' : 'pending',
       })),
@@ -211,12 +203,12 @@ export function planOutcome(
 export const claimChild = Effect.fn(function* (
   watch: Watch,
   entryId: string,
-  plan: ManualExportPlan,
-  index: number
+  planId: string,
+  index: number,
+  child: ExportChild
 ) {
-  const child = plan.children[index]!;
   const write = yield* Effect.promise(() =>
-    saveChild(watch, entryId, plan.id, index, { ...child, state: 'starting' }, 'pending')
+    saveChild(watch, entryId, planId, index, { ...child, state: 'starting' }, 'pending')
   );
   return write.kind === 'ok'
     ? write.value

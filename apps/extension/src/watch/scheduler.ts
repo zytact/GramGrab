@@ -174,14 +174,17 @@ function nextJob(
   if (remaining[0]) return { job: { _tag: 'round', watchId: remaining[0] }, schedule: current };
   const catchUp = current.catchUp?.find(id => enabled.has(id));
   if (catchUp) return { job: { _tag: 'catchUp', watchId: catchUp }, schedule: current };
-  if (current.nextRoundAt > now || enabled.size === 0) return { schedule: current };
+  if (current.nextRoundAt > now) return { schedule: current };
+  const order = roundOrder(watches.filter(watch => enabled.has(watch.id)));
+  const [watchId] = order;
+  if (watchId === undefined) return { schedule: current };
   const started: LoginSchedule = {
     ...current,
     roundId: crypto.randomUUID(),
     nextRoundAt: nextRoundFrom(now),
-    remaining: roundOrder(watches.filter(watch => enabled.has(watch.id))),
+    remaining: order,
   };
-  return { job: { _tag: 'round', watchId: started.remaining[0]! }, schedule: started };
+  return { job: { _tag: 'round', watchId }, schedule: started };
 }
 
 /** Records a finished job: drops it, and books one early retry for a kind that broke. */

@@ -57,7 +57,7 @@ import type {
   WatchInboxPreviewResponse,
   MessageResponse,
 } from '../messaging/contracts.ts';
-import { STORE_BUDGET_BYTES, type Watch, type WatchStore } from './contracts.ts';
+import { STORE_BUDGET_BYTES, childMediaId, type Watch, type WatchStore } from './contracts.ts';
 import { definitionOf, newWatch } from './definition.ts';
 import {
   LINKED_ATTENTION_ID,
@@ -733,28 +733,34 @@ const recover = (command: Extract<WatchCommand, { _tag: 'WatchRecover' }>) =>
           watch.discoveries.map(discovery => [discovery.id, { watch, discovery }] as const)
         )
       );
-      const known = command.entryIds.filter(id => entries.has(id));
-      const recovered = known.filter(id => {
-        const entry = entries.get(id)!;
-        return entry.watch.enabled && recoverable(entry.discovery, command);
-      });
+      const known = command.entryIds.flatMap(id => entries.get(id) ?? []);
+      const recovered = known.filter(
+        ({ watch, discovery }) => watch.enabled && recoverable(discovery, command)
+      );
+      const recoveredIds = recovered.map(({ discovery }) => discovery.id);
       const watches = store.watches.map(watch => ({
         ...watch,
         discoveries: watch.discoveries.map(discovery => {
-          if (!recovered.includes(discovery.id)) return discovery;
+          if (!recoveredIds.includes(discovery.id)) return discovery;
           return applyRecovery(discovery, command);
         }),
       }));
       return {
         store: recovered.length > 0 ? { ...store, watches } : store,
         value: {
-          before: recovered.map(id => entries.get(id)!.discovery),
-          retried: recovered.map(id => ({ watchId: entries.get(id)!.watch.id, entryId: id })),
+          before: recovered.map(({ discovery }) => discovery),
+          retried: recovered.map(({ watch, discovery }) => ({
+            watchId: watch.id,
+            entryId: discovery.id,
+          })),
           result: WatchRecoverResult.make({
-            recoveredEntryIds: recovered,
+            recoveredEntryIds: recoveredIds,
             refused: known
-              .filter(id => !recovered.includes(id))
-              .map(entryId => ({ entryId, code: 'WATCH_RECOVERY_NOT_APPLICABLE' as const })),
+              .filter(({ discovery }) => !recoveredIds.includes(discovery.id))
+              .map(({ discovery }) => ({
+                entryId: discovery.id,
+                code: 'WATCH_RECOVERY_NOT_APPLICABLE' as const,
+              })),
             unknownEntryIds: command.entryIds.filter(id => !entries.has(id)),
           }),
         },
@@ -1037,22 +1043,22 @@ export const previewInboxEntry = (
       const denied = yield* exportAuthorization(watch, discovery);
       if (denied) return yield* reject(denied);
       const ref = discovery.ref;
-      const missing = slots.flatMap((slot, child) =>
-        slot._tag === 'gone' &&
-        ref._tag === 'Sidecar' &&
-        !discovery.missingChildren?.includes(ref.children[child]!.mediaId)
-          ? [ref.children[child]!.mediaId]
-          : []
-      );
+      const missing = slots.flatMap((slot, child) => {
+        const mediaId = childMediaId(ref, child);
+        return slot._tag === 'gone' &&
+          mediaId !== undefined &&
+          !discovery.missingChildren?.includes(mediaId)
+          ? [mediaId]
+          : [];
+      });
       const learned = learnedAvailability(discovery, missing, slots);
       const write = learned
         ? yield* rememberAvailability(new Map([[discovery.id, learned]]))
         : undefined;
       const unavailable: { child: number; code: FailureCode }[] = [];
       const media = slots.flatMap((slot, child) => {
-        const knownMissing =
-          ref._tag === 'Sidecar' &&
-          discovery.missingChildren?.includes(ref.children[child]!.mediaId);
+        const mediaId = childMediaId(ref, child);
+        const knownMissing = mediaId !== undefined && discovery.missingChildren?.includes(mediaId);
         if (slot._tag === 'gone' || knownMissing) {
           unavailable.push({
             child,

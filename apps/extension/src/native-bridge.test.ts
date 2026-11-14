@@ -19,7 +19,7 @@ import {
 
 describe('native bridge protocol negotiation', () => {
   it('stamps an unsupported-version rejection with the request version', () => {
-    const requestId = Schema.decodeUnknownSync(RequestId)('10000000-0000-4000-8000-000000000001');
+    const requestId = RequestId.make('10000000-0000-4000-8000-000000000001');
     const encoded = unsupportedVersionEvent({ version: 1, requestId });
 
     expect(encoded.version).toBe(1);

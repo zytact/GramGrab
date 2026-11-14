@@ -160,14 +160,19 @@ export function instagramPage(username: string, ref: MediaRef): string {
     case 'Sidecar':
       return `https://www.instagram.com/p/${ref.shortcode}/`;
     case 'Story':
-      return `https://www.instagram.com/stories/${username}/${ref.mediaId.split('_')[0]}/`;
+      return `${storyPage(username)}${ref.mediaId.split('_')[0]}/`;
     case 'Instant':
     case 'Avatar':
       return profilePage(username);
   }
 }
 
+/** The media ID of a Sidecar's child at `index`, or undefined for any other ref. */
+export const childMediaId = (ref: MediaRef, index: number): string | undefined =>
+  ref._tag === 'Sidecar' ? ref.children[index]?.mediaId : undefined;
+
 export const profilePage = (username: string) => `https://www.instagram.com/${username}/`;
+export const storyPage = (username: string) => `https://www.instagram.com/stories/${username}/`;
 
 const NotifyRecord = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),

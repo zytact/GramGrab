@@ -39,8 +39,6 @@ import {
 import { IG_API_GRAPHQL_HEADERS, IG_GRAPHQL_HEADERS } from './headers.ts';
 import { InstagramRequests, requireOk, type WatchRequestDeferred } from './requests.ts';
 
-type ParsedUrl = InstagramTarget;
-
 type ShortcodeMediaResponse = Schema.Schema.Type<typeof ShortcodeMediaResponseSchema>;
 
 /** The media a person asked for, and how a Watch check would identify it. */
@@ -49,7 +47,7 @@ export interface Resolution {
   readonly fetched: readonly FetchedMedia[];
 }
 
-export function parseInstagramUrl(url: string): ParsedUrl | null {
+export function parseInstagramUrl(url: string): InstagramTarget | null {
   return canonicalizeInstagramUrl(url)?.target ?? null;
 }
 
@@ -313,8 +311,8 @@ const fetchProfileMedia = (username: string) =>
 export const fetchInstantItems = () => {
   const operation = protocolConfig.operations.instantsFeed;
   if (!operation) return Effect.fail(new ResponseShapeUnknown({ context: 'instants_protocol' }));
-  const candidate = operation.candidates[0]!;
-  const request = candidate.requests[0]!;
+  const [candidate] = operation.candidates;
+  const [request] = candidate.requests;
   if (candidate.kind !== 'client_doc_id' || !operation.friendlyName)
     return Effect.fail(new ResponseShapeUnknown({ context: 'instants_protocol' }));
   return fetchInstantsFeed(request.endpoint, candidate.id, operation.friendlyName, {
@@ -358,12 +356,12 @@ export const resolveMediaEffect = (url: string) =>
     switch (parsed.type) {
       case 'post':
       case 'reel':
-        return indexed(yield* fetchShortcodeMedia(parsed.shortcode!));
+        return indexed(yield* fetchShortcodeMedia(parsed.shortcode));
       case 'highlight':
-        return indexed(yield* fetchHighlightMedia(parsed.highlightId!));
+        return indexed(yield* fetchHighlightMedia(parsed.highlightId));
       case 'story':
-        return indexed(yield* fetchStoryMedia(parsed.username!));
+        return indexed(yield* fetchStoryMedia(parsed.username));
       case 'profile':
-        return indexed(yield* fetchProfileMedia(parsed.username!));
+        return indexed(yield* fetchProfileMedia(parsed.username));
     }
   });

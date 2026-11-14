@@ -2,7 +2,6 @@ import { Effect, Either, Schema } from 'effect';
 import { ResponseShapeUnknown } from '../effect/errors.ts';
 import { requestReels } from '../effect/instagram.ts';
 import { ReelsMediaResponseSchema } from '../effect/schemas.ts';
-import { historySource } from '../history/source.ts';
 import type { DownloadHistoryEntry } from '../history/contracts.ts';
 import { fetchInstantItems } from '../instagram/acquisition.ts';
 import {
@@ -12,7 +11,14 @@ import {
   type MediaItem,
 } from '../instagram/normalize.ts';
 import { fetchRestShortcodeMedia } from '../instagram/rest-shortcode.ts';
-import { instagramPage, type Discovery, type MediaRef, type Watch } from './contracts.ts';
+import {
+  instagramPage,
+  profilePage,
+  storyPage,
+  type Discovery,
+  type MediaRef,
+  type Watch,
+} from './contracts.ts';
 import { fetchAvatar } from './avatar.ts';
 import { readInstants } from './instants.ts';
 import { readStories } from './stories.ts';
@@ -39,11 +45,10 @@ const exact = (
   ref: { readonly mediaId: string; readonly mediaType: 'image' | 'video' },
   absent: Unavailable
 ) => {
-  const matches = items.filter(item => item.mediaId === ref.mediaId);
-  if (matches.length === 0) return Effect.succeed(gone(absent));
-  const [match] = matches;
-  return matches.length === 1 && match!.type === ref.mediaType
-    ? Effect.succeed<Slot>({ _tag: 'found', item: match! })
+  const [match, ...others] = items.filter(item => item.mediaId === ref.mediaId);
+  if (!match) return Effect.succeed(gone(absent));
+  return others.length === 0 && match.type === ref.mediaType
+    ? Effect.succeed<Slot>({ _tag: 'found', item: match })
     : Effect.fail(untrusted());
 };
 
@@ -114,9 +119,17 @@ export const reacquire = Effect.fn(function* (watch: Watch, ref: MediaRef, nowSe
 
 /** Where a History receipt says the media came from. */
 export function historyOrigin(watch: Watch, ref: MediaRef): DownloadHistoryEntry['origin'] {
-  if (ref._tag === 'Instant') return { kind: 'instants' };
-  const source = historySource(instagramPage(watch.username, ref))!;
-  return { kind: 'source', sourceUrl: source.url, sourceKind: source.kind };
+  switch (ref._tag) {
+    case 'Instant':
+      return { kind: 'instants' };
+    case 'Post':
+    case 'Sidecar':
+      return { kind: 'source', sourceUrl: instagramPage(watch.username, ref), sourceKind: 'post' };
+    case 'Story':
+      return { kind: 'source', sourceUrl: storyPage(watch.username), sourceKind: 'story' };
+    case 'Avatar':
+      return { kind: 'source', sourceUrl: profilePage(watch.username), sourceKind: 'profile' };
+  }
 }
 
 export function originalFilename(item: MediaItem, index: number): string {

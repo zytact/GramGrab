@@ -102,7 +102,6 @@ export function silentBrowser() {
             _tag: 'processed',
             operationId,
             requestId,
-            alreadySilent: false,
             opfsName: 'output.mp4',
           });
         } else worker.respond({ _tag: 'released', operationId, requestId });

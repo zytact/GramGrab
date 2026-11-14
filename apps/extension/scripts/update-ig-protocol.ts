@@ -187,8 +187,7 @@ function mergeCandidates(
     candidate =>
       candidate.kind === observation.candidate.kind && candidate.id === observation.candidate.id
   );
-  const observedRequest = observation.candidate.requests[0];
-  if (!observedRequest) throw new Error('Observed candidate has no request transport');
+  const [observedRequest] = observation.candidate.requests;
   const requests = [
     observedRequest,
     ...(matching?.requests.filter(request => !sameRequest(request, observedRequest)) ?? []),

@@ -43,11 +43,11 @@ function split(arguments_: readonly string[]): WatchArguments {
   const positionals: string[] = [];
   const flags = new Set<string>();
   const values = new Map<string, string>();
-  for (let index = 0; index < arguments_.length; index++) {
-    const argument = arguments_[index]!;
+  const remaining = arguments_.values();
+  for (const argument of remaining) {
     if (FLAGS.has(argument)) flags.add(argument);
     else if (VALUE_FLAGS.has(argument)) {
-      const value = arguments_[++index];
+      const value = remaining.next().value;
       if (!value || value.startsWith('--')) throw new Error(`Missing value for ${argument}.`);
       values.set(argument, value);
     } else if (argument.startsWith('--')) throw new Error(`Unknown option: ${argument}`);
@@ -106,8 +106,9 @@ function list<A, I>(
 }
 
 function one(positionals: readonly string[], name: string): string {
-  if (positionals.length !== 1) throw new Error(`Expected exactly one ${name}.`);
-  return positionals[0]!;
+  const [value, ...rest] = positionals;
+  if (value === undefined || rest.length > 0) throw new Error(`Expected exactly one ${name}.`);
+  return value;
 }
 
 const parsers: Record<string, (parsed: WatchArguments) => WatchCommand> = {

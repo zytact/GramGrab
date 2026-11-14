@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer } from 'effect';
 import {
   ExportResult,
   ItemFailed,
@@ -53,8 +53,7 @@ export function resolveRequestedRunnerMedia(
 function toOutcome(operation: ExportOperation, result: DownloadOperationResult): ItemOutcome {
   const mediaIdentity = MediaIdentity.make({
     itemIndex:
-      operation.mediaIdentity?.itemIndex ??
-      Schema.decodeUnknownSync(InternalItemIndex)(operation.itemNumber - 1),
+      operation.mediaIdentity?.itemIndex ?? InternalItemIndex.make(operation.itemNumber - 1),
     ...(operation.mediaIdentity?.mediaId ? { mediaId: operation.mediaIdentity.mediaId } : {}),
   });
   if (result.status === 'started')
