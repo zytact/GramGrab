@@ -23,7 +23,7 @@ import type {
   WatchFailure,
   WatchRead,
 } from '../messaging/contracts.ts';
-import { FAILURE_PRESENTATION } from '../errors/presentation.ts';
+import { failureMessage, FAILURE_PRESENTATION } from '../errors/presentation.ts';
 import { StoryExpiry } from '../popup/story-expiry.tsx';
 import { KIND_LABEL, relativeTime, WATCH_AVATAR_NOTE } from './copy.ts';
 import { RowRecovery, useInboxSelection } from './inbox-export.tsx';
@@ -61,11 +61,10 @@ export function healthText(health: KindHealth, enabled: boolean): string {
         ? `Catching up. Older pages continue later this round. Last full check ${relativeTime(health.lastSuccessAt)}.`
         : `Checked ${relativeTime(health.lastSuccessAt)}`;
     case 'KindProblem': {
-      const copy = FAILURE_PRESENTATION[health.code];
       const last = health.lastSuccessAt
-        ? ` Last success ${relativeTime(health.lastSuccessAt)}.`
-        : '';
-      return `${copy.title}. ${copy.explanation}${last}`;
+        ? `Last success ${relativeTime(health.lastSuccessAt)}.`
+        : undefined;
+      return failureMessage(health.code, last);
     }
   }
 }
