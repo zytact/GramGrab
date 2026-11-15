@@ -35,6 +35,14 @@ try {
   process.exit(1);
 }
 
+// Paths and PIDs in the session only mean something to the shell that launched
+// it, and only a native Windows launch uses a named pipe.
+const launched = session.GRAMGRAB_VERIFY_PLATFORM;
+if (launched && (launched === 'native') !== (process.platform === 'win32')) {
+  record('session platform', false, `launched from ${launched}; run doctor there`);
+  process.exit(1);
+}
+
 const env = { ...process.env, ...session };
 
 try {

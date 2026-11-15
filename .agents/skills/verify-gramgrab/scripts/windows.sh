@@ -42,18 +42,23 @@ win_launcher="$repo/.local/verify/native-host"
 [ "$platform" = native ] && win_launcher="$win_launcher.cmd"
 
 # Prints the IDs of Helium browser processes for which the PowerShell condition
-# $1 holds, with $c bound to the process command line. An exiting process has
-# none, so $c falls back to an empty string.
+# $1 holds, with $c bound to the process command line and $a to the text $2.
+# $2 travels as an environment variable, so no quote in a path can break the
+# command. An exiting process has no command line, so $c falls back to "".
 win_browser_pids() {
-  win powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" |
-    Where-Object { \$c = [string]\$_.CommandLine;\$c -notmatch '--type=' -and ($1) } |
+  win env GRAMGRAB_PS_ARG="$2" WSLENV="${WSLENV:+$WSLENV:}GRAMGRAB_PS_ARG" \
+    powershell.exe -NoProfile -Command "\$a = \$env:GRAMGRAB_PS_ARG
+    Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" |
+    Where-Object { \$c = [string]\$_.CommandLine; \$c -notmatch '--type=' -and ($1) } |
     ForEach-Object { \$_.ProcessId }" | tr -d '\r'
 }
 
-win_profile_pids() { win_browser_pids "\$c.Contains('$1')"; }
+# Browsers on profile $1, where the path ends at a quote, a space or the end, so
+# a profile never matches another whose name only starts the same way.
+win_profile_pids() { win_browser_pids "\$c -match ([regex]::Escape(\$a) + '(\"|\\s|\$)')" "$1"; }
 
 # The person's own Helium, which is every Helium not on a verification profile.
-win_daily_helium_pids() { win_browser_pids "-not \$c.Contains('$(win_path "$win_root")\\')"; }
+win_daily_helium_pids() { win_browser_pids "-not \$c.Contains(\$a)" "$(win_path "$win_root")\\"; }
 
 # Copies only what carries the Instagram and WhatsApp Web sessions from profile
 # $1 to $2. The rest of a profile is gigabytes of cache and unrelated sites.

@@ -24,8 +24,10 @@ Git Bash is the simplest way to set them.
 
 Never connect to, drive, or read the `DevToolsActivePort` of the person's own
 Helium. Every run uses a separate profile, so it is a separate Helium process.
-`launch.sh` refuses a `GRAMGRAB_PROFILE` that names the person's own Helium
-profile.
+On Windows `GRAMGRAB_PROFILE` must name a directory under
+`%LOCALAPPDATA%\gramgrab-verify\`, such as `gramgrab-verify\second` for a second
+account, and `launch.sh` refuses any other. `signin.sh` treats every Helium
+outside that directory as the person's own, so the two rules agree.
 
 Each checkout gets its own directory, `%LOCALAPPDATA%\gramgrab-verify\<id>`,
 where `<id>` is the first 12 hex digits of the SHA-256 of the checkout's path:
@@ -139,7 +141,7 @@ process.
 
 `session.env` records the shell that launched the session as
 `GRAMGRAB_VERIFY_PLATFORM`, `wsl` or `native`. Its paths only make sense in that
-shell, so cleanup run from the other one refuses and names it.
+shell, so cleanup and `doctor.mjs` run from the other one refuse and name it.
 
 ## Windows and focus
 

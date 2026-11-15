@@ -97,10 +97,12 @@ mkdir -p "$session_dir"
 if [ "$platform" != linux ]; then
   profile="${GRAMGRAB_PROFILE:-$win_dir/profile}"
   downloads="$win_dir/downloads"
-  # The person's own Helium profile is never a verification profile.
-  daily="$(win_path "$win_daily_profile")" named="$(win_path "$profile")"
-  if [ "${named,,}" = "${daily,,}" ] || [ "${named,,}" = "${daily,,}\\" ]; then
-    echo "GRAMGRAB_PROFILE names the person's own Helium profile. Use a copy instead." >&2
+  # Only a profile under gramgrab-verify counts as a verification profile, here
+  # and in signin.sh, so the person's own Helium profile can never be one.
+  root="$(win_path "$win_root")\\" named="$(win_path "$profile")"
+  root_key="${root,,}" named_key="${named,,}"
+  if [ "${named_key#"$root_key"}" = "$named_key" ] || [ "${named_key#*..}" != "$named_key" ]; then
+    echo "GRAMGRAB_PROFILE must be a directory under $root, such as ${root}second." >&2
     exit 2
   fi
   # A new checkout starts from the sign-ins signin.sh last copied, so only the

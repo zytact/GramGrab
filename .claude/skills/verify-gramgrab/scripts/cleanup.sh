@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tear down the instance launch.sh started. Kills only the recorded PID and
-# removes only the run state under .local/verify/.
+# Tear down the instance launch.sh started. Stops only this session's browser
+# and removes only the run state under .local/verify/.
 #
 # The profile at .local/verify-profile/ is left alone so its Instagram and
 # WhatsApp Web sign-ins survive. Pass --reset-profile to delete it too, which
@@ -30,6 +30,13 @@ browser_alive() {
   fi
 }
 
+# Waits up to $1 seconds for the browser to exit. A deadline, not a count,
+# because each check from Git Bash starts PowerShell.
+wait_for_exit() {
+  local deadline=$((SECONDS + $1))
+  while browser_alive && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.25; done
+}
+
 if [ -f "$session_dir/session.env" ]; then
   # shellcheck disable=SC1091
   . "$session_dir/session.env"
@@ -44,10 +51,7 @@ if [ -f "$session_dir/session.env" ]; then
   # CDP first and keep signals as the fallback for a wedged process.
   if browser_alive; then
     node "$here/drive.mjs" close >/dev/null 2>&1 || true
-    for _ in $(seq 1 60); do
-      browser_alive || break
-      sleep 0.25
-    done
+    wait_for_exit 15
   fi
 
   # A signal from WSL or Git Bash does not reach Windows Helium, so stop the
@@ -61,10 +65,7 @@ if [ -f "$session_dir/session.env" ]; then
 
   if [ "$platform" != native ] && browser_alive; then
     kill "$GRAMGRAB_VERIFY_PID" 2>/dev/null || true
-    for _ in $(seq 1 120); do
-      browser_alive || break
-      sleep 0.25
-    done
+    wait_for_exit 30
     if browser_alive; then
       echo "Browser did not exit in 30s; forcing it. A very recent sign-in may be lost." >&2
       kill -9 "$GRAMGRAB_VERIFY_PID" 2>/dev/null || true
