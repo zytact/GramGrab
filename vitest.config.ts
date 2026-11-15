@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    maxWorkers: 4,
     setupFiles: ['./apps/extension/src/test/setup.ts'],
     include: ['apps/**/*.test.ts', 'apps/**/*.test.tsx', 'packages/**/*.test.ts'],
     coverage: {
