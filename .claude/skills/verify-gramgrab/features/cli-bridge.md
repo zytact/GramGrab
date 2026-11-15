@@ -1,8 +1,8 @@
 # CLI bridge
 
 The `gramgrab` terminal command reaching the same operations as the extension.
-The browser starts a native host, the host owns a per-user Unix socket, and the
-CLI connects to that socket. Instagram credentials and media fetching stay
+The browser starts a native host, the host owns a per-user Unix socket, or a
+named pipe on Windows, and the CLI connects to it. Instagram credentials and media fetching stay
 inside the extension; the CLI only asks.
 
 ## Sub-features
@@ -46,6 +46,8 @@ point the CLI somewhere empty and watch it refuse:
 
 ```bash
 GRAMGRAB_IPC_PATH=/tmp/gramgrab-nope.sock node apps/cli/bin/gramgrab.mjs status
+# Git Bash on Windows
+GRAMGRAB_IPC_PATH='\\.\pipe\gramgrab-nope' node apps/cli/bin/gramgrab.mjs status
 ```
 
 ## What proves it works
@@ -91,7 +93,8 @@ GRAMGRAB_IPC_PATH=/tmp/gramgrab-nope.sock node apps/cli/bin/gramgrab.mjs status
   `history list` as two words. Piping the CLI into `head` hides this, because
   `$?` then belongs to `head`.
 - The CLI resolves its endpoint at import time from `GRAMGRAB_IPC_PATH`, then
-  `$XDG_RUNTIME_DIR/gramgrab-$UID.sock`. Source `session.env` in the same shell
-  or you will silently talk to the developer's real browser.
+  `$XDG_RUNTIME_DIR/gramgrab-$UID.sock`, or `\\.\pipe\gramgrab` on Windows.
+  Source `session.env` in the same shell or you will silently talk to the
+  developer's real browser.
 - The native host refuses to steal a live socket, so two browser profiles cannot
   share one endpoint. That is why the launcher gives each session its own path.

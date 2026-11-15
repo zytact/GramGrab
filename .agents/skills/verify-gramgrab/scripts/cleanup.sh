@@ -5,20 +5,31 @@
 # The profile at .local/verify-profile/ is left alone so its Instagram and
 # WhatsApp Web sign-ins survive. Pass --reset-profile to delete it too, which
 # means signing in by hand again. Evidence under .local/verify-evidence/ is
-# never touched. On WSL the profile and downloads live on the Windows side;
-# ../wsl.md covers that path.
+# never touched. On Windows, from WSL or Git Bash, the profile and downloads
+# live under %LOCALAPPDATA%; ../windows.md covers that path.
 set -euo pipefail
 
-repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-session_dir="$repo/.local/verify"
+here="$(dirname "${BASH_SOURCE[0]}")"
+repo="$(cd "$here/../../../.." && pwd)"
 reset_profile=no
 [ "${1:-}" = "--reset-profile" ] && reset_profile=yes
-wsl=no
-if [ -n "${WSL_DISTRO_NAME:-}" ]; then
-  wsl=yes
-  # shellcheck source=wsl.sh
-  . "$(dirname "${BASH_SOURCE[0]}")/wsl.sh"
+windows=no
+if [ -n "${WSL_DISTRO_NAME:-}" ] || [ "${OS:-}" = Windows_NT ]; then
+  windows=yes
+  # shellcheck source=windows.sh
+  . "$here/windows.sh"
 fi
+session_dir="$repo/.local/verify"
+
+# From Git Bash the recorded PID is a Windows PID, which only Windows-aware
+# tools such as Node can probe.
+browser_alive() {
+  if [ "${win_from:-}" = native ]; then
+    [ -n "$GRAMGRAB_VERIFY_PID" ] && node -e 'try { process.kill(Number(process.argv[1]), 0) } catch { process.exit(1) }' "$GRAMGRAB_VERIFY_PID"
+  else
+    kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null
+  fi
+}
 
 if [ -f "$session_dir/session.env" ]; then
   # shellcheck disable=SC1091
@@ -27,30 +38,30 @@ if [ -f "$session_dir/session.env" ]; then
   # Chromium batches cookie writes on a timer and only flushes them on a real
   # exit. SIGTERM does not do it, measurably, so ask the browser to close over
   # CDP first and keep signals as the fallback for a wedged process.
-  if kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null; then
-    node "$(dirname "${BASH_SOURCE[0]}")/drive.mjs" close >/dev/null 2>&1 || true
+  if browser_alive; then
+    node "$here/drive.mjs" close >/dev/null 2>&1 || true
     for _ in $(seq 1 60); do
-      kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null || break
+      browser_alive || break
       sleep 0.25
     done
   fi
 
-  # The recorded PID on WSL is the interop process, so a signal would not reach
+  # On WSL the recorded PID is the interop process, so a signal would not reach
   # Helium. Stop the Windows process that holds this profile instead.
-  if [ "$wsl" = yes ] && kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null; then
+  if [ "$windows" = yes ] && browser_alive; then
     echo "Browser did not close in 15s; stopping it. A very recent sign-in may be lost." >&2
-    for windows_pid in $(wsl_profile_pids "$(wslpath -w "$GRAMGRAB_VERIFY_PROFILE")"); do
+    for windows_pid in $(win_profile_pids "$(win_path "$GRAMGRAB_VERIFY_PROFILE")"); do
       win taskkill.exe /PID "$windows_pid" /T /F >/dev/null 2>&1 || true
     done
   fi
 
-  if kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null; then
+  if [ "${win_from:-}" != native ] && browser_alive; then
     kill "$GRAMGRAB_VERIFY_PID" 2>/dev/null || true
     for _ in $(seq 1 120); do
-      kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null || break
+      browser_alive || break
       sleep 0.25
     done
-    if kill -0 "$GRAMGRAB_VERIFY_PID" 2>/dev/null; then
+    if browser_alive; then
       echo "Browser did not exit in 30s; forcing it. A very recent sign-in may be lost." >&2
       kill -9 "$GRAMGRAB_VERIFY_PID" 2>/dev/null || true
     fi
@@ -63,18 +74,18 @@ fi
 
 rm -rf "$session_dir"
 default_profile="$repo/.local/verify-profile"
-if [ "$wsl" = yes ]; then
-  wsl_unregister_host
-  rm -rf "$wsl_dir/downloads"
-  default_profile="$wsl_dir/profile"
+if [ "$windows" = yes ]; then
+  win_unregister_host
+  rm -rf "$win_dir/downloads"
+  default_profile="$win_dir/profile"
 fi
 
 if [ "$reset_profile" = yes ]; then
   # Only ever the default profile. A GRAMGRAB_PROFILE path belongs to the
   # person who named it, so this never deletes one.
   rm -rf "$default_profile"
-  if [ "$wsl" = yes ] && [ -f "$wsl_seed/Local State" ]; then
-    echo "Deleted $default_profile. The next launch copies it again from $wsl_seed."
+  if [ "$windows" = yes ] && [ -f "$win_seed/Local State" ]; then
+    echo "Deleted $default_profile. The next launch copies it again from $win_seed."
   else
     echo "Deleted $default_profile. You will have to sign in again."
   fi

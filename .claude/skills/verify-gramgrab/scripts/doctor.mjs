@@ -3,7 +3,8 @@
 // instance worth driving?" and exits non-zero when it is not.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { connect } from 'node:net';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,10 @@ try {
     readFileSync(sessionFile, 'utf8')
       .split('\n')
       .filter(line => line.startsWith('export '))
-      .map(line => line.slice(7).split(/=(.*)/s).slice(0, 2))
+      .map(line => {
+        const [name, value] = line.slice(7).split(/=(.*)/s);
+        return [name, value.replace(/^'(.*)'$/s, '$1')];
+      })
   );
   record('session file', true, sessionFile);
 } catch {
@@ -65,7 +69,7 @@ try {
   );
   const found = JSON.parse(raw).find(item => item.id === session.GRAMGRAB_EXT_ID);
   const expected = (
-    await import(resolve(repo, 'apps/extension/scripts/manifest.mjs'))
+    await import(pathToFileURL(resolve(repo, 'apps/extension/scripts/manifest.mjs')).href)
   ).createManifest('chromium').version;
   if (!found) record('extension loaded', false, `no extension with id ${session.GRAMGRAB_EXT_ID}`);
   else if (found.state !== 'ENABLED') record('extension loaded', false, `state ${found.state}`);
@@ -76,15 +80,28 @@ try {
   record('extension loaded', false, String(error.message).split('\n')[0]);
 }
 
-try {
-  const mode = statSync(session.GRAMGRAB_IPC_PATH).mode & 0o777;
-  record(
-    'native host socket',
-    mode === 0o600,
-    `${session.GRAMGRAB_IPC_PATH} mode ${mode.toString(8)}`
-  );
-} catch {
-  record('native host socket', false, `no socket at ${session.GRAMGRAB_IPC_PATH}`);
+// A named pipe is not a file, so on Windows only a connection proves it is there.
+if (process.platform === 'win32') {
+  const open = await new Promise(done => {
+    const socket = connect(session.GRAMGRAB_IPC_PATH);
+    socket.on('connect', () => {
+      socket.destroy();
+      done(true);
+    });
+    socket.on('error', () => done(false));
+  });
+  record('native host pipe', open, `${open ? '' : 'nothing listening on '}${session.GRAMGRAB_IPC_PATH}`);
+} else {
+  try {
+    const mode = statSync(session.GRAMGRAB_IPC_PATH).mode & 0o777;
+    record(
+      'native host socket',
+      mode === 0o600,
+      `${session.GRAMGRAB_IPC_PATH} mode ${mode.toString(8)}`
+    );
+  } catch {
+    record('native host socket', false, `no socket at ${session.GRAMGRAB_IPC_PATH}`);
+  }
 }
 
 try {

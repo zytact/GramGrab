@@ -5,32 +5,32 @@
 #
 # Sign in, then run scripts/cleanup.sh. Do not pass --reset-profile afterwards.
 #
-# On WSL this copies the sign-ins from the person's own Helium instead, which
-# needs that Helium closed. ../wsl.md explains why.
+# On Windows, from WSL or Git Bash, this copies the sign-ins from the person's
+# own Helium instead, which needs that Helium closed. ../windows.md explains why.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../../../.." && pwd)"
 cd "$repo"
 
-if [ -n "${WSL_DISTRO_NAME:-}" ]; then
-  # shellcheck source=wsl.sh
-  . "$here/wsl.sh"
+if [ -n "${WSL_DISTRO_NAME:-}" ] || [ "${OS:-}" = Windows_NT ]; then
+  # shellcheck source=windows.sh
+  . "$here/windows.sh"
   if [ -f "$repo/.local/verify/session.env" ]; then
     echo "A verification session is running. Run scripts/cleanup.sh first." >&2
     exit 2
   fi
   # Helium locks its cookie file while it runs, so the copy needs it closed.
   # Verification browsers in other checkouts use their own profiles and can stay.
-  if [ -n "$(wsl_daily_helium_pids)" ]; then
+  if [ -n "$(win_daily_helium_pids)" ]; then
     echo "Helium is running. Ask the person to close every Helium window, then run this again yourself." >&2
     exit 2
   fi
   # The seed is what launch.sh copies into a checkout that has no profile yet.
-  wsl_copy_signins "$wsl_daily_profile" "$wsl_seed"
+  win_copy_signins "$win_daily_profile" "$win_seed"
   echo "Helium can be reopened now."
-  wsl_copy_signins "$wsl_seed" "$wsl_dir/profile"
-  echo "Copied the Helium sign-ins to $wsl_dir/profile and $wsl_seed."
+  win_copy_signins "$win_seed" "$win_dir/profile"
+  echo "Copied the Helium sign-ins to $win_dir/profile and $win_seed."
   exit 0
 fi
 

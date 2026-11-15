@@ -1,19 +1,36 @@
-# Verifying from WSL
+# Verifying on Windows
 
-On WSL, `launch.sh`, `signin.sh`, `cleanup.sh` and `drive.mjs` drive Helium on
-Windows, not a browser inside WSL. The browser then uses Windows memory instead
-of the WSL VM's, and it never opens a WSLg window. The build, the native host,
-its socket, the CLI and `doctor.mjs` all stay in WSL and work as written in
-SKILL.md. `scripts/wsl.sh` holds the Windows-specific parts.
+On Windows, `launch.sh`, `signin.sh`, `cleanup.sh` and `drive.mjs` drive Windows
+Helium. That holds from two shells, and `scripts/windows.sh` holds what they
+share:
+
+- **Git Bash on Windows.** The build, the native host, the CLI and
+  `doctor.mjs` all run on Windows. The host listens on a named pipe,
+  `\\.\pipe\gramgrab-verify-<id>`, instead of a Unix socket.
+- **WSL.** The browser runs on Windows, so it uses Windows memory and never
+  opens a WSLg window. The build, the native host, its socket, the CLI and
+  `doctor.mjs` stay in WSL.
+
+The scripts are bash. In a PowerShell terminal, call Git Bash by its path,
+because `bash` on `PATH` can be `C:\Windows\System32\bash.exe`, which is WSL:
+
+```powershell
+& "C:\Program Files\Git\bin\bash.exe" -lc '.agents/skills/verify-gramgrab/scripts/launch.sh'
+```
+
+`node` commands such as `doctor.mjs`, `drive.mjs` and the CLI run from
+PowerShell too once the session variables are set. Sourcing `session.env` in
+Git Bash is the simplest way to set them.
 
 Never connect to, drive, or read the `DevToolsActivePort` of the person's own
 Helium. Every run uses a separate profile, so it is a separate Helium process.
 
 Each checkout gets its own directory, `%LOCALAPPDATA%\gramgrab-verify\<id>`,
 where `<id>` is the first 12 hex digits of the SHA-256 of the checkout's
-physical path. Agents in different worktrees therefore verify in parallel
-without sharing a profile, a browser, downloads or a socket. The `checkout` file
-in that directory names the worktree it belongs to.
+physical path as the shell prints it. Agents in different worktrees therefore
+verify in parallel without sharing a profile, a browser, downloads or a socket.
+The same checkout reached from WSL and from Git Bash gets two ids. The
+`checkout` file in that directory names the worktree in Windows form.
 
 ## Where things live
 
@@ -28,13 +45,16 @@ in that directory names the worktree it belongs to.
 
 All of these sit under `%LOCALAPPDATA%`. `GRAMGRAB_VERIFY_PROFILE` and
 `GRAMGRAB_VERIFY_DOWNLOADS` in `session.env` hold the `/mnt/c` form of those
-paths. `--reset-profile` deletes only this checkout's profile, never the seed.
+paths on WSL and the `C:/` form in Git Bash. `--reset-profile` deletes only this
+checkout's profile, never the seed.
 
 A worktree deleted without its profile leaves its `<id>` directory behind. Read
 its `checkout` file, and remove the directory once that path is gone.
 
-The profile cannot live under `.local/`. Helium opened from `\\wsl.localhost`
-fails with `LockFileEx: Incorrect function` and `database is locked`, then exits.
+From WSL the profile cannot live under `.local/`. Helium opened from
+`\\wsl.localhost` fails with `LockFileEx: Incorrect function` and
+`database is locked`, then exits. Git Bash keeps the same layout so both shells
+share the seed.
 
 ## Sign-in is a copy
 
@@ -73,22 +93,23 @@ On Windows, Helium finds native hosts only through the registry, never in the
 profile. `launch.sh` sets
 `HKCU\Software\Chromium\NativeMessagingHosts\dev.zytact.gramgrab` to a manifest
 whose host is `gramgrab.bat`. That batch file names no checkout. It runs
-`wsl.exe -d <distro> -e "%GRAMGRAB_IPC_PATH%.host"`, and
-`launch.sh` writes that `.host` launcher next to the session's socket in
-`.local/verify/`. The launcher starts this checkout's
-`apps/native-host/bin/gramgrab-native-host.mjs`, so each browser reaches its
-own checkout's host and socket, all in WSL.
+`%GRAMGRAB_VERIFY_HOST%`, the launcher `launch.sh` writes to
+`.local/verify/native-host` (WSL) or `.local/verify/native-host.cmd` (Git Bash).
+When `GRAMGRAB_VERIFY_DISTRO` is set it runs the launcher through
+`wsl.exe -d <distro> -e`. The launcher starts this checkout's
+`apps/native-host/bin/gramgrab-native-host.mjs`, so each browser reaches its own
+checkout's host and endpoint.
 
-`launch.sh` passes the socket path through `WSLENV`. Plain
-`WSLENV=GRAMGRAB_IPC_PATH` works here, while the `/u` flag silently drops the
-variable. The key is per user, so the person's own Helium sees it too, and their
-installed GramGrab connects to it. That browser has no `GRAMGRAB_IPC_PATH`, and
-the batch file turns it away.
+`launch.sh` sets those variables, and `GRAMGRAB_IPC_PATH`, on Helium's
+environment. From WSL they travel through `WSLENV`. Plain names work there,
+while the `/u` flag silently drops the variable. The key is per user, so the
+person's own Helium sees it too, and their installed GramGrab connects to it.
+That browser has no `GRAMGRAB_VERIFY_HOST`, and the batch file turns it away.
 
 Every launch writes the same batch file, manifest and key, rewriting a file only
 when its bytes differ. Cleanup removes the key only when no other checkout that
-still exists has a `.local/verify/gramgrab.sock.host` launcher, since launch
-writes that launcher before the key.
+still exists has a `.local/verify/native-host` or `native-host.cmd` launcher,
+since launch writes that launcher before the key.
 
 Helium reads the `Chromium` key before `Google\Chrome`. While any session runs,
 it therefore hides a real Windows install of the GramGrab host, which
@@ -96,16 +117,26 @@ it therefore hides a real Windows install of the GramGrab host, which
 
 ## CDP
 
-WSL in NAT mode cannot reach Windows `127.0.0.1`. Helium picks its own debugging
-port and prints it to `browser.log`. `launch.sh` then starts
+From Git Bash, `launch.sh` picks a free port and Helium listens on it, as on
+Linux.
+
+WSL in NAT mode cannot reach Windows `127.0.0.1`. From WSL, Helium picks its
+own debugging port and prints it to `browser.log`. `launch.sh` then starts
 `scripts/cdp-relay.mjs`, which forwards a local port through one `powershell.exe`
 per connection, and records that local port as `GRAMGRAB_CDP_PORT`. Each
 `drive.mjs` command takes about a second longer than on Linux.
 
+## Processes
+
+From Git Bash, `$!` names a launcher that exits once Helium starts.
+`launch.sh` records the Windows PID of the Helium holding this profile as
+`GRAMGRAB_VERIFY_PID`, and cleanup probes it through Node. From WSL the PID is
+the interop process.
+
 ## Windows and focus
 
-The browser runs headless by default on WSL, because a Helium window takes focus
-from whatever the person is doing. Headless covers everything except human
+The browser runs headless by default on Windows, because a Helium window takes
+focus from whatever the person is doing. Headless covers everything except human
 checkpoints. For those, tell the person a window is about to open, then launch
 with `GRAMGRAB_HEADLESS=0`.
 
@@ -116,14 +147,16 @@ with `GRAMGRAB_HEADLESS=0`.
   with `taskkill`. That only matches browsers on this checkout's profile.
 - `Helium is running` from `signin.sh`: the person's own Helium is open. Ask
   them to close it. Do not stop it yourself.
-- No native host socket: check the registry key with
-  `reg.exe query 'HKCU\Software\Chromium\NativeMessagingHosts\dev.zytact.gramgrab'`
-  from `/mnt/c`, and confirm `.local/verify/gramgrab.sock.host` exists and is
-  executable.
+- No native host endpoint: check the registry key with
+  `reg.exe query 'HKCU\Software\Chromium\NativeMessagingHosts\dev.zytact.gramgrab'`,
+  from `/mnt/c` on WSL, and confirm the `.local/verify/native-host` launcher
+  exists. On WSL it must be executable.
 - A key left behind after every session ended means a checkout kept its
-  `.local/verify/gramgrab.sock.host` after its session died, for example across
-  a Windows reboot.
-  Run `cleanup.sh` in that checkout. Its `checkout` file under
+  launcher after its session died, for example across a Windows reboot. Run
+  `cleanup.sh` in that checkout. Its `checkout` file under
   `gramgrab-verify\<id>` names it.
-- `drive.mjs upload` converts its file argument with `wslpath -w`, so give it a
-  WSL path as usual.
+- `drive.mjs upload` converts its file argument with `wslpath -w` on WSL, so
+  give it a WSL path as usual.
+- `launch.sh` failing in `vp run build:chromium` with `Cannot find native
+  binding` means `node_modules` lacks the win32 Vite+ binding. `vp install`
+  alone did not restore it; `vp install --force` did.
