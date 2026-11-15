@@ -101,10 +101,12 @@ if [ "$platform" != linux ]; then
   # and in signin.sh, so the person's own Helium profile can never be one.
   root="$(win_path "$win_root")\\" named="$(win_path "$profile")"
   root_key="${root,,}" named_key="${named,,}"
-  if [ "${named_key#"$root_key"}" = "$named_key" ] || [ "${named_key#*..}" != "$named_key" ]; then
-    echo "GRAMGRAB_PROFILE must be a directory under $root, such as ${root}second." >&2
-    exit 2
-  fi
+  case "${named_key#"$root_key"}" in
+    "$named_key" | *..* | seed | seed\\* | host | host\\*)
+      echo "GRAMGRAB_PROFILE must be a profile directory under $root other than seed or host." >&2
+      exit 2
+      ;;
+  esac
   # A new checkout starts from the sign-ins signin.sh last copied, so only the
   # first checkout on a machine has to close the person's Helium.
   if [ ! -f "$profile/Local State" ] && [ -z "${GRAMGRAB_PROFILE:-}" ] && [ -f "$win_seed/Local State" ]; then

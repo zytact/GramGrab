@@ -29,6 +29,9 @@ else
 fi
 
 win_root="$local_app_data/gramgrab-verify"
+# wslpath -w needs the directory to exist, and a missing root would make every
+# Helium look like a verification browser.
+mkdir -p "$win_root"
 # Each checkout gets its own profile, extension copy and downloads, so sessions
 # in different worktrees never share browser state.
 win_id="$(printf '%s\n' "$checkout_key" | sha256sum | cut -c1-12)"
@@ -58,7 +61,9 @@ win_browser_pids() {
 win_profile_pids() { win_browser_pids "\$c -match ([regex]::Escape(\$a) + '(\"|\\s|\$)')" "$1"; }
 
 # The person's own Helium, which is every Helium not on a verification profile.
-win_daily_helium_pids() { win_browser_pids "-not \$c.Contains(\$a)" "$(win_path "$win_root")\\"; }
+win_daily_helium_pids() {
+  win_browser_pids "\$c.IndexOf(\$a, [StringComparison]::OrdinalIgnoreCase) -lt 0" "$(win_path "$win_root")\\"
+}
 
 # Copies only what carries the Instagram and WhatsApp Web sessions from profile
 # $1 to $2. The rest of a profile is gigabytes of cache and unrelated sites.
