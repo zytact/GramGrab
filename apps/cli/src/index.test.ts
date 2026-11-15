@@ -79,6 +79,7 @@ afterEach(async () => {
 });
 
 async function testEndpoint(): Promise<string> {
+  if (process.platform === 'win32') return String.raw`\\.\pipe\gramgrab-cli-${crypto.randomUUID()}`;
   const directory = await mkdtemp(join(tmpdir(), 'gramgrab-cli-'));
   temporaryDirectories.push(directory);
   return join(directory, 'gramgrab.sock');

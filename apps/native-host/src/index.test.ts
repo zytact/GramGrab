@@ -23,15 +23,21 @@ afterEach(async () => {
   );
 });
 
-async function temporarySocketPath(): Promise<string> {
+async function temporarySocketFile(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'gramgrab-native-host-'));
   temporaryDirectories.push(directory);
   return join(directory, 'gramgrab.sock');
 }
 
+async function testEndpoint(): Promise<string> {
+  if (process.platform === 'win32')
+    return String.raw`\\.\pipe\gramgrab-native-host-${crypto.randomUUID()}`;
+  return temporarySocketFile();
+}
+
 describe('native host endpoint ownership', () => {
   it('removes a stale Unix socket file', async () => {
-    const path = await temporarySocketPath();
+    const path = await temporarySocketFile();
     await writeFile(path, 'stale');
 
     await prepareLocalIpcEndpoint(path, 'linux');
@@ -40,7 +46,7 @@ describe('native host endpoint ownership', () => {
   });
 
   it('does not remove a live Unix socket', async () => {
-    const path = await temporarySocketPath();
+    const path = await testEndpoint();
     const server = createServer();
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
@@ -66,7 +72,7 @@ describe('native host endpoint ownership', () => {
 
 describe('native host request ownership', () => {
   it('relays protocol-skewed requests for the extension to reject explicitly', async () => {
-    const path = await temporarySocketPath();
+    const path = await testEndpoint();
     const relayed: Uint8Array[] = [];
     const server = createServer(socket => attachClient(socket, payload => relayed.push(payload)));
     await new Promise<void>((resolve, reject) => {
@@ -95,17 +101,19 @@ describe('native host request ownership', () => {
   });
 
   it('relays a version rejection stamped with another protocol version', async () => {
-    const path = await temporarySocketPath();
+    const path = await testEndpoint();
     const server = createServer(socket => attachClient(socket, () => undefined));
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(path, resolve);
     });
+    const attached = new Promise<void>(resolve => server.once('connection', () => resolve()));
     const client = connect(path);
     await new Promise<void>((resolve, reject) => {
       client.once('error', reject);
       client.once('connect', resolve);
     });
+    await attached;
     const received = new Promise<Buffer>(resolve => client.once('data', resolve));
     const rejection = {
       version: PROTOCOL_VERSION - 1,
@@ -127,7 +135,7 @@ describe('native host request ownership', () => {
   });
 
   it('cancels active requests when their client disconnects', async () => {
-    const path = await temporarySocketPath();
+    const path = await testEndpoint();
     const relayed: Uint8Array[] = [];
     const server = createServer(socket => attachClient(socket, payload => relayed.push(payload)));
     await new Promise<void>((resolve, reject) => {
