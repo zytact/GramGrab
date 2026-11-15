@@ -148,7 +148,7 @@ to use `sanitized.invalid`. Test data is deliberately synthetic.
    an `id` suffix alone.
 6. Add the policy rule and a focused synthetic test together. If a new object shape is involved,
    classify all of its leaves before rerunning the full batch.
-7. Run `vp check`, `vp test run`, and `vp run fallow`.
+7. Run `vp run check`, `vp test run apps/extension/src/ig-fixture-sanitizer apps/extension/src/effect/`, and `vp run fallow`.
 
 Preserved timestamps are deliberate regression evidence. CDN URLs are always replaced even when
 signed and short-lived. GraphQL error messages remain because they are protocol diagnostics needed

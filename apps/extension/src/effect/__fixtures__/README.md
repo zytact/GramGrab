@@ -74,7 +74,7 @@ capture script then embeds the updated configuration.
    [`scripts/ig-fixture-sanitizer/README.md`](../../../scripts/ig-fixture-sanitizer/README.md).
 7. Run `vp run sanitize:ig-fixtures -- --write` to replace the eleven captured JSON files in one
    transaction. This README and the handwritten fixtures stay as they are.
-8. Run `vp check`, `vp test run`, and `vp run fallow`. Failing fixture tests show what changed.
+8. Run `vp run check`, `vp test run apps/extension/src/effect/`, and `vp run fallow`. Failing fixture tests show what changed.
 9. Update `src/effect/schemas.ts` when the approved response shape changed, rerun validation, and
    commit only sanitized fixtures and reviewed code or documentation changes.
 
