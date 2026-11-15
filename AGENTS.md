@@ -76,7 +76,7 @@ When `ResponseShapeUnknown` fires in the wild:
 1. If the request itself stopped working (App ID, ASBD ID, GraphQL doc ID, endpoint, transport), follow `docs/instagram-protocol.md` first. A changed endpoint, transport, or body also changes the fixture capture script and recaptures fixtures; that doc's fixture section says how.
 2. `vp run generate:ig-fixtures`, then paste `.local/capture-ig-fixtures.mjs` into DevTools on a logged-in `instagram.com`.
 3. Download raw JSON into `.local/raw-fixtures/`, review `vp run sanitize:ig-fixtures`, then install with `vp run sanitize:ig-fixtures -- --write`. The sanitizer is the privacy boundary for committed captures.
-4. `vp test run apps/extension/src/effect/`. Failing fixture tests show exactly what changed.
+4. `vp test run`. Failing fixture tests show exactly what changed.
 5. Update `apps/extension/src/effect/schemas.ts`, re-run tests, ship sanitized fixtures only.
 
 ## Domain language
@@ -113,7 +113,7 @@ vp run fallow
 
 `vp run check` checks formatting, lints and type checks the whole project on 4 threads. Use it instead of `vp check`, which takes every core. Vitest is capped at 4 workers too.
 
-Run only the tests relevant to the change. `--changed origin/main` picks the test files that import anything changed since `origin/main`, committed or not. It follows imports only, so it misses tests that read a file from disk or spawn a process. A change to `__fixtures__/` needs `vp test run apps/extension/src/effect/`, and a change behind the CLI or native host binaries needs `vp test run apps/cli/ apps/native-host/`. Name files the same way whenever you know which ones cover the change. Run the full suite only when the change touches test setup, `vitest.config.ts`, or a dependency.
+Run only the tests relevant to the change. `--changed origin/main` picks the test files that import anything changed since `origin/main`, committed or not. It follows imports only, so a change to `apps/cli/bin/` or `install.sh` also needs `vp test run apps/cli/`, whose tests spawn those files. Name test files the same way whenever you know which ones cover the change. Run the full suite only when the change touches test setup, `vitest.config.ts`, a dependency, or a `__fixtures__/` directory, since tests across the tree read fixtures from disk.
 
 Clear `vp run fallow` findings by refactoring the code. Suppression comments, threshold or config changes, and baselines need the user's approval first. After a build or manifest change, also run `vp run verify:whatsapp-packages` against the built output.
 
