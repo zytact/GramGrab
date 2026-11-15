@@ -206,7 +206,7 @@ Run the repository validation commands, compare the two skill copies, and clean
 up even after failure:
 
 ```bash
-vp check
+vp run check
 vp test run
 vp run fallow
 diff -qr .agents/skills/verify-gramgrab .claude/skills/verify-gramgrab

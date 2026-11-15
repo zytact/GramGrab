@@ -182,8 +182,8 @@ Confirm that the diff contains only the allowed fields listed above. Then run th
 in order:
 
 ```bash
-vp check
-vp test run
+vp run check
+vp test run --changed origin/main
 vp run fallow
 ```
 

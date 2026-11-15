@@ -106,11 +106,15 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 Run `vp install` after pulling remote changes. After any change, run:
 
 ```sh
-vp check
-vp test run
+vp run check
+vp test run --changed origin/main
 vp run fallow
 ```
 
-`vp check` formats, lints and type checks in one pass. Clear `vp run fallow` findings by refactoring the code. Suppression comments, threshold or config changes, and baselines need the user's approval first. After a build or manifest change, also run `vp run verify:whatsapp-packages` against the built output.
+`vp run check` checks formatting, lints and type checks the whole project on 4 threads. Use it instead of `vp check`, which takes every core. Vitest is capped at 4 workers too.
+
+Run only the tests relevant to the change. `--changed origin/main` runs the test files that import anything changed since `origin/main`, committed or not. It runs the full suite when the change touches a file in `forceRerunTriggers` in `vitest.config.ts`, such as `package.json`, test setup, or `__fixtures__/`. A test that reads a file from disk or spawns one cannot be traced through imports, so add that file there. When you know which test files cover the change, pass their paths to `vp test run` instead.
+
+Clear `vp run fallow` findings by refactoring the code. Suppression comments, threshold or config changes, and baselines need the user's approval first. After a build or manifest change, also run `vp run verify:whatsapp-packages` against the built output.
 
 Check `package.json` and `vite.config.ts` for scripts or tasks a change touches, and run them with `vp run <name>`. If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
