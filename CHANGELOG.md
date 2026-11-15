@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.10.0](https://github.com/zytact/GramGrab/compare/v4.9.1...v4.10.0) (2026-11-15)
+
+
+### Features
+
+* **verify:** run the verify skill from native Windows, not only WSL ([#411](https://github.com/zytact/GramGrab/issues/411)) ([f60fe68](https://github.com/zytact/GramGrab/commit/f60fe68faa01246d2dfafed2aa7287e4a2871e13))
+
+
+### Bug Fixes
+
+* **test:** let the CLI and native host IPC tests run on Windows ([87a5848](https://github.com/zytact/GramGrab/commit/87a58481723627c7a5b8f0070a9fea733aca01cd))
+* **test:** listen on named pipes for IPC tests on Windows ([99d409b](https://github.com/zytact/GramGrab/commit/99d409b22a0999c030625a6efcb8dd23b14a8ec5))
+
 ## [4.9.1](https://github.com/zytact/GramGrab/compare/v4.9.0...v4.9.1) (2026-11-14)
 
 
