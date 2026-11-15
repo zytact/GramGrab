@@ -24,9 +24,8 @@ case "${1:-}" in
 esac
 [ "$#" -le 1 ] || { echo "Usage: $0 [--restart]" >&2; exit 2; }
 
-windows=no
+platform=linux
 if [ -n "${WSL_DISTRO_NAME:-}" ] || [ "${OS:-}" = Windows_NT ]; then
-  windows=yes
   # shellcheck source=windows.sh
   . "$here/windows.sh"
 fi
@@ -48,7 +47,7 @@ free_port() {
 }
 
 browser=""
-if [ "$windows" = yes ]; then
+if [ "$platform" != linux ]; then
   [ -x "$win_helium" ] || { echo "No Windows Helium at $win_helium. Set GRAMGRAB_BROWSER to its chrome.exe." >&2; exit 2; }
   browser="$win_helium"
 else
@@ -86,7 +85,7 @@ fi
 # Helium runs headless unless someone asks for a window.
 headless="${GRAMGRAB_HEADLESS:-}"
 if [ -z "$headless" ]; then
-  if [ "$windows" = yes ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then headless=1; else headless=0; fi
+  if [ "$platform" != linux ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then headless=1; else headless=0; fi
 fi
 headless_flag=()
 [ "$headless" = 1 ] && headless_flag=(--headless --window-size=1280,900)
@@ -95,9 +94,15 @@ if [ "$restart" = no ]; then vp run build:chromium >/dev/null; fi
 build_fingerprint="$(rg --files "$ext_dir" -0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
 
 mkdir -p "$session_dir"
-if [ "$windows" = yes ]; then
+if [ "$platform" != linux ]; then
   profile="${GRAMGRAB_PROFILE:-$win_dir/profile}"
   downloads="$win_dir/downloads"
+  # The person's own Helium profile is never a verification profile.
+  daily="$(win_path "$win_daily_profile")" named="$(win_path "$profile")"
+  if [ "${named,,}" = "${daily,,}" ] || [ "${named,,}" = "${daily,,}\\" ]; then
+    echo "GRAMGRAB_PROFILE names the person's own Helium profile. Use a copy instead." >&2
+    exit 2
+  fi
   # A new checkout starts from the sign-ins signin.sh last copied, so only the
   # first checkout on a machine has to close the person's Helium.
   if [ ! -f "$profile/Local State" ] && [ -z "${GRAMGRAB_PROFILE:-}" ] && [ -f "$win_seed/Local State" ]; then
@@ -142,7 +147,7 @@ node -e '
   prefs.download={...prefs.download,default_directory:dir,prompt_for_download:false};
   prefs.savefile={...prefs.savefile,default_directory:dir};
   writeFileSync(file,JSON.stringify(prefs));
-' "$profile/Default/Preferences" "$([ "$windows" = yes ] && win_path "$downloads" || echo "$downloads")"
+' "$profile/Default/Preferences" "$([ "$platform" != linux ] && win_path "$downloads" || echo "$downloads")"
 
 # Chromium caches the extension's service worker script per profile and does not
 # re-read it just because the unpacked directory changed. A rebuilt extension
@@ -170,7 +175,7 @@ ext_id="$(node --input-type=module -e '
   process.stdout.write(CHROMIUM_EXTENSION_ID);
 ' "$repo/apps/extension/scripts/release.mjs")"
 
-if [ "${win_from:-}" = native ]; then
+if [ "$platform" = native ]; then
   # The native host listens on a named pipe on Windows, one per checkout.
   ipc_path="\\\\.\\pipe\\gramgrab-verify-$win_id"
 else
@@ -182,7 +187,7 @@ else
 fi
 
 browser_env=(GRAMGRAB_IPC_PATH="$ipc_path")
-if [ "$windows" = yes ]; then
+if [ "$platform" != linux ]; then
   # Windows Helium cannot load an extension or profile from the WSL filesystem,
   # so the build is copied next to the profile.
   rm -rf "$win_dir/ext"
@@ -193,7 +198,7 @@ if [ "$windows" = yes ]; then
   # carries the variables through Helium, and Helium picks its own CDP port and
   # prints it, since WSL cannot test which Windows ports are free.
   browser_env+=(GRAMGRAB_VERIFY_HOST="$win_launcher")
-  if [ "$win_from" = wsl ]; then
+  if [ "$platform" = wsl ]; then
     browser_env+=(
       GRAMGRAB_VERIFY_DISTRO="$WSL_DISTRO_NAME"
       WSLENV="${WSLENV:+$WSLENV:}GRAMGRAB_IPC_PATH:GRAMGRAB_VERIFY_HOST:GRAMGRAB_VERIFY_DISTRO"
@@ -223,7 +228,7 @@ pid=$!
 
 port="$debug_port"
 relay_pid=""
-if [ "${win_from:-}" = wsl ]; then
+if [ "$platform" = wsl ]; then
   # WSL cannot reach Windows 127.0.0.1 without mirrored networking, so a relay
   # forwards a local port to the one Helium printed.
   windows_port=""
@@ -237,7 +242,7 @@ if [ "${win_from:-}" = wsl ]; then
     nohup node "$here/cdp-relay.mjs" "$windows_port" "$port" >>"$session_dir/relay.log" 2>&1 &
     relay_pid=$!
   fi
-elif [ "${win_from:-}" = native ]; then
+elif [ "$platform" = native ]; then
   # Git Bash's $! names a launcher that exits once Helium starts, so record the
   # Windows PID of the Helium that holds this profile.
   pid=""
@@ -248,18 +253,21 @@ elif [ "${win_from:-}" = native ]; then
   done
 fi
 
-# Single-quoted so a Windows path or pipe name keeps its backslashes when sourced.
+# Single-quoted so a Windows path or pipe name keeps its backslashes when
+# sourced. doctor.mjs reverses the same quoting.
+quote() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 cat > "$session_dir/session.env" <<ENV
-export GRAMGRAB_VERIFY_PID='$pid'
-export GRAMGRAB_VERIFY_BROWSER='$browser'
-export GRAMGRAB_CDP_PORT='$port'
-export GRAMGRAB_EXT_ID='$ext_id'
-export GRAMGRAB_IPC_PATH='$ipc_path'
-export GRAMGRAB_VERIFY_DIR='$session_dir'
-export GRAMGRAB_VERIFY_PROFILE='$profile'
-export GRAMGRAB_VERIFY_DOWNLOADS='$downloads'
-export GRAMGRAB_VERIFY_HEADLESS='$headless'
-export GRAMGRAB_VERIFY_RELAY_PID='$relay_pid'
+export GRAMGRAB_VERIFY_PLATFORM=$(quote "$platform")
+export GRAMGRAB_VERIFY_PID=$(quote "$pid")
+export GRAMGRAB_VERIFY_BROWSER=$(quote "$browser")
+export GRAMGRAB_CDP_PORT=$(quote "$port")
+export GRAMGRAB_EXT_ID=$(quote "$ext_id")
+export GRAMGRAB_IPC_PATH=$(quote "$ipc_path")
+export GRAMGRAB_VERIFY_DIR=$(quote "$session_dir")
+export GRAMGRAB_VERIFY_PROFILE=$(quote "$profile")
+export GRAMGRAB_VERIFY_DOWNLOADS=$(quote "$downloads")
+export GRAMGRAB_VERIFY_HEADLESS=$(quote "$headless")
+export GRAMGRAB_VERIFY_RELAY_PID=$(quote "$relay_pid")
 ENV
 
 for _ in $(seq 1 60); do
@@ -275,7 +283,7 @@ curl -sf "http://127.0.0.1:$port/json/version" >/dev/null 2>&1 || {
 # endpoint appearing proves the extension loaded and native messaging is wired.
 # A named pipe is not a file, so on Windows only a connection proves it is there.
 ipc_ready() {
-  if [ "${win_from:-}" = native ]; then
+  if [ "$platform" = native ]; then
     node -e '
       const socket = require("node:net").connect(process.argv[1]);
       socket.on("connect", () => { socket.destroy(); process.exit(0); });

@@ -49,7 +49,8 @@ run needs a visible window.
 
 It builds `extension/chromium`, writes a native-messaging manifest pointing at
 `apps/native-host/bin/gramgrab-native-host.mjs`, and starts the browser with a
-free CDP port and a session-local `GRAMGRAB_IPC_PATH`.
+free CDP port and a session-local `GRAMGRAB_IPC_PATH`. On Windows the manifest
+goes in the registry instead; [windows.md](windows.md#native-messaging) says how.
 
 If the execution environment reaps background children when a command returns,
 keep the launch shell alive in a persistent terminal with `launch.sh && cat`.
@@ -69,6 +70,9 @@ Three directories, and the differences matter:
 - `.local/verify/` is **run state**: the socket, the log, the session
   environment, and this run's downloads. Cleanup deletes all of it.
 - `.local/verify-evidence/` holds **proofs, and nothing deletes them**.
+
+On Windows the profile and downloads live under `%LOCALAPPDATA%` instead, as
+[windows.md](windows.md#where-things-live) lists.
 
 Everything this skill writes goes under `.local/`, which `.gitignore` already
 ignores as a whole. A verification run therefore leaves `git status` clean, and
@@ -157,7 +161,8 @@ to the `/run/user/$UID/.mutter-Xwaylandauth.*` file with `GRAMGRAB_HEADLESS=0`;
 `GRAMGRAB_HEADLESS=1` forces `--headless` in a 1280x900 window, and it is the
 default without a display. Headless loads the extension, starts the native
 host, captures screenshots, and runs every export mode, Frame included. Human
-checkpoints need a window. `signin.sh` always launches headed.
+checkpoints need a window. `signin.sh` always launches headed, except on
+Windows, where it copies sign-ins and opens no browser.
 
 The runner's minimized window reports `document.visibilityState` `hidden`,
 headed or headless, and Chromium never loads a `<video>` in a hidden page that
@@ -395,7 +400,9 @@ exactly the filename evidence worth capturing.
 
 Closes the browser over CDP, then removes `.local/verify/` with the socket, log,
 and this run's downloads. The profile at `.local/verify-profile/` and the
-evidence under `.local/verify-evidence/` both survive.
+evidence under `.local/verify-evidence/` both survive. On Windows cleanup also
+removes the downloads under `%LOCALAPPDATA%`, and refuses a session that the
+other shell, WSL or Git Bash, launched.
 
 Teardown asks the browser to close rather than signalling it, because Chromium
 batches cookie writes and only flushes them on a real exit. A `kill` here

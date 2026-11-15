@@ -24,10 +24,13 @@ Git Bash is the simplest way to set them.
 
 Never connect to, drive, or read the `DevToolsActivePort` of the person's own
 Helium. Every run uses a separate profile, so it is a separate Helium process.
+`launch.sh` refuses a `GRAMGRAB_PROFILE` that names the person's own Helium
+profile.
 
 Each checkout gets its own directory, `%LOCALAPPDATA%\gramgrab-verify\<id>`,
-where `<id>` is the first 12 hex digits of the SHA-256 of the checkout's
-physical path as the shell prints it. Agents in different worktrees therefore
+where `<id>` is the first 12 hex digits of the SHA-256 of the checkout's path:
+the physical path on WSL, and the lowercased `C:/` path in Git Bash, which keeps
+whatever case a path was typed in. Agents in different worktrees therefore
 verify in parallel without sharing a profile, a browser, downloads or a socket.
 The same checkout reached from WSL and from Git Bash gets two ids. The
 `checkout` file in that directory names the worktree in Windows form.
@@ -130,8 +133,13 @@ per connection, and records that local port as `GRAMGRAB_CDP_PORT`. Each
 
 From Git Bash, `$!` names a launcher that exits once Helium starts.
 `launch.sh` records the Windows PID of the Helium holding this profile as
-`GRAMGRAB_VERIFY_PID`, and cleanup probes it through Node. From WSL the PID is
-the interop process.
+`GRAMGRAB_VERIFY_PID` for `doctor.mjs`. Cleanup does not trust that PID. It
+asks Windows which Helium holds the profile. From WSL the PID is the interop
+process.
+
+`session.env` records the shell that launched the session as
+`GRAMGRAB_VERIFY_PLATFORM`, `wsl` or `native`. Its paths only make sense in that
+shell, so cleanup run from the other one refuses and names it.
 
 ## Windows and focus
 
@@ -149,8 +157,9 @@ with `GRAMGRAB_HEADLESS=0`.
   them to close it. Do not stop it yourself.
 - No native host endpoint: check the registry key with
   `reg.exe query 'HKCU\Software\Chromium\NativeMessagingHosts\dev.zytact.gramgrab'`,
-  from `/mnt/c` on WSL, and confirm the `.local/verify/native-host` launcher
-  exists. On WSL it must be executable.
+  from `/mnt/c` on WSL, and confirm the launcher exists:
+  `.local/verify/native-host`, executable, on WSL, or
+  `.local/verify/native-host.cmd` in Git Bash.
 - A key left behind after every session ended means a checkout kept its
   launcher after its session died, for example across a Windows reboot. Run
   `cleanup.sh` in that checkout. Its `checkout` file under

@@ -1,33 +1,37 @@
 # Windows Helium support for launch.sh, cleanup.sh and signin.sh, from WSL or
-# from Git Bash on Windows. Sourced, never run, after the caller sets $repo.
-# ../windows.md explains the design.
+# from Git Bash on Windows. Sourced, never run, after the caller sets $repo and
+# platform=linux. Sets $platform to wsl or native, and in Git Bash rewrites
+# $repo to its C:/ form. ../windows.md explains the design.
 #
 # The browser always runs on Windows. From WSL it uses Windows memory and never
 # takes focus through WSLg, while the build, the native host, its socket, the
 # CLI and the drive scripts stay in WSL.
 
 if [ -n "${WSL_DISTRO_NAME:-}" ]; then
-  win_from=wsl
+  platform=wsl
   # Windows tools print UNC warnings or fail when started from a WSL directory.
   win() { (cd /mnt/c && "$@"); }
   win_path() { wslpath -w "$1"; }
-  unix_path() { wslpath -u "$1"; }
+  shell_path() { wslpath -u "$1"; }
   local_app_data="$(wslpath "$(win cmd.exe /d /c 'echo %LOCALAPPDATA%' | tr -d '\r')")"
+  checkout_key="$(cd "$repo" && pwd -P)"
 else
-  win_from=native
+  platform=native
   # Git Bash rewrites arguments such as /f into paths before Windows tools see them.
   win() { MSYS_NO_PATHCONV=1 "$@"; }
   win_path() { cygpath -w "$1"; }
   # Node and Windows tools read the C:/ form, and Git Bash accepts it too.
-  unix_path() { cygpath -m "$1"; }
+  shell_path() { cygpath -m "$1"; }
   repo="$(cygpath -m "$repo")"
   local_app_data="$(cygpath -m "$LOCALAPPDATA")"
+  # Git Bash keeps the case a path was typed in, and Windows ignores it.
+  checkout_key="${repo,,}"
 fi
 
 win_root="$local_app_data/gramgrab-verify"
 # Each checkout gets its own profile, extension copy and downloads, so sessions
 # in different worktrees never share browser state.
-win_id="$(cd "$repo" && pwd -P | sha256sum | cut -c1-12)"
+win_id="$(printf '%s\n' "$checkout_key" | sha256sum | cut -c1-12)"
 win_dir="$win_root/$win_id"
 win_seed="$win_root/seed"
 win_helium="${GRAMGRAB_BROWSER:-$local_app_data/imput/Helium/Application/chrome.exe}"
@@ -35,13 +39,14 @@ win_daily_profile="$local_app_data/imput/Helium/User Data"
 win_host_key='HKCU\Software\Chromium\NativeMessagingHosts\dev.zytact.gramgrab'
 # What the shared batch file runs for this checkout's session.
 win_launcher="$repo/.local/verify/native-host"
-[ "$win_from" = native ] && win_launcher="$win_launcher.cmd"
+[ "$platform" = native ] && win_launcher="$win_launcher.cmd"
 
 # Prints the IDs of Helium browser processes for which the PowerShell condition
-# $1 holds, with $c bound to the process command line.
+# $1 holds, with $c bound to the process command line. An exiting process has
+# none, so $c falls back to an empty string.
 win_browser_pids() {
   win powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" |
-    Where-Object { \$c = \$_.CommandLine; \$c -notmatch '--type=' -and ($1) } |
+    Where-Object { \$c = [string]\$_.CommandLine;\$c -notmatch '--type=' -and ($1) } |
     ForEach-Object { \$_.ProcessId }" | tr -d '\r'
 }
 
@@ -95,7 +100,7 @@ win_register_host() {
   mkdir -p "$win_dir" "$host"
   win_path "$repo" > "$win_dir/checkout"
   node="$(node -p process.execPath)"
-  if [ "$win_from" = wsl ]; then
+  if [ "$platform" = wsl ]; then
     printf '#!/usr/bin/env bash\ncd %q && exec %q apps/native-host/bin/gramgrab-native-host.mjs "$@"\n' \
       "$repo" "$node" > "$win_launcher"
     chmod 700 "$win_launcher"
@@ -129,7 +134,7 @@ win_sessions_remain() {
   local checkout dir
   for checkout in "$win_root"/*/checkout; do
     [ -f "$checkout" ] || continue
-    dir="$(unix_path "$(tr -d '\r\n' < "$checkout")" 2>/dev/null)" || continue
+    dir="$(shell_path "$(tr -d '\r\n' < "$checkout")" 2>/dev/null)" || continue
     [ -f "$dir/.local/verify/native-host" ] || [ -f "$dir/.local/verify/native-host.cmd" ] && return 0
   done
   return 1

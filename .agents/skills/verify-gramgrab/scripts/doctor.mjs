@@ -26,7 +26,7 @@ try {
       .filter(line => line.startsWith('export '))
       .map(line => {
         const [name, value] = line.slice(7).split(/=(.*)/s);
-        return [name, value.replace(/^'(.*)'$/s, '$1')];
+        return [name, value.replace(/^'(.*)'$/s, '$1').replaceAll(String.raw`'\''`, "'")];
       })
   );
   record('session file', true, sessionFile);
