@@ -45,7 +45,8 @@ Two constraints shape every entry:
 
 - The profile at `.local/verify-profile/` persists between runs, so the rows
   marked yes work once someone has run `scripts/signin.sh` and signed in by
-  hand. A profile that has never been signed into fails those rows at
+  hand. On Windows the profile lives under `%LOCALAPPDATA%` and `signin.sh`
+  copies the sign-ins instead. A profile that has never been signed into fails those rows at
   authentication, which looks like a bug and is not one.
 - WhatsApp acquisition has privacy rules that bind verification as much as code.
   `docs/whatsapp-privacy.md` and `docs/whatsapp-live-verification.md` are the

@@ -7,7 +7,7 @@ description: Launch GramGrab for real and prove a change works. Starts a dedicat
 
 GramGrab has two user-facing surfaces over one shared core: the MV3 extension
 (popup, workspace, and Watches options page) and the `gramgrab` CLI, which reaches the extension
-through a native host over a Unix socket. This skill starts both against a
+through a native host over a Unix socket, or a named pipe on Windows. This skill starts both against a
 dedicated browser profile so a verification run never touches the developer's
 own browser, socket, or `~/Downloads`.
 
@@ -31,10 +31,14 @@ needs that setup.
 | --- | --- | --- |
 | Linux desktop | Helium or Chromium on `PATH` | That browser, headed |
 | No display (SSH, CI) | Either of the above | The same browser, headless, with the gaps in [Browser choice](#browser-choice) |
+| Windows, from Git Bash or WSL | Helium installed on Windows | Windows Helium, headless, on its own profile |
 
-On WSL every script here drives Windows Helium instead, with the same commands
-and session variables. Read [wsl.md](wsl.md) only when a WSL launch, sign-in, or
-cleanup fails, or a run needs a visible window.
+On Windows every script here drives Windows Helium, with the same commands and
+session variables. Run them in Git Bash, or in WSL. From PowerShell, call Git
+Bash by path, since `bash` on `PATH` can be WSL's:
+`& "C:\Program Files\Git\bin\bash.exe" -lc '<command>'`. Read
+[windows.md](windows.md) when a Windows launch, sign-in, or cleanup fails, or a
+run needs a visible window.
 
 ```bash
 .agents/skills/verify-gramgrab/scripts/launch.sh
@@ -45,7 +49,8 @@ cleanup fails, or a run needs a visible window.
 
 It builds `extension/chromium`, writes a native-messaging manifest pointing at
 `apps/native-host/bin/gramgrab-native-host.mjs`, and starts the browser with a
-free CDP port and a session-local `GRAMGRAB_IPC_PATH`.
+free CDP port and a session-local `GRAMGRAB_IPC_PATH`. On Windows the manifest
+goes in the registry instead; [windows.md](windows.md#native-messaging) says how.
 
 If the execution environment reaps background children when a command returns,
 keep the launch shell alive in a persistent terminal with `launch.sh && cat`.
@@ -66,6 +71,9 @@ Three directories, and the differences matter:
   environment, and this run's downloads. Cleanup deletes all of it.
 - `.local/verify-evidence/` holds **proofs, and nothing deletes them**.
 
+On Windows the profile and downloads live under `%LOCALAPPDATA%` instead, as
+[windows.md](windows.md#where-things-live) lists.
+
 Everything this skill writes goes under `.local/`, which `.gitignore` already
 ignores as a whole. A verification run therefore leaves `git status` clean, and
 no path here needs its own ignore rule.
@@ -75,8 +83,8 @@ session cookies, so committing it would publish working credentials. If that
 directory ever shows up in `git status`, something removed the ignore rule;
 restore it rather than reaching for `git add -f` or a narrower pattern.
 
-Readiness is the native host socket appearing at `$GRAMGRAB_IPC_PATH`. The
-extension's service worker calls `connectNative` on startup, so the socket
+Readiness is the native host endpoint answering at `$GRAMGRAB_IPC_PATH`. The
+extension's service worker calls `connectNative` on startup, so the endpoint
 existing proves the extension loaded and native messaging is wired. The script
 waits for it and fails loudly after 30 seconds.
 
@@ -153,7 +161,8 @@ to the `/run/user/$UID/.mutter-Xwaylandauth.*` file with `GRAMGRAB_HEADLESS=0`;
 `GRAMGRAB_HEADLESS=1` forces `--headless` in a 1280x900 window, and it is the
 default without a display. Headless loads the extension, starts the native
 host, captures screenshots, and runs every export mode, Frame included. Human
-checkpoints need a window. `signin.sh` always launches headed.
+checkpoints need a window. `signin.sh` always launches headed, except on
+Windows, where it copies sign-ins and opens no browser.
 
 The runner's minimized window reports `document.visibilityState` `hidden`,
 headed or headless, and Chromium never loads a `<video>` in a hidden page that
@@ -198,9 +207,9 @@ rsync -a --exclude 'Singleton*' --exclude 'Default/Service Worker' \
 The copy carries that profile's extension storage, Watches and request ledger
 included, so read the state you inherited before treating it as this run's.
 
-On WSL the profile lives on Windows, one per checkout, and a new worktree's
-first `launch.sh` seeds it from the last `signin.sh`. Skip the copy above.
-[wsl.md](wsl.md) has the details.
+On Windows the profile lives under `%LOCALAPPDATA%`, one per checkout, and a
+new worktree's first `launch.sh` seeds it from the last `signin.sh`. Skip the
+copy above. [windows.md](windows.md) has the details.
 
 ## Doctor
 
@@ -215,7 +224,8 @@ Read-only. Six checks, non-zero exit if any fails:
 - CDP port answering, with the browser build string
 - the extension is loaded and `ENABLED`, at the version `scripts/manifest.mjs`
   generates (catches driving a stale `extension/chromium`)
-- the socket exists and is owner-only `0600`
+- the socket exists and is owner-only `0600`, or on Windows the named pipe
+  accepts a connection
 - `gramgrab status` round trips and reports `compatible: true`
 
 Run it first whenever anything looks off. The last check is the whole chain in
@@ -390,7 +400,9 @@ exactly the filename evidence worth capturing.
 
 Closes the browser over CDP, then removes `.local/verify/` with the socket, log,
 and this run's downloads. The profile at `.local/verify-profile/` and the
-evidence under `.local/verify-evidence/` both survive.
+evidence under `.local/verify-evidence/` both survive. On Windows cleanup also
+removes the downloads under `%LOCALAPPDATA%`, and refuses a session that the
+other shell, WSL or Git Bash, launched.
 
 Teardown asks the browser to close rather than signalling it, because Chromium
 batches cookie writes and only flushes them on a real exit. A `kill` here
