@@ -113,7 +113,7 @@ vp run fallow
 
 `vp run check` checks formatting, lints and type checks the whole project on 4 threads. Use it instead of `vp check`, which takes every core. Vitest is capped at 4 workers too.
 
-Run only the tests relevant to the change. `--changed origin/main` picks the test files that import anything changed since `origin/main`, committed or not. It follows imports only, so a change to `apps/cli/bin/` or `install.sh` also needs `vp test run apps/cli/`, whose tests spawn those files. Name test files the same way whenever you know which ones cover the change. Run the full suite only when the change touches test setup, `vitest.config.ts`, a dependency, or a `__fixtures__/` directory, since tests across the tree read fixtures from disk.
+Run only the tests relevant to the change. `--changed origin/main` runs the test files that import anything changed since `origin/main`, committed or not. It runs the full suite when the change touches a file in `forceRerunTriggers` in `vitest.config.ts`, such as `package.json`, test setup, or `__fixtures__/`. A test that reads a file from disk or spawns one cannot be traced through imports, so add that file there. When you know which test files cover the change, pass their paths to `vp test run` instead.
 
 Clear `vp run fallow` findings by refactoring the code. Suppression comments, threshold or config changes, and baselines need the user's approval first. After a build or manifest change, also run `vp run verify:whatsapp-packages` against the built output.
 

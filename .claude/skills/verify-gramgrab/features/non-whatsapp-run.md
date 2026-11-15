@@ -207,7 +207,7 @@ up even after failure:
 
 ```bash
 vp run check
-vp test run --changed origin/main
+vp test run
 vp run fallow
 diff -qr .agents/skills/verify-gramgrab .claude/skills/verify-gramgrab
 .agents/skills/verify-gramgrab/scripts/cleanup.sh
