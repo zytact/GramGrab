@@ -4,7 +4,7 @@ import type { WorkspaceMediaItem } from './contracts';
 import type { FrameExportSetting } from '../frame-export/timestamp';
 import type { OperationFailure } from '../errors/contracts';
 import { OperationFailure as OperationFailureModel } from '../errors/contracts';
-import { FAILURE_PRESENTATION } from '../errors/presentation';
+import { failureMessage } from '../errors/presentation';
 import { sendMessage } from '../messaging/send';
 
 type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
@@ -60,8 +60,7 @@ export function useMediaFetch(options: UseMediaFetchOptions) {
       if (generation !== requestGeneration.current) return;
       if (response?.failure) {
         options.onFailure?.(response.failure);
-        const presentation = FAILURE_PRESENTATION[response.failure.code];
-        options.setMessage(`${presentation.title}. ${presentation.explanation}`);
+        options.setMessage(failureMessage(response.failure));
         options.setStatus('error');
         return;
       }

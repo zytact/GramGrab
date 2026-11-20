@@ -11,7 +11,7 @@ import {
 } from './download/contracts';
 import type { OperationFailure, RecoveryAction } from './errors/contracts';
 import { normalizeFrameFailure } from './errors/normalize';
-import { FAILURE_PRESENTATION, presentationForFailure } from './errors/presentation';
+import { failureMessage, FAILURE_PRESENTATION } from './errors/presentation';
 import { buildDiagnostics, buildWhatsAppDiagnostics } from './errors/diagnostics';
 import { processesVideo, type AttemptOperation, type DownloadAttempt } from './download/attempt';
 import { useDownloadAttempt } from './download/use-download-attempt';
@@ -57,12 +57,6 @@ type Status = 'idle' | 'fetching' | 'downloading' | 'done' | 'error';
 
 /** Reassurance appended when a redownload fails: the stored history entry is left untouched. */
 const HISTORY_KEPT = 'History was kept.';
-
-/** The one way the popup turns a failure into a sentence a person reads. */
-function failureMessage(failure: OperationFailure, suffix?: string): string {
-  const presentation = presentationForFailure(failure);
-  return `${presentation.title}. ${presentation.explanation}${suffix ? ` ${suffix}` : ''}`;
-}
 
 function exportCandidate(
   item: MediaItem,
