@@ -53,13 +53,14 @@ WhatsApp Web can sit on its loading screen for a minute after launch. Poll for
 `#side` instead of reading the page early.
 
 Pick a Status as `docs/whatsapp-live-verification.md` says: reposted or public
-content, nothing showing someone from the account owner's own life. Open one by
-clicking its row, pause it, and look before capturing:
+content, nothing showing someone from the account owner's own life. Open a
+row by clicking the `[role=button]` inside its `[role=listitem]`, pause it, and
+look before capturing:
 
 ```bash
 node $D eval "web.whatsapp.com" "document.querySelector('[aria-label=\"Pause\"]')?.click()"
 node $D shot "web.whatsapp.com" "$EV/viewer.png"   # read it, skip the Status if it shows a private person
-node $D eval "web.whatsapp.com" "document.querySelector('[aria-label=\"Next\"]')?.click()"   # or move on
+node $D eval "web.whatsapp.com" "document.querySelector('[aria-label=\"Next status\"]')?.click()"   # or move on
 ```
 
 Then open the real toolbar popup on that tab and capture:
