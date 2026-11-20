@@ -8,6 +8,7 @@ import {
 import {
   normalizeBrowserDownloadFailure,
   normalizeWhatsAppCaptureFailure,
+  normalizeWhatsAppEditFailure,
   normalizeWhatsAppSilentFailure,
 } from './normalize.ts';
 import { presentationForFailure, retryable, type FailurePresentation } from './presentation.ts';
@@ -114,39 +115,36 @@ describe('WhatsApp failure registry', () => {
     expect(retryable(format, 0)).toBe(false);
   });
 
-  it('uses edit-aware copy and re-capture recovery for retention expiry', () => {
-    const failure = normalizeWhatsAppCaptureFailure('retention-expired');
-    expect(failure).toMatchObject({
-      code: 'WHATSAPP_ACQUISITION_FAILED',
-      phase: 'whatsapp-extraction',
-      platform: 'whatsapp',
-      structuralEvidence: { invariant: 'retention-expired' },
-    });
+  it.each(['crop', 'rotation'] as const)(
+    'offers re-capture, not the original, when a WhatsApp %s fails',
+    edit => {
+      const failure = normalizeWhatsAppEditFailure(edit);
+      expect(failure).toMatchObject({ platform: 'whatsapp', phase: edit });
+      expect(presentationForFailure(failure)).toMatchObject({
+        actions: ['retry-operation', 'copy-diagnostics'],
+        retry: 'after-user-action',
+      });
+    }
+  );
+
+  it('offers re-capture when the browser cannot re-encode a WhatsApp video', () => {
+    const failure = normalizeWhatsAppSilentFailure(
+      'SILENT_H264_ENCODER_UNAVAILABLE',
+      'silent-reencode'
+    );
     expect(presentationForFailure(failure)).toMatchObject({
-      title: 'Editing session expired',
-      explanation:
-        'Your editing session expired after 10 minutes - capture the Visible Status again to continue.',
       actions: ['retry-operation'],
       retry: 'after-user-action',
     });
   });
 
-  it('keeps in-memory silent processing failures typed on the WhatsApp branch', () => {
-    const memory = normalizeWhatsAppSilentFailure(
-      'SILENT_MEMORY_CAPACITY_EXCEEDED',
-      'silent-reencode'
-    );
+  it('keeps silent processing failures typed on the WhatsApp branch', () => {
     const conversion = normalizeWhatsAppSilentFailure(
       'SILENT_SOURCE_CONVERSION_UNSUPPORTED',
       'silent-reencode'
     );
 
-    expect(memory).toMatchObject({
-      platform: 'whatsapp',
-      code: 'SILENT_MEMORY_CAPACITY_EXCEEDED',
-      phase: 'silent-reencode',
-    });
-    expect(presentationForFailure(memory).title).toBe('Not enough memory to remove audio');
+    expect(conversion).toMatchObject({ platform: 'whatsapp', phase: 'silent-reencode' });
     expect(presentationForFailure(conversion).actions).toEqual([
       'retry-operation',
       'copy-diagnostics',

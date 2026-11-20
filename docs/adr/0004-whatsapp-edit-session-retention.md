@@ -1,5 +1,7 @@
 # WhatsApp editing uses a flat, bounded in-memory lease
 
+Superseded by [ADR 0010](./0010-whatsapp-edits-like-other-media.md).
+
 Interactive editing changes the WhatsApp lifecycle from capture-then-download to
 capture-complete, edit session, and then download completion or lease expiry. The edit session owns
 the captured bytes in memory while a person previews, scrubs, or starts a terminal export.

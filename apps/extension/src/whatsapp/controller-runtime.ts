@@ -589,14 +589,12 @@ function isCancelReason(
 ): value is
   | 'user-cancelled'
   | 'popup-closed'
-  | 'timeout'
   | 'protocol-error'
   | 'tab-invalidated'
   | 'port-disconnected' {
   return (
     value === 'user-cancelled' ||
     value === 'popup-closed' ||
-    value === 'timeout' ||
     value === 'protocol-error' ||
     value === 'tab-invalidated' ||
     value === 'port-disconnected'
@@ -670,7 +668,6 @@ interface CancelMessage extends InboundBase {
   readonly reason:
     | 'user-cancelled'
     | 'popup-closed'
-    | 'timeout'
     | 'protocol-error'
     | 'tab-invalidated'
     | 'port-disconnected';

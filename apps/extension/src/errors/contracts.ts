@@ -73,7 +73,6 @@ export class WhatsAppStructuralEvidence extends Schema.Class<WhatsAppStructuralE
     'media-readiness',
     'guard-changed',
     'player-marker',
-    'retention-expired',
     'protocol',
     'unknown'
   ),
@@ -96,7 +95,6 @@ export class WhatsAppStructuralEvidence extends Schema.Class<WhatsAppStructuralE
   discardCompleted: Schema.Boolean,
   blobUrlCreated: Schema.Boolean,
   blobUrlRevoked: Schema.Boolean,
-  retentionCeilingArmed: Schema.Boolean,
 }) {}
 
 const InstagramFailureCodeSchema = Schema.Literal(
@@ -173,10 +171,12 @@ const WhatsAppCommonFailureCodeSchema = Schema.Literal(
   'BROWSER_DOWNLOAD_NETWORK_FAILED',
   'BROWSER_DOWNLOAD_FILE_FAILED',
   'DOWNLOAD_UNEXPECTED_FAILURE',
-  'SILENT_MEMORY_CAPACITY_EXCEEDED',
   'SILENT_SOURCE_NO_VIDEO',
   'SILENT_SOURCE_CONVERSION_UNSUPPORTED',
-  'SILENT_REENCODE_FAILED'
+  'SILENT_H264_ENCODER_UNAVAILABLE',
+  'SILENT_REENCODE_FAILED',
+  'ROTATION_FAILED',
+  'CROP_FAILED'
 );
 export type WhatsAppCommonFailureCode = Schema.Schema.Type<typeof WhatsAppCommonFailureCodeSchema>;
 
@@ -190,6 +190,8 @@ const WhatsAppFailurePhaseSchema = Schema.Literal(
   'browser-download',
   'silent-inspection',
   'silent-reencode',
+  'rotation',
+  'crop',
   'whatsapp-page-access',
   'whatsapp-extraction'
 );

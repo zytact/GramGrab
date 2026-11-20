@@ -32,17 +32,15 @@ Use Vite+ as the primary workflow surface: prefer `vp` commands over package-man
 
 ## WhatsApp acquisition
 
-`apps/extension/src/whatsapp/` acquires one **Visible Status** at a time and hands the bytes to an edit session. Its privacy constraints are binding on every change: `docs/whatsapp-privacy.md` is the contract, `docs/adr/0001`-`0004` record why. Load those before touching this path. The invariants that most often get broken by accident:
+`apps/extension/src/whatsapp/` acquires one **Visible Status** at a time and hands the bytes to an edit session that edits and exports like any other media. Its privacy constraints are binding on every change: `docs/whatsapp-privacy.md` is the contract, `docs/adr/0001`, `0002` and `0010` record why. Load those before touching this path. The invariants that most often get broken by accident:
 
 - Page reach is `activeTab` plus `scripting`. A WhatsApp host permission, persistent or optional, is out.
-- Captured bytes live in memory only. No `storage`, IndexedDB, OPFS, or filesystem.
-- One flat 10-minute edit lease from capture-complete. Interaction never resets or extends it, and terminal operations are pre-flight checked against the remaining lease.
 - WhatsApp diagnostics are a distinct structural-only type that cannot hold a URL, name, or identifier.
 - A WhatsApp history entry is a receipt, not a handle: no re-download affordance, no display name.
 
-Files: `contracts.ts` (Effect schemas for the port protocol), `controller-runtime.ts` (page side), `capture.ts` (extension side), `limits.ts` (bounds), plus `export.ts`, `mode.ts`, `mute.ts`, `lease.ts`.
+Files: `contracts.ts` (Effect schemas for the port protocol), `controller-runtime.ts` (page side), `capture.ts` (extension side), `limits.ts` (bounds), plus `export.ts` (edited exports through the shared frame, rotation, crop and video paths) and `mode.ts`.
 
-Synthetic tests are authoritative for every extension-owned boundary; `docs/whatsapp-boundary-coverage.md` maps boundary to test. `docs/whatsapp-live-verification.md` is a human-run procedure for browser facts tests cannot establish.
+Synthetic tests are authoritative for every extension-owned boundary; `docs/whatsapp-boundary-coverage.md` maps boundary to test. `docs/whatsapp-live-verification.md` is the agent-run procedure for browser facts tests cannot establish.
 
 ## Vendored Repositories
 

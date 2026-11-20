@@ -29,7 +29,6 @@ const structuralEvidence = {
   discardCompleted: true,
   blobUrlCreated: false,
   blobUrlRevoked: false,
-  retentionCeilingArmed: false,
 };
 
 const whatsAppFailure = {

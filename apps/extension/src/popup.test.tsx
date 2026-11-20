@@ -5,7 +5,8 @@ import { render, screen, waitFor, act, fireEvent, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import Popup from './popup';
 import * as whatsappCapture from './whatsapp/capture';
-import * as whatsappFrameExport from './whatsapp/export';
+import * as whatsappExport from './whatsapp/export';
+import { SilentPreflight } from './silent-video/contracts';
 import { DownloadAcceptedResult } from './download/contracts';
 import { WORKSPACE_TRANSFER_KEY } from './workspace/contracts';
 
@@ -160,7 +161,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 1_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -208,7 +208,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 12_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -216,7 +215,7 @@ describe('Popup', () => {
       release: vi.fn(),
     } as never);
     const frameExport = vi
-      .spyOn(whatsappFrameExport, 'exportWhatsAppFrame')
+      .spyOn(whatsappExport, 'exportWhatsAppStatus')
       .mockImplementation(async (_handle, operation) =>
         DownloadAcceptedResult.make({
           operationId: operation.operationId,
@@ -260,6 +259,135 @@ describe('Popup', () => {
     capture.mockRestore();
   });
 
+  it('rotates and crops a WhatsApp photo, turning the crop with it, and exports both', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'photo',
+        mimeType: 'image/jpeg',
+        byteLength: 1,
+        width: 1600,
+        height: 900,
+        capturedAt: 1,
+      },
+      snapshot: { objectUrl: () => 'blob:visible-status' },
+      filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+      download: vi.fn(),
+      release: vi.fn(),
+    } as never);
+    const editedExport = vi
+      .spyOn(whatsappExport, 'exportWhatsAppStatus')
+      .mockImplementation(async (_handle, operation) =>
+        DownloadAcceptedResult.make({
+          operationId: operation.operationId,
+          requestId: operation.requestId,
+          status: 'started',
+        })
+      );
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+    await user.click(screen.getByRole('button', { name: 'Crop item 01' }));
+    await user.click(screen.getByRole('button', { name: '1:1' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: /Rotate item 01/ }));
+    await user.click(screen.getByRole('button', { name: 'Crop item 01, cropped' }));
+    const turned = screen.getByRole('group', { name: /Crop area for item 01/ });
+    expect(turned.style.top).toBe('21.875%');
+    expect(turned.style.height).toBe('56.25%');
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
+    await waitFor(() => expect(editedExport).toHaveBeenCalledOnce());
+    expect(editedExport.mock.calls[0]?.[1]).toMatchObject({
+      mode: 'direct',
+      mediaType: 'image',
+      rotation: 90,
+      crop: { x: 0, y: 0.21875, width: 1, height: 0.5625 },
+    });
+
+    editedExport.mockRestore();
+    capture.mockRestore();
+  });
+
+  it.each([
+    ['Re-encode affected videos', 1],
+    ['Skip affected videos', 0],
+  ] as const)(
+    'asks before re-encoding a cropped WhatsApp video, then follows %s',
+    async (choice, exports) => {
+      mockBrowser.tabs.query.mockResolvedValue([
+        { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+      ]);
+      mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+      const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+        descriptor: {
+          captureId: '123e4567-e89b-42d3-a456-426614174000',
+          kind: 'video',
+          mimeType: 'video/mp4',
+          byteLength: 1,
+          width: 640,
+          height: 480,
+          durationMs: 12_000,
+          capturedAt: 1,
+        },
+        snapshot: { objectUrl: () => 'blob:visible-status' },
+        filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
+        download: vi.fn(),
+        release: vi.fn(),
+      } as never);
+      const candidate = vi
+        .spyOn(whatsappExport, 'whatsappReencodeCandidate')
+        .mockImplementation(async (_handle, operation) => ({
+          operation,
+          preflight: SilentPreflight.make({
+            operationId: operation.operationId,
+            requestId: operation.requestId,
+            audioTrackCount: 1,
+            videoCodec: 'avc',
+            durationSeconds: 12,
+            width: 640,
+            height: 480,
+            copyCompatible: true,
+          }),
+        }));
+      const editedExport = vi
+        .spyOn(whatsappExport, 'exportWhatsAppStatus')
+        .mockImplementation(async (_handle, operation) =>
+          DownloadAcceptedResult.make({
+            operationId: operation.operationId,
+            requestId: operation.requestId,
+            status: 'started',
+          })
+        );
+      const user = userEvent.setup();
+      await act(async () => render(<Popup />));
+
+      await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+      await user.click(screen.getByRole('button', { name: 'Crop item 01' }));
+      await user.click(screen.getByRole('button', { name: '1:1' }));
+      await user.click(screen.getByRole('button', { name: 'Done' }));
+      await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
+
+      expect(await screen.findByText(/Cropping a video re-encodes it\./)).toBeDefined();
+      await user.click(screen.getByRole('button', { name: choice }));
+      await waitFor(() => expect(editedExport).toHaveBeenCalledTimes(exports));
+      if (exports === 0) {
+        expect(await screen.findByText(/Re-encoding skipped/)).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Crop item 01, cropped' })).toBeDefined();
+      }
+
+      editedExport.mockRestore();
+      candidate.mockRestore();
+      capture.mockRestore();
+    }
+  );
+
   it('keeps the WhatsApp frame and remove-audio choices mutually exclusive', async () => {
     mockBrowser.tabs.query.mockResolvedValue([
       { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
@@ -275,7 +403,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 12_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -283,7 +410,7 @@ describe('Popup', () => {
       release: vi.fn(),
     } as never);
     const silentExport = vi
-      .spyOn(whatsappFrameExport, 'exportWhatsAppSilent')
+      .spyOn(whatsappExport, 'exportWhatsAppStatus')
       .mockImplementation(async (_handle, operation) =>
         DownloadAcceptedResult.make({
           operationId: operation.operationId,
@@ -342,7 +469,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 12_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -395,7 +521,6 @@ describe('Popup', () => {
         width: 640,
         height: 480,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
@@ -414,49 +539,6 @@ describe('Popup', () => {
     capture.mockRestore();
   });
 
-  it('shows edit-aware expiry copy and a re-capture action when the lease expires mid-edit', async () => {
-    mockBrowser.tabs.query.mockResolvedValue([
-      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
-    ]);
-    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
-    let expireLease: (() => void) | undefined;
-    const capture = vi
-      .spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus')
-      .mockImplementation(async options => {
-        expireLease = options?.onLeaseExpired;
-        return {
-          descriptor: {
-            captureId: '123e4567-e89b-42d3-a456-426614174000',
-            kind: 'photo',
-            mimeType: 'image/jpeg',
-            byteLength: 1,
-            width: 640,
-            height: 480,
-            capturedAt: 1,
-            retentionDeadline: 600_001,
-          },
-          snapshot: { objectUrl: () => 'blob:visible-status' },
-          filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
-          download: vi.fn(),
-          release: vi.fn(),
-        } as never;
-      });
-    const user = userEvent.setup();
-    await act(async () => render(<Popup />));
-    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
-
-    if (!expireLease) throw new Error('Expected the edit lease expiry callback.');
-    act(() => expireLease?.());
-
-    expect(await screen.findByRole('heading', { name: 'Editing session expired' })).toBeDefined();
-    expect(
-      screen.getByText(/editing session expired after 10 minutes.*capture.*again/i)
-    ).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Capture Visible Status again' })).toBeDefined();
-    expect(document.querySelector('.whatsapp-result-hero')).toBeNull();
-    capture.mockRestore();
-  });
-
   it('renders the existing placeholder when a captured Status cannot decode', async () => {
     mockBrowser.tabs.query.mockResolvedValue([
       { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
@@ -471,7 +553,6 @@ describe('Popup', () => {
         width: 640,
         height: 480,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
@@ -508,7 +589,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 1_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -517,7 +597,7 @@ describe('Popup', () => {
     } as never);
     let resolveExport: (() => void) | undefined;
     const frameExport = vi
-      .spyOn(whatsappFrameExport, 'exportWhatsAppFrame')
+      .spyOn(whatsappExport, 'exportWhatsAppStatus')
       .mockImplementation(async (_handle, operation) => {
         await new Promise<void>(resolve => {
           resolveExport = resolve;
@@ -543,6 +623,9 @@ describe('Popup', () => {
     expect(screen.getByRole('button', { name: /Downloading/i }).getAttribute('aria-busy')).toBe(
       'true'
     );
+    expect(
+      (screen.getByRole('button', { name: /Rotate item 01/ }) as HTMLButtonElement).disabled
+    ).toBe(true);
 
     if (!resolveExport) throw new Error('Expected frame export to be pending.');
     resolveExport();

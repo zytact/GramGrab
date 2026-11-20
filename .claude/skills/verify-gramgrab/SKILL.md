@@ -245,6 +245,7 @@ node $D targets                                   # every debuggable target
 node $D open "chrome-extension://$GRAMGRAB_EXT_ID/popup.html?surface=workspace"
 node $D activate "popup.html?surface"             # bring a page to the front
 node $D close-tab "options.html"                  # close a page as a person would; `close` shuts the browser
+node $D action "web.whatsapp.com"                 # open the toolbar popup on that tab, granting activeTab
 node $D type  "popup.html" "#source-url" "https://www.instagram.com/p/SHORTCODE/"
 node $D blur  "popup.html" "#source-url"
 node $D click "popup.html" ".fetch-row button"
@@ -316,11 +317,12 @@ Prefer these handles, which the source owns and tests already depend on:
 | All inbox filters    | `.opt-chip-filter[aria-label="Account"] button`, `.opt-chip-filter[aria-label="Media type"] button` |
 | WhatsApp panel       | `#whatsapp-title`, `#whatsapp-capture-title`       |
 
-One limit worth knowing before planning a run: anything gated on the _active
-tab_ cannot be driven this way. A popup opened as a tab is itself the active
-tab, so `tabs.query({active: true, currentWindow: true})` from a driven popup
-returns the popup. WhatsApp eligibility is the feature this blocks; see
-`features/whatsapp-status.md`.
+Anything gated on the _active tab_ needs the real toolbar popup. A popup
+opened as a tab is itself the active tab, so `tabs.query({active: true,
+currentWindow: true})` from it returns the popup. `node $D action <match>`
+opens the toolbar popup on the matching tab through CDP
+`Extensions.triggerAction`, which grants `activeTab` like a click on the icon.
+WhatsApp capture depends on it; see `features/whatsapp-status.md`.
 
 The service worker is a drivable target too, which is the fastest way to read
 browser state the UI does not show. Name it `js/background.js`: Chrome for
@@ -438,7 +440,7 @@ All are executable and take no arguments beyond what is shown above.
 | `scripts/launch.sh`  | Build and start the browser; `--restart` preserves an unchanged build                     |
 | `scripts/signin.sh`  | Launch with Instagram and WhatsApp Web open for a one-time sign-in     |
 | `scripts/doctor.mjs` | Six read-only health checks, non-zero exit on any failure              |
-| `scripts/drive.mjs`  | CDP client for opening, activating, closing, typing, clicking, pressing keys, dragging, choosing files, reading, and capturing pages |
+| `scripts/drive.mjs`  | CDP client for opening, activating, closing, opening the toolbar popup, typing, clicking, pressing keys, dragging, choosing files, reading, and capturing pages |
 | `scripts/throttle.mjs` | Answer the worker's matching Instagram requests with a status such as 429 |
 | `scripts/cleanup.sh` | Close the browser, remove run state, keep the profile and evidence     |
 

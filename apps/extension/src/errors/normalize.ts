@@ -169,7 +169,6 @@ function evidence(
     discardCompleted: true,
     blobUrlCreated: false,
     blobUrlRevoked: false,
-    retentionCeilingArmed: false,
   });
 }
 
@@ -243,11 +242,6 @@ const whatsappCaptureFailureMappings: Readonly<
     phase: 'whatsapp-extraction',
     invariant: 'unknown',
   },
-  'retention-expired': {
-    code: 'WHATSAPP_ACQUISITION_FAILED',
-    phase: 'whatsapp-extraction',
-    invariant: 'retention-expired',
-  },
 };
 
 export function normalizeWhatsAppCaptureFailure(
@@ -260,13 +254,17 @@ export function normalizeWhatsAppCaptureFailure(
 
 export function normalizeWhatsAppSilentFailure(
   code:
-    | 'SILENT_MEMORY_CAPACITY_EXCEEDED'
     | 'SILENT_SOURCE_NO_VIDEO'
     | 'SILENT_SOURCE_CONVERSION_UNSUPPORTED'
+    | 'SILENT_H264_ENCODER_UNAVAILABLE'
     | 'SILENT_REENCODE_FAILED',
   phase: 'silent-inspection' | 'silent-reencode'
 ): OperationFailure {
   return whatsappFailure(code, phase, 'unknown');
+}
+
+export function normalizeWhatsAppEditFailure(edit: 'rotation' | 'crop'): OperationFailure {
+  return whatsappFailure(edit === 'crop' ? 'CROP_FAILED' : 'ROTATION_FAILED', edit, 'unknown');
 }
 
 export function normalizeFrameFailure(reason: string, cause?: unknown): OperationFailure {

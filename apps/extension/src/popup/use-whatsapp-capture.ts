@@ -12,27 +12,24 @@ import {
   WhatsAppCaptureError,
   type WhatsAppCaptureHandle,
 } from '../whatsapp/capture';
+import type { ReencodeCandidate } from '../silent-video/batch';
 import {
-  exportWhatsAppFrame,
-  exportWhatsAppSilent,
-  whatsappSilentProgressMessage,
+  exportWhatsAppStatus,
+  whatsappExportProgressMessage,
+  whatsappReencodeCandidate,
 } from '../whatsapp/export';
-import {
-  DIRECT_EXPORT,
-  SILENT_EXPORT,
-  whatsappExportSelection,
-  type WhatsAppExportSelection,
-} from '../whatsapp/mode';
-import type { ItemRuntimes } from './media-item';
+import { whatsappExportSelection, type WhatsAppExportSelection } from '../whatsapp/mode';
 import { useFrameSeekEffect } from './use-frame-seek';
 import { useWhatsAppDisclosure } from './use-whatsapp-disclosure';
 import { useWhatsAppFrameEdit } from './use-whatsapp-frame-edit';
+import { useWhatsAppItemEdits } from './use-whatsapp-item-edits';
 import {
   captured,
   capturing,
   downloading,
   editOf,
   failed,
+  itemRuntimesOf,
   mediaListChoice,
   IDLE_WHATSAPP_CAPTURE,
   started,
@@ -63,17 +60,32 @@ function attemptOperation(
     ...(selection.mode === 'frame'
       ? { frameTimestampSeconds: selection.frameTimestampSeconds }
       : {}),
+    ...exportModifiers(edit),
   };
 }
 
-function downloadSelection(
+function exportModifiers({ item }: WhatsAppEdit) {
+  return {
+    ...(item.rotation ? { rotation: item.rotation } : {}),
+    ...(item.crop ? { crop: item.crop } : {}),
+  };
+}
+
+export type ApproveReencode = (
+  candidates: readonly ReencodeCandidate[]
+) => Promise<ReadonlySet<string>>;
+
+const REENCODE_DECLINED = 'reencode-declined';
+
+async function downloadSelection(
   handle: WhatsAppCaptureHandle,
   edit: WhatsAppEdit,
   operation: WhatsAppOperation,
-  onProgress: (message: string) => void
+  onProgress: (message: string) => void,
+  approveReencode: ApproveReencode
 ) {
   const selection = whatsappExportSelection(
-    { kind: handle.descriptor.kind },
+    { kind: handle.descriptor.kind, edited: Object.keys(exportModifiers(edit)).length > 0 },
     edit.exportChoice,
     handle.filename,
     frameFilename(
@@ -82,17 +94,28 @@ function downloadSelection(
     )
   );
   const operationForExport = attemptOperation(handle, edit, operation, selection);
-  switch (selection.mode) {
-    case 'direct':
-      return handle.download();
-    case 'frame':
-      return exportWhatsAppFrame(handle, operationForExport);
-    case 'silent':
-      return exportWhatsAppSilent(handle, operationForExport, (phase, progress) => {
-        const message = whatsappSilentProgressMessage(operationForExport, phase, progress);
-        if (message) onProgress(message);
-      });
-  }
+  const candidate = await whatsappReencodeCandidate(handle, operationForExport);
+  if (candidate && !(await approveReencode([candidate])).has(operationForExport.operationId))
+    return REENCODE_DECLINED;
+  return exportWhatsAppStatus(handle, operationForExport, (phase, progress) => {
+    const message = whatsappExportProgressMessage(operationForExport, phase, progress);
+    if (message) onProgress(message);
+  });
+}
+
+function settledState(
+  ready: Extract<WhatsAppCaptureState, { _tag: 'Ready' }>,
+  result: Awaited<ReturnType<typeof downloadSelection>>
+): WhatsAppCaptureState {
+  if (result === REENCODE_DECLINED)
+    return { ...ready, message: 'Re-encoding skipped. Change the export, or download again.' };
+  if ('status' in result && result.status === 'failed')
+    return failed(ready.operation, result.failure);
+  return started(
+    result.warning
+      ? WARNING_PRESENTATION[result.warning.code]
+      : 'Download started. The in-memory capture was released.'
+  );
 }
 
 function captureFailure(error: unknown): OperationFailure {
@@ -118,9 +141,11 @@ function downloadFailure(error: unknown): OperationFailure {
 export function useWhatsAppCapture({
   eligible,
   videoRefs,
+  approveReencode,
 }: {
   eligible: boolean;
   videoRefs: { current: Record<number, HTMLVideoElement | null> };
+  approveReencode: ApproveReencode;
 }) {
   const [state, setState] = useState<WhatsAppCaptureState>(IDLE_WHATSAPP_CAPTURE);
   const handleRef = useRef<WhatsAppCaptureHandle | undefined>(undefined);
@@ -147,6 +172,7 @@ export function useWhatsAppCapture({
     onAcknowledgeFailed,
   });
   const frameEdit = useWhatsAppFrameEdit({ edit, patchEdit, handleRef, videoRefs });
+  const itemEdits = useWhatsAppItemEdits(patchEdit);
   const resetFrameDefaults = frameEdit.resetFrameDefaults;
 
   useEffect(
@@ -170,8 +196,6 @@ export function useWhatsAppCapture({
       const handle = await captureWhatsAppVisibleStatus({
         operationId: operation.operationId,
         requestId: operation.requestId,
-        onLeaseExpired: () =>
-          setState(failed(operation, normalizeWhatsAppCaptureFailure('retention-expired'))),
       });
       handleRef.current?.release();
       handleRef.current = handle;
@@ -188,55 +212,27 @@ export function useWhatsAppCapture({
     const operation = state.operation;
     setState(downloading(state));
     try {
-      const result = await downloadSelection(handle, state.edit, operation, message =>
-        setState(previous => withDownloadProgress(previous, message))
+      const result = await downloadSelection(
+        handle,
+        state.edit,
+        operation,
+        message => setState(previous => withDownloadProgress(previous, message)),
+        approveReencode
       );
-      handleRef.current = undefined;
-      if ('status' in result && result.status === 'failed') {
-        setState(failed(operation, result.failure));
-        return;
-      }
-      setState(
-        started(
-          result.warning
-            ? WARNING_PRESENTATION[result.warning.code]
-            : 'Download started. The in-memory capture was released.'
-        )
-      );
+      if (result !== REENCODE_DECLINED) handleRef.current = undefined;
+      setState(settledState(state, result));
     } catch (error) {
       handleRef.current = undefined;
       setState(failed(operation, downloadFailure(error)));
     }
-  }, [state]);
-
-  const toggleRemoveAudio = useCallback(() => {
-    patchEdit(current => ({
-      ...current,
-      exportChoice: current.exportChoice.mode === 'silent' ? DIRECT_EXPORT : SILENT_EXPORT,
-    }));
-  }, [patchEdit]);
-
-  const toggleItem = useCallback(() => {
-    patchEdit(current => ({
-      ...current,
-      item: { ...current.item, selected: !current.item.selected },
-    }));
-  }, [patchEdit]);
+  }, [approveReencode, state]);
 
   const exportChoice = edit?.exportChoice;
   const { frameSettings, removeAudioIndexes } = useMemo(
     () => mediaListChoice(exportChoice),
     [exportChoice]
   );
-  const itemRuntimes = useMemo((): ItemRuntimes => {
-    if (!edit) return {};
-    return {
-      0: {
-        frame: edit.frameRuntime ?? { status: 'idle' },
-        preview: edit.previewFailed ? 'failed' : 'idle',
-      },
-    };
-  }, [edit]);
+  const itemRuntimes = useMemo(() => itemRuntimesOf(edit), [edit]);
   useFrameSeekEffect(frameSettings, itemRuntimes, videoRefs);
 
   return {
@@ -245,15 +241,14 @@ export function useWhatsAppCapture({
     itemRuntimes,
     frameSettings,
     removeAudioIndexes,
-    busy: state._tag === 'Capturing',
+    busy: state._tag === 'Capturing' || state._tag === 'Downloading',
     failure: state._tag === 'Failed' ? state.failure : undefined,
     acknowledge,
     dismissDisclosure: dismiss,
     reviewDisclosure: requireDisclosure,
     capture,
     download,
-    toggleItem,
-    toggleRemoveAudio,
+    ...itemEdits,
     toggleFrame: frameEdit.toggleFrame,
     changeFrameTimestamp: frameEdit.changeFrameTimestamp,
     setFrameDuration: frameEdit.setFrameDuration,

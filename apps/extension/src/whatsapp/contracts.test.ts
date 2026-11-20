@@ -61,7 +61,6 @@ describe('WhatsApp capture contracts', () => {
       width: WHATSAPP_MIN_DIMENSION,
       height: WHATSAPP_MIN_DIMENSION,
       capturedAt: 1,
-      retentionDeadline: 2,
     };
     expect(
       Either.isLeft(
@@ -114,7 +113,6 @@ describe('WhatsApp capture contracts', () => {
       width: WHATSAPP_MIN_DIMENSION,
       height: WHATSAPP_MAX_DIMENSION,
       capturedAt: 1,
-      retentionDeadline: 2,
     };
     expect(Either.isRight(decodeWhatsAppDescriptor(photo))).toBe(true);
     expect(

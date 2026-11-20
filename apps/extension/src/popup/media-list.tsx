@@ -50,6 +50,9 @@ export type MediaListActions = {
   onIntrinsicDimensions: (item: MediaItem, width: number, height: number) => void;
 };
 
+const showsFullPreview = (workspaceMode: boolean, layout: 'list' | 'hero') =>
+  workspaceMode || layout === 'hero';
+
 const turned = (ratio: number, rotation: MediaItem['rotation']) =>
   swapsAxes(rotation) ? 1 / ratio : ratio;
 
@@ -306,10 +309,9 @@ function MediaPreview({
   onIntrinsicDimensions,
   children,
 }: MediaPreviewProps) {
-  const previewStyle =
-    workspaceMode || layout === 'hero'
-      ? ({ '--media-ratio': displayRatio(item, runtime) } as CSSProperties)
-      : undefined;
+  const previewStyle = showsFullPreview(workspaceMode, layout)
+    ? ({ '--media-ratio': displayRatio(item, runtime) } as CSSProperties)
+    : undefined;
   const failed = runtime.preview === 'failed';
 
   return (
@@ -584,7 +586,7 @@ function MediaItemRow(props: MediaItemRowProps) {
           onVideoMetadata={onVideoMetadata}
           onIntrinsicDimensions={onIntrinsicDimensions}
         >
-          {workspaceMode && (editing || item.crop) && (
+          {showsFullPreview(workspaceMode, layout) && (editing || item.crop) && (
             <CropOverlay
               crop={item.crop}
               editing={editing}

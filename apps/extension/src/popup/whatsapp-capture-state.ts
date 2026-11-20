@@ -4,7 +4,7 @@ import { presentationForFailure } from '../errors/presentation';
 import type { FrameExportSetting } from '../frame-export/timestamp';
 import type { WhatsAppCaptureHandle } from '../whatsapp/capture';
 import { DIRECT_EXPORT, type WhatsAppExportChoice } from '../whatsapp/mode';
-import type { FrameRuntime, MediaItem } from './media-item';
+import type { FrameRuntime, ItemRuntimes, MediaItem } from './media-item';
 
 export type WhatsAppOperation = {
   readonly operationId: ReturnType<typeof createOperationId>;
@@ -19,6 +19,7 @@ export type WhatsAppOperation = {
 export type WhatsAppEdit = {
   readonly item: MediaItem;
   readonly exportChoice: WhatsAppExportChoice;
+  readonly cropping: boolean;
   readonly frameRuntime?: FrameRuntime;
   readonly previewFailed: boolean;
 };
@@ -98,6 +99,7 @@ export function captured(
         height: descriptor.height,
       },
       ...(descriptor.kind === 'video' ? { frameRuntime: { status: 'idle' as const } } : {}),
+      cropping: false,
       exportChoice: DIRECT_EXPORT,
       previewFailed: false,
     },
@@ -151,5 +153,15 @@ export function mediaListChoice(choice: WhatsAppExportChoice | undefined): {
         ? { 0: { enabled: true, timestampSeconds: choice.timestampSeconds } }
         : {},
     removeAudioIndexes: choice?.mode === 'silent' ? new Set([0]) : new Set(),
+  };
+}
+
+export function itemRuntimesOf(edit: WhatsAppEdit | undefined): ItemRuntimes {
+  if (!edit) return {};
+  return {
+    0: {
+      frame: edit.frameRuntime ?? { status: 'idle' },
+      preview: edit.previewFailed ? 'failed' : 'idle',
+    },
   };
 }

@@ -1,253 +1,239 @@
 import { Either, Schema } from 'effect';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { AttemptOperationSchema } from '../download/attempt.ts';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { AttemptOperationSchema, type AttemptOperation } from '../download/attempt.ts';
+import { OperationIdSchema, RequestIdSchema } from '../download/contracts.ts';
 import { getDownloadCalls, getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
-import { WhatsAppCaptureDescriptor } from './contracts.ts';
+import { modifyImage, rotateVideo } from '../rotation/media.ts';
+import { inspectSilentVideo, writeProcessedVideo } from '../silent-video/engine.ts';
 import { normalizeWhatsAppSilentFailure } from '../errors/normalize.ts';
+import { SilentPreflight } from '../silent-video/contracts.ts';
+import { WhatsAppCaptureDescriptor } from './contracts.ts';
 import { makeWhatsAppCaptureSnapshot } from './snapshot.ts';
-import { exportWhatsAppFrame, exportWhatsAppSilent } from './export.ts';
-import { createWhatsAppSilentVideo } from './mute.ts';
+import { exportWhatsAppStatus } from './export.ts';
 
 vi.mock('../frame-export/capture-source.ts', () => ({ captureFrameFromSource: vi.fn() }));
-vi.mock('./mute.ts', () => ({ createWhatsAppSilentVideo: vi.fn() }));
+vi.mock('../rotation/media.ts', () => ({ modifyImage: vi.fn(), rotateVideo: vi.fn() }));
+vi.mock('../silent-video/engine.ts', () => ({
+  inspectSilentVideo: vi.fn(),
+  writeProcessedVideo: vi.fn(),
+  validateProcessedVideo: vi.fn(),
+}));
 
-let revokeObjectUrl: ReturnType<typeof vi.fn<(url: string) => void>>;
-let createObjectUrl: ReturnType<typeof vi.spyOn>;
+const crop = { x: 0.1, y: 0.2, width: 0.5, height: 0.6 };
 
-const operation = Schema.decodeUnknownSync(AttemptOperationSchema)({
+const baseOperation = {
   operationId: '00000000-0000-4000-8000-000000000001',
   requestId: '00000000-0000-4000-8000-000000000002',
   itemIndex: 0,
   url: 'blob:captured-status',
   originalUrl: 'blob:captured-status',
   originalFilename: 'whatsapp-visible-status.mp4',
-  filename: 'whatsapp-visible-status_frame_00m01s.jpg',
+  filename: 'whatsapp-visible-status.mp4',
   mediaType: 'video',
-  mode: 'frame',
+  mode: 'direct',
   displayIndex: 0,
-  frameTimestampSeconds: 1,
-});
+};
 
-// Leases are checked against the wall clock, so deadlines must be relative to the
-// run. An absolute timestamp turns every lease-dependent test into a time bomb.
-const leaseDeadline = () => Date.now() + 10 * 60_000;
+const operationWith = (fields: Record<string, unknown>): AttemptOperation =>
+  Schema.decodeUnknownSync(AttemptOperationSchema)({ ...baseOperation, ...fields });
 
-const descriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
-  captureId: '123e4567-e89b-42d3-a456-426614174000',
-  kind: 'video',
-  mimeType: 'video/mp4',
-  byteLength: 3,
-  width: 640,
-  height: 480,
-  durationMs: 1_000,
-  capturedAt: 1,
-  retentionDeadline: leaseDeadline(),
-});
+const descriptorOf = (kind: 'photo' | 'video') =>
+  Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
+    captureId: '123e4567-e89b-42d3-a456-426614174000',
+    kind,
+    mimeType: kind === 'photo' ? 'image/jpeg' : 'video/mp4',
+    byteLength: 3,
+    width: 640,
+    height: 480,
+    ...(kind === 'video' ? { durationMs: 1_000 } : {}),
+    capturedAt: 1,
+  });
 
-describe('exportWhatsAppFrame', () => {
+function handleOf(kind: 'photo' | 'video') {
+  const descriptor = descriptorOf(kind);
+  const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
+  return {
+    captured: snapshot.blob,
+    handle: {
+      descriptor,
+      snapshot,
+      filename: 'whatsapp-visible-status',
+      download: async () => ({ downloadId: 1, filename: 'unused' }),
+      release: vi.fn(() => snapshot.release()),
+    },
+  };
+}
+
+let createdBlobs: Blob[];
+let revokeObjectUrl: ReturnType<typeof vi.fn<(url: string) => void>>;
+
+describe('exportWhatsAppStatus', () => {
   beforeEach(() => {
     resetBrowserMocks();
-    createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce('blob:exported-frame');
+    createdBlobs = [];
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
+      createdBlobs.push(blob as Blob);
+      return 'blob:edited-output';
+    });
     revokeObjectUrl = vi.fn<(url: string) => void>();
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeObjectUrl);
-    vi.mocked(captureFrameFromSource).mockResolvedValue(Either.right(new Blob(['frame'])));
-    vi.mocked(createWhatsAppSilentVideo).mockResolvedValue(
-      new Blob(['silent'], { type: 'video/mp4' })
-    );
-  });
-
-  afterEach(() => vi.useRealTimers());
-
-  it('releases the capture immediately and the frame URL when the download terminates', async () => {
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-    const captured = snapshot.blob;
-    const release = vi.fn(() => snapshot.release());
-    let resolveHistory: ((response: { saved: false }) => void) | undefined;
-    getMockBrowser().runtime.sendMessage.mockReturnValueOnce(
-      new Promise(resolve => {
-        resolveHistory = resolve;
+    vi.mocked(inspectSilentVideo).mockResolvedValue(
+      SilentPreflight.make({
+        operationId: OperationIdSchema.make(baseOperation.operationId),
+        requestId: RequestIdSchema.make(baseOperation.requestId),
+        audioTrackCount: 1,
+        videoCodec: 'avc',
+        durationSeconds: 1,
+        width: 640,
+        height: 480,
+        copyCompatible: true,
       })
     );
-
-    const exported = exportWhatsAppFrame(
-      {
-        descriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status.mp4',
-        download: async () => ({ downloadId: 1, filename: 'whatsapp-visible-status.mp4' }),
-        release,
-      },
-      operation
-    );
-
-    await vi.waitFor(() => expect(getDownloadCalls()).toHaveLength(1));
-    expect(captureFrameFromSource).toHaveBeenCalledWith(captured, operation.frameTimestampSeconds);
-    expect(release).toHaveBeenCalledOnce();
-    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:exported-frame');
-
-    const onChanged = getMockBrowser().downloads.onChanged.addListener.mock.calls[0]?.[0];
-    if (!onChanged) throw new Error('Expected a download listener.');
-    onChanged({ id: 1, state: { current: 'complete' } });
-    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:exported-frame');
-
-    if (!resolveHistory) throw new Error('Expected History persistence to be pending.');
-    resolveHistory({ saved: false });
-
-    await expect(exported).resolves.toMatchObject({
-      status: 'started',
-      warning: { code: 'HISTORY_SAVE_FAILED' },
+    vi.mocked(writeProcessedVideo).mockImplementation(async (_file, target) => {
+      Object.assign(target, { buffer: new ArrayBuffer(4) });
     });
   });
 
-  it('cancels an active frame download and releases its URL at the retention ceiling', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(descriptor.retentionDeadline - 60_000);
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-
-    await exportWhatsAppFrame(
-      {
-        descriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status.mp4',
-        download: async () => ({ downloadId: 1, filename: 'whatsapp-visible-status.mp4' }),
-        release: () => snapshot.release(),
-      },
-      operation
-    );
-
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(getMockBrowser().downloads.cancel).toHaveBeenCalledWith(1);
-    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:exported-frame');
-  });
-
-  it('mutes from the capture blob and uses a name-free muted filename', async () => {
-    createObjectUrl.mockReset().mockReturnValue('blob:silent-output');
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-    const inputBlob = snapshot.blob;
-    const release = vi.fn(() => snapshot.release());
-    const mutedOperation = {
-      ...operation,
-      mode: 'silent' as const,
-      filename: 'whatsapp-visible-status-20260811T000000Z-muted.mp4',
-    };
-
-    const result = await exportWhatsAppSilent(
-      {
-        descriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status-20260811T000000Z.mp4',
-        download: async () => ({ downloadId: 1, filename: 'unused.mp4' }),
-        release,
-      },
-      mutedOperation
-    );
-
-    expect(result.status).toBe('started');
-    expect(createWhatsAppSilentVideo).toHaveBeenCalledWith(inputBlob, {
-      retentionDeadline: descriptor.retentionDeadline,
+  it('downloads a photo turned and cropped from the captured bytes', async () => {
+    const { captured, handle } = handleOf('photo');
+    const edited = new Blob(['edited'], { type: 'image/jpeg' });
+    vi.mocked(modifyImage).mockResolvedValueOnce(edited);
+    const operation = operationWith({
+      mediaType: 'image',
+      filename: 'whatsapp-visible-status.jpg',
+      rotation: 90,
+      crop,
     });
+
+    const result = await exportWhatsAppStatus(handle, operation);
+
+    expect(result).toMatchObject({ status: 'started' });
+    expect(modifyImage).toHaveBeenCalledWith(captured, operation);
+    expect(createdBlobs).toEqual([edited]);
     expect(getDownloadCalls()).toEqual([
-      {
-        url: 'blob:silent-output',
-        filename: mutedOperation.filename,
-        saveAs: false,
-      },
+      { url: 'blob:edited-output', filename: 'whatsapp-visible-status.jpg', saveAs: false },
     ]);
-    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:silent-output');
-    expect(release).toHaveBeenCalledOnce();
-
+    expect(handle.release).toHaveBeenCalledOnce();
+    expect(revokeObjectUrl).not.toHaveBeenCalled();
     const onChanged = getMockBrowser().downloads.onChanged.addListener.mock.calls[0]?.[0];
-    if (!onChanged) throw new Error('Expected a silent download listener.');
-    onChanged({ id: 1, state: { current: 'complete' } });
-    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:silent-output');
+    onChanged?.({ id: 1, state: { current: 'complete' } });
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:edited-output');
+    expect(getMockBrowser().runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'RECORD_WHATSAPP_HISTORY',
+        receipt: expect.objectContaining({ mediaKind: 'photo' }),
+      })
+    );
   });
 
-  it('does not create or download silent output when the lease expires during conversion', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(descriptor.retentionDeadline - 60_000);
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-    const release = vi.fn(() => snapshot.release());
-    vi.mocked(createWhatsAppSilentVideo).mockImplementationOnce(async () => {
-      vi.setSystemTime(descriptor.retentionDeadline);
-      return new Blob(['silent'], { type: 'video/mp4' });
+  it.each([
+    ['direct', true],
+    ['silent', false],
+  ] as const)('re-encodes a %s video crop, keeping audio: %s', async (mode, keepAudio) => {
+    const { captured, handle } = handleOf('video');
+
+    const result = await exportWhatsAppStatus(handle, operationWith({ mode, rotation: 90, crop }));
+
+    expect(result).toMatchObject({ status: 'started' });
+    expect(writeProcessedVideo).toHaveBeenCalledWith(
+      captured,
+      expect.anything(),
+      1,
+      true,
+      { keepAudio, rotation: 90, crop },
+      expect.any(Function)
+    );
+    expect(createdBlobs[0]?.size).toBe(4);
+  });
+
+  it('hands an unedited direct export to the capture handle', async () => {
+    const { handle } = handleOf('video');
+    const download = vi.spyOn(handle, 'download');
+
+    await exportWhatsAppStatus(handle, operationWith({}));
+
+    expect(download).toHaveBeenCalledOnce();
+    expect(writeProcessedVideo).not.toHaveBeenCalled();
+  });
+
+  it('turns a direct video through its metadata and maps a failure to ROTATION_FAILED', async () => {
+    const { captured, handle } = handleOf('video');
+    vi.mocked(rotateVideo).mockResolvedValueOnce(new Blob(['turned'], { type: 'video/mp4' }));
+
+    await exportWhatsAppStatus(handle, operationWith({ rotation: 180 }));
+    expect(rotateVideo).toHaveBeenCalledWith(captured, 180);
+
+    vi.mocked(rotateVideo).mockRejectedValueOnce(new Error('codec'));
+    const failed = await exportWhatsAppStatus(
+      handleOf('video').handle,
+      operationWith({ rotation: 90 })
+    );
+    expect(failed).toMatchObject({
+      status: 'failed',
+      failure: { platform: 'whatsapp', code: 'ROTATION_FAILED', phase: 'rotation' },
+    });
+  });
+
+  it('turns and crops the exported frame', async () => {
+    const { captured, handle } = handleOf('video');
+    vi.mocked(captureFrameFromSource).mockResolvedValueOnce(Either.right(new Blob(['frame'])));
+    const operation = operationWith({
+      mode: 'frame',
+      frameTimestampSeconds: 1,
+      filename: 'whatsapp-visible-status_frame_00m01s.jpg',
+      rotation: 270,
+      crop,
     });
 
-    const result = await exportWhatsAppSilent(
-      {
-        descriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status.mp4',
-        download: async () => ({ downloadId: 1, filename: 'unused.mp4' }),
-        release,
-      },
-      { ...operation, mode: 'silent', filename: 'whatsapp-visible-status-muted.mp4' }
+    await exportWhatsAppStatus(handle, operation);
+
+    expect(captureFrameFromSource).toHaveBeenCalledWith(captured, 1, operation);
+    expect(getMockBrowser().runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ receipt: expect.objectContaining({ mediaKind: 'photo' }) })
     );
+  });
+
+  it('reports a failed crop as a structural WhatsApp failure and releases the capture', async () => {
+    const { handle } = handleOf('photo');
+    vi.mocked(modifyImage).mockRejectedValueOnce(new Error('canvas https://example.com/x.jpg'));
+
+    const result = await exportWhatsAppStatus(handle, operationWith({ mediaType: 'image', crop }));
 
     expect(result).toMatchObject({
       status: 'failed',
-      failure: { code: 'WHATSAPP_ACQUISITION_FAILED' },
+      failure: { platform: 'whatsapp', code: 'CROP_FAILED', phase: 'crop' },
     });
-    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain('example.com');
     expect(getDownloadCalls()).toHaveLength(0);
-    expect(release).toHaveBeenCalledOnce();
+    expect(handle.release).toHaveBeenCalledOnce();
   });
 
-  it('reports peak-memory refusal with the silent memory failure code', async () => {
-    const oversizedDescriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
-      captureId: '123e4567-e89b-42d3-a456-426614174000',
-      kind: 'video',
-      mimeType: 'video/mp4',
-      byteLength: 33 * 1024 * 1024,
-      width: 640,
-      height: 480,
-      durationMs: 1_000,
-      capturedAt: 1,
-      retentionDeadline: leaseDeadline(),
-    });
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-    const release = vi.fn(() => snapshot.release());
-
-    const result = await exportWhatsAppSilent(
-      {
-        descriptor: oversizedDescriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status.mp4',
-        download: async () => ({ downloadId: 1, filename: 'unused.mp4' }),
-        release,
-      },
-      { ...operation, mode: 'silent', filename: 'whatsapp-visible-status-muted.mp4' }
+  it('keeps a typed engine cause for a failed crop instead of calling it CROP_FAILED', async () => {
+    const { handle } = handleOf('video');
+    vi.mocked(writeProcessedVideo).mockRejectedValueOnce(
+      normalizeWhatsAppSilentFailure('SILENT_H264_ENCODER_UNAVAILABLE', 'silent-reencode')
     );
+
+    const result = await exportWhatsAppStatus(handle, operationWith({ crop }));
 
     expect(result).toMatchObject({
       status: 'failed',
-      failure: { platform: 'whatsapp', code: 'SILENT_MEMORY_CAPACITY_EXCEEDED' },
+      failure: { platform: 'whatsapp', code: 'SILENT_H264_ENCODER_UNAVAILABLE' },
     });
-    expect(createWhatsAppSilentVideo).not.toHaveBeenCalled();
-    expect(getDownloadCalls()).toHaveLength(0);
-    expect(release).toHaveBeenCalledOnce();
   });
 
-  it('preserves typed silent processing failures instead of normalizing them as downloads', async () => {
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-    vi.mocked(createWhatsAppSilentVideo).mockRejectedValueOnce(
-      normalizeWhatsAppSilentFailure('SILENT_REENCODE_FAILED', 'silent-reencode')
+  it('keeps a typed silent processing failure on the WhatsApp branch', async () => {
+    const { handle } = handleOf('video');
+    vi.mocked(writeProcessedVideo).mockRejectedValueOnce(
+      normalizeWhatsAppSilentFailure('SILENT_SOURCE_CONVERSION_UNSUPPORTED', 'silent-reencode')
     );
 
-    const result = await exportWhatsAppSilent(
-      {
-        descriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status.mp4',
-        download: async () => ({ downloadId: 1, filename: 'unused.mp4' }),
-        release: () => snapshot.release(),
-      },
-      { ...operation, mode: 'silent', filename: 'whatsapp-visible-status-muted.mp4' }
-    );
+    const result = await exportWhatsAppStatus(handle, operationWith({ mode: 'silent' }));
 
     expect(result).toMatchObject({
       status: 'failed',
-      failure: { platform: 'whatsapp', code: 'SILENT_REENCODE_FAILED' },
+      failure: { platform: 'whatsapp', code: 'SILENT_SOURCE_CONVERSION_UNSUPPORTED' },
     });
   });
 });

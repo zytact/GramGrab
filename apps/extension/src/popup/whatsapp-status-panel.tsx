@@ -52,10 +52,14 @@ export function WhatsAppStatusPanel({
     removeAudioIndexes: capture.removeAudioIndexes,
     attempt: undefined,
     emptyMessage: '',
+    ...(edit.cropping ? { cropIndex: edit.item.index } : {}),
   };
   const actions: MediaListActions = {
     onPreviewError: capture.previewError,
     onToggle: capture.toggleItem,
+    onRotate: capture.rotate,
+    onCrop: capture.toggleCrop,
+    onChangeCrop: capture.changeCrop,
     onToggleAll: capture.toggleItem,
     onToggleExportFrame: capture.toggleFrame,
     onToggleRemoveAudio: capture.toggleRemoveAudio,
@@ -73,8 +77,8 @@ export function WhatsAppStatusPanel({
       <section className="ext-section whatsapp-capture-section" aria-labelledby="whatsapp-title">
         <h1 id="whatsapp-title">Visible Status captured</h1>
         <p className="whatsapp-capture-copy">
-          This is the one photo or video that was visible when you captured it. It stays in memory
-          until the download starts, the edit lease expires, or you close GramGrab.
+          This is the one photo or video that was visible when you captured it. It stays here until
+          the download starts or you close GramGrab.
         </p>
       </section>
       <MediaListSection
@@ -100,6 +104,9 @@ export function WhatsAppStatusPanel({
             'Download Visible Status'
           )}
         </button>
+        <p className="whatsapp-capture-note" role="status">
+          {capture.state.message}
+        </p>
       </div>
     </>
   );
@@ -141,8 +148,8 @@ function WhatsAppCaptureReady({
     <WhatsAppCaptureShell title={presentation?.title ?? 'Capture the Visible Status'}>
       <p className="whatsapp-capture-copy">{state.message}</p>
       <p className="whatsapp-capture-note">
-        One click captures only the already-visible photo or video. The capture stays in memory for
-        this download and is then released.
+        One click captures only the already-visible photo or video. GramGrab holds it until you
+        download it or close the popup.
       </p>
       {canCaptureAgain(state, presentation) && (
         <button

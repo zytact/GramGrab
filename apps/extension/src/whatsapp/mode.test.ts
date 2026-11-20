@@ -5,7 +5,7 @@ describe('WhatsApp export mode', () => {
   it('derives mode and filename from the one chosen export', () => {
     expect(
       whatsappExportSelection(
-        { kind: 'video' },
+        { kind: 'video', edited: false },
         DIRECT_EXPORT,
         'visible-status.mp4',
         'visible-status-frame.jpg'
@@ -13,7 +13,7 @@ describe('WhatsApp export mode', () => {
     ).toEqual({ mode: 'direct', filename: 'visible-status.mp4' });
     expect(
       whatsappExportSelection(
-        { kind: 'video' },
+        { kind: 'video', edited: false },
         { mode: 'frame', timestampSeconds: 9 },
         'visible-status.mp4',
         'visible-status-frame.jpg'
@@ -25,7 +25,7 @@ describe('WhatsApp export mode', () => {
     });
     expect(
       whatsappExportSelection(
-        { kind: 'video' },
+        { kind: 'video', edited: false },
         SILENT_EXPORT,
         'visible-status.mp4',
         'visible-status-frame.jpg'
@@ -33,10 +33,21 @@ describe('WhatsApp export mode', () => {
     ).toEqual({ mode: 'silent', filename: 'visible-status-muted.mp4' });
   });
 
-  it('keeps photos plain-only', () => {
+  it('names an edited photo .jpg, since its edits re-encode it as JPEG', () => {
     expect(
       whatsappExportSelection(
-        { kind: 'photo' },
+        { kind: 'photo', edited: true },
+        DIRECT_EXPORT,
+        'visible-status.webp',
+        'visible-status-frame.jpg'
+      )
+    ).toEqual({ mode: 'direct', filename: 'visible-status.jpg' });
+  });
+
+  it('keeps photos direct-only', () => {
+    expect(
+      whatsappExportSelection(
+        { kind: 'photo', edited: false },
         { mode: 'frame', timestampSeconds: 3 },
         'visible-status.jpg',
         'visible-status-frame.jpg'

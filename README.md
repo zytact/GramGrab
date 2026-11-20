@@ -25,7 +25,7 @@ Operation failures use stable symbolic codes and action-led recovery. See [the e
 
 - **Visible Status capture.** Capture the photo or video Status currently open in WhatsApp Web, one click per capture
 - **Invocation-scoped access.** GramGrab reaches WhatsApp Web only through `activeTab`, so it can see the page only when you invoke it, never in the background
-- **Memory-only handling.** Captured bytes are never written to extension storage, and are released on download, on failure, on popup close, or at a flat 10-minute editing ceiling, whichever comes first
+- **Released when you are done.** GramGrab releases a capture when its download starts, when it fails, or when you close the popup
 - **Name-free output.** Filenames and history receipts carry no contact name or WhatsApp identifier, and WhatsApp receipts have no redownload button
 
 ### Shared
@@ -151,9 +151,9 @@ For Instants, skip the URL and click **Load Instants** in step 3.
 
 1. **Open the Status** you want in WhatsApp Web's Status viewer.
 2. **Click the GramGrab icon.** The popup detects the WhatsApp tab and offers Status capture instead of a URL field.
-3. **Click "Capture Visible Status".** GramGrab reads the photo or video currently on screen, then lets you preview it, export a frame, or drop the audio track before saving.
+3. **Click "Capture Visible Status".** GramGrab reads the photo or video currently on screen, then lets you preview it, rotate or crop it, export a frame, or drop the audio track before saving.
 
-> WhatsApp view receipts are controlled by WhatsApp. GramGrab causes no extra receipt and does not make viewing anonymous. Captures are kept in memory and expire 10 minutes after capture.
+> WhatsApp view receipts are controlled by WhatsApp. GramGrab causes no extra receipt and does not make viewing anonymous. GramGrab holds a capture until you download it or close the popup.
 
 ### Supported URL formats
 
@@ -220,7 +220,7 @@ GramGrab has two pages people use, a background worker, and two short-lived exec
 
 Shared domain code lives under `apps/extension/src/` (`effect/` for Instagram requests and schemas, plus focused modules for downloads, exports, history, errors, and the workspace). Cross-application wire contracts live in `packages/protocol`, which the optional local CLI (`apps/cli`) and native host (`apps/native-host`) share with the extension. Workspace handoff uses a versioned, short-lived, memory-only browser-session transfer, so a popup can open or replace a dedicated workspace tab without losing its current source, results, or export settings.
 
-> GramGrab does not use an application backend or third-party analytics service. The extension makes requests from your browser to Instagram endpoints and the `fbcdn.net` media CDN, using the browser's authenticated session where required. WhatsApp media is read from the page you are viewing and held in memory only. GramGrab stores download history in extension-local storage and keeps short-lived workspace handoff data only in memory-backed browser-session storage; media URLs and diagnostics can also exist transiently in active UI state.
+> GramGrab does not use an application backend or third-party analytics service. The extension makes requests from your browser to Instagram endpoints and the `fbcdn.net` media CDN, using the browser's authenticated session where required. WhatsApp media is read from the page you are viewing and held by the popup until you download it or close it. GramGrab stores download history in extension-local storage and keeps short-lived workspace handoff data only in memory-backed browser-session storage; media URLs and diagnostics can also exist transiently in active UI state.
 
 ---
 
@@ -284,7 +284,6 @@ To fix it:
   browser-session storage, which the browser clears when it closes.
 - **File formats.** Images and video frames are saved as `.jpg`, and videos, silent videos included, as `.mp4`.
 - **WhatsApp capture is one Status at a time.** GramGrab captures the Status currently open in the tab you invoked it on. There is no armed mode that follows you through a Status sequence, and the GramGrab workspace tab cannot be a capture surface.
-- **WhatsApp editing expires.** A capture is usable for 10 minutes from the moment it completes. Previewing or scrubbing does not extend that, and an export that would not finish in the remaining time is refused before it starts.
 - **WhatsApp view receipts.** Receipts are controlled by WhatsApp. GramGrab neither suppresses nor adds one.
 
 ---
