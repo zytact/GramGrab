@@ -484,6 +484,18 @@ const whatsappSharedPresentation: Readonly<Record<WhatsAppCommonFailureCode, Fai
       ['retry-operation', 'copy-diagnostics'],
       'after-user-action'
     ),
+    ROTATION_FAILED: policy(
+      'Could not rotate this Visible Status',
+      'Capture the Visible Status again or copy diagnostics.',
+      ['retry-operation', 'copy-diagnostics'],
+      'after-user-action'
+    ),
+    CROP_FAILED: policy(
+      'Could not crop this Visible Status',
+      'Capture the Visible Status again or copy diagnostics.',
+      ['retry-operation', 'copy-diagnostics'],
+      'after-user-action'
+    ),
   };
 
 export function presentationForFailure(failure: OperationFailure): FailurePresentation {

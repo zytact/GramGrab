@@ -38,7 +38,7 @@ Use Vite+ as the primary workflow surface: prefer `vp` commands over package-man
 - WhatsApp diagnostics are a distinct structural-only type that cannot hold a URL, name, or identifier.
 - A WhatsApp history entry is a receipt, not a handle: no re-download affordance, no display name.
 
-Files: `contracts.ts` (Effect schemas for the port protocol), `controller-runtime.ts` (page side), `capture.ts` (extension side), `limits.ts` (bounds), plus `export.ts`, `mode.ts`, `mute.ts`.
+Files: `contracts.ts` (Effect schemas for the port protocol), `controller-runtime.ts` (page side), `capture.ts` (extension side), `limits.ts` (bounds), plus `export.ts` (edited exports through the shared frame, rotation, crop and video paths) and `mode.ts`.
 
 Synthetic tests are authoritative for every extension-owned boundary; `docs/whatsapp-boundary-coverage.md` maps boundary to test. `docs/whatsapp-live-verification.md` is the agent-run procedure for browser facts tests cannot establish.
 

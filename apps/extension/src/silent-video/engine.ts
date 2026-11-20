@@ -11,6 +11,7 @@ import {
   QUALITY_VERY_HIGH,
   StreamTarget,
   type ConversionVideoOptions,
+  type Target,
   type CropRectangle,
   type InputVideoTrack,
 } from 'mediabunny';
@@ -47,7 +48,7 @@ const silentFailure = (
     ...(cause === undefined ? {} : { cause: diagnosticCause(cause) }),
   });
 
-function inputFromFile(file: File) {
+function inputFromFile(file: Blob) {
   return new Input({
     formats: ALL_FORMATS,
     source: new BlobSource(file, { maxCacheSize: 2 ** 21 }),
@@ -57,7 +58,7 @@ function inputFromFile(file: File) {
 export async function inspectSilentVideo(
   operationId: OperationId,
   requestId: RequestId,
-  file: File
+  file: Blob
 ): Promise<SilentPreflight> {
   const input = inputFromFile(file);
   try {
@@ -128,15 +129,15 @@ export async function processSilentVideo(
     throw silentFailure('SILENT_COPY_FAILED', 'silent-copy');
   const owned = await createOutput(operationId);
   try {
-    await processOutput(
+    await writeProcessedVideo(
       file,
-      owned.writable,
+      new StreamTarget(owned.writable),
       preflight.durationSeconds,
       transcode,
       edits,
       onProgress
     );
-    await validateOutput(owned.name, edits.keepAudio);
+    await validateProcessedVideo(await readOutput(owned.name), edits.keepAudio);
     return { opfsName: owned.name };
   } catch (error) {
     const failure = normalizeProcessingFailure(error, transcode);
@@ -145,16 +146,16 @@ export async function processSilentVideo(
   }
 }
 
-async function processOutput(
-  file: File,
-  writable: WritableStream,
+export async function writeProcessedVideo(
+  file: Blob,
+  target: Target,
   duration: number,
   transcode: boolean,
   edits: VideoEdits,
   onProgress: (progress: number) => void
 ): Promise<void> {
-  if (transcode) return transcodeVideo(file, writable, edits, onProgress);
-  return copyVideo(file, writable, duration, edits.rotation, onProgress);
+  if (transcode) return transcodeVideo(file, target, edits, onProgress);
+  return copyVideo(file, target, duration, edits.rotation, onProgress);
 }
 
 function normalizeProcessingFailure(error: unknown, transcode: boolean): OperationFailure {
@@ -172,8 +173,8 @@ export async function cleanFailedOutput(name: string, failure: OperationFailure)
 }
 
 async function copyVideo(
-  file: File,
-  writable: WritableStream,
+  file: Blob,
+  target: Target,
   duration: number,
   rotation: Rotation | undefined,
   onProgress: (progress: number) => void
@@ -184,7 +185,7 @@ async function copyVideo(
     const codec = await track?.getCodec();
     if (!track || !codec) throw silentFailure('SILENT_SOURCE_NO_VIDEO', 'silent-copy');
     const source = new EncodedVideoPacketSource(codec);
-    const output = new Output({ format: mp4, target: new StreamTarget(writable) });
+    const output = new Output({ format: mp4, target });
     output.addVideoTrack(source, {
       rotation: combineRotations(await track.getRotation(), rotation),
     });
@@ -227,8 +228,8 @@ async function videoConversion(
 }
 
 async function transcodeVideo(
-  file: File,
-  writable: WritableStream,
+  file: Blob,
+  target: Target,
   edits: VideoEdits,
   onProgress: (progress: number) => void
 ) {
@@ -238,7 +239,7 @@ async function transcodeVideo(
   try {
     const track = await input.getPrimaryVideoTrack();
     if (!track) throw silentFailure('SILENT_SOURCE_NO_VIDEO', 'silent-reencode');
-    const output = new Output({ format: mp4, target: new StreamTarget(writable) });
+    const output = new Output({ format: mp4, target });
     const conversion = await Conversion.init({
       input,
       output,
@@ -258,8 +259,8 @@ async function transcodeVideo(
   }
 }
 
-async function validateOutput(name: string, keepAudio: boolean): Promise<void> {
-  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(await readOutput(name)) });
+export async function validateProcessedVideo(file: Blob, keepAudio: boolean): Promise<void> {
+  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
   try {
     if (!(await input.getPrimaryVideoTrack()))
       throw silentFailure('SILENT_OUTPUT_NO_VIDEO', 'silent-validation');

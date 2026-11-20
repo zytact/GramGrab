@@ -5,7 +5,7 @@ import { render, screen, waitFor, act, fireEvent, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import Popup from './popup';
 import * as whatsappCapture from './whatsapp/capture';
-import * as whatsappFrameExport from './whatsapp/export';
+import * as whatsappExport from './whatsapp/export';
 import { DownloadAcceptedResult } from './download/contracts';
 import { WORKSPACE_TRANSFER_KEY } from './workspace/contracts';
 
@@ -214,7 +214,7 @@ describe('Popup', () => {
       release: vi.fn(),
     } as never);
     const frameExport = vi
-      .spyOn(whatsappFrameExport, 'exportWhatsAppFrame')
+      .spyOn(whatsappExport, 'exportWhatsAppEdited')
       .mockImplementation(async (_handle, operation) =>
         DownloadAcceptedResult.make({
           operationId: operation.operationId,
@@ -258,6 +258,62 @@ describe('Popup', () => {
     capture.mockRestore();
   });
 
+  it('rotates and crops a WhatsApp photo, turning the crop with it, and exports both', async () => {
+    mockBrowser.tabs.query.mockResolvedValue([
+      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
+    ]);
+    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
+    const capture = vi.spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus').mockResolvedValue({
+      descriptor: {
+        captureId: '123e4567-e89b-42d3-a456-426614174000',
+        kind: 'photo',
+        mimeType: 'image/jpeg',
+        byteLength: 1,
+        width: 1600,
+        height: 900,
+        capturedAt: 1,
+      },
+      snapshot: { objectUrl: () => 'blob:visible-status' },
+      filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
+      download: vi.fn(),
+      release: vi.fn(),
+    } as never);
+    const editedExport = vi
+      .spyOn(whatsappExport, 'exportWhatsAppEdited')
+      .mockImplementation(async (_handle, operation) =>
+        DownloadAcceptedResult.make({
+          operationId: operation.operationId,
+          requestId: operation.requestId,
+          status: 'started',
+        })
+      );
+    const user = userEvent.setup();
+    await act(async () => render(<Popup />));
+
+    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
+    await user.click(screen.getByRole('button', { name: 'Crop item 01' }));
+    await user.click(screen.getByRole('button', { name: '1:1' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: /Rotate item 01/ }));
+    await user.click(screen.getByRole('button', { name: 'Crop item 01, cropped' }));
+    const turned = screen.getByRole('group', { name: /Crop area for item 01/ });
+    expect(turned.style.top).toBe('21.875%');
+    expect(turned.style.height).toBe('56.25%');
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    await user.click(screen.getByRole('button', { name: 'Download Visible Status' }));
+    await waitFor(() => expect(editedExport).toHaveBeenCalledOnce());
+    expect(editedExport.mock.calls[0]?.[1]).toMatchObject({
+      mode: 'direct',
+      mediaType: 'image',
+      rotation: 90,
+      crop: { x: 0, y: 0.21875, width: 1, height: 0.5625 },
+    });
+
+    editedExport.mockRestore();
+    capture.mockRestore();
+  });
+
   it('keeps the WhatsApp frame and remove-audio choices mutually exclusive', async () => {
     mockBrowser.tabs.query.mockResolvedValue([
       { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
@@ -280,7 +336,7 @@ describe('Popup', () => {
       release: vi.fn(),
     } as never);
     const silentExport = vi
-      .spyOn(whatsappFrameExport, 'exportWhatsAppSilent')
+      .spyOn(whatsappExport, 'exportWhatsAppEdited')
       .mockImplementation(async (_handle, operation) =>
         DownloadAcceptedResult.make({
           operationId: operation.operationId,
@@ -467,7 +523,7 @@ describe('Popup', () => {
     } as never);
     let resolveExport: (() => void) | undefined;
     const frameExport = vi
-      .spyOn(whatsappFrameExport, 'exportWhatsAppFrame')
+      .spyOn(whatsappExport, 'exportWhatsAppEdited')
       .mockImplementation(async (_handle, operation) => {
         await new Promise<void>(resolve => {
           resolveExport = resolve;

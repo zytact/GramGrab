@@ -262,6 +262,10 @@ export function normalizeWhatsAppSilentFailure(
   return whatsappFailure(code, phase, 'unknown');
 }
 
+export function normalizeWhatsAppEditFailure(edit: 'rotation' | 'crop'): OperationFailure {
+  return whatsappFailure(edit === 'crop' ? 'CROP_FAILED' : 'ROTATION_FAILED', edit, 'unknown');
+}
+
 export function normalizeFrameFailure(reason: string, cause?: unknown): OperationFailure {
   const codes: Readonly<Record<string, InstagramFailureCode>> = {
     'no-duration': 'FRAME_METADATA_UNAVAILABLE',

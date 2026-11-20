@@ -173,7 +173,9 @@ const WhatsAppCommonFailureCodeSchema = Schema.Literal(
   'DOWNLOAD_UNEXPECTED_FAILURE',
   'SILENT_SOURCE_NO_VIDEO',
   'SILENT_SOURCE_CONVERSION_UNSUPPORTED',
-  'SILENT_REENCODE_FAILED'
+  'SILENT_REENCODE_FAILED',
+  'ROTATION_FAILED',
+  'CROP_FAILED'
 );
 export type WhatsAppCommonFailureCode = Schema.Schema.Type<typeof WhatsAppCommonFailureCodeSchema>;
 
@@ -187,6 +189,8 @@ const WhatsAppFailurePhaseSchema = Schema.Literal(
   'browser-download',
   'silent-inspection',
   'silent-reencode',
+  'rotation',
+  'crop',
   'whatsapp-page-access',
   'whatsapp-extraction'
 );

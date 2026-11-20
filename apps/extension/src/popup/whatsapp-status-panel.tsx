@@ -52,10 +52,14 @@ export function WhatsAppStatusPanel({
     removeAudioIndexes: capture.removeAudioIndexes,
     attempt: undefined,
     emptyMessage: '',
+    ...(edit.cropping ? { cropIndex: edit.item.index } : {}),
   };
   const actions: MediaListActions = {
     onPreviewError: capture.previewError,
     onToggle: capture.toggleItem,
+    onRotate: capture.rotate,
+    onCrop: capture.toggleCrop,
+    onChangeCrop: capture.changeCrop,
     onToggleAll: capture.toggleItem,
     onToggleExportFrame: capture.toggleFrame,
     onToggleRemoveAudio: capture.toggleRemoveAudio,

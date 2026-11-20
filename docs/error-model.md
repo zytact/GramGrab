@@ -112,8 +112,10 @@ It covers a direct read of an already-resolved media URL that failed for a reaso
 not classify, including a message this build could not read. A read whose request or response body
 fails in transit is `MEDIA_NETWORK_FAILED` instead, the same as the background worker's fetch.
 
-The WhatsApp silent-video path reuses the applicable `SILENT_*` processing codes and the
-`silent-inspection` / `silent-reencode` phases. WhatsApp failures retain structural diagnostics only;
+WhatsApp exports run through the shared frame, image, rotation and video paths. A failed video
+export maps to `SILENT_SOURCE_NO_VIDEO`, `SILENT_SOURCE_CONVERSION_UNSUPPORTED`, or
+`SILENT_REENCODE_FAILED` with the `silent-inspection` / `silent-reencode` phases, and any failed crop
+or rotation to `CROP_FAILED` or `ROTATION_FAILED` with the `crop` / `rotation` phase. WhatsApp failures retain structural diagnostics only;
 they never serialize mediabunny exceptions or arbitrary error text.
 Because WhatsApp capture bytes are released on terminal-operation failure, its `SILENT_*`
 presentations offer re-capture rather than the Instagram path's cached-original recovery.

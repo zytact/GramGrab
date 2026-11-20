@@ -1,20 +1,32 @@
 import { Either } from 'effect';
 import { DownloadAcceptedResult, DownloadFailedResult } from '../download/contracts.ts';
-import type { AttemptEntry, AttemptOperation } from '../download/attempt.ts';
-import { isOperationFailure, OperationWarning } from '../errors/contracts.ts';
+import {
+  isModifiedOperation,
+  type AttemptEntry,
+  type AttemptOperation,
+} from '../download/attempt.ts';
+import {
+  isOperationFailure,
+  OperationWarning,
+  type OperationFailure,
+} from '../errors/contracts.ts';
 import {
   normalizeBrowserDownloadFailure,
   normalizeWhatsAppCaptureFailure,
+  normalizeWhatsAppEditFailure,
+  normalizeWhatsAppSilentFailure,
 } from '../errors/normalize.ts';
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
 import { browser } from '../lib/browser.ts';
 import { sendMessage } from '../messaging/send.ts';
 import { revokeWhenSettled } from '../rotation/executor.ts';
-import type { WhatsAppCaptureHandle } from './capture.ts';
+import { modifyImage, rotateVideo } from '../rotation/media.ts';
 import { silentProgressMessage } from '../silent-video/progress.ts';
-import { createWhatsAppSilentVideo, type WhatsAppSilentProgress } from './mute.ts';
+import type { WhatsAppCaptureHandle } from './capture.ts';
 
-export function whatsappSilentProgressMessage(
+export type WhatsAppExportProgress = (phase: string, progress: number) => void;
+
+export function whatsappExportProgressMessage(
   operation: AttemptOperation,
   phase: string,
   progress: number
@@ -28,115 +40,95 @@ export function whatsappSilentProgressMessage(
   return silentProgressMessage([entry]);
 }
 
-export async function exportWhatsAppFrame(
-  handle: WhatsAppCaptureHandle,
-  operation: AttemptOperation
-) {
-  let frameUrl: string | undefined;
-  try {
-    const captured = await captureFrameFromSource(
-      handle.snapshot.blob,
-      operation.frameTimestampSeconds ?? 0
-    );
-    if (Either.isLeft(captured)) {
-      handle.release();
-      return DownloadFailedResult.make({
-        operationId: operation.operationId,
-        requestId: operation.requestId,
-        status: 'failed',
-        failure: normalizeWhatsAppCaptureFailure('transfer-failed'),
-      });
-    }
+function videoFailure(cause: unknown, operation: AttemptOperation): OperationFailure {
+  if (operation.crop) return normalizeWhatsAppEditFailure('crop');
+  if (isOperationFailure(cause) && cause.code === 'SILENT_SOURCE_NO_VIDEO')
+    return normalizeWhatsAppSilentFailure(cause.code, 'silent-inspection');
+  if (isOperationFailure(cause) && cause.code === 'SILENT_SOURCE_CONVERSION_UNSUPPORTED')
+    return normalizeWhatsAppSilentFailure(cause.code, 'silent-reencode');
+  return normalizeWhatsAppSilentFailure('SILENT_REENCODE_FAILED', 'silent-reencode');
+}
 
-    frameUrl = URL.createObjectURL(captured.right);
-    const downloadId = await browser.downloads.download({
-      url: frameUrl,
-      filename: operation.filename,
-      saveAs: false,
-    });
-    const pendingFrameUrl = frameUrl;
-    revokeWhenSettled(downloadId, pendingFrameUrl);
-    handle.release();
-    frameUrl = undefined;
-    const response = await sendMessage({
-      type: 'RECORD_WHATSAPP_HISTORY',
-      receipt: {
-        source: 'whatsapp',
-        mediaKind: 'photo',
-        timestamp: Date.now(),
-        savedFilename: operation.filename,
-        outcome: 'accepted',
-      },
-    }).catch(() => undefined);
-    return DownloadAcceptedResult.make({
-      operationId: operation.operationId,
-      requestId: operation.requestId,
-      status: 'started',
-      ...(response?.saved
-        ? {}
-        : { warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }) }),
-    });
+async function editedOutput(
+  source: Blob,
+  operation: AttemptOperation,
+  onProgress: WhatsAppExportProgress
+): Promise<Blob> {
+  if (operation.mode === 'frame') {
+    const frame = await captureFrameFromSource(
+      source,
+      operation.frameTimestampSeconds ?? 0,
+      operation
+    );
+    if (Either.isLeft(frame)) throw normalizeWhatsAppCaptureFailure('transfer-failed');
+    return frame.right;
+  }
+  if (isModifiedOperation(operation)) {
+    try {
+      return operation.mediaType === 'image'
+        ? await modifyImage(source, operation)
+        : await rotateVideo(source, operation.rotation);
+    } catch {
+      throw normalizeWhatsAppEditFailure(operation.crop ? 'crop' : 'rotation');
+    }
+  }
+  try {
+    const { processedVideo } = await import('./processed-video.ts');
+    return await processedVideo(source, operation, onProgress);
   } catch (cause) {
-    handle.release();
-    return DownloadFailedResult.make({
-      operationId: operation.operationId,
-      requestId: operation.requestId,
-      status: 'failed',
-      failure: normalizeBrowserDownloadFailure(cause, 'whatsapp'),
-    });
-  } finally {
-    if (frameUrl) URL.revokeObjectURL(frameUrl);
+    throw videoFailure(cause, operation);
   }
 }
 
-export async function exportWhatsAppSilent(
+async function recordReceipt(handle: WhatsAppCaptureHandle, operation: AttemptOperation) {
+  const response = await sendMessage({
+    type: 'RECORD_WHATSAPP_HISTORY',
+    receipt: {
+      source: 'whatsapp',
+      mediaKind: operation.mode === 'frame' ? 'photo' : handle.descriptor.kind,
+      timestamp: Date.now(),
+      savedFilename: operation.filename,
+      outcome: 'accepted',
+    },
+  }).catch(() => undefined);
+  return response?.saved ? undefined : OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
+}
+
+export async function exportWhatsAppEdited(
   handle: WhatsAppCaptureHandle,
   operation: AttemptOperation,
-  onProgress?: WhatsAppSilentProgress
+  onProgress: WhatsAppExportProgress = () => {}
 ) {
-  let silentUrl: string | undefined;
+  const ids = { operationId: operation.operationId, requestId: operation.requestId };
+  let url: string | undefined;
   try {
-    const silent = await createWhatsAppSilentVideo(handle.snapshot.blob, onProgress);
-    silentUrl = URL.createObjectURL(silent);
+    url = URL.createObjectURL(await editedOutput(handle.snapshot.blob, operation, onProgress));
     const downloadId = await browser.downloads.download({
-      url: silentUrl,
+      url,
       filename: operation.filename,
       saveAs: false,
     });
-    const pendingSilentUrl = silentUrl;
-    revokeWhenSettled(downloadId, pendingSilentUrl);
-    silentUrl = undefined;
+    const acceptedUrl = url;
+    revokeWhenSettled(downloadId, acceptedUrl);
+    url = undefined;
     handle.release();
-    onProgress?.('downloading', 1);
-    const response = await sendMessage({
-      type: 'RECORD_WHATSAPP_HISTORY',
-      receipt: {
-        source: 'whatsapp',
-        mediaKind: 'video',
-        timestamp: Date.now(),
-        savedFilename: operation.filename,
-        outcome: 'accepted',
-      },
-    }).catch(() => undefined);
+    onProgress('downloading', 1);
+    const warning = await recordReceipt(handle, operation);
     return DownloadAcceptedResult.make({
-      operationId: operation.operationId,
-      requestId: operation.requestId,
+      ...ids,
       status: 'started',
-      ...(response?.saved
-        ? {}
-        : { warning: OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' }) }),
+      ...(warning ? { warning } : {}),
     });
   } catch (cause) {
     handle.release();
     return DownloadFailedResult.make({
-      operationId: operation.operationId,
-      requestId: operation.requestId,
+      ...ids,
       status: 'failed',
       failure: isOperationFailure(cause)
         ? cause
         : normalizeBrowserDownloadFailure(cause, 'whatsapp'),
     });
   } finally {
-    if (silentUrl) URL.revokeObjectURL(silentUrl);
+    if (url) URL.revokeObjectURL(url);
   }
 }
