@@ -214,7 +214,7 @@ describe('Popup', () => {
       release: vi.fn(),
     } as never);
     const frameExport = vi
-      .spyOn(whatsappExport, 'exportWhatsAppEdited')
+      .spyOn(whatsappExport, 'exportWhatsAppStatus')
       .mockImplementation(async (_handle, operation) =>
         DownloadAcceptedResult.make({
           operationId: operation.operationId,
@@ -279,7 +279,7 @@ describe('Popup', () => {
       release: vi.fn(),
     } as never);
     const editedExport = vi
-      .spyOn(whatsappExport, 'exportWhatsAppEdited')
+      .spyOn(whatsappExport, 'exportWhatsAppStatus')
       .mockImplementation(async (_handle, operation) =>
         DownloadAcceptedResult.make({
           operationId: operation.operationId,
@@ -336,7 +336,7 @@ describe('Popup', () => {
       release: vi.fn(),
     } as never);
     const silentExport = vi
-      .spyOn(whatsappExport, 'exportWhatsAppEdited')
+      .spyOn(whatsappExport, 'exportWhatsAppStatus')
       .mockImplementation(async (_handle, operation) =>
         DownloadAcceptedResult.make({
           operationId: operation.operationId,
@@ -523,7 +523,7 @@ describe('Popup', () => {
     } as never);
     let resolveExport: (() => void) | undefined;
     const frameExport = vi
-      .spyOn(whatsappExport, 'exportWhatsAppEdited')
+      .spyOn(whatsappExport, 'exportWhatsAppStatus')
       .mockImplementation(async (_handle, operation) => {
         await new Promise<void>(resolve => {
           resolveExport = resolve;

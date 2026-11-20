@@ -8,6 +8,7 @@ import {
 import {
   normalizeBrowserDownloadFailure,
   normalizeWhatsAppCaptureFailure,
+  normalizeWhatsAppEditFailure,
   normalizeWhatsAppSilentFailure,
 } from './normalize.ts';
 import { presentationForFailure, retryable, type FailurePresentation } from './presentation.ts';
@@ -113,6 +114,18 @@ describe('WhatsApp failure registry', () => {
     expect(retryable(acquisition, 1)).toBe(false);
     expect(retryable(format, 0)).toBe(false);
   });
+
+  it.each(['crop', 'rotation'] as const)(
+    'offers re-capture, not the original, when a WhatsApp %s fails',
+    edit => {
+      const failure = normalizeWhatsAppEditFailure(edit);
+      expect(failure).toMatchObject({ platform: 'whatsapp', phase: edit });
+      expect(presentationForFailure(failure)).toMatchObject({
+        actions: ['retry-operation', 'copy-diagnostics'],
+        retry: 'after-user-action',
+      });
+    }
+  );
 
   it('keeps silent processing failures typed on the WhatsApp branch', () => {
     const conversion = normalizeWhatsAppSilentFailure(

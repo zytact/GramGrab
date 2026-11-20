@@ -6,7 +6,7 @@ import { AttemptOperationSchema } from '../download/attempt.ts';
 import { resetBrowserMocks } from '../test/setup.ts';
 import { WhatsAppCaptureDescriptor } from './contracts.ts';
 import { makeWhatsAppCaptureSnapshot } from './snapshot.ts';
-import { exportWhatsAppEdited } from './export.ts';
+import { exportWhatsAppStatus } from './export.ts';
 
 describe('WhatsApp silent export through the shared engine', () => {
   it('keeps the video track, turns it, and removes the audio track', async () => {
@@ -31,7 +31,7 @@ describe('WhatsApp silent export through the shared engine', () => {
       return 'blob:silent-output';
     });
 
-    const result = await exportWhatsAppEdited(
+    const result = await exportWhatsAppStatus(
       {
         descriptor,
         snapshot,
@@ -54,7 +54,7 @@ describe('WhatsApp silent export through the shared engine', () => {
       })
     );
 
-    expect(result.status).toBe('started');
+    expect(result).toMatchObject({ status: 'started' });
     if (!output) throw new Error('Expected a silent output.');
     const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(output) });
     try {

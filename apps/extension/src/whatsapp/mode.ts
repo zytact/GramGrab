@@ -1,5 +1,6 @@
 export type WhatsAppExportItem = {
   readonly kind: 'photo' | 'video';
+  readonly edited: boolean;
 };
 
 /**
@@ -19,10 +20,19 @@ export type WhatsAppExportSelection =
 export const DIRECT_EXPORT: WhatsAppExportChoice = { mode: 'direct' };
 export const SILENT_EXPORT: WhatsAppExportChoice = { mode: 'silent' };
 
-export function silentFilename(filename: string): string {
+function splitExtension(filename: string): readonly [stem: string, extension: string] {
   const extensionIndex = filename.lastIndexOf('.');
-  if (extensionIndex <= 0) return `${filename}-muted`;
-  return `${filename.slice(0, extensionIndex)}-muted${filename.slice(extensionIndex)}`;
+  if (extensionIndex <= 0) return [filename, ''];
+  return [filename.slice(0, extensionIndex), filename.slice(extensionIndex)];
+}
+
+export function silentFilename(filename: string): string {
+  const [stem, extension] = splitExtension(filename);
+  return `${stem}-muted${extension}`;
+}
+
+function jpegFilename(filename: string): string {
+  return `${splitExtension(filename)[0]}.jpg`;
 }
 
 export function whatsappExportSelection(
@@ -31,7 +41,11 @@ export function whatsappExportSelection(
   directFilename: string,
   frameFilename: string
 ): WhatsAppExportSelection {
-  if (item.kind === 'photo') return { mode: 'direct', filename: directFilename };
+  if (item.kind === 'photo')
+    return {
+      mode: 'direct',
+      filename: item.edited ? jpegFilename(directFilename) : directFilename,
+    };
   switch (choice.mode) {
     case 'frame':
       return {

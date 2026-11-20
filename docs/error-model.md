@@ -115,7 +115,9 @@ fails in transit is `MEDIA_NETWORK_FAILED` instead, the same as the background w
 WhatsApp exports run through the shared frame, image, rotation and video paths. A failed video
 export maps to `SILENT_SOURCE_NO_VIDEO`, `SILENT_SOURCE_CONVERSION_UNSUPPORTED`, or
 `SILENT_REENCODE_FAILED` with the `silent-inspection` / `silent-reencode` phases, and any failed crop
-or rotation to `CROP_FAILED` or `ROTATION_FAILED` with the `crop` / `rotation` phase. WhatsApp failures retain structural diagnostics only;
+or rotation to `CROP_FAILED` or `ROTATION_FAILED` with the `crop` / `rotation` phase. On the WhatsApp
+branch those two codes offer `retry-operation` and `copy-diagnostics` after a user action instead
+of `download-original`, because the failed export has already released the capture. WhatsApp failures retain structural diagnostics only;
 they never serialize mediabunny exceptions or arbitrary error text.
 Because WhatsApp capture bytes are released on terminal-operation failure, its `SILENT_*`
 presentations offer re-capture rather than the Instagram path's cached-original recovery.

@@ -1,14 +1,16 @@
 import { Either, Schema } from 'effect';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { AttemptOperationSchema, type AttemptOperation } from '../download/attempt.ts';
+import { OperationIdSchema, RequestIdSchema } from '../download/contracts.ts';
 import { getDownloadCalls, getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
-import { modifyImage } from '../rotation/media.ts';
+import { modifyImage, rotateVideo } from '../rotation/media.ts';
 import { inspectSilentVideo, writeProcessedVideo } from '../silent-video/engine.ts';
 import { normalizeWhatsAppSilentFailure } from '../errors/normalize.ts';
+import { SilentPreflight } from '../silent-video/contracts.ts';
 import { WhatsAppCaptureDescriptor } from './contracts.ts';
 import { makeWhatsAppCaptureSnapshot } from './snapshot.ts';
-import { exportWhatsAppEdited } from './export.ts';
+import { exportWhatsAppStatus } from './export.ts';
 
 vi.mock('../frame-export/capture-source.ts', () => ({ captureFrameFromSource: vi.fn() }));
 vi.mock('../rotation/media.ts', () => ({ modifyImage: vi.fn(), rotateVideo: vi.fn() }));
@@ -66,7 +68,7 @@ function handleOf(kind: 'photo' | 'video') {
 let createdBlobs: Blob[];
 let revokeObjectUrl: ReturnType<typeof vi.fn<(url: string) => void>>;
 
-describe('exportWhatsAppEdited', () => {
+describe('exportWhatsAppStatus', () => {
   beforeEach(() => {
     resetBrowserMocks();
     createdBlobs = [];
@@ -76,10 +78,18 @@ describe('exportWhatsAppEdited', () => {
     });
     revokeObjectUrl = vi.fn<(url: string) => void>();
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeObjectUrl);
-    vi.mocked(inspectSilentVideo).mockResolvedValue({
-      copyCompatible: true,
-      durationSeconds: 1,
-    } as never);
+    vi.mocked(inspectSilentVideo).mockResolvedValue(
+      SilentPreflight.make({
+        operationId: OperationIdSchema.make(baseOperation.operationId),
+        requestId: RequestIdSchema.make(baseOperation.requestId),
+        audioTrackCount: 1,
+        videoCodec: 'avc',
+        durationSeconds: 1,
+        width: 640,
+        height: 480,
+        copyCompatible: true,
+      })
+    );
     vi.mocked(writeProcessedVideo).mockImplementation(async (_file, target) => {
       Object.assign(target, { buffer: new ArrayBuffer(4) });
     });
@@ -96,9 +106,9 @@ describe('exportWhatsAppEdited', () => {
       crop,
     });
 
-    const result = await exportWhatsAppEdited(handle, operation);
+    const result = await exportWhatsAppStatus(handle, operation);
 
-    expect(result.status).toBe('started');
+    expect(result).toMatchObject({ status: 'started' });
     expect(modifyImage).toHaveBeenCalledWith(captured, operation);
     expect(createdBlobs).toEqual([edited]);
     expect(getDownloadCalls()).toEqual([
@@ -123,9 +133,9 @@ describe('exportWhatsAppEdited', () => {
   ] as const)('re-encodes a %s video crop, keeping audio: %s', async (mode, keepAudio) => {
     const { captured, handle } = handleOf('video');
 
-    const result = await exportWhatsAppEdited(handle, operationWith({ mode, rotation: 90, crop }));
+    const result = await exportWhatsAppStatus(handle, operationWith({ mode, rotation: 90, crop }));
 
-    expect(result.status).toBe('started');
+    expect(result).toMatchObject({ status: 'started' });
     expect(writeProcessedVideo).toHaveBeenCalledWith(
       captured,
       expect.anything(),
@@ -135,6 +145,34 @@ describe('exportWhatsAppEdited', () => {
       expect.any(Function)
     );
     expect(createdBlobs[0]?.size).toBe(4);
+  });
+
+  it('hands an unedited direct export to the capture handle', async () => {
+    const { handle } = handleOf('video');
+    const download = vi.spyOn(handle, 'download');
+
+    await exportWhatsAppStatus(handle, operationWith({}));
+
+    expect(download).toHaveBeenCalledOnce();
+    expect(writeProcessedVideo).not.toHaveBeenCalled();
+  });
+
+  it('turns a direct video through its metadata and maps a failure to ROTATION_FAILED', async () => {
+    const { captured, handle } = handleOf('video');
+    vi.mocked(rotateVideo).mockResolvedValueOnce(new Blob(['turned'], { type: 'video/mp4' }));
+
+    await exportWhatsAppStatus(handle, operationWith({ rotation: 180 }));
+    expect(rotateVideo).toHaveBeenCalledWith(captured, 180);
+
+    vi.mocked(rotateVideo).mockRejectedValueOnce(new Error('codec'));
+    const failed = await exportWhatsAppStatus(
+      handleOf('video').handle,
+      operationWith({ rotation: 90 })
+    );
+    expect(failed).toMatchObject({
+      status: 'failed',
+      failure: { platform: 'whatsapp', code: 'ROTATION_FAILED', phase: 'rotation' },
+    });
   });
 
   it('turns and crops the exported frame', async () => {
@@ -148,7 +186,7 @@ describe('exportWhatsAppEdited', () => {
       crop,
     });
 
-    await exportWhatsAppEdited(handle, operation);
+    await exportWhatsAppStatus(handle, operation);
 
     expect(captureFrameFromSource).toHaveBeenCalledWith(captured, 1, operation);
     expect(getMockBrowser().runtime.sendMessage).toHaveBeenCalledWith(
@@ -160,7 +198,7 @@ describe('exportWhatsAppEdited', () => {
     const { handle } = handleOf('photo');
     vi.mocked(modifyImage).mockRejectedValueOnce(new Error('canvas https://example.com/x.jpg'));
 
-    const result = await exportWhatsAppEdited(handle, operationWith({ mediaType: 'image', crop }));
+    const result = await exportWhatsAppStatus(handle, operationWith({ mediaType: 'image', crop }));
 
     expect(result).toMatchObject({
       status: 'failed',
@@ -177,7 +215,7 @@ describe('exportWhatsAppEdited', () => {
       normalizeWhatsAppSilentFailure('SILENT_SOURCE_CONVERSION_UNSUPPORTED', 'silent-reencode')
     );
 
-    const result = await exportWhatsAppEdited(handle, operationWith({ mode: 'silent' }));
+    const result = await exportWhatsAppStatus(handle, operationWith({ mode: 'silent' }));
 
     expect(result).toMatchObject({
       status: 'failed',

@@ -1,6 +1,7 @@
 import { Either } from 'effect';
 import { DownloadAcceptedResult, DownloadFailedResult } from '../download/contracts.ts';
 import {
+  executorFor,
   isModifiedOperation,
   type AttemptEntry,
   type AttemptOperation,
@@ -26,6 +27,8 @@ import type { WhatsAppCaptureHandle } from './capture.ts';
 
 export type WhatsAppExportProgress = (phase: string, progress: number) => void;
 
+type EditedExecutor = Exclude<ReturnType<typeof executorFor>, 'direct'>;
+
 export function whatsappExportProgressMessage(
   operation: AttemptOperation,
   phase: string,
@@ -49,34 +52,54 @@ function videoFailure(cause: unknown, operation: AttemptOperation): OperationFai
   return normalizeWhatsAppSilentFailure('SILENT_REENCODE_FAILED', 'silent-reencode');
 }
 
-async function editedOutput(
+async function frameOutput(source: Blob, operation: AttemptOperation): Promise<Blob> {
+  const frame = await captureFrameFromSource(
+    source,
+    operation.frameTimestampSeconds ?? 0,
+    operation
+  );
+  if (Either.isLeft(frame)) throw normalizeWhatsAppCaptureFailure('transfer-failed');
+  return frame.right;
+}
+
+async function modifiedOutput(source: Blob, operation: AttemptOperation): Promise<Blob> {
+  const failure = normalizeWhatsAppEditFailure(operation.crop ? 'crop' : 'rotation');
+  if (!isModifiedOperation(operation)) throw failure;
+  try {
+    return operation.mediaType === 'image'
+      ? await modifyImage(source, operation)
+      : await rotateVideo(source, operation.rotation);
+  } catch {
+    throw failure;
+  }
+}
+
+async function videoOutput(
   source: Blob,
   operation: AttemptOperation,
   onProgress: WhatsAppExportProgress
 ): Promise<Blob> {
-  if (operation.mode === 'frame') {
-    const frame = await captureFrameFromSource(
-      source,
-      operation.frameTimestampSeconds ?? 0,
-      operation
-    );
-    if (Either.isLeft(frame)) throw normalizeWhatsAppCaptureFailure('transfer-failed');
-    return frame.right;
-  }
-  if (isModifiedOperation(operation)) {
-    try {
-      return operation.mediaType === 'image'
-        ? await modifyImage(source, operation)
-        : await rotateVideo(source, operation.rotation);
-    } catch {
-      throw normalizeWhatsAppEditFailure(operation.crop ? 'crop' : 'rotation');
-    }
-  }
   try {
     const { processedVideo } = await import('./processed-video.ts');
     return await processedVideo(source, operation, onProgress);
   } catch (cause) {
     throw videoFailure(cause, operation);
+  }
+}
+
+function editedOutput(
+  source: Blob,
+  operation: AttemptOperation,
+  executor: EditedExecutor,
+  onProgress: WhatsAppExportProgress
+): Promise<Blob> {
+  switch (executor) {
+    case 'frame':
+      return frameOutput(source, operation);
+    case 'modified':
+      return modifiedOutput(source, operation);
+    case 'video':
+      return videoOutput(source, operation, onProgress);
   }
 }
 
@@ -94,15 +117,28 @@ async function recordReceipt(handle: WhatsAppCaptureHandle, operation: AttemptOp
   return response?.saved ? undefined : OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
 }
 
-export async function exportWhatsAppEdited(
+export function exportWhatsAppStatus(
   handle: WhatsAppCaptureHandle,
   operation: AttemptOperation,
   onProgress: WhatsAppExportProgress = () => {}
 ) {
+  const executor = executorFor(operation);
+  if (executor === 'direct') return handle.download();
+  return exportEdited(handle, operation, executor, onProgress);
+}
+
+async function exportEdited(
+  handle: WhatsAppCaptureHandle,
+  operation: AttemptOperation,
+  executor: EditedExecutor,
+  onProgress: WhatsAppExportProgress
+) {
   const ids = { operationId: operation.operationId, requestId: operation.requestId };
   let url: string | undefined;
   try {
-    url = URL.createObjectURL(await editedOutput(handle.snapshot.blob, operation, onProgress));
+    url = URL.createObjectURL(
+      await editedOutput(handle.snapshot.blob, operation, executor, onProgress)
+    );
     const downloadId = await browser.downloads.download({
       url,
       filename: operation.filename,

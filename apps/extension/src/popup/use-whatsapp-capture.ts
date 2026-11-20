@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { executorFor, type AttemptOperation } from '../download/attempt';
+import type { AttemptOperation } from '../download/attempt';
 import type { OperationFailure } from '../errors/contracts';
 import { WARNING_PRESENTATION } from '../errors/presentation';
 import {
@@ -12,7 +12,7 @@ import {
   WhatsAppCaptureError,
   type WhatsAppCaptureHandle,
 } from '../whatsapp/capture';
-import { exportWhatsAppEdited, whatsappExportProgressMessage } from '../whatsapp/export';
+import { exportWhatsAppStatus, whatsappExportProgressMessage } from '../whatsapp/export';
 import { whatsappExportSelection, type WhatsAppExportSelection } from '../whatsapp/mode';
 import { useFrameSeekEffect } from './use-frame-seek';
 import { useWhatsAppDisclosure } from './use-whatsapp-disclosure';
@@ -55,8 +55,14 @@ function attemptOperation(
     ...(selection.mode === 'frame'
       ? { frameTimestampSeconds: selection.frameTimestampSeconds }
       : {}),
-    ...(edit.item.rotation ? { rotation: edit.item.rotation } : {}),
-    ...(edit.item.crop ? { crop: edit.item.crop } : {}),
+    ...exportModifiers(edit),
+  };
+}
+
+function exportModifiers({ item }: WhatsAppEdit) {
+  return {
+    ...(item.rotation ? { rotation: item.rotation } : {}),
+    ...(item.crop ? { crop: item.crop } : {}),
   };
 }
 
@@ -67,7 +73,7 @@ function downloadSelection(
   onProgress: (message: string) => void
 ) {
   const selection = whatsappExportSelection(
-    { kind: handle.descriptor.kind },
+    { kind: handle.descriptor.kind, edited: Object.keys(exportModifiers(edit)).length > 0 },
     edit.exportChoice,
     handle.filename,
     frameFilename(
@@ -76,8 +82,7 @@ function downloadSelection(
     )
   );
   const operationForExport = attemptOperation(handle, edit, operation, selection);
-  if (executorFor(operationForExport) === 'direct') return handle.download();
-  return exportWhatsAppEdited(handle, operationForExport, (phase, progress) => {
+  return exportWhatsAppStatus(handle, operationForExport, (phase, progress) => {
     const message = whatsappExportProgressMessage(operationForExport, phase, progress);
     if (message) onProgress(message);
   });
