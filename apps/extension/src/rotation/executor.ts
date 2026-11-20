@@ -35,7 +35,7 @@ async function modify(media: Blob, operation: ModifiedOperation) {
 }
 
 /** Frees a document-made download's bytes once the browser stops reading them. */
-function revokeWhenSettled(downloadId: number, url: string): void {
+export function revokeWhenSettled(downloadId: number, url: string): void {
   const release = () => {
     browser.downloads.onChanged.removeListener(listener);
     URL.revokeObjectURL(url);

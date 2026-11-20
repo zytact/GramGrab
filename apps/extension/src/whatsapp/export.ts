@@ -9,6 +9,7 @@ import {
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
 import { browser } from '../lib/browser.ts';
 import { sendMessage } from '../messaging/send.ts';
+import { revokeWhenSettled } from '../rotation/executor.ts';
 import type { WhatsAppCaptureHandle } from './capture.ts';
 import { silentProgressMessage } from '../silent-video/progress.ts';
 import { createWhatsAppSilentVideo, type WhatsAppSilentProgress } from './mute.ts';
@@ -25,19 +26,6 @@ export function whatsappSilentProgressMessage(
     manualRetryCount: 0,
   };
   return silentProgressMessage([entry]);
-}
-
-function monitorAcceptedDownload(downloadId: number, onTerminal: () => void): void {
-  const onChanged = (delta: { id: number; state?: { current?: string } }) => {
-    if (
-      delta.id !== downloadId ||
-      (delta.state?.current !== 'complete' && delta.state?.current !== 'interrupted')
-    )
-      return;
-    browser.downloads.onChanged.removeListener(onChanged);
-    onTerminal();
-  };
-  browser.downloads.onChanged.addListener(onChanged);
 }
 
 export async function exportWhatsAppFrame(
@@ -67,7 +55,7 @@ export async function exportWhatsAppFrame(
       saveAs: false,
     });
     const pendingFrameUrl = frameUrl;
-    monitorAcceptedDownload(downloadId, () => URL.revokeObjectURL(pendingFrameUrl));
+    revokeWhenSettled(downloadId, pendingFrameUrl);
     handle.release();
     frameUrl = undefined;
     const response = await sendMessage({
@@ -116,7 +104,7 @@ export async function exportWhatsAppSilent(
       saveAs: false,
     });
     const pendingSilentUrl = silentUrl;
-    monitorAcceptedDownload(downloadId, () => URL.revokeObjectURL(pendingSilentUrl));
+    revokeWhenSettled(downloadId, pendingSilentUrl);
     silentUrl = undefined;
     handle.release();
     onProgress?.('downloading', 1);

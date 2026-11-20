@@ -47,7 +47,6 @@ const CaptureFailureReason = Schema.Literal(
 const CancelReason = Schema.Literal(
   'user-cancelled',
   'popup-closed',
-  'timeout',
   'protocol-error',
   'tab-invalidated',
   'port-disconnected'
