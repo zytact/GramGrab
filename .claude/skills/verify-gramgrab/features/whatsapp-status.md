@@ -91,6 +91,9 @@ node $D eval "popup.html" "(async () => { let copied; navigator.clipboard.writeT
   name-free filename, and History gains a receipt with no re-download.
 - Advancement race: advancing the viewer mid-capture yields either the originally
   guarded item or `WHATSAPP_STATUS_CHANGED`. Never the next Status.
+- Cleanup: after the download starts, the hero is gone and the popup offers
+  `Capture another Visible Status`. Closing the popup mid-capture leaves no
+  download behind and the next capture starts clean.
 
 ## Gotchas
 

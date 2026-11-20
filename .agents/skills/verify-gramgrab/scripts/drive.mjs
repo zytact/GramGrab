@@ -257,14 +257,22 @@ if (command === 'targets') {
   const [match] = rest;
   const extensionId = process.env.GRAMGRAB_EXT_ID;
   if (!match || !extensionId) fail('Usage: GRAMGRAB_EXT_ID=<id> drive.mjs action <match>');
-  const info = await fetch(`${base}/json/version`).then(response => response.json());
-  await session({ webSocketDebuggerUrl: info.webSocketDebuggerUrl }, async call => {
+  const popupIds = async () =>
+    new Set((await targets()).filter(target => target.url.endsWith('popup.html')).map(target => target.id));
+  if ((await popupIds()).size > 0)
+    fail('Close the open popup.html pages first, or later `popup.html` commands drive the wrong one.');
+  const browserInfo = await fetch(`${base}/json/version`).then(response => response.json());
+  await session({ webSocketDebuggerUrl: browserInfo.webSocketDebuggerUrl }, async call => {
     const { targetInfos } = await call('Target.getTargets', { filter: [{ type: 'tab' }] });
-    const tab = targetInfos.find(info => info.url.includes(match));
+    const tab = targetInfos.find(target => target.url.includes(match));
     if (!tab) fail(`No tab matching ${JSON.stringify(match)}.`);
     await call('Extensions.triggerAction', { id: extensionId, targetId: tab.targetId });
   });
-  await findTarget('popup.html');
+  const deadline = Date.now() + 10_000;
+  while ((await popupIds()).size === 0) {
+    if (Date.now() > deadline) fail('The toolbar popup did not open.');
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
   process.stdout.write(`popup on ${match}\n`);
 } else if (command === 'eval') {
   const [match, expression] = rest;
