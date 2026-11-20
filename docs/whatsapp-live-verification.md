@@ -46,8 +46,8 @@ command.
 | Shown scrub frame equals saved frame  | Enable `Frame` on a video and scrub to a non-zero timestamp. The preview seeks there, and the saved JPEG shows the same frame.                                                  |
 | Muted export has no audio track       | Enable `Remove audio` on a video and download. The saved MP4 has a video track and no audio track.                                                                              |
 | Advancement race                      | Advance or close the viewer while capture is acquiring. The result is either the originally guarded item or `WHATSAPP_STATUS_CHANGED`, never the next Status.                   |
-| Cleanup after accepted download       | The captured bytes and the extension-created blob URL are released after the download starts.                                                                                   |
-| Cleanup after cancellation or failure | Close the popup or the viewer during capture. Bytes are discarded and any extension-created blob URL is revoked.                                                                |
+| Cleanup after accepted download       | The popup releases the captured bytes and the extension-created blob URL once the download starts. Nothing hands the capture to the workspace or the service worker.            |
+| Cleanup after cancellation or failure | Close the popup, the tab, or the viewer during capture. Bytes are discarded and any extension-created blob URL is revoked.                                                      |
 
 The harness drives Chromium. Firefox parity is unproven until a harness drives it.
 

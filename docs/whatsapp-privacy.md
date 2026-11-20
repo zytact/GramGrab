@@ -2,7 +2,7 @@
 
 These constraints govern acquisition and editing of a WhatsApp **Visible Status**. They are binding on every ticket and change that touches the WhatsApp path. Where a constraint can be made unrepresentable in the type system it must be, and runtime tests cover only the edges types cannot reach.
 
-The structural decisions live in [ADR 0001](./adr/0001-activetab-for-whatsapp-page-access.md) and [ADR 0002](./adr/0002-structural-only-whatsapp-diagnostics.md). [ADR 0010](./adr/0010-whatsapp-edits-like-other-media.md) lifted the editing limits that [ADR 0004](./adr/0004-whatsapp-edit-session-retention.md) set: a captured Status now edits and exports like any other media.
+The structural decisions live in [ADR 0001](./adr/0001-activetab-for-whatsapp-page-access.md) and [ADR 0002](./adr/0002-structural-only-whatsapp-diagnostics.md). [ADR 0010](./adr/0010-whatsapp-edits-like-other-media.md) lifted the editing limits that [ADR 0004](./adr/0004-whatsapp-edit-session-retention.md) set, so a captured Status now edits and exports like any other media.
 
 ## Page access
 
@@ -18,7 +18,7 @@ View receipts are controlled by WhatsApp. GramGrab causes no additional receipt 
 
 ## Media handling
 
-The page transfer is bounded: one captured item, the 64MB media cap, bounded chunks, and the transfer, idle, and absolute acquisition timers. Once capture completes, the bytes belong to the popup's edit session. Editing and export use the same paths as other media, including their temporary OPFS files.
+The page transfer is bounded: one captured item, the 64MB media cap, bounded chunks, and the transfer, idle, and absolute acquisition timers. Once capture completes, the bytes belong to the popup's edit session. Editing and export use the same code as other media, and no WhatsApp-only rule keeps that code out of storage.
 
 The popup releases captured bytes and their blob URLs when the download starts or completes, when a capture or export fails, when a new capture replaces them, and when the popup or tab closes. There is no edit lease.
 

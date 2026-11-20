@@ -141,8 +141,8 @@ function WhatsAppCaptureReady({
     <WhatsAppCaptureShell title={presentation?.title ?? 'Capture the Visible Status'}>
       <p className="whatsapp-capture-copy">{state.message}</p>
       <p className="whatsapp-capture-note">
-        One click captures only the already-visible photo or video. The capture stays in memory for
-        this download and is then released.
+        One click captures only the already-visible photo or video. GramGrab holds it until you
+        download it or close the popup.
       </p>
       {canCaptureAgain(state, presentation) && (
         <button
