@@ -104,6 +104,9 @@ export function WhatsAppStatusPanel({
             'Download Visible Status'
           )}
         </button>
+        <p className="whatsapp-capture-note" role="status">
+          {capture.state.message}
+        </p>
       </div>
     </>
   );

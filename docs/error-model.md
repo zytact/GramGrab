@@ -112,12 +112,17 @@ It covers a direct read of an already-resolved media URL that failed for a reaso
 not classify, including a message this build could not read. A read whose request or response body
 fails in transit is `MEDIA_NETWORK_FAILED` instead, the same as the background worker's fetch.
 
-WhatsApp exports run through the shared frame, image, rotation and video paths. A failed video
-export maps to `SILENT_SOURCE_NO_VIDEO`, `SILENT_SOURCE_CONVERSION_UNSUPPORTED`, or
-`SILENT_REENCODE_FAILED` with the `silent-inspection` / `silent-reencode` phases, and any failed crop
-or rotation to `CROP_FAILED` or `ROTATION_FAILED` with the `crop` / `rotation` phase. On the WhatsApp
-branch those two codes offer `retry-operation` and `copy-diagnostics` after a user action instead
-of `download-original`, because the failed export has already released the capture. WhatsApp failures retain structural diagnostics only;
+WhatsApp exports run through the shared frame, image, rotation and video paths. A video export
+that fails for a typed cause keeps it: `SILENT_SOURCE_NO_VIDEO`, `SILENT_SOURCE_CONVERSION_UNSUPPORTED`,
+or `SILENT_H264_ENCODER_UNAVAILABLE`. Any other failed video crop is `CROP_FAILED`, and any other
+failed video export is `SILENT_REENCODE_FAILED`. A failed photo crop or rotation, or a rotated
+direct video, is `CROP_FAILED` or `ROTATION_FAILED` with the `crop` / `rotation` phase. A failed
+frame export, edited or not, stays `WHATSAPP_ACQUISITION_FAILED`. On the WhatsApp branch
+`CROP_FAILED` and `ROTATION_FAILED` offer `retry-operation` and `copy-diagnostics` after a user
+action instead of `download-original`, because the failed export has already released the
+capture, and `SILENT_H264_ENCODER_UNAVAILABLE` offers no retry. Before any re-encode, the popup
+asks with the same dialog Instagram exports use; skipping keeps the capture and its edits.
+WhatsApp failures retain structural diagnostics only;
 they never serialize mediabunny exceptions or arbitrary error text.
 Because WhatsApp capture bytes are released on terminal-operation failure, its `SILENT_*`
 presentations offer re-capture rather than the Instagram path's cached-original recovery.

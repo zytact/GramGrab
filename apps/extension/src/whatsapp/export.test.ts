@@ -209,6 +209,20 @@ describe('exportWhatsAppStatus', () => {
     expect(handle.release).toHaveBeenCalledOnce();
   });
 
+  it('keeps a typed engine cause for a failed crop instead of calling it CROP_FAILED', async () => {
+    const { handle } = handleOf('video');
+    vi.mocked(writeProcessedVideo).mockRejectedValueOnce(
+      normalizeWhatsAppSilentFailure('SILENT_H264_ENCODER_UNAVAILABLE', 'silent-reencode')
+    );
+
+    const result = await exportWhatsAppStatus(handle, operationWith({ crop }));
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      failure: { platform: 'whatsapp', code: 'SILENT_H264_ENCODER_UNAVAILABLE' },
+    });
+  });
+
   it('keeps a typed silent processing failure on the WhatsApp branch', async () => {
     const { handle } = handleOf('video');
     vi.mocked(writeProcessedVideo).mockRejectedValueOnce(

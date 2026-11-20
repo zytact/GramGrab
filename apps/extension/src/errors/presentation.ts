@@ -484,6 +484,11 @@ const whatsappSharedPresentation: Readonly<Record<WhatsAppCommonFailureCode, Fai
       ['retry-operation', 'copy-diagnostics'],
       'after-user-action'
     ),
+    SILENT_H264_ENCODER_UNAVAILABLE: policy(
+      'This browser cannot re-encode video',
+      'Download the Visible Status without the edit that needs a re-encode.',
+      []
+    ),
     ROTATION_FAILED: policy(
       'Could not rotate this Visible Status',
       'Capture the Visible Status again or copy diagnostics.',

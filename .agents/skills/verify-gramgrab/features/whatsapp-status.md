@@ -18,8 +18,10 @@ current WhatsApp Web and the browser actually do.
   `activeTab`, then a bounded chunk protocol over a `tabs.connect` port.
 - Edit session: a single hero item held until download or popup close.
   Rotate, Crop, Frame and Remove audio work the same as elsewhere. Crop edits
-  in place on the hero, with no workspace handoff, and a video crop re-encodes
-  without the Instagram re-encode dialog.
+  in place on the hero, with no workspace handoff. Before a video crop, or a
+  Remove audio that cannot be stream-copied, the popup asks with the same
+  `Some videos require re-encoding` dialog as Instagram. `Skip affected videos`
+  keeps the capture and its edits and shows `Re-encoding skipped`.
 - Receipts: history gains a receipt with no name and no re-download.
 - Diagnostics: a structural-only type that cannot hold a URL, name, or
   identifier.
@@ -85,6 +87,7 @@ node $D click "popup.html" 'button[aria-label^="Crop item 01"]'
 node $D eval "popup.html" "[...document.querySelectorAll('.crop-toolbar button')].find(b => b.textContent.trim() === '1:1').click()"
 node $D eval "popup.html" "[...document.querySelectorAll('.crop-toolbar button')].find(b => b.textContent.trim() === 'Done').click()"
 node $D click "popup.html" ".whatsapp-result-hero ~ .ext-section .btn"
+node $D eval "popup.html" "[...document.querySelectorAll('.quality-dialog button')].find(b => b.textContent.trim() === 'Re-encode affected videos')?.click()"   # video crop
 ```
 
 Read the saved file back rather than trusting its name. `file` prints a JPEG's

@@ -142,7 +142,27 @@ export default function Popup() {
   const pendingFrameDefaults = useRef(new Set<number>());
   const clearAttemptRef = useRef<() => void>(() => {});
 
-  const whatsapp = useWhatsAppCapture({ eligible: whatsappActive, videoRefs });
+  const requestReencodeApproval = useCallback(
+    (candidates: readonly ReencodeCandidate[]) =>
+      new Promise<ReadonlySet<string>>(resolve =>
+        setReencodeChoice({
+          candidates,
+          resolve: approved =>
+            resolve(
+              approved
+                ? new Set(candidates.map(candidate => candidate.operation.operationId))
+                : new Set()
+            ),
+        })
+      ),
+    []
+  );
+
+  const whatsapp = useWhatsAppCapture({
+    eligible: whatsappActive,
+    videoRefs,
+    approveReencode: requestReencodeApproval,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -383,22 +403,6 @@ export default function Popup() {
         operations,
       }),
     [acquisition, fetchedUrl, url]
-  );
-
-  const requestReencodeApproval = useCallback(
-    (candidates: readonly ReencodeCandidate[]) =>
-      new Promise<ReadonlySet<string>>(resolve =>
-        setReencodeChoice({
-          candidates,
-          resolve: approved =>
-            resolve(
-              approved
-                ? new Set(candidates.map(candidate => candidate.operation.operationId))
-                : new Set()
-            ),
-        })
-      ),
-    []
   );
 
   const settleReencodeChoice = useCallback((approved: boolean) => {

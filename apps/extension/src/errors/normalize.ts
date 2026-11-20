@@ -256,6 +256,7 @@ export function normalizeWhatsAppSilentFailure(
   code:
     | 'SILENT_SOURCE_NO_VIDEO'
     | 'SILENT_SOURCE_CONVERSION_UNSUPPORTED'
+    | 'SILENT_H264_ENCODER_UNAVAILABLE'
     | 'SILENT_REENCODE_FAILED',
   phase: 'silent-inspection' | 'silent-reencode'
 ): OperationFailure {

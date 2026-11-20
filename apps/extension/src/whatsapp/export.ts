@@ -23,6 +23,7 @@ import { sendMessage } from '../messaging/send.ts';
 import { revokeWhenSettled } from '../rotation/executor.ts';
 import { modifyImage, rotateVideo } from '../rotation/media.ts';
 import { silentProgressMessage } from '../silent-video/progress.ts';
+import type { ReencodeCandidate } from '../silent-video/batch.ts';
 import type { WhatsAppCaptureHandle } from './capture.ts';
 
 export type WhatsAppExportProgress = (phase: string, progress: number) => void;
@@ -43,12 +44,19 @@ export function whatsappExportProgressMessage(
   return silentProgressMessage([entry]);
 }
 
+const TYPED_VIDEO_CAUSES = {
+  SILENT_SOURCE_NO_VIDEO: 'silent-inspection',
+  SILENT_SOURCE_CONVERSION_UNSUPPORTED: 'silent-reencode',
+  SILENT_H264_ENCODER_UNAVAILABLE: 'silent-reencode',
+} as const;
+
+const isTypedVideoCause = (code: string): code is keyof typeof TYPED_VIDEO_CAUSES =>
+  code in TYPED_VIDEO_CAUSES;
+
 function videoFailure(cause: unknown, operation: AttemptOperation): OperationFailure {
+  if (isOperationFailure(cause) && isTypedVideoCause(cause.code))
+    return normalizeWhatsAppSilentFailure(cause.code, TYPED_VIDEO_CAUSES[cause.code]);
   if (operation.crop) return normalizeWhatsAppEditFailure('crop');
-  if (isOperationFailure(cause) && cause.code === 'SILENT_SOURCE_NO_VIDEO')
-    return normalizeWhatsAppSilentFailure(cause.code, 'silent-inspection');
-  if (isOperationFailure(cause) && cause.code === 'SILENT_SOURCE_CONVERSION_UNSUPPORTED')
-    return normalizeWhatsAppSilentFailure(cause.code, 'silent-reencode');
   return normalizeWhatsAppSilentFailure('SILENT_REENCODE_FAILED', 'silent-reencode');
 }
 
@@ -115,6 +123,15 @@ async function recordReceipt(handle: WhatsAppCaptureHandle, operation: AttemptOp
     },
   }).catch(() => undefined);
   return response?.saved ? undefined : OperationWarning.make({ code: 'HISTORY_SAVE_FAILED' });
+}
+
+export async function whatsappReencodeCandidate(
+  handle: WhatsAppCaptureHandle,
+  operation: AttemptOperation
+): Promise<ReencodeCandidate | undefined> {
+  if (executorFor(operation) !== 'video') return undefined;
+  const { reencodeCandidate } = await import('./processed-video.ts');
+  return reencodeCandidate(handle.snapshot.blob, operation).catch(() => undefined);
 }
 
 export function exportWhatsAppStatus(

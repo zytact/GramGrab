@@ -12,7 +12,12 @@ import {
   WhatsAppCaptureError,
   type WhatsAppCaptureHandle,
 } from '../whatsapp/capture';
-import { exportWhatsAppStatus, whatsappExportProgressMessage } from '../whatsapp/export';
+import type { ReencodeCandidate } from '../silent-video/batch';
+import {
+  exportWhatsAppStatus,
+  whatsappExportProgressMessage,
+  whatsappReencodeCandidate,
+} from '../whatsapp/export';
 import { whatsappExportSelection, type WhatsAppExportSelection } from '../whatsapp/mode';
 import { useFrameSeekEffect } from './use-frame-seek';
 import { useWhatsAppDisclosure } from './use-whatsapp-disclosure';
@@ -66,11 +71,18 @@ function exportModifiers({ item }: WhatsAppEdit) {
   };
 }
 
-function downloadSelection(
+export type ApproveReencode = (
+  candidates: readonly ReencodeCandidate[]
+) => Promise<ReadonlySet<string>>;
+
+const REENCODE_DECLINED = 'reencode-declined';
+
+async function downloadSelection(
   handle: WhatsAppCaptureHandle,
   edit: WhatsAppEdit,
   operation: WhatsAppOperation,
-  onProgress: (message: string) => void
+  onProgress: (message: string) => void,
+  approveReencode: ApproveReencode
 ) {
   const selection = whatsappExportSelection(
     { kind: handle.descriptor.kind, edited: Object.keys(exportModifiers(edit)).length > 0 },
@@ -82,6 +94,9 @@ function downloadSelection(
     )
   );
   const operationForExport = attemptOperation(handle, edit, operation, selection);
+  const candidate = await whatsappReencodeCandidate(handle, operationForExport);
+  if (candidate && !(await approveReencode([candidate])).has(operationForExport.operationId))
+    return REENCODE_DECLINED;
   return exportWhatsAppStatus(handle, operationForExport, (phase, progress) => {
     const message = whatsappExportProgressMessage(operationForExport, phase, progress);
     if (message) onProgress(message);
@@ -89,10 +104,13 @@ function downloadSelection(
 }
 
 function settledState(
-  operation: WhatsAppOperation,
+  ready: Extract<WhatsAppCaptureState, { _tag: 'Ready' }>,
   result: Awaited<ReturnType<typeof downloadSelection>>
 ): WhatsAppCaptureState {
-  if ('status' in result && result.status === 'failed') return failed(operation, result.failure);
+  if (result === REENCODE_DECLINED)
+    return { ...ready, message: 'Re-encoding skipped. Change the export, or download again.' };
+  if ('status' in result && result.status === 'failed')
+    return failed(ready.operation, result.failure);
   return started(
     result.warning
       ? WARNING_PRESENTATION[result.warning.code]
@@ -123,9 +141,11 @@ function downloadFailure(error: unknown): OperationFailure {
 export function useWhatsAppCapture({
   eligible,
   videoRefs,
+  approveReencode,
 }: {
   eligible: boolean;
   videoRefs: { current: Record<number, HTMLVideoElement | null> };
+  approveReencode: ApproveReencode;
 }) {
   const [state, setState] = useState<WhatsAppCaptureState>(IDLE_WHATSAPP_CAPTURE);
   const handleRef = useRef<WhatsAppCaptureHandle | undefined>(undefined);
@@ -192,16 +212,20 @@ export function useWhatsAppCapture({
     const operation = state.operation;
     setState(downloading(state));
     try {
-      const result = await downloadSelection(handle, state.edit, operation, message =>
-        setState(previous => withDownloadProgress(previous, message))
+      const result = await downloadSelection(
+        handle,
+        state.edit,
+        operation,
+        message => setState(previous => withDownloadProgress(previous, message)),
+        approveReencode
       );
-      handleRef.current = undefined;
-      setState(settledState(operation, result));
+      if (result !== REENCODE_DECLINED) handleRef.current = undefined;
+      setState(settledState(state, result));
     } catch (error) {
       handleRef.current = undefined;
       setState(failed(operation, downloadFailure(error)));
     }
-  }, [state]);
+  }, [approveReencode, state]);
 
   const exportChoice = edit?.exportChoice;
   const { frameSettings, removeAudioIndexes } = useMemo(

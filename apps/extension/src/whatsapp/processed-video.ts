@@ -1,11 +1,24 @@
 import { BufferTarget } from 'mediabunny';
 import type { AttemptOperation } from '../download/attempt.ts';
+import type { SilentPreflight } from '../silent-video/contracts.ts';
+import type { ReencodeCandidate } from '../silent-video/batch.ts';
 import {
   inspectSilentVideo,
   validateProcessedVideo,
   writeProcessedVideo,
 } from '../silent-video/engine.ts';
 import type { WhatsAppExportProgress } from './export.ts';
+
+const transcodes = (operation: AttemptOperation, preflight: SilentPreflight) =>
+  operation.crop !== undefined || !preflight.copyCompatible;
+
+export async function reencodeCandidate(
+  source: Blob,
+  operation: AttemptOperation
+): Promise<ReencodeCandidate | undefined> {
+  const preflight = await inspectSilentVideo(operation.operationId, operation.requestId, source);
+  return transcodes(operation, preflight) ? { operation, preflight } : undefined;
+}
 
 export async function processedVideo(
   source: Blob,
@@ -20,7 +33,7 @@ export async function processedVideo(
     source,
     target,
     preflight.durationSeconds,
-    operation.crop !== undefined || !preflight.copyCompatible,
+    transcodes(operation, preflight),
     {
       keepAudio,
       ...(operation.rotation ? { rotation: operation.rotation } : {}),
