@@ -241,7 +241,7 @@ export function useWhatsAppCapture({
     itemRuntimes,
     frameSettings,
     removeAudioIndexes,
-    busy: state._tag === 'Capturing',
+    busy: state._tag === 'Capturing' || state._tag === 'Downloading',
     failure: state._tag === 'Failed' ? state.failure : undefined,
     acknowledge,
     dismissDisclosure: dismiss,

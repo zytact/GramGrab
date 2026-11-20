@@ -127,12 +127,15 @@ describe('WhatsApp failure registry', () => {
     }
   );
 
-  it('offers no retry when the browser cannot re-encode a WhatsApp video', () => {
+  it('offers re-capture when the browser cannot re-encode a WhatsApp video', () => {
     const failure = normalizeWhatsAppSilentFailure(
       'SILENT_H264_ENCODER_UNAVAILABLE',
       'silent-reencode'
     );
-    expect(presentationForFailure(failure)).toMatchObject({ actions: [], retry: 'never' });
+    expect(presentationForFailure(failure)).toMatchObject({
+      actions: ['retry-operation'],
+      retry: 'after-user-action',
+    });
   });
 
   it('keeps silent processing failures typed on the WhatsApp branch', () => {

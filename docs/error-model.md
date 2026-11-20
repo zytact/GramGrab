@@ -120,7 +120,7 @@ direct video, is `CROP_FAILED` or `ROTATION_FAILED` with the `crop` / `rotation`
 frame export, edited or not, stays `WHATSAPP_ACQUISITION_FAILED`. On the WhatsApp branch
 `CROP_FAILED` and `ROTATION_FAILED` offer `retry-operation` and `copy-diagnostics` after a user
 action instead of `download-original`, because the failed export has already released the
-capture, and `SILENT_H264_ENCODER_UNAVAILABLE` offers no retry. Before any re-encode, the popup
+capture. Before any re-encode, the popup
 asks with the same dialog Instagram exports use; skipping keeps the capture and its edits.
 WhatsApp failures retain structural diagnostics only;
 they never serialize mediabunny exceptions or arbitrary error text.

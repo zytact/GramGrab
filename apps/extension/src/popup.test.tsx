@@ -623,6 +623,9 @@ describe('Popup', () => {
     expect(screen.getByRole('button', { name: /Downloading/i }).getAttribute('aria-busy')).toBe(
       'true'
     );
+    expect(
+      (screen.getByRole('button', { name: /Rotate item 01/ }) as HTMLButtonElement).disabled
+    ).toBe(true);
 
     if (!resolveExport) throw new Error('Expected frame export to be pending.');
     resolveExport();
