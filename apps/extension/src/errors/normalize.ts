@@ -254,7 +254,6 @@ export function normalizeWhatsAppCaptureFailure(
 
 export function normalizeWhatsAppSilentFailure(
   code:
-    | 'SILENT_MEMORY_CAPACITY_EXCEEDED'
     | 'SILENT_SOURCE_NO_VIDEO'
     | 'SILENT_SOURCE_CONVERSION_UNSUPPORTED'
     | 'SILENT_REENCODE_FAILED',

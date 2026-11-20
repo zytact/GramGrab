@@ -114,22 +114,13 @@ describe('WhatsApp failure registry', () => {
     expect(retryable(format, 0)).toBe(false);
   });
 
-  it('keeps in-memory silent processing failures typed on the WhatsApp branch', () => {
-    const memory = normalizeWhatsAppSilentFailure(
-      'SILENT_MEMORY_CAPACITY_EXCEEDED',
-      'silent-reencode'
-    );
+  it('keeps silent processing failures typed on the WhatsApp branch', () => {
     const conversion = normalizeWhatsAppSilentFailure(
       'SILENT_SOURCE_CONVERSION_UNSUPPORTED',
       'silent-reencode'
     );
 
-    expect(memory).toMatchObject({
-      platform: 'whatsapp',
-      code: 'SILENT_MEMORY_CAPACITY_EXCEEDED',
-      phase: 'silent-reencode',
-    });
-    expect(presentationForFailure(memory).title).toBe('Not enough memory to remove audio');
+    expect(conversion).toMatchObject({ platform: 'whatsapp', phase: 'silent-reencode' });
     expect(presentationForFailure(conversion).actions).toEqual([
       'retry-operation',
       'copy-diagnostics',

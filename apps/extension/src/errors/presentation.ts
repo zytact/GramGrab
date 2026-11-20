@@ -466,12 +466,6 @@ const whatsappSharedPresentation: Readonly<Record<WhatsAppCommonFailureCode, Fai
       ['retry-operation', 'copy-diagnostics'],
       'once'
     ),
-    SILENT_MEMORY_CAPACITY_EXCEEDED: policy(
-      'Not enough memory to remove audio',
-      'Capture a smaller Visible Status or download it without removing audio.',
-      ['retry-operation'],
-      'after-user-action'
-    ),
     SILENT_SOURCE_NO_VIDEO: policy(
       'This video cannot be processed',
       'Capture the Visible Status again and download it without removing audio.',
