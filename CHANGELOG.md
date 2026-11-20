@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.11.0](https://github.com/zytact/GramGrab/compare/v4.10.0...v4.11.0) (2026-11-20)
+
+
+### Features
+
+* **verify:** drive WhatsApp capture through the real toolbar popup ([7b0d99b](https://github.com/zytact/GramGrab/commit/7b0d99b4c93a67010c52dbd1909b372e2cb73c43))
+* **whatsapp:** ask before re-encoding a captured Status ([848da8d](https://github.com/zytact/GramGrab/commit/848da8d411f13346f108dd22cb897c78b878bb32))
+* **whatsapp:** rotate and crop a captured Visible Status ([7e362ee](https://github.com/zytact/GramGrab/commit/7e362ee15d7c2a3f02ccd288aa38bb882ab4c8dc))
+* **whatsapp:** rotate and crop a captured Visible Status ([70c42ff](https://github.com/zytact/GramGrab/commit/70c42fffe7c78140a1e181c95702f9fb924a309d)), closes [#425](https://github.com/zytact/GramGrab/issues/425)
+
+
+### Bug Fixes
+
+* **verify:** fail drive action when another popup could be driven instead ([99b89ad](https://github.com/zytact/GramGrab/commit/99b89adcc4001a8a9a96f737da5e75e5105e609f))
+* **whatsapp:** lock edits during export and offer re-capture without an encoder ([90f12f9](https://github.com/zytact/GramGrab/commit/90f12f9258ed55bd25b008f1e719992be5b7e7d0))
+* **whatsapp:** name an edited photo .jpg and pick the export path once ([52e26f4](https://github.com/zytact/GramGrab/commit/52e26f406979b42a1b7736a9e76c4f21e85ef546))
+* **whatsapp:** revoke export URLs even when the download settled early ([9161c07](https://github.com/zytact/GramGrab/commit/9161c0741b74a32d67cae1aba9a930f3aa4dc20c))
+
 ## [4.10.0](https://github.com/zytact/GramGrab/compare/v4.9.1...v4.10.0) (2026-11-15)
 
 
