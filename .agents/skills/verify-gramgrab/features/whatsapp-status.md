@@ -16,8 +16,10 @@ current WhatsApp Web and the browser actually do.
 - Capture: one `scripting.executeScript` injection of
   `js/whatsapp-controller.js` into the top frame, isolated world, under
   `activeTab`, then a bounded chunk protocol over a `tabs.connect` port.
-- Edit session: a single hero item held until download or popup close. Frame
-  and Remove audio work the same as elsewhere.
+- Edit session: a single hero item held until download or popup close.
+  Rotate, Crop, Frame and Remove audio work the same as elsewhere. Crop edits
+  in place on the hero, with no workspace handoff, and a video crop re-encodes
+  without the Instagram re-encode dialog.
 - Receipts: history gains a receipt with no name and no re-download.
 - Diagnostics: a structural-only type that cannot hold a URL, name, or
   identifier.
@@ -75,6 +77,29 @@ WhatsApp Web`, which is still the way to capture the ineligible state.
 
 Opening a contact's Status sends WhatsApp's normal view receipt.
 
+Rotate and crop the hero the way the workspace does, then download:
+
+```bash
+node $D click "popup.html" 'button[aria-label^="Rotate item 01"]'
+node $D click "popup.html" 'button[aria-label^="Crop item 01"]'
+node $D eval "popup.html" "[...document.querySelectorAll('.crop-toolbar button')].find(b => b.textContent.trim() === '1:1').click()"
+node $D eval "popup.html" "[...document.querySelectorAll('.crop-toolbar button')].find(b => b.textContent.trim() === 'Done').click()"
+node $D click "popup.html" ".whatsapp-result-hero ~ .ext-section .btn"
+```
+
+Read the saved file back rather than trusting its name. `file` prints a JPEG's
+size, and `ffprobe` prints a video's tracks and size:
+
+```bash
+f="$GRAMGRAB_VERIFY_DOWNLOADS/$(ls -t "$GRAMGRAB_VERIFY_DOWNLOADS" | head -1)"
+file "$f"
+ffprobe -v error -show_entries stream=codec_type,width,height -of compact "$f"
+```
+
+The WhatsApp list reorders as Statuses get viewed, so pick a Status by what
+the viewer shows, not by its row index. A video whose `<video>` source is a
+`/stream/` URL cannot be captured yet (#429); one with a `blob:` source can.
+
 When a capture fails, read its structural diagnostics instead of guessing:
 
 ```bash
@@ -89,6 +114,10 @@ node $D eval "popup.html" "(async () => { let copied; navigator.clipboard.writeT
   photo as an image and an MP4 as a video, never a poster-only fallback.
 - Export: the saved file lands in `$GRAMGRAB_VERIFY_DOWNLOADS` with a
   name-free filename, and History gains a receipt with no re-download.
+- Rotate and Crop: a photo turned once and cropped `1:1` saves a square JPEG
+  whose side is the photo's shorter side. A video cropped `1:1` saves a square
+  MP4 that keeps its audio track, or drops it with `Remove audio`. `Frame` with
+  a crop saves a cropped still.
 - Advancement race: advancing the viewer mid-capture yields either the originally
   guarded item or `WHATSAPP_STATUS_CHANGED`. Never the next Status.
 - Cleanup: after the download starts, the hero is gone and the popup offers

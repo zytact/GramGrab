@@ -22,7 +22,9 @@ media APIs a service worker does not have, so the background worker opens
   after the `Some videos require re-encoding` dialog. A direct video crop keeps
   its audio; a silent one drops it. Plans carry `crop` as fractions of the
   turned frame. The Watches inbox offers the same `Crop` and asks before a
-  cropped video re-encodes, ahead of the download.
+  cropped video re-encodes, ahead of the download. A captured WhatsApp Status
+  offers `Rotate` and `Crop` on its popup hero; see
+  [WhatsApp Visible Status](./whatsapp-status.md).
 - Batch selection: `SELECT ALL` and `DOWNLOAD SELECTED` across mixed modes.
 - Plans: `gramgrab export SOURCE --plan FILE|-` replays protocol
   `ExportOperation` objects with stable operation IDs, which is how a retry

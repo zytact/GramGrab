@@ -35,8 +35,9 @@ three proof owners:
 | CLI harness      | Native bridge commands, source kinds, export modes, plans, and cancellation    |
 | Build validation | Firefox output, packaged browser artifacts, packaged CLI and native host tools |
 
-Active-tab detection and the actual toolbar popup require one short human
-checkpoint because a CDP-opened tab becomes the active tab. Protocol timing,
+The actual toolbar popup needs no human: `drive.mjs action <match>` opens it on
+a tab with `activeTab` granted, and `chrome.action.openPopup()` from the worker
+opens it without. Protocol timing,
 history repair internals, and failure-policy exhaustiveness stay owned by their
 focused tests. The full-run document names those checks and does not present a
 different path as equivalent live proof.
