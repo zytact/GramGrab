@@ -21,7 +21,7 @@ for that.
 | [Download history](./download-history.md)           | popup, CLI               | no, to read; yes, to fill  |
 | [Watches](./watches.md)                            | options page, packaged CLI | yes                      |
 | [Linked login](./linked-login.md)                   | options page, popup, workspace, CLI | yes, two accounts |
-| [WhatsApp Visible Status](./whatsapp-status.md)     | popup only               | no, needs WhatsApp Web     |
+| [WhatsApp Visible Status](./whatsapp-status.md)     | popup only               | no, needs linked WhatsApp Web |
 | [Release artifacts](./release-artifacts.md)         | Chromium, Firefox, tools | no                         |
 
 ## Full-run coverage
@@ -50,4 +50,4 @@ Two constraints shape every entry:
   authentication, which looks like a bug and is not one.
 - WhatsApp acquisition has privacy rules that bind verification as much as code.
   `docs/whatsapp-privacy.md` and `docs/whatsapp-live-verification.md` are the
-  contract. Do not improvise a WhatsApp run.
+  contract. The run is automated end to end; do not ask the person to post or click.

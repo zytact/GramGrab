@@ -6,6 +6,7 @@
 //   drive.mjs open <url>                   open a tab and print its target id
 //   drive.mjs activate <match>             bring a matching page to the front
 //   drive.mjs close-tab <match>            close a matching page, as a person closing the tab
+//   drive.mjs action <match>               open the toolbar popup on a matching tab, granting activeTab
 //   drive.mjs click <match> <selector>     click an element
 //   drive.mjs type <match> <selector> <v>  replace an input value and dispatch input
 //   drive.mjs blur <match> <selector>      blur an element
@@ -252,6 +253,19 @@ if (command === 'targets') {
   const response = await fetch(`${base}/json/close/${target.id}`);
   if (!response.ok) fail(`Could not close ${target.url}: HTTP ${response.status}`);
   process.stdout.write(`closed ${target.url}\n`);
+} else if (command === 'action') {
+  const [match] = rest;
+  const extensionId = process.env.GRAMGRAB_EXT_ID;
+  if (!match || !extensionId) fail('Usage: GRAMGRAB_EXT_ID=<id> drive.mjs action <match>');
+  const info = await fetch(`${base}/json/version`).then(response => response.json());
+  await session({ webSocketDebuggerUrl: info.webSocketDebuggerUrl }, async call => {
+    const { targetInfos } = await call('Target.getTargets', { filter: [{ type: 'tab' }] });
+    const tab = targetInfos.find(info => info.url.includes(match));
+    if (!tab) fail(`No tab matching ${JSON.stringify(match)}.`);
+    await call('Extensions.triggerAction', { id: extensionId, targetId: tab.targetId });
+  });
+  await findTarget('popup.html');
+  process.stdout.write(`popup on ${match}\n`);
 } else if (command === 'eval') {
   const [match, expression] = rest;
   if (!match || !expression) fail('Usage: drive.mjs eval <match> <expression>');
@@ -297,6 +311,6 @@ if (command === 'targets') {
   process.stdout.write(`${needle}\n`);
 } else {
   fail(
-    'Usage: drive.mjs targets|open|activate|close|close-tab|click|key|drag|type|blur|upload|eval|text|shot|wait ...'
+    'Usage: drive.mjs targets|open|activate|close|close-tab|action|click|key|drag|type|blur|upload|eval|text|shot|wait ...'
   );
 }
