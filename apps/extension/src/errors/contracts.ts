@@ -73,7 +73,6 @@ export class WhatsAppStructuralEvidence extends Schema.Class<WhatsAppStructuralE
     'media-readiness',
     'guard-changed',
     'player-marker',
-    'retention-expired',
     'protocol',
     'unknown'
   ),
@@ -96,7 +95,6 @@ export class WhatsAppStructuralEvidence extends Schema.Class<WhatsAppStructuralE
   discardCompleted: Schema.Boolean,
   blobUrlCreated: Schema.Boolean,
   blobUrlRevoked: Schema.Boolean,
-  retentionCeilingArmed: Schema.Boolean,
 }) {}
 
 const InstagramFailureCodeSchema = Schema.Literal(

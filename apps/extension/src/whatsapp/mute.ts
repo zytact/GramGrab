@@ -1,37 +1,8 @@
-import type {
-  BufferTarget,
-  Conversion,
-  Input,
-  Mp4OutputFormat,
-  Output,
-  VideoCodec,
-} from 'mediabunny';
+import type { BufferTarget, Input, Mp4OutputFormat, Output, VideoCodec } from 'mediabunny';
 import { isOperationFailure } from '../errors/contracts.ts';
-import {
-  normalizeWhatsAppCaptureFailure,
-  normalizeWhatsAppSilentFailure,
-} from '../errors/normalize.ts';
-import { fitsWithinWhatsAppPeakMemory } from './lease.ts';
-import { WHATSAPP_MAX_MEDIA_BYTES } from './limits.ts';
+import { normalizeWhatsAppSilentFailure } from '../errors/normalize.ts';
 
 export type WhatsAppSilentProgress = (phase: string, progress: number) => void;
-
-export interface WhatsAppSilentVideoOptions {
-  readonly retentionDeadline: number;
-  readonly onProgress?: WhatsAppSilentProgress;
-}
-
-export function makeOutputMemoryGuard(maximumBytes: number, onExceeded: () => void) {
-  let exceeded = false;
-  return {
-    onWrite({ end }: { readonly end: number }): void {
-      if (end <= maximumBytes || exceeded) return;
-      exceeded = true;
-      onExceeded();
-    },
-    hasExceeded: (): boolean => exceeded,
-  };
-}
 
 async function supportedVideoCodec(input: Input, mp4: Mp4OutputFormat): Promise<VideoCodec> {
   const video = await input.getPrimaryVideoTrack();
@@ -42,51 +13,17 @@ async function supportedVideoCodec(input: Input, mp4: Mp4OutputFormat): Promise<
   return codec;
 }
 
-async function executeWithinLease(
-  conversion: Conversion,
-  retentionDeadline: number,
-  outputMemory: ReturnType<typeof makeOutputMemoryGuard>
-): Promise<void> {
-  let leaseExpired = Date.now() >= retentionDeadline;
-  if (leaseExpired) throw normalizeWhatsAppCaptureFailure('retention-expired');
-  const leaseTimer = globalThis.setTimeout(
-    () => {
-      leaseExpired = true;
-      void conversion.cancel().catch(() => undefined);
-    },
-    Math.max(0, retentionDeadline - Date.now())
-  );
-  try {
-    await conversion.execute();
-  } catch (cause) {
-    if (leaseExpired) throw normalizeWhatsAppCaptureFailure('retention-expired');
-    if (outputMemory.hasExceeded())
-      throw normalizeWhatsAppSilentFailure('SILENT_MEMORY_CAPACITY_EXCEEDED', 'silent-reencode');
-    if (isOperationFailure(cause)) throw cause;
-    throw normalizeWhatsAppSilentFailure('SILENT_REENCODE_FAILED', 'silent-reencode');
-  } finally {
-    globalThis.clearTimeout(leaseTimer);
-  }
-  if (Date.now() >= retentionDeadline) throw normalizeWhatsAppCaptureFailure('retention-expired');
-}
-
-function takeSilentBlob(target: BufferTarget, inputBytes: number): Blob {
+function takeSilentBlob(target: BufferTarget): Blob {
   const buffer = target.buffer;
   if (!buffer) throw normalizeWhatsAppSilentFailure('SILENT_REENCODE_FAILED', 'silent-reencode');
-  if (!fitsWithinWhatsAppPeakMemory({ inputBytes, outputBytes: buffer.byteLength }))
-    throw normalizeWhatsAppSilentFailure('SILENT_MEMORY_CAPACITY_EXCEEDED', 'silent-reencode');
-  const silent = new Blob([buffer], { type: 'video/mp4' });
   target.buffer = null;
-  return silent;
+  return new Blob([buffer], { type: 'video/mp4' });
 }
 
 export async function createWhatsAppSilentVideo(
   blob: Blob,
-  { retentionDeadline, onProgress = () => {} }: WhatsAppSilentVideoOptions
+  onProgress: WhatsAppSilentProgress = () => {}
 ): Promise<Blob> {
-  const maximumOutputBytes = WHATSAPP_MAX_MEDIA_BYTES - blob.size;
-  if (maximumOutputBytes < 0)
-    throw normalizeWhatsAppSilentFailure('SILENT_MEMORY_CAPACITY_EXCEEDED', 'silent-reencode');
   onProgress('inspecting', 0);
   let input: Input | undefined;
   let target: BufferTarget | undefined;
@@ -111,13 +48,9 @@ export async function createWhatsAppSilentVideo(
         'SILENT_SOURCE_CONVERSION_UNSUPPORTED',
         'silent-reencode'
       );
-    const outputMemory = makeOutputMemoryGuard(maximumOutputBytes, () => {
-      void conversion.cancel().catch(() => undefined);
-    });
-    target.on('write', event => outputMemory.onWrite(event));
     conversion.onProgress = progress => onProgress('processing', progress);
-    await executeWithinLease(conversion, retentionDeadline, outputMemory);
-    const silent = takeSilentBlob(target, blob.size);
+    await conversion.execute();
+    const silent = takeSilentBlob(target);
     onProgress('validating', 1);
     return silent;
   } catch (cause) {

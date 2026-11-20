@@ -2,7 +2,7 @@
 
 These constraints govern acquisition and editing of a WhatsApp **Visible Status**. They are binding on every ticket and change that touches the WhatsApp path. Where a constraint can be made unrepresentable in the type system it must be, and runtime tests cover only the edges types cannot reach.
 
-The structural decisions live in [ADR 0001](./adr/0001-activetab-for-whatsapp-page-access.md), [ADR 0002](./adr/0002-structural-only-whatsapp-diagnostics.md), and [ADR 0004](./adr/0004-whatsapp-edit-session-retention.md).
+The structural decisions live in [ADR 0001](./adr/0001-activetab-for-whatsapp-page-access.md) and [ADR 0002](./adr/0002-structural-only-whatsapp-diagnostics.md). [ADR 0010](./adr/0010-whatsapp-edits-like-other-media.md) lifted the editing limits that [ADR 0004](./adr/0004-whatsapp-edit-session-retention.md) set: a captured Status now edits and exports like any other media.
 
 ## Page access
 
@@ -18,22 +18,9 @@ View receipts are controlled by WhatsApp. GramGrab causes no additional receipt 
 
 ## Media handling
 
-Captured bytes live in memory only. They are never written to `storage`, IndexedDB, OPFS, the filesystem, or any other GramGrab-controlled location. The only permitted destination is the download the person asked for. Editing is a distinct phase after capture-complete and owns one captured blob at a time, bounded by the existing 64MB media cap.
+The page transfer is bounded: one captured item, the 64MB media cap, bounded chunks, and the transfer, idle, and absolute acquisition timers. Once capture completes, the bytes belong to the popup's edit session. Editing and export use the same paths as other media, including their temporary OPFS files.
 
-Export modes that require persisting bytes are unavailable for WhatsApp media and are stated as an explicit limitation rather than left as a silent gap.
-
-## Retention
-
-Acquisition keeps its existing transfer, idle, and absolute timers. Once capture completes, the edit lease begins and captured bytes and their blob URLs are revoked:
-
-- on download completion,
-- on every failure path,
-- on popup close or tab close,
-- unconditionally at a flat 10-minute ceiling measured from capture-complete,
-
-whichever comes first. The edit lease never resets on preview rendering, scrubbing, or another interaction. Terminal operations are refused before they start when their estimated completion would cross the remaining lease. This bound is independent of capture invalidation caused by WhatsApp advancing, replacing, or closing the Status, which is a validity concern owned by the extraction contract. Acquisition timers and the edit lease must not share a timer.
-
-If a browser download accepted from an extension-owned blob URL is still active at the lease ceiling, GramGrab cancels it before revoking the URL. An accepted download that completes before the ceiling remains owned by the browser download UI.
+The popup releases captured bytes and their blob URLs when the download starts or completes, when a capture or export fails, when a new capture replaces them, and when the popup or tab closes. There is no edit lease.
 
 ## Filenames
 
@@ -60,5 +47,5 @@ WhatsApp acquisition is browser-extension-only. The CLI advertises this in help 
 ## Enforcement
 
 - Prefer type-level enforcement: a diagnostic type with no URL-shaped field, a capture handle with no serialization path, a history record schema that rejects extra keys.
-- Test the runtime edges types cannot reach: no WhatsApp bytes reach storage APIs, blob URLs are revoked on every failure path, the retention ceiling fires.
+- Test the runtime edges types cannot reach: blob URLs are revoked on every failure path, and closing the popup releases the capture.
 - Documentation and code review are not enforcement.

@@ -492,19 +492,7 @@ const whatsappSharedPresentation: Readonly<Record<WhatsAppCommonFailureCode, Fai
     ),
   };
 
-const whatsappRetentionExpiredPresentation = policy(
-  'Editing session expired',
-  'Your editing session expired after 10 minutes - capture the Visible Status again to continue.',
-  ['retry-operation'],
-  'after-user-action'
-);
-
 export function presentationForFailure(failure: OperationFailure): FailurePresentation {
-  if (
-    failure.platform === 'whatsapp' &&
-    failure.structuralEvidence.invariant === 'retention-expired'
-  )
-    return whatsappRetentionExpiredPresentation;
   if (failure.platform === 'whatsapp' && isWhatsAppCommonFailureCode(failure.code))
     return whatsappSharedPresentation[failure.code];
   return FAILURE_PRESENTATION[failure.code];

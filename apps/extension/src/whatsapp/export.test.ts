@@ -1,5 +1,5 @@
 import { Either, Schema } from 'effect';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { AttemptOperationSchema } from '../download/attempt.ts';
 import { getDownloadCalls, getMockBrowser, resetBrowserMocks } from '../test/setup.ts';
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
@@ -29,10 +29,6 @@ const operation = Schema.decodeUnknownSync(AttemptOperationSchema)({
   frameTimestampSeconds: 1,
 });
 
-// Leases are checked against the wall clock, so deadlines must be relative to the
-// run. An absolute timestamp turns every lease-dependent test into a time bomb.
-const leaseDeadline = () => Date.now() + 10 * 60_000;
-
 const descriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
   captureId: '123e4567-e89b-42d3-a456-426614174000',
   kind: 'video',
@@ -42,7 +38,6 @@ const descriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
   height: 480,
   durationMs: 1_000,
   capturedAt: 1,
-  retentionDeadline: leaseDeadline(),
 });
 
 describe('exportWhatsAppFrame', () => {
@@ -56,8 +51,6 @@ describe('exportWhatsAppFrame', () => {
       new Blob(['silent'], { type: 'video/mp4' })
     );
   });
-
-  afterEach(() => vi.useRealTimers());
 
   it('releases the capture immediately and the frame URL when the download terminates', async () => {
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
@@ -100,27 +93,6 @@ describe('exportWhatsAppFrame', () => {
     });
   });
 
-  it('cancels an active frame download and releases its URL at the retention ceiling', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(descriptor.retentionDeadline - 60_000);
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-
-    await exportWhatsAppFrame(
-      {
-        descriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status.mp4',
-        download: async () => ({ downloadId: 1, filename: 'whatsapp-visible-status.mp4' }),
-        release: () => snapshot.release(),
-      },
-      operation
-    );
-
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(getMockBrowser().downloads.cancel).toHaveBeenCalledWith(1);
-    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:exported-frame');
-  });
-
   it('mutes from the capture blob and uses a name-free muted filename', async () => {
     createObjectUrl.mockReset().mockReturnValue('blob:silent-output');
     const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
@@ -144,9 +116,7 @@ describe('exportWhatsAppFrame', () => {
     );
 
     expect(result.status).toBe('started');
-    expect(createWhatsAppSilentVideo).toHaveBeenCalledWith(inputBlob, {
-      retentionDeadline: descriptor.retentionDeadline,
-    });
+    expect(createWhatsAppSilentVideo).toHaveBeenCalledWith(inputBlob, undefined);
     expect(getDownloadCalls()).toEqual([
       {
         url: 'blob:silent-output',
@@ -161,71 +131,6 @@ describe('exportWhatsAppFrame', () => {
     if (!onChanged) throw new Error('Expected a silent download listener.');
     onChanged({ id: 1, state: { current: 'complete' } });
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:silent-output');
-  });
-
-  it('does not create or download silent output when the lease expires during conversion', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(descriptor.retentionDeadline - 60_000);
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-    const release = vi.fn(() => snapshot.release());
-    vi.mocked(createWhatsAppSilentVideo).mockImplementationOnce(async () => {
-      vi.setSystemTime(descriptor.retentionDeadline);
-      return new Blob(['silent'], { type: 'video/mp4' });
-    });
-
-    const result = await exportWhatsAppSilent(
-      {
-        descriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status.mp4',
-        download: async () => ({ downloadId: 1, filename: 'unused.mp4' }),
-        release,
-      },
-      { ...operation, mode: 'silent', filename: 'whatsapp-visible-status-muted.mp4' }
-    );
-
-    expect(result).toMatchObject({
-      status: 'failed',
-      failure: { code: 'WHATSAPP_ACQUISITION_FAILED' },
-    });
-    expect(createObjectUrl).not.toHaveBeenCalled();
-    expect(getDownloadCalls()).toHaveLength(0);
-    expect(release).toHaveBeenCalledOnce();
-  });
-
-  it('reports peak-memory refusal with the silent memory failure code', async () => {
-    const oversizedDescriptor = Schema.decodeUnknownSync(WhatsAppCaptureDescriptor)({
-      captureId: '123e4567-e89b-42d3-a456-426614174000',
-      kind: 'video',
-      mimeType: 'video/mp4',
-      byteLength: 33 * 1024 * 1024,
-      width: 640,
-      height: 480,
-      durationMs: 1_000,
-      capturedAt: 1,
-      retentionDeadline: leaseDeadline(),
-    });
-    const snapshot = makeWhatsAppCaptureSnapshot(descriptor, [new Uint8Array([1, 2, 3])]);
-    const release = vi.fn(() => snapshot.release());
-
-    const result = await exportWhatsAppSilent(
-      {
-        descriptor: oversizedDescriptor,
-        snapshot,
-        filename: 'whatsapp-visible-status.mp4',
-        download: async () => ({ downloadId: 1, filename: 'unused.mp4' }),
-        release,
-      },
-      { ...operation, mode: 'silent', filename: 'whatsapp-visible-status-muted.mp4' }
-    );
-
-    expect(result).toMatchObject({
-      status: 'failed',
-      failure: { platform: 'whatsapp', code: 'SILENT_MEMORY_CAPACITY_EXCEEDED' },
-    });
-    expect(createWhatsAppSilentVideo).not.toHaveBeenCalled();
-    expect(getDownloadCalls()).toHaveLength(0);
-    expect(release).toHaveBeenCalledOnce();
   });
 
   it('preserves typed silent processing failures instead of normalizing them as downloads', async () => {

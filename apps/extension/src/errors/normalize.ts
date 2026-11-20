@@ -169,7 +169,6 @@ function evidence(
     discardCompleted: true,
     blobUrlCreated: false,
     blobUrlRevoked: false,
-    retentionCeilingArmed: false,
   });
 }
 
@@ -242,11 +241,6 @@ const whatsappCaptureFailureMappings: Readonly<
     code: 'WHATSAPP_ACQUISITION_FAILED',
     phase: 'whatsapp-extraction',
     invariant: 'unknown',
-  },
-  'retention-expired': {
-    code: 'WHATSAPP_ACQUISITION_FAILED',
-    phase: 'whatsapp-extraction',
-    invariant: 'retention-expired',
   },
 };
 

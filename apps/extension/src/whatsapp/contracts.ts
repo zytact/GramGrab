@@ -181,7 +181,6 @@ class PhotoCaptureDescriptor extends Schema.Class<PhotoCaptureDescriptor>('Photo
     width: Dimension,
     height: Dimension,
     capturedAt: CaptureTime,
-    retentionDeadline: CaptureTime,
   }
 ) {}
 
@@ -195,7 +194,6 @@ class VideoCaptureDescriptor extends Schema.Class<VideoCaptureDescriptor>('Video
     height: Dimension,
     durationMs: DurationMs,
     capturedAt: CaptureTime,
-    retentionDeadline: CaptureTime,
   }
 ) {}
 

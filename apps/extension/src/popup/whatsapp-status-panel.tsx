@@ -73,8 +73,8 @@ export function WhatsAppStatusPanel({
       <section className="ext-section whatsapp-capture-section" aria-labelledby="whatsapp-title">
         <h1 id="whatsapp-title">Visible Status captured</h1>
         <p className="whatsapp-capture-copy">
-          This is the one photo or video that was visible when you captured it. It stays in memory
-          until the download starts, the edit lease expires, or you close GramGrab.
+          This is the one photo or video that was visible when you captured it. It stays here until
+          the download starts or you close GramGrab.
         </p>
       </section>
       <MediaListSection

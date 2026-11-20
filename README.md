@@ -153,7 +153,7 @@ For Instants, skip the URL and click **Load Instants** in step 3.
 2. **Click the GramGrab icon.** The popup detects the WhatsApp tab and offers Status capture instead of a URL field.
 3. **Click "Capture Visible Status".** GramGrab reads the photo or video currently on screen, then lets you preview it, export a frame, or drop the audio track before saving.
 
-> WhatsApp view receipts are controlled by WhatsApp. GramGrab causes no extra receipt and does not make viewing anonymous. Captures are kept in memory and expire 10 minutes after capture.
+> WhatsApp view receipts are controlled by WhatsApp. GramGrab causes no extra receipt and does not make viewing anonymous. GramGrab holds a capture until you download it or close the popup.
 
 ### Supported URL formats
 

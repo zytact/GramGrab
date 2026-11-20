@@ -5,7 +5,6 @@ import { isOperationFailure, OperationWarning } from '../errors/contracts.ts';
 import {
   normalizeBrowserDownloadFailure,
   normalizeWhatsAppCaptureFailure,
-  normalizeWhatsAppSilentFailure,
 } from '../errors/normalize.ts';
 import { captureFrameFromSource } from '../frame-export/capture-source.ts';
 import { browser } from '../lib/browser.ts';
@@ -13,9 +12,6 @@ import { sendMessage } from '../messaging/send.ts';
 import type { WhatsAppCaptureHandle } from './capture.ts';
 import { silentProgressMessage } from '../silent-video/progress.ts';
 import { createWhatsAppSilentVideo, type WhatsAppSilentProgress } from './mute.ts';
-import { fitsWithinWhatsAppLease, fitsWithinWhatsAppPeakMemory } from './lease.ts';
-
-const WHATSAPP_TERMINAL_OPERATION_ESTIMATE_MS = 30_000;
 
 export function whatsappSilentProgressMessage(
   operation: AttemptOperation,
@@ -31,34 +27,16 @@ export function whatsappSilentProgressMessage(
   return silentProgressMessage([entry]);
 }
 
-function monitorAcceptedDownload(
-  downloadId: number,
-  retentionDeadline: number,
-  onTerminal: () => void
-): void {
-  let settled = false;
-  const cleanup = () => {
-    if (settled) return;
-    settled = true;
-    globalThis.clearTimeout(timer);
+function monitorAcceptedDownload(downloadId: number, onTerminal: () => void): void {
+  const onChanged = (delta: { id: number; state?: { current?: string } }) => {
+    if (
+      delta.id !== downloadId ||
+      (delta.state?.current !== 'complete' && delta.state?.current !== 'interrupted')
+    )
+      return;
     browser.downloads.onChanged.removeListener(onChanged);
     onTerminal();
   };
-  const onChanged = (delta: { id: number; state?: { current?: string } }) => {
-    if (
-      delta.id === downloadId &&
-      (delta.state?.current === 'complete' || delta.state?.current === 'interrupted')
-    )
-      cleanup();
-  };
-  const timer = globalThis.setTimeout(
-    () => {
-      if (settled) return;
-      void browser.downloads.cancel(downloadId).catch(() => undefined);
-      cleanup();
-    },
-    Math.max(0, retentionDeadline - Date.now())
-  );
   browser.downloads.onChanged.addListener(onChanged);
 }
 
@@ -68,21 +46,6 @@ export async function exportWhatsAppFrame(
 ) {
   let frameUrl: string | undefined;
   try {
-    if (
-      !fitsWithinWhatsAppLease({
-        now: Date.now(),
-        deadline: handle.descriptor.retentionDeadline,
-        estimatedDurationMs: WHATSAPP_TERMINAL_OPERATION_ESTIMATE_MS,
-      })
-    ) {
-      handle.release();
-      return DownloadFailedResult.make({
-        operationId: operation.operationId,
-        requestId: operation.requestId,
-        status: 'failed',
-        failure: normalizeWhatsAppCaptureFailure('retention-expired'),
-      });
-    }
     const captured = await captureFrameFromSource(
       handle.snapshot.blob,
       operation.frameTimestampSeconds ?? 0
@@ -104,9 +67,7 @@ export async function exportWhatsAppFrame(
       saveAs: false,
     });
     const pendingFrameUrl = frameUrl;
-    monitorAcceptedDownload(downloadId, handle.descriptor.retentionDeadline, () =>
-      URL.revokeObjectURL(pendingFrameUrl)
-    );
+    monitorAcceptedDownload(downloadId, () => URL.revokeObjectURL(pendingFrameUrl));
     handle.release();
     frameUrl = undefined;
     const response = await sendMessage({
@@ -147,61 +108,15 @@ export async function exportWhatsAppSilent(
 ) {
   let silentUrl: string | undefined;
   try {
-    const preflight = {
-      now: Date.now(),
-      deadline: handle.descriptor.retentionDeadline,
-      estimatedDurationMs: WHATSAPP_TERMINAL_OPERATION_ESTIMATE_MS,
-      inputBytes: handle.descriptor.byteLength,
-      outputBytes: handle.descriptor.byteLength,
-    };
-    const leaseFits = fitsWithinWhatsAppLease(preflight);
-    const memoryFits = fitsWithinWhatsAppPeakMemory(preflight);
-    if (!leaseFits || !memoryFits) {
-      handle.release();
-      return DownloadFailedResult.make({
-        operationId: operation.operationId,
-        requestId: operation.requestId,
-        status: 'failed',
-        failure: memoryFits
-          ? normalizeWhatsAppCaptureFailure('retention-expired')
-          : normalizeWhatsAppSilentFailure('SILENT_MEMORY_CAPACITY_EXCEEDED', 'silent-reencode'),
-      });
-    }
-
-    const silent = await createWhatsAppSilentVideo(handle.snapshot.blob, {
-      retentionDeadline: handle.descriptor.retentionDeadline,
-      ...(onProgress ? { onProgress } : {}),
-    });
-    if (Date.now() >= handle.descriptor.retentionDeadline) {
-      handle.release();
-      return DownloadFailedResult.make({
-        operationId: operation.operationId,
-        requestId: operation.requestId,
-        status: 'failed',
-        failure: normalizeWhatsAppCaptureFailure('retention-expired'),
-      });
-    }
+    const silent = await createWhatsAppSilentVideo(handle.snapshot.blob, onProgress);
     silentUrl = URL.createObjectURL(silent);
-    if (Date.now() >= handle.descriptor.retentionDeadline) {
-      URL.revokeObjectURL(silentUrl);
-      silentUrl = undefined;
-      handle.release();
-      return DownloadFailedResult.make({
-        operationId: operation.operationId,
-        requestId: operation.requestId,
-        status: 'failed',
-        failure: normalizeWhatsAppCaptureFailure('retention-expired'),
-      });
-    }
     const downloadId = await browser.downloads.download({
       url: silentUrl,
       filename: operation.filename,
       saveAs: false,
     });
     const pendingSilentUrl = silentUrl;
-    monitorAcceptedDownload(downloadId, handle.descriptor.retentionDeadline, () =>
-      URL.revokeObjectURL(pendingSilentUrl)
-    );
+    monitorAcceptedDownload(downloadId, () => URL.revokeObjectURL(pendingSilentUrl));
     silentUrl = undefined;
     handle.release();
     onProgress?.('downloading', 1);

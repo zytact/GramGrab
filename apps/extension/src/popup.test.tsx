@@ -160,7 +160,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 1_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -208,7 +207,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 12_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -275,7 +273,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 12_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -342,7 +339,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 12_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',
@@ -395,7 +391,6 @@ describe('Popup', () => {
         width: 640,
         height: 480,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
@@ -414,49 +409,6 @@ describe('Popup', () => {
     capture.mockRestore();
   });
 
-  it('shows edit-aware expiry copy and a re-capture action when the lease expires mid-edit', async () => {
-    mockBrowser.tabs.query.mockResolvedValue([
-      { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
-    ]);
-    mockBrowser.storage.get.mockResolvedValue({ 'whatsapp-view-receipt-acknowledged': true });
-    let expireLease: (() => void) | undefined;
-    const capture = vi
-      .spyOn(whatsappCapture, 'captureWhatsAppVisibleStatus')
-      .mockImplementation(async options => {
-        expireLease = options?.onLeaseExpired;
-        return {
-          descriptor: {
-            captureId: '123e4567-e89b-42d3-a456-426614174000',
-            kind: 'photo',
-            mimeType: 'image/jpeg',
-            byteLength: 1,
-            width: 640,
-            height: 480,
-            capturedAt: 1,
-            retentionDeadline: 600_001,
-          },
-          snapshot: { objectUrl: () => 'blob:visible-status' },
-          filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
-          download: vi.fn(),
-          release: vi.fn(),
-        } as never;
-      });
-    const user = userEvent.setup();
-    await act(async () => render(<Popup />));
-    await user.click(await screen.findByRole('button', { name: 'Capture Visible Status' }));
-
-    if (!expireLease) throw new Error('Expected the edit lease expiry callback.');
-    act(() => expireLease?.());
-
-    expect(await screen.findByRole('heading', { name: 'Editing session expired' })).toBeDefined();
-    expect(
-      screen.getByText(/editing session expired after 10 minutes.*capture.*again/i)
-    ).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Capture Visible Status again' })).toBeDefined();
-    expect(document.querySelector('.whatsapp-result-hero')).toBeNull();
-    capture.mockRestore();
-  });
-
   it('renders the existing placeholder when a captured Status cannot decode', async () => {
     mockBrowser.tabs.query.mockResolvedValue([
       { id: 1, url: 'https://web.whatsapp.com/status', active: true, currentWindow: true },
@@ -471,7 +423,6 @@ describe('Popup', () => {
         width: 640,
         height: 480,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.jpg',
@@ -508,7 +459,6 @@ describe('Popup', () => {
         height: 480,
         durationMs: 1_000,
         capturedAt: 1,
-        retentionDeadline: 60_001,
       },
       snapshot: { objectUrl: () => 'blob:visible-status' },
       filename: 'whatsapp-visible-status-20260101T000000Z.mp4',

@@ -170,8 +170,6 @@ export function useWhatsAppCapture({
       const handle = await captureWhatsAppVisibleStatus({
         operationId: operation.operationId,
         requestId: operation.requestId,
-        onLeaseExpired: () =>
-          setState(failed(operation, normalizeWhatsAppCaptureFailure('retention-expired'))),
       });
       handleRef.current?.release();
       handleRef.current = handle;

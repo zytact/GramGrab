@@ -114,23 +114,6 @@ describe('WhatsApp failure registry', () => {
     expect(retryable(format, 0)).toBe(false);
   });
 
-  it('uses edit-aware copy and re-capture recovery for retention expiry', () => {
-    const failure = normalizeWhatsAppCaptureFailure('retention-expired');
-    expect(failure).toMatchObject({
-      code: 'WHATSAPP_ACQUISITION_FAILED',
-      phase: 'whatsapp-extraction',
-      platform: 'whatsapp',
-      structuralEvidence: { invariant: 'retention-expired' },
-    });
-    expect(presentationForFailure(failure)).toMatchObject({
-      title: 'Editing session expired',
-      explanation:
-        'Your editing session expired after 10 minutes - capture the Visible Status again to continue.',
-      actions: ['retry-operation'],
-      retry: 'after-user-action',
-    });
-  });
-
   it('keeps in-memory silent processing failures typed on the WhatsApp branch', () => {
     const memory = normalizeWhatsAppSilentFailure(
       'SILENT_MEMORY_CAPACITY_EXCEEDED',
