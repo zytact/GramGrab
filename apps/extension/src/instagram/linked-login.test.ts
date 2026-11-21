@@ -8,6 +8,7 @@ import {
   type WatchResult,
 } from '@gramgrab/protocol';
 import { createExtensionHarness, json, type ExtensionHarness } from '../test/extension-harness.ts';
+import { settled } from '../test/fake-clock.ts';
 import {
   TARGET,
   VIEWER,
@@ -66,25 +67,14 @@ afterEach(() => {
   globalThis.fetch = savedFetch;
 });
 
-async function settle<T>(pending: Promise<T>): Promise<T> {
-  let done = false;
-  let value: T | undefined;
-  void pending.then(result => {
-    value = result;
-    done = true;
-  });
-  while (!done) await vi.advanceTimersByTimeAsync(1_000);
-  return value as T;
-}
-
-const link = () => settle(harness.send<LinkLoginResponse>({ type: 'LINK_LOGIN' }));
+const link = () => settled(harness.send<LinkLoginResponse>({ type: 'LINK_LOGIN' }));
 
 async function run<T extends WatchResult['_tag']>(
   command: WatchCommand,
   expected: T,
   login: InstagramLogin = 'main'
 ) {
-  const response = await settle(
+  const response = await settled(
     harness.send<WatchCommandResponse>({ type: 'WATCH_COMMAND', command, login })
   );
   if (response.result?._tag !== expected) throw new Error(JSON.stringify(response));
@@ -189,7 +179,7 @@ describe('linking a second login', () => {
     await link();
     const sent = requests().length;
 
-    expect(await settle(harness.send<LoginNamesResponse>({ type: 'LOGIN_NAMES' }))).toEqual({
+    expect(await settled(harness.send<LoginNamesResponse>({ type: 'LOGIN_NAMES' }))).toEqual({
       main: VIEWER.username,
       linked: LINKED.username,
     });
@@ -197,7 +187,7 @@ describe('linking a second login', () => {
   });
 
   it('asks Instagram for no names while no second login is linked', async () => {
-    expect(await settle(harness.send<LoginNamesResponse>({ type: 'LOGIN_NAMES' }))).toEqual({});
+    expect(await settled(harness.send<LoginNamesResponse>({ type: 'LOGIN_NAMES' }))).toEqual({});
     expect(requests()).toHaveLength(0);
   });
 
@@ -205,7 +195,7 @@ describe('linking a second login', () => {
     harness.incognito.cookies = LINKED_COOKIES;
     await link();
 
-    await settle(harness.send({ type: 'UNLINK_LOGIN' }));
+    await settled(harness.send({ type: 'UNLINK_LOGIN' }));
 
     expect(stored()).toBeUndefined();
     expect(linkedRules()).toEqual([]);
@@ -220,8 +210,8 @@ describe('requests as the linked login', () => {
   });
 
   it('omit browser cookies and send the linked token, while main requests stay as they were', async () => {
-    await settle(harness.send({ type: 'FETCH_INSTANTS', login: 'linked' }));
-    await settle(harness.send({ type: 'FETCH_INSTANTS', login: 'main' }));
+    await settled(harness.send({ type: 'FETCH_INSTANTS', login: 'linked' }));
+    await settled(harness.send({ type: 'FETCH_INSTANTS', login: 'main' }));
 
     const sent = requests();
     expect(sent.filter(request => request.login === 'linked')).not.toEqual([]);
@@ -268,7 +258,7 @@ describe('requests as the linked login', () => {
     const main = attempts('instagram-requests');
     const linked = attempts('instagram-requests.linked');
 
-    await settle(harness.send({ type: 'FETCH_INSTANTS', login: 'linked' }));
+    await settled(harness.send({ type: 'FETCH_INSTANTS', login: 'linked' }));
 
     expect(attempts('instagram-requests')).toBe(main);
     expect(attempts('instagram-requests.linked')).toBe(linked + requests().length);
@@ -331,7 +321,7 @@ describe('when Instagram ends the linked session', () => {
       attentionId: 'linked-login',
       code: 'IG_LINKED_LOGIN_ENDED',
     });
-    const refused = await settle(
+    const refused = await settled(
       harness.send<{ failure?: { code: string } }>({
         type: 'FETCH_MEDIA',
         url: 'https://www.instagram.com/p/DAbcdefghij/',
@@ -354,7 +344,7 @@ describe('when Instagram ends the linked session', () => {
 });
 
 it('refuses the linked login before any request while none is linked', async () => {
-  const response = await settle(
+  const response = await settled(
     harness.send<{ failure?: { code: string } }>({
       type: 'FETCH_MEDIA',
       url: 'https://www.instagram.com/p/DAbcdefghij/',

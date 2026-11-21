@@ -27,6 +27,7 @@ import {
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
 import { createWatchInstagram, TARGET, postsPage, restMedia } from '../test/watch-instagram.ts';
 import { processingBrowser, silentBrowser } from '../test/processing-browser.ts';
+import { settled } from '../test/fake-clock.ts';
 
 const savedBrowser = globalThis.browser;
 const savedFetch = globalThis.fetch;
@@ -59,18 +60,6 @@ afterEach(() => {
   globalThis.browser = savedBrowser;
   globalThis.fetch = savedFetch;
 });
-
-async function settled<T>(promise: Promise<T>): Promise<T> {
-  let answer: { value: T } | undefined;
-  void promise.then(value => {
-    answer = { value };
-  });
-  for (let second = 0; second < 1200; second++) {
-    if (answer) return answer.value;
-    await vi.advanceTimersByTimeAsync(1000);
-  }
-  throw new Error('Native command did not settle.');
-}
 
 async function result(command: WatchCommand) {
   const terminal = await settled(harness.command(command));
