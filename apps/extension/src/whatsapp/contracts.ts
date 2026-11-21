@@ -13,6 +13,8 @@ import {
   WHATSAPP_RETENTION_MS,
   WHATSAPP_TRANSFER_TIMEOUT_MS,
   WHATSAPP_IDLE_TIMEOUT_MS,
+  WHATSAPP_PHOTO_MIME_TYPES,
+  WHATSAPP_VIDEO_MIME_TYPES,
 } from './limits.ts';
 
 const ProtocolVersion = Schema.Literal(WHATSAPP_PROTOCOL_VERSION);
@@ -33,8 +35,8 @@ const CanonicalBase64Shape = Schema.String.pipe(
     message: () => 'must be canonical, non-empty base64 within the chunk limit',
   })
 );
-const PhotoMimeType = Schema.Literal('image/jpeg', 'image/png', 'image/webp');
-const VideoMimeType = Schema.Literal('video/mp4');
+const PhotoMimeType = Schema.Literal(...WHATSAPP_PHOTO_MIME_TYPES);
+const VideoMimeType = Schema.Literal(...WHATSAPP_VIDEO_MIME_TYPES);
 const CaptureFailureReason = Schema.Literal(
   'not-visible',
   'unsupported',

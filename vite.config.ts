@@ -1,6 +1,6 @@
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { defineConfig } from 'vite-plus';
+import { build, defineConfig, type Plugin } from 'vite-plus';
 import react from '@vitejs/plugin-react';
 import { createManifest, parseBrowserTarget } from './apps/extension/scripts/manifest.mjs';
 
@@ -19,6 +19,39 @@ const firefoxPackageOutput = {
   pattern: 'extension/firefox/gramgrab.xpi',
   base: 'workspace' as const,
 };
+
+const whatsAppControllerEntry = resolve(extensionRoot, 'src/whatsapp/controller-entry.ts');
+
+async function bundleWhatsAppController() {
+  const result = await build({
+    configFile: false,
+    logLevel: 'warn',
+    build: {
+      write: false,
+      lib: {
+        entry: whatsAppControllerEntry,
+        formats: ['iife'],
+        name: 'gramgrabWhatsAppController',
+      },
+    },
+  });
+  const [output] = [result].flat();
+  if (output === undefined || !('output' in output) || output.output.length !== 1)
+    throw new Error('WhatsApp controller must bundle to exactly one chunk');
+  const [chunk] = output.output;
+  return chunk;
+}
+
+function whatsAppControllerBundle(): Plugin {
+  return {
+    name: 'whatsapp-controller-bundle',
+    async buildStart() {
+      const chunk = await bundleWhatsAppController();
+      for (const id of chunk.moduleIds) this.addWatchFile(id);
+      this.emitFile({ type: 'asset', fileName: 'js/whatsapp-controller.js', source: chunk.code });
+    },
+  };
+}
 
 export default defineConfig({
   pack: {
@@ -267,6 +300,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    whatsAppControllerBundle(),
     {
       name: 'extension-metadata',
       async writeBundle() {
@@ -307,9 +341,6 @@ export default defineConfig({
         popup: resolve(extensionRoot, 'templates/popup.html'),
         runner: resolve(extensionRoot, 'templates/runner.html'),
         options: resolve(extensionRoot, 'templates/options.html'),
-        // The controller entry has no exports or external imports so it can be
-        // injected as a classic packaged isolated-world script.
-        'whatsapp-controller': resolve(extensionRoot, 'src/whatsapp/controller-entry.ts'),
         // background.ts is bundled directly as a JS module entry - no HTML
         // wrapper needed. Both Chromium (service_worker) and Firefox (scripts)
         // reference js/background.js in their respective manifests.

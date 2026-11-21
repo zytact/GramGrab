@@ -1,25 +1,28 @@
-const WHATSAPP_PROTOCOL_VERSION = 1 as const;
-const WHATSAPP_PORT_NAME = 'gramgrab-whatsapp-capture-v1';
-const WHATSAPP_MAX_MEDIA_BYTES = 64 * 1024 * 1024;
-const WHATSAPP_MAX_CHUNK_BYTES = 256 * 1024;
-const WHATSAPP_MAX_CHUNKS = 256;
-const WHATSAPP_IDLE_TIMEOUT_MS = 5_000;
+import { canonicalBase64ChunkLength } from './base64.ts';
+import {
+  WHATSAPP_IDLE_TIMEOUT_MS,
+  WHATSAPP_MAX_CHUNK_BYTES,
+  WHATSAPP_MAX_CHUNKS,
+  WHATSAPP_MAX_DIMENSION,
+  WHATSAPP_MAX_MEDIA_BYTES,
+  WHATSAPP_MAX_VIDEO_DURATION_MS,
+  WHATSAPP_MIN_DIMENSION,
+  WHATSAPP_MIN_VIDEO_DURATION_MS,
+  WHATSAPP_PHOTO_MIME_TYPES,
+  WHATSAPP_PORT_NAME,
+  WHATSAPP_PROTOCOL_VERSION,
+  WHATSAPP_RETENTION_MS,
+  WHATSAPP_TRANSFER_TIMEOUT_MS,
+  WHATSAPP_VIDEO_MIME_TYPES,
+  type WhatsAppMimeType,
+} from './limits.ts';
+
 const WHATSAPP_READINESS_TIMEOUT_MS = 4_000;
-const WHATSAPP_TRANSFER_TIMEOUT_MS = 30_000;
-const WHATSAPP_RETENTION_MS = 60_000;
-const WHATSAPP_MIN_DIMENSION = 1;
-const WHATSAPP_MAX_DIMENSION = 16_384;
-const WHATSAPP_MIN_VIDEO_DURATION_MS = 1;
-const WHATSAPP_MAX_VIDEO_DURATION_MS = 600_000;
-const PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const VIDEO_MIME_TYPES = ['video/mp4'];
-const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 type WhatsAppMediaKind = 'photo' | 'video';
-type WhatsAppMimeType = 'image/jpeg' | 'image/png' | 'image/webp' | 'video/mp4';
 
-function isWhatsAppMimeType(value: string): value is WhatsAppMimeType {
-  return PHOTO_MIME_TYPES.includes(value) || VIDEO_MIME_TYPES.includes(value);
+function isOneOf<T extends string>(values: readonly T[], value: string): value is T {
+  return values.some(candidate => candidate === value);
 }
 
 function isWhatsAppMimeForKind(
@@ -27,8 +30,12 @@ function isWhatsAppMimeForKind(
   mimeType: string
 ): mimeType is WhatsAppMimeType {
   return kind === 'video'
-    ? VIDEO_MIME_TYPES.includes(mimeType)
-    : PHOTO_MIME_TYPES.includes(mimeType);
+    ? isOneOf(WHATSAPP_VIDEO_MIME_TYPES, mimeType)
+    : isOneOf(WHATSAPP_PHOTO_MIME_TYPES, mimeType);
+}
+
+function isWhatsAppMimeType(value: string): value is WhatsAppMimeType {
+  return isWhatsAppMimeForKind('photo', value) || isWhatsAppMimeForKind('video', value);
 }
 export type VisibleStatusObservation =
   | { readonly tag: 'not-visible'; readonly reason: 'wrong-origin' | 'viewer-absent' }
@@ -601,29 +608,6 @@ function isCancelReason(
   );
 }
 
-function isCanonicalBase64Shape(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length % 4 === 0 &&
-    value.length <= Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4 &&
-    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value) &&
-    hasZeroTrailingBits(value)
-  );
-}
-
-function base64PaddingLength(value: string): 0 | 1 | 2 {
-  if (value.endsWith('==')) return 2;
-  return value.endsWith('=') ? 1 : 0;
-}
-
-function hasZeroTrailingBits(value: string): boolean {
-  const padding = base64PaddingLength(value);
-  if (padding === 0) return true;
-  const lastSextet = BASE64_ALPHABET.indexOf(value.charAt(value.length - padding - 1));
-  return (lastSextet & (padding === 2 ? 0b1111 : 0b11)) === 0;
-}
-
 function isShapeEvidence(value: unknown): value is WhatsAppShapeEvidence {
   return (
     isRecord(value) &&
@@ -855,8 +839,8 @@ function decodeChunk(value: Record<string, unknown>, base: InboundBase): Outboun
     !exactKeys(value, [...CONTROLLER_BASE_KEYS, 'sequence', 'decodedLength', 'payload']) ||
     !isIntegerBetween(value.sequence, 0, WHATSAPP_MAX_CHUNKS - 1) ||
     !isIntegerBetween(value.decodedLength, 1, WHATSAPP_MAX_CHUNK_BYTES) ||
-    !isCanonicalBase64Shape(value.payload) ||
-    (value.payload.length / 4) * 3 - base64PaddingLength(value.payload) !== value.decodedLength
+    typeof value.payload !== 'string' ||
+    canonicalBase64ChunkLength(value.payload) !== value.decodedLength
   )
     return undefined;
   return {

@@ -1,4 +1,5 @@
-import { access, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import { parse } from 'acorn';
 
 const targets = ['chromium', 'firefox'];
 const whatsAppMatchingHosts = new Set([
@@ -13,6 +14,28 @@ const whatsAppMatchingHosts = new Set([
 function matchesWhatsAppHost(permission) {
   const host = /^[^:]+:\/\/([^/]+)\//u.exec(permission)?.[1] ?? permission;
   return whatsAppMatchingHosts.has(host);
+}
+
+function containsDynamicImport(node) {
+  if (node === null || typeof node !== 'object') return false;
+  if (node.type === 'ImportExpression') return true;
+  return Object.values(node).some(child =>
+    Array.isArray(child) ? child.some(containsDynamicImport) : containsDynamicImport(child)
+  );
+}
+
+function assertClassicScript(target, source) {
+  let program;
+  try {
+    program = parse(source, { ecmaVersion: 'latest', sourceType: 'script' });
+  } catch (error) {
+    throw new Error(`${target}: WhatsApp controller must parse as a classic script`, {
+      cause: error,
+    });
+  }
+  if (containsDynamicImport(program)) {
+    throw new Error(`${target}: WhatsApp controller must not import modules`);
+  }
 }
 
 for (const target of targets) {
@@ -35,7 +58,7 @@ for (const target of targets) {
   if ('content_scripts' in manifest) {
     throw new Error(`${target}: permanent content scripts are forbidden`);
   }
-  await access(`${root}/js/whatsapp-controller.js`);
+  assertClassicScript(target, await readFile(`${root}/js/whatsapp-controller.js`, 'utf8'));
 }
 
 console.log('WhatsApp package policy: Chromium and Firefox structural checks passed.');
