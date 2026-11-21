@@ -14,24 +14,29 @@ function hasZeroTrailingBits(value: string, padding: 0 | 1 | 2): boolean {
   return (lastSextet & (padding === 2 ? 0b1111 : 0b11)) === 0;
 }
 
-export function isCanonicalBase64Chunk(value: string): boolean {
+export function canonicalBase64ChunkLength(value: string): number | undefined {
   if (
     value.length === 0 ||
     value.length % 4 !== 0 ||
     value.length > Math.ceil(WHATSAPP_MAX_CHUNK_BYTES / 3) * 4 ||
     !CANONICAL_BASE64.test(value)
   )
-    return false;
+    return undefined;
   const padding = paddingLength(value);
   const decodedLength = (value.length / 4) * 3 - padding;
-  return decodedLength <= WHATSAPP_MAX_CHUNK_BYTES && hasZeroTrailingBits(value, padding);
+  return decodedLength <= WHATSAPP_MAX_CHUNK_BYTES && hasZeroTrailingBits(value, padding)
+    ? decodedLength
+    : undefined;
+}
+
+export function isCanonicalBase64Chunk(value: string): boolean {
+  return canonicalBase64ChunkLength(value) !== undefined;
 }
 
 export function decodeCanonicalBase64(value: string): Uint8Array<ArrayBuffer> | undefined {
   if (!isCanonicalBase64Chunk(value)) return undefined;
 
   const binary = atob(value);
-  if (binary.length > WHATSAPP_MAX_CHUNK_BYTES) return undefined;
 
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);

@@ -34,6 +34,10 @@ that tab and switch to `WhatsApp Status` in the platform navigation.
 The verification profile keeps its WhatsApp Web link across runs once someone
 has linked a device through `scripts/signin.sh`.
 
+Capture needs a contact to have posted a photo or video Status in the last 24
+hours. When the Status list shows only `My status`, the capture flow is
+unreachable. Record that as the prerequisite.
+
 ## Driving it with the harness
 
 The whole flow is scriptable. Do not ask the person to post test cards or to
@@ -112,6 +116,10 @@ node $D eval "popup.html" "(async () => { let copied; navigator.clipboard.writeT
 
 ## What proves it works
 
+- Injection: with no Status open, `Capture Visible Status` on the WhatsApp tab
+  ends on `WHATSAPP_STATUS_NOT_VISIBLE`. The controller was injected and
+  accepted `CaptureStart`. A controller that fails to load or rejects the
+  start message ends on a different code. This state needs no contact Status.
 - Ineligible: a popup opened with `open` shows `Open WhatsApp Web` and offers
   no capture control.
 - Captured: the panel shows `Visible Status captured` and the hero renders a

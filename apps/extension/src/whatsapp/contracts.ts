@@ -6,6 +6,7 @@ import {
   WHATSAPP_MAX_CHUNKS,
   WHATSAPP_MAX_DIMENSION,
   WHATSAPP_MAX_MEDIA_BYTES,
+  WHATSAPP_MAX_UNACKNOWLEDGED_CHUNKS,
   WHATSAPP_MAX_VIDEO_DURATION_MS,
   WHATSAPP_MIN_DIMENSION,
   WHATSAPP_MIN_VIDEO_DURATION_MS,
@@ -13,6 +14,8 @@ import {
   WHATSAPP_RETENTION_MS,
   WHATSAPP_TRANSFER_TIMEOUT_MS,
   WHATSAPP_IDLE_TIMEOUT_MS,
+  WHATSAPP_PHOTO_MIME_TYPES,
+  WHATSAPP_VIDEO_MIME_TYPES,
 } from './limits.ts';
 
 const ProtocolVersion = Schema.Literal(WHATSAPP_PROTOCOL_VERSION);
@@ -33,8 +36,8 @@ const CanonicalBase64Shape = Schema.String.pipe(
     message: () => 'must be canonical, non-empty base64 within the chunk limit',
   })
 );
-const PhotoMimeType = Schema.Literal('image/jpeg', 'image/png', 'image/webp');
-const VideoMimeType = Schema.Literal('video/mp4');
+const PhotoMimeType = Schema.Literal(...WHATSAPP_PHOTO_MIME_TYPES);
+const VideoMimeType = Schema.Literal(...WHATSAPP_VIDEO_MIME_TYPES);
 const CaptureFailureReason = Schema.Literal(
   'not-visible',
   'unsupported',
@@ -72,7 +75,7 @@ export class CaptureStart extends Schema.Class<CaptureStart>('CaptureStart')({
   maxMediaBytes: Schema.Literal(WHATSAPP_MAX_MEDIA_BYTES),
   maxChunkBytes: Schema.Literal(WHATSAPP_MAX_CHUNK_BYTES),
   maxChunks: Schema.Literal(WHATSAPP_MAX_CHUNKS),
-  maxUnacknowledgedChunks: Schema.Literal(1),
+  maxUnacknowledgedChunks: Schema.Literal(WHATSAPP_MAX_UNACKNOWLEDGED_CHUNKS),
   idleTimeoutMs: Schema.Literal(WHATSAPP_IDLE_TIMEOUT_MS),
   transferTimeoutMs: Schema.Literal(WHATSAPP_TRANSFER_TIMEOUT_MS),
   retentionMs: Schema.Literal(WHATSAPP_RETENTION_MS),

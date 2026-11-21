@@ -46,7 +46,8 @@ node artifacts/gramgrab.mjs status --json
 - All five commands exit 0.
 - Chromium and Firefox manifests select the correct background form and version.
 - `verify:whatsapp-packages` confirms there is no content script or WhatsApp
-  host permission in either build.
+  host permission in either build, and that `js/whatsapp-controller.js` parses
+  as a classic script with no static or dynamic `import`.
 - The packaged CLI prints help and completes a compatible status round trip.
 - `git status --short` contains no generated artifact outside ignored output
   directories and no unexpected source changes.

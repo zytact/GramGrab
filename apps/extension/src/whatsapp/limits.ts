@@ -14,11 +14,11 @@ export const WHATSAPP_MAX_DIMENSION = 16_384;
 export const WHATSAPP_MIN_VIDEO_DURATION_MS = 1;
 export const WHATSAPP_MAX_VIDEO_DURATION_MS = 600_000;
 
-const WHATSAPP_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
-const WHATSAPP_VIDEO_MIME_TYPES = ['video/mp4'] as const;
-const WHATSAPP_MIME_TYPES = [...WHATSAPP_PHOTO_MIME_TYPES, ...WHATSAPP_VIDEO_MIME_TYPES] as const;
-
-export type WhatsAppMimeType = (typeof WHATSAPP_MIME_TYPES)[number];
+export const WHATSAPP_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const WHATSAPP_VIDEO_MIME_TYPES = ['video/mp4'] as const;
+export type WhatsAppMimeType =
+  | (typeof WHATSAPP_PHOTO_MIME_TYPES)[number]
+  | (typeof WHATSAPP_VIDEO_MIME_TYPES)[number];
 
 export function isWhatsAppWebUrl(value: string | undefined): boolean {
   if (!value) return false;
