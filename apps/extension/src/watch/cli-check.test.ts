@@ -10,6 +10,7 @@ import {
 } from '@gramgrab/protocol';
 import { Schema } from 'effect';
 import { createExtensionHarness, type ExtensionHarness } from '../test/extension-harness.ts';
+import { settled } from '../test/fake-clock.ts';
 import { TARGET, createWatchInstagram, storyRequest } from '../test/watch-instagram.ts';
 import type { WatchCommandResponse } from '../messaging/contracts.ts';
 
@@ -34,14 +35,6 @@ afterEach(() => {
   globalThis.fetch = savedFetch;
 });
 
-async function settled<T>(promise: Promise<T>): Promise<T> {
-  let result: { value: T } | undefined;
-  void promise.then(value => {
-    result = { value };
-  });
-  while (!result) await vi.advanceTimersByTimeAsync(1_000);
-  return result.value;
-}
 async function add(kinds: readonly ['stories'] | readonly ['stories', 'posts'] = ['stories']) {
   await settled(
     harness.command(
