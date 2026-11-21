@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { build, defineConfig, type Plugin } from 'vite-plus';
 import react from '@vitejs/plugin-react';
 import { createManifest, parseBrowserTarget } from './apps/extension/scripts/manifest.mjs';
+import { WHATSAPP_CONTROLLER_FILE } from './apps/extension/src/whatsapp/limits.ts';
 
 const browser = parseBrowserTarget(process.env.BROWSER ?? 'chromium');
 const autoInput = { auto: true } as const;
@@ -49,7 +50,7 @@ function whatsAppControllerBundle(): Plugin {
     async buildStart() {
       const chunk = await bundleWhatsAppController();
       for (const id of chunk.moduleIds) this.addWatchFile(id);
-      this.emitFile({ type: 'asset', fileName: 'js/whatsapp-controller.js', source: chunk.code });
+      this.emitFile({ type: 'asset', fileName: WHATSAPP_CONTROLLER_FILE, source: chunk.code });
     },
   };
 }

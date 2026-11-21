@@ -809,7 +809,7 @@ function decodeVideoMetadata(
     ...base,
     tag: 'CaptureMetadata',
     kind: 'video',
-    mimeType: 'video/mp4',
+    mimeType: value.mimeType,
     byteLength: value.byteLength,
     width: value.width,
     height: value.height,
