@@ -45,6 +45,7 @@ async function bundleWhatsAppController() {
 function whatsAppControllerBundle(): Plugin {
   return {
     name: 'whatsapp-controller-bundle',
+    apply: 'build',
     async buildStart() {
       const chunk = await bundleWhatsAppController();
       for (const id of chunk.moduleIds) this.addWatchFile(id);

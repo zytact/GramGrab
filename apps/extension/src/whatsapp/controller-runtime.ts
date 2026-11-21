@@ -5,6 +5,7 @@ import {
   WHATSAPP_MAX_CHUNKS,
   WHATSAPP_MAX_DIMENSION,
   WHATSAPP_MAX_MEDIA_BYTES,
+  WHATSAPP_MAX_UNACKNOWLEDGED_CHUNKS,
   WHATSAPP_MAX_VIDEO_DURATION_MS,
   WHATSAPP_MIN_DIMENSION,
   WHATSAPP_MIN_VIDEO_DURATION_MS,
@@ -32,10 +33,6 @@ function isWhatsAppMimeForKind(
   return kind === 'video'
     ? isOneOf(WHATSAPP_VIDEO_MIME_TYPES, mimeType)
     : isOneOf(WHATSAPP_PHOTO_MIME_TYPES, mimeType);
-}
-
-function isWhatsAppMimeType(value: string): value is WhatsAppMimeType {
-  return isWhatsAppMimeForKind('photo', value) || isWhatsAppMimeForKind('video', value);
 }
 export type VisibleStatusObservation =
   | { readonly tag: 'not-visible'; readonly reason: 'wrong-origin' | 'viewer-absent' }
@@ -529,11 +526,7 @@ export async function acquireVisibleStatusBytes(
   }
   if (!response.ok) throw new ControllerFailure('transfer-failed');
   const mimeType = responseMimeType(response);
-  if (
-    !mimeType ||
-    !isWhatsAppMimeType(mimeType) ||
-    !isWhatsAppMimeForKind(candidate.kind, mimeType)
-  ) {
+  if (!mimeType || !isWhatsAppMimeForKind(candidate.kind, mimeType)) {
     throw new ControllerFailure('format-changed');
   }
   const bytes = await readResponseBytes(response, candidate, document, signal);
@@ -718,10 +711,10 @@ function decodeStart(value: Record<string, unknown>, base: InboundBase): StartMe
     value.maxMediaBytes === WHATSAPP_MAX_MEDIA_BYTES &&
     value.maxChunkBytes === WHATSAPP_MAX_CHUNK_BYTES &&
     value.maxChunks === WHATSAPP_MAX_CHUNKS &&
-    value.maxUnacknowledgedChunks === 1 &&
+    value.maxUnacknowledgedChunks === WHATSAPP_MAX_UNACKNOWLEDGED_CHUNKS &&
     value.idleTimeoutMs === WHATSAPP_IDLE_TIMEOUT_MS &&
     value.transferTimeoutMs === WHATSAPP_TRANSFER_TIMEOUT_MS &&
-    value.retentionMs === 60_000;
+    value.retentionMs === WHATSAPP_RETENTION_MS;
   return exactKeys(value, keys) && limitsMatch ? { ...base, tag: 'CaptureStart' } : undefined;
 }
 
