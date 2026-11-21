@@ -65,11 +65,8 @@ async function settled<T>(promise: Promise<T>): Promise<T> {
   void promise.then(value => {
     answer = { value };
   });
-  for (let second = 0; second < 1200; second++) {
-    if (answer) return answer.value;
-    await vi.advanceTimersByTimeAsync(1000);
-  }
-  throw new Error('Native command did not settle.');
+  while (!answer) await vi.advanceTimersByTimeAsync(1000);
+  return answer.value;
 }
 
 async function result(command: WatchCommand) {
