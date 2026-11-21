@@ -1,10 +1,11 @@
 import { vi } from 'vite-plus/test';
 
 export async function settled<T>(promise: Promise<T>): Promise<T> {
-  let answer: { value: T } | undefined;
-  void promise.then(value => {
-    answer = { value };
+  let outcome: PromiseSettledResult<T> | undefined;
+  void Promise.allSettled([promise]).then(([result]) => {
+    outcome = result;
   });
-  while (!answer) await vi.advanceTimersByTimeAsync(1_000);
-  return answer.value;
+  while (!outcome) await vi.advanceTimersByTimeAsync(1_000);
+  if (outcome.status === 'rejected') throw outcome.reason;
+  return outcome.value;
 }
