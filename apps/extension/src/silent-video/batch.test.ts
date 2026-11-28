@@ -273,7 +273,7 @@ describe('silent video batch', () => {
 
   it('downloads an already-silent video from its cached input instead of the network', async () => {
     const target = operation(14);
-    directory.files.set(`${target.operationId}.source`, ['already silent']);
+    directory.files.set(`${target.operationId}.source.mp4`, ['already silent']);
     const downloaded: string[] = [];
     globalThis.browser = {
       runtime: {
@@ -324,7 +324,7 @@ describe('silent video batch', () => {
     };
 
     await expect(batch).resolves.toMatchObject({ outcomes: [{ status: 'started' }] });
-    expect(downloaded).toEqual([`blob:${target.operationId}.source`]);
+    expect(downloaded).toEqual([`blob:${target.operationId}.source.mp4`]);
   });
 
   it('asks before re-encoding a rotated video that is already silent', async () => {

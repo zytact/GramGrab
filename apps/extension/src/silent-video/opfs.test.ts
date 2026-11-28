@@ -95,19 +95,19 @@ describe('silent video OPFS cleanup', () => {
     vi.stubGlobal('fetch', () =>
       Promise.resolve(new Response(body, { headers: { 'Content-Length': '6' } }))
     );
-    directory.locked.add(`${requestId}.source`);
+    directory.locked.add(`${requestId}.source.mp4`);
 
     await expect(
       cacheInput(requestId, 'https://example.com/video.mp4', () => {})
     ).rejects.toMatchObject({ code: 'SILENT_STORAGE_WRITE_FAILED' });
-    expect(directory.files.has(`${requestId}.source`)).toBe(true);
+    expect(directory.files.has(`${requestId}.source.mp4`)).toBe(true);
     expect(directory.files.has(`${requestId}.json`)).toBe(true);
 
     directory.locked.clear();
     vi.useFakeTimers();
     vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
     await expect(sweepOutputs()).resolves.toBeUndefined();
-    expect(directory.files.has(`${requestId}.source`)).toBe(false);
+    expect(directory.files.has(`${requestId}.source.mp4`)).toBe(false);
     expect(directory.files.has(`${requestId}.json`)).toBe(false);
   });
 
@@ -128,7 +128,7 @@ describe('silent video OPFS cleanup', () => {
       })
     );
 
-    expect(directory.files.has(`${operationId}.source`)).toBe(true);
+    expect(directory.files.has(`${operationId}.source.mp4`)).toBe(true);
     expect(directory.files.has(`${operationId}.json`)).toBe(true);
     expect(directory.files.has(`${operationId}.mp4`)).toBe(false);
   });
