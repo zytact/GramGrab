@@ -158,10 +158,10 @@ re-encoded video prints `video,720,720` and `audio`.
   filename, not `download.jpg`. Filename construction is real logic with its own
   regression history, so record the exact name.
 - The file is non-empty and the right kind: a frame export is a JPEG, a silent
-  export is an MP4 saved as `_silent.mp4`. Silent on a video that already has no
-  audio, such as most Instants, downloads the input cached for inspection
-  instead of re-encoding; a `_silent.txt` there means that cached blob lost its
-  video type.
+  export is an MP4 saved as `_silent.mp4`. Silent on an unrotated, uncropped
+  video that already has no audio, such as most Instants, skips processing and
+  downloads the input cached for inspection; a `_silent.txt` there means that
+  cached blob lost its video type.
 - A silent export has a video track and no audio track. Check it, do not infer
   it from the mode name. `ffprobe` ships with `ffmpeg`, which a fresh Ubuntu or
   WSL install lacks. This must print `video` and nothing else:
