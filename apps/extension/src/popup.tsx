@@ -1346,7 +1346,13 @@ function ReencodeDialog({
         <ul>
           {candidates.map(candidate => (
             <li key={candidate.operation.requestId}>
-              <video src={candidate.operation.url} muted preload="metadata" aria-hidden="true" />
+              <video
+                src={candidate.operation.url}
+                crossOrigin="anonymous"
+                muted
+                preload="metadata"
+                aria-hidden="true"
+              />
               <span>Item {candidate.operation.displayIndex + 1}</span>
               <strong>{candidate.operation.filename}</strong>
               <small>
