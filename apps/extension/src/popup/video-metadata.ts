@@ -1,15 +1,10 @@
 import { sendMessage } from '../messaging/send';
-import { presentationForFailure } from '../errors/presentation';
-import { isOperationFailure, type OperationFailure } from '../errors/contracts';
+import { failureMessage } from '../errors/presentation';
+import { isOperationFailure } from '../errors/contracts';
 import { maximumFrameSecond } from '../frame-export/timestamp';
 import { fetchMedia } from '../download/fetch-media';
 
 const VIDEO_METADATA_UNAVAILABLE = 'Could not load video metadata. Retry.';
-
-function failureMessage(failure: OperationFailure) {
-  const { title, explanation } = presentationForFailure(failure);
-  return `${title}. ${explanation}`;
-}
 
 /**
  * Fetches one video through the background worker as a data URL, for a page that shows the video

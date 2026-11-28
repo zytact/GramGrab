@@ -515,3 +515,13 @@ export function retryable(failure: FailureCode | OperationFailure, retryCount: n
     typeof failure === 'string' ? FAILURE_PRESENTATION[failure] : presentationForFailure(failure);
   return policy.retry === 'once' ? retryCount === 0 : policy.retry === 'after-user-action';
 }
+
+/**
+ * The one sentence a person reads for a failure: title, explanation, and an
+ * optional suffix such as a history note.
+ */
+export function failureMessage(failure: FailureCode | OperationFailure, suffix?: string): string {
+  const presentation =
+    typeof failure === 'string' ? FAILURE_PRESENTATION[failure] : presentationForFailure(failure);
+  return `${presentation.title}. ${presentation.explanation}${suffix ? ` ${suffix}` : ''}`;
+}

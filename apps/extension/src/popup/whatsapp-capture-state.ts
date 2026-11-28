@@ -1,6 +1,6 @@
 import { createOperationId, createRequestId } from '../download/contracts';
 import type { OperationFailure } from '../errors/contracts';
-import { presentationForFailure } from '../errors/presentation';
+import { failureMessage } from '../errors/presentation';
 import type { FrameExportSetting } from '../frame-export/timestamp';
 import type { WhatsAppCaptureHandle } from '../whatsapp/capture';
 import { DIRECT_EXPORT, type WhatsAppExportChoice } from '../whatsapp/mode';
@@ -60,11 +60,6 @@ export const IDLE_WHATSAPP_CAPTURE: WhatsAppCaptureState = {
   _tag: 'Idle',
   message: 'Capture the photo or video Visible Status currently open in WhatsApp Web.',
 };
-
-function failureMessage(failure: OperationFailure): string {
-  const presentation = presentationForFailure(failure);
-  return `${presentation.title}. ${presentation.explanation}`;
-}
 
 /** A manual retry after a failure keeps the operation identity and counts the attempt. */
 export function capturing(state: WhatsAppCaptureState): CaptureStateOf<'Capturing'> {
