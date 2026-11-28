@@ -355,6 +355,7 @@ function VideoPreview({
       <video
         className="media-preview"
         src={item.url}
+        crossOrigin="anonymous"
         muted
         playsInline
         preload="metadata"
