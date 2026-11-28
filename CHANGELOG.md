@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.11.1](https://github.com/zytact/GramGrab/compare/v4.11.0...v4.11.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **preview:** play CORP-protected CDN videos and keep silent downloads as .mp4 ([#438](https://github.com/zytact/GramGrab/issues/438)) ([a704568](https://github.com/zytact/GramGrab/commit/a7045682756afaa5ab3f40b90b2e0215a7567d15))
+* **test:** rethrow rejections from the fake-clock settled helper ([fceaf90](https://github.com/zytact/GramGrab/commit/fceaf90cead6da520340b94349a8b93a740f3876))
+* **test:** stop the cli-inbox frame export test failing on a slow import ([ff3c123](https://github.com/zytact/GramGrab/commit/ff3c1230437cfece324905968acdb4de0f9ef807))
+
 ## [4.11.0](https://github.com/zytact/GramGrab/compare/v4.10.0...v4.11.0) (2026-11-20)
 
 
