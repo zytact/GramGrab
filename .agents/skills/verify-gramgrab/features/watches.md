@@ -161,6 +161,11 @@ retention notice remains a separate deadline.
    right column becomes the editor and reads `Loading N of M` while previews
    load, three at a time, then shows them in entry order. Require a rendered image or
    playable video with real dimensions, not merely a mounted media element.
+   Some CDN edges send `Cross-Origin-Resource-Policy`, which blocks a video
+   loaded without CORS: the card reads `No preview available` and the console
+   logs `net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin`. Which edge serves a
+   Story varies by profile and time, so a clean run does not prove that route;
+   check every `video.media-preview` has `crossOrigin === 'anonymous'`.
    Capture a screenshot with the verified login hidden. A fresh preview must
    leave browser downloads, History and Workspace draft/transfer state unchanged.
 2. Use the shared card's `Select item NN`, `Frame`, `Remove audio`,
