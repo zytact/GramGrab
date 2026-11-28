@@ -48,7 +48,7 @@ export function outputName(requestId: string): string {
 }
 
 function inputName(requestId: string): string {
-  return `${requestId}.source`;
+  return `${requestId}.source.mp4`;
 }
 
 function ledgerName(requestId: string): string {

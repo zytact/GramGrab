@@ -1704,6 +1704,19 @@ describe('Popup', () => {
     ).toBe(false);
   });
 
+  it('loads video previews in CORS mode so a CDN Cross-Origin-Resource-Policy cannot block them', async () => {
+    const user = userEvent.setup();
+    (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      media: [{ url: 'https://instagram.com/video.mp4', type: 'video', filenameHint: 'clip' }],
+      error: undefined,
+    });
+    await act(async () => {
+      render(<Popup />);
+    });
+    await user.click(screen.getByText('Fetch Media'));
+    expect(document.querySelector('video')?.crossOrigin).toBe('anonymous');
+  });
+
   it('uses an accessible, timestamped frame selector for video exports', async () => {
     const user = userEvent.setup();
     (mockBrowser.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({

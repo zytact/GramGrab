@@ -93,7 +93,7 @@ describe('silent video media processing', () => {
     const requestId = RequestIdSchema.make('00000000-0000-4000-8000-000000000001');
     const operationId = OperationIdSchema.make('10000000-0000-4000-8000-000000000001');
     const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
-    directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
+    directory.files.set(`${operationId}.source.mp4`, Uint8Array.from(await readFile(fixturePath)));
 
     const result = await processSilentVideo(
       operationId,
@@ -117,7 +117,7 @@ describe('silent video media processing', () => {
     const requestId = RequestIdSchema.make('00000000-0000-4000-8000-000000000002');
     const operationId = OperationIdSchema.make('10000000-0000-4000-8000-000000000002');
     const fixturePath = resolve('apps/extension/src/silent-video/__fixtures__/synthetic-av.mp4');
-    directory.files.set(`${operationId}.source`, Uint8Array.from(await readFile(fixturePath)));
+    directory.files.set(`${operationId}.source.mp4`, Uint8Array.from(await readFile(fixturePath)));
 
     await processSilentVideo(
       operationId,
